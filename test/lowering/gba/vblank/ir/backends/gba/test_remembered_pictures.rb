@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT ONE BUILD WORKED OUT ABOUT A PICTURE, READ BACK BY THE NEXT, never changes a cartridge.
+# What one build worked out about a picture, read back by the next, never changes a cartridge.
 # A build keeps where each picture draws, its turned forms, its colours and its tiles for the
 # next build on the same core (see IR::Remembered), so a game here is built after another game
 # on its core and on a core of its own that has built nothing, and the two must be the same

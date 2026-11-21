@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE OTHER WORK MEMORY, and what it is for.
+# The other work memory, and what it is for.
 #
 # The console has two, and they are not two sizes of the same thing: a quick one of 32K on the
 # processor's own die, and a roomy one of 256K on a chip of its own that makes the processor
@@ -89,7 +89,7 @@ class TestRoomyMemory < Minitest::Test
 
   # --- the choice is made from what a frame touches, not declaration order ---
 
-  # The bug this exists to prevent: a cold collection declared FIRST taking the quick memory
+  # The bug this exists to prevent: a cold collection declared first taking the quick memory
   # and pushing the one a frame walks every pass into the memory that waits.
   def test_a_cold_list_declared_first_does_not_push_a_hot_one_out
     rom = build("ORDER") do
@@ -122,7 +122,7 @@ class TestRoomyMemory < Minitest::Test
     refute_includes moved, :hot, "reached through a call, so a frame touches it"
   end
 
-  # A game of any size puts its per-frame work in SCENES, reached by a multi-way dispatch
+  # A game of any size puts its per-frame work in scenes, reached by a multi-way dispatch
   # rather than by a plain call. Following only calls reads such a game as entirely cold —
   # measured on a raycaster, all twenty-six of its collections came back untouched — which
   # would move the very things a frame walks into the memory that waits.
@@ -170,7 +170,7 @@ class TestRoomyMemory < Minitest::Test
 
   # --- data and code share the quick memory by one rule ---
 
-  # A ROUTINE THE AUTHOR INSISTED ON OUTRANKS A LIST NOBODY SAID ANYTHING ABOUT, however busy:
+  # A routine the author insisted on outranks a list nobody said anything about, however busy:
   # the list moves to the roomy memory and the build goes on, where it used to stop because the
   # list had taken the room first.
   def test_an_insisted_routine_moves_a_list_out_rather_than_stop_the_build
@@ -217,7 +217,7 @@ class TestRoomyMemory < Minitest::Test
     assert_backends_agree(insisting_beside_a_hoard, frames: 4)
   end
 
-  # A POOL GIVES WAY WHOLE. It is a list for each field and a few of its own, and a walk of it
+  # A pool gives way whole. It is a list for each field and a few of its own, and a walk of it
   # reads them side by side, so the build moves all of them or none — never the x of a thing to
   # the memory that waits while its y stays in the quick one.
   def test_a_pool_moved_for_an_insisted_routine_moves_all_its_columns
@@ -240,7 +240,7 @@ class TestRoomyMemory < Minitest::Test
     assert_equal %i[__poolfield_rock__x __poolfield_rock__y].to_set, moved.select { |name| name.to_s.start_with?("__poolfield") }.to_set
   end
 
-  # A LIST NO FRAME TOUCHES GIVES WAY TO CODE A FRAME RUNS. Kept in the quick memory it buys
+  # A list no frame touches gives way to code a frame runs. Kept in the quick memory it buys
   # nothing — nobody waits on it — and it used to hold the room the game loop wanted, so the
   # whole frame ran from the cartridge.
   def test_a_list_no_frame_touches_gives_way_to_the_game_loop
@@ -274,7 +274,7 @@ class TestRoomyMemory < Minitest::Test
   TRICKLE_WORDS = 6000
   BUSY_ADDS = 600
 
-  # A LIST A FRAME BARELY READS GIVES WAY TO A ROUTINE IT RUNS ALL THE TIME, once the game is
+  # A list a frame barely reads gives way to a routine it runs all the time, once the game is
   # measured. A word kept in the roomy memory costs a few cycles each time it is read, and a frame
   # that touches it once loses a few cycles; a routine left in the cartridge costs a cycle or so on
   # every instruction it runs. Without a measurement nothing says how often the list is read, so
@@ -318,7 +318,7 @@ class TestRoomyMemory < Minitest::Test
   LEFT_ADDS = 750
   RIGHT_ADDS = 1375
 
-  # ...AND THE SAME IN A GAME THAT KEEPS A SET FOR EACH SCREEN. Each screen's routine goes in its
+  # ...AND the same in a game that keeps a set for each screen. Each screen's routine goes in its
   # own screen's set, and the list a frame barely touches is what gives way. Weighed as something
   # every frame needs, the list went in ahead of both routines, and the right screen's routine ran
   # from the cartridge.
@@ -505,7 +505,7 @@ class TestRoomyMemory < Minitest::Test
     assert_match(/waits/, printed, "and says what that costs")
   end
 
-  # A LIST THE MEASUREMENT MOVED SAYS WHAT IT WAS MEASURED AT, which is the reason it moved: the
+  # A list the measurement moved says what it was measured at, which is the reason it moved: the
   # trickle is written once a frame, and the routine kept in its place runs far more than that.
   def test_the_report_says_how_often_a_frame_touched_a_list_it_moved
     out = StringIO.new
@@ -552,7 +552,7 @@ class TestRoomyMemory < Minitest::Test
     refute_match(/__pool/, printed, "none of the names the build made up")
   end
 
-  # WHAT THE BUILD KEEPS THERE FOR ITSELF, as the memory check reads it off the program before the
+  # What the build keeps there for itself, as the memory check reads it off the program before the
   # game is lowered (GBA::Roomy.reserved_by_build), is what the lowering then claims: a song and sound
   # effects on a recording, a held background and 128K of flash, with no collection of the game's
   # in the roomy memory, so everything there is the build's own.

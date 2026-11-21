@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT PUTTING A LAYER'S BORROWED COLOURS BACK COSTS A TINT. A tint walks the whole colour table
+# What putting a layer's borrowed colours back costs a tint. A tint walks the whole colour table
 # from the cartridge, and a layer drawing from a borrowed list has those groups written again after
 # it (PaletteTint#emit_recolored_banks). Here a background walks from a field into a house, and the
 # house borrows six lists at once and gives them back.
@@ -16,7 +16,7 @@ class TestRecoloredBanksCost < Minitest::Test
   LISTS = 6
   TILE_KEYS = ("a".."f").to_a.freeze
 
-  # A field and a house of LISTS lists. With +borrow+ the house is drawn with dark lists on the
+  # A field and a house of lists lists. With +borrow+ the house is drawn with dark lists on the
   # third pass and with its own again on the fourth. +each+ runs on every pass, given the pass.
   private def walking_game(borrow:, &each)
     lists = LISTS

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT SOUND EFFECTS COST ON A FRAME NONE OF THEM IS PLAYING, which is nearly every frame of a game.
+# What sound effects cost on a frame none of them is playing, which is nearly every frame of a game.
 #
 # The routine that answers the display walks the table of effects on each frame one of them has
 # something to do. On the others it skips the table, so a game pays the same on a quiet frame for
