@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHERE A SCENE'S MOVING SPRITES ARE WRITTEN FROM. The console composes its picture from a
+# Where a scene's moving sprites are written from. The console composes its picture from a
 # table of sprites, and a sprite the game moves has its row of that table written in the gap
 # after each frame is drawn. A sprite declared inside a scene is on screen only while that
 # scene is, so its row needs writing only on that scene's frames — and the code that writes
@@ -63,7 +63,7 @@ class TestSceneSpriteWrites < Minitest::Test
     backend.iwram_report
   end
 
-  # THE ONE THAT MATTERS. More moving sprites on the file screen add nothing to the game
+  # The one that matters. More moving sprites on the file screen add nothing to the game
   # loop's own body: they are written by code of their own.
   def test_a_scenes_moving_sprites_do_not_grow_the_game_loop
     one = placement_of(two_screens(markers: 1)).sizes[FRAME]
@@ -121,7 +121,7 @@ class TestSceneSpriteWrites < Minitest::Test
     end
   end
 
-  # A POOL'S SPRITES ARE ONE WRITE, GONE ROUND. Every sprite of a pool is written the same
+  # A pool's sprites are one write, gone round. Every sprite of a pool is written the same
   # way, from the same lists, and differs from the next only in which entry it reads and
   # which row of the console's table it writes. So the routine holds the write once and goes
   # round it: a room of forty-five things costs the code a room of twenty does — but for the
@@ -195,7 +195,7 @@ class TestSceneSpriteWrites < Minitest::Test
     assert_empty short, "came out bigger than charged: #{short}"
   end
 
-  # THE PICTURE DOES NOT CHANGE. The oracle draws every sprite on every frame and knows none of
+  # The picture does not change. The oracle draws every sprite on every frame and knows none of
   # this, so every pixel is compared across both changes of screen: the markers must go when
   # the file screen does, and the hero must come back where the game left him.
   def test_the_console_draws_each_screens_sprites_and_only_those

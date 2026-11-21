@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A scene that LOADS FIRST, on the console. A scene copies its pictures into video memory as it
+# A scene that loads first, on the console. A scene copies its pictures into video memory as it
 # takes over, and on the pass it shares with the scene's first pass of game the two together
 # can run past the end of the frame — so whether a hand-over costs a frame depends on how much
 # art the scene holds, and changes as a game adds rooms. `loads_first: true` gives the copy a
@@ -47,14 +47,14 @@ class TestSceneLoadsFirst < Minitest::Test
     builder.program
   end
 
-  # How many passes of the game loop the console finished in FRAMES frames: one fewer than
+  # How many passes of the game loop the console finished in frames frames: one fewer than
   # another build means one of its passes ran into a second frame.
   private def passes_finished(pictures:, loads_first:)
     rom = assemble_rom(hand_over(pictures: pictures, loads_first: loads_first), name: "LOADFRST")
     assert_emulator_loads_rom(rom, frames: FRAMES, count_passes: true).passes
   end
 
-  # THE PASS THAT COPIES DOES NO SPRITE WORK: it shows nothing new, and the pictures are not in
+  # The pass that copies does no sprite work: it shows nothing new, and the pictures are not in
   # video memory yet. So nothing the scene's sprites write reaches the sprite table until the pass
   # after, which has the frame's time for them. A game's copy that only just fits its frame
   # is that much further from running over.

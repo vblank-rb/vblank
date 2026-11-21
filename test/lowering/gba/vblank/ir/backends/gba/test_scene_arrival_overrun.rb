@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SCENE WHOSE SETUP RUNS PAST THE GAP BETWEEN PICTURES, on the console. Putting a scene's
+# A scene whose setup runs past the gap between pictures, on the console. Putting a scene's
 # backgrounds up sends their pictures and maps into video memory with the layers switched off, and
 # the console goes on drawing while that happens. When the work is bigger than the gap, the layers
 # come back on part way down the picture: rows above are the backdrop, rows below are the scene, and
@@ -150,7 +150,7 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_empty pictures.last, "the scene is up whole after: #{pictures.map(&:length)}"
   end
 
-  # A GAME IN A BORDER KEEPS ITS BORDER through a held picture: the border is sprites, so a held
+  # A game in a border keeps its border through a held picture: the border is sprites, so a held
   # picture there keeps the sprites on. The top rows of the screen, all border, show its two colours
   # on every picture from the handover, the held first one too; the game's window in the middle is
   # the backdrop on that first picture.
@@ -185,7 +185,7 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_empty pictures.last, "and the scene stays up: #{pictures.map(&:length)}"
   end
 
-  # TWO BUILDS A LITTLE APART IN TIMING SHOW THE SAME PICTURES. The same scene, its setup started a
+  # Two builds a little apart in timing show the same pictures. The same scene, its setup started a
   # line or two apart, as two builds of one game differ: where the setup runs into the picture each
   # time, every first picture is the backdrop whole, sprite and all; where it fits the gap each time,
   # every first picture is the scene. (Started so that it ends in the gap's last line one way and
@@ -201,7 +201,7 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_equal 160, seen.values.first.first.length, "the first picture is the backdrop: #{seen.values.first.map(&:length)}"
   end
 
-  # A SCENE'S OWN SPRITE PICTURES GO UP AFTER ITS SCENERY, as it takes over. Where the pictures run
+  # A scene's own sprite pictures go up after its scenery, as it takes over. Where the pictures run
   # on into the picture, the sprites must not show there from the row the copy reached down: the
   # sprite is up whole on that picture, or not at all, whichever line the setup started on. Torn,
   # the line falls where the cycles put it, and two builds of one game a few instructions apart show
@@ -221,13 +221,13 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, shared: true))
   end
 
-  # A GAME WITH NO BACKGROUNDS AT ALL, whose scenes have only sprites: every scene the game picks is
+  # A game with no backgrounds at all, whose scenes have only sprites: every scene the game picks is
   # still a screen of its own (IR::Stacking.every_scene), so it holds its layers as the others do.
   def test_own_sprites_in_a_game_that_sends_no_scenery_are_never_torn_on_their_first_picture
     assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, title_scenery: false))
   end
 
-  # A GAME IN A BORDER: its border is sprites, which stay up through a held picture, so a scene's
+  # A game in a border: its border is sprites, which stay up through a held picture, so a scene's
   # own sprites must be held some other way. The border's top rows show its colours on the first
   # picture whatever line the setup started on.
   def test_own_sprites_in_a_border_are_never_torn_on_their_first_picture
@@ -256,7 +256,7 @@ class TestSceneArrivalOverrun < Minitest::Test
                  "rows of the scene's own sprite showing after the stop, by build")
   end
 
-  # ONE HOLD FOR A SCENE'S SCENERY AND ITS SPRITE PICTURES. Switched on between the two and off
+  # One hold for a scene's scenery and its sprite pictures. Switched on between the two and off
   # again, a line drawn in that moment shows the scene with the last scene's sprite pictures, at a
   # row set by timing. So the pictures add no switching off of their own: the display's layers go
   # off as often in a game whose scene sends them after its scenery as in one whose scene sends
@@ -326,7 +326,7 @@ class TestSceneArrivalOverrun < Minitest::Test
                  "rows of the scene's own sprites showing on its first picture, by the line its setup started on: #{rows}"
   end
 
-  # A PASS THAT HAS ALREADY MISSED A GAP when its scene takes over is late, and the picture drawn
+  # A pass that has already missed a gap when its scene takes over is late, and the picture drawn
   # while it finishes is not one the interpreter has: the pass's own picture is the one after its
   # wait. So that late picture holds the scene off whether the setup ends in the gap or runs on past
   # it, and two builds of one game whose setups take different times show the same pictures from
@@ -357,7 +357,7 @@ class TestSceneArrivalOverrun < Minitest::Test
     end
   end
 
-  # A SCENE WHOSE SENDING CAN NEED MORE THAN THE GAP LEAVES IT holds its first picture wherever the
+  # A scene whose sending can need more than the gap leaves it holds its first picture wherever the
   # sending ends: two builds of one game move its pictures from different memories at different
   # speeds, and one ending in the gap where the other runs a few lines on must not show a different
   # picture. Here a background of many tiles, its setup started where it fits the gap (with no wait,
