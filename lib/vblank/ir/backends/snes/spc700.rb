@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE SOUND PROCESSOR, ONE INSTRUCTION AT A TIME: an assembler for the SPC700, the 8-bit
+        # The sound processor, one instruction at a time: an assembler for the SPC700, the 8-bit
         # processor inside the Super Nintendo's sound unit. The sound unit is a small computer of its
         # own beside the console:
         #
@@ -33,7 +33,7 @@ module VBlank
         #   spc.bra "wait"
         #
         # Operands are written in the order the native syntax writes them, the destination first
-        # (mov direct(0x10), :a is MOV $10,A). The bytes after the opcode are NOT always in that order:
+        # (mov direct(0x10), :a is MOV $10,A). The bytes after the opcode are not always in that order:
         # where both operands have bytes, the source's come first (MOV $F3,#$40 is 8F 40 F3).
         #
         # Opcodes: fullsnes, "SNES APU SPC700 CPU Load/Store Commands", "ALU Commands" and
@@ -67,7 +67,7 @@ module VBlank
           # MOVW: YA to and from a word in the direct page.
           WORD_MOVES = { %i[ya direct] => 0xBA, %i[direct ya] => 0xDA }.freeze
 
-          # OR, AND, EOR, CMP, ADC and SBC: each a row of the table, its forms the row's columns.
+          # Or, and, EOR, CMP, ADC and SBC: each a row of the table, its forms the row's columns.
           SUMS = { or_: 0x00, and_: 0x20, eor: 0x40, cmp: 0x60, adc: 0x80, sbc: 0xA0 }.freeze
           SUM_FORMS = Ractor.make_shareable({
             %i[a imm] => 0x08, %i[a x_ind] => 0x06, %i[a direct] => 0x04, %i[a direct_x] => 0x14, %i[a abs] => 0x05,

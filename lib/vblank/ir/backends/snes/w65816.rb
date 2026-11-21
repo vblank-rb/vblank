@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE SUPER NINTENDO'S PROCESSOR, ONE INSTRUCTION AT A TIME: an assembler for the 65816
+        # The Super Nintendo's processor, one instruction at a time: an assembler for the 65816
         # (the WDC W65C816, the Ricoh 5A22 inside the console runs it), written so the lowering
         # reads like the assembly a person would write and never spells out an opcode by hand.
         #
@@ -39,7 +39,7 @@ module VBlank
         #   ind(0x10)  ind_y  ind_x          ($10), ($10),Y, ($10,X)
         #   ind_long(0x10)  ind_long_y       [$10], [$10],Y  (a 24-bit pointer on the direct page)
         #   stack(3)  stack_ind_y(3)         $03,S and ($03,S),Y
-        #   :a                               the accumulator itself (ASL A, INC A)
+        #   :a                               the accumulator itself (ASL a, INC a)
         #
         # A label is a String (+plus+ adds to its address), so it can never be taken for a number.
         #
@@ -97,7 +97,7 @@ module VBlank
           # Each conditional branch's opposite, for a branch too far for one byte (#branch_long).
           OPPOSITES = { bpl: :bmi, bmi: :bpl, bvc: :bvs, bvs: :bvc, bcc: :bcs, bcs: :bcc, bne: :beq, beq: :bne }.freeze
 
-          # WHAT CHANGES WHAT X OR A HOLDS (#x_holds, #accumulator_holds): the instructions that write it, those that write
+          # What changes what X or a holds (#x_holds, #accumulator_holds): the instructions that write it, those that write
           # memory, those that call (whatever is called can do either), and those that never go on to
           # the next instruction, past which X is whatever the way in to the next label brings.
           WRITES_X = %i[tax tsx tyx plx inx dex xce plp ldx].freeze
@@ -111,7 +111,7 @@ module VBlank
           WRITES_A = %i[lda ora and_a eor adc sbc txa tya tdc tsc pla xba xce plp].freeze
           CHANGES_A_IN_PLACE = %i[inc dec asl lsr rol ror].freeze
 
-          # WHAT CHANGES Y (#y_changes): the instructions that write it, and those that call or leave
+          # What changes Y (#y_changes): the instructions that write it, and those that call or leave
           # (an RTL to an address pushed is how a routine is called from a table), whatever runs then
           # being free to. A block copy steps it, and REP or SEP of the index width cuts it.
           WRITES_Y = %i[ldy tay txy ply iny dey xce plp].freeze
@@ -234,7 +234,7 @@ module VBlank
             name
           end
 
-          # WHAT X HOLDS, as the lowering noted it (#note_x_holds), or nil when it is not known. The
+          # What X holds, as the lowering noted it (#note_x_holds), or nil when it is not known. The
           # lowering reads a slot of a list at X, and X is the slot's number times the slot's width,
           # worked out from a variable: two reads of one variable's slot one after the other need only
           # the first to set X. The note is forgotten as soon as anything could make it untrue: an
@@ -247,7 +247,7 @@ module VBlank
           # variable it was worked out from) until something changes X or that variable.
           def note_x_holds(key) = (@held = Held.new(x: key, a: accumulator_holds))
 
-          # WHAT A HOLDS, as the lowering noted it (#note_accumulator_holds): the address of a variable whose low
+          # What a holds, as the lowering noted it (#note_accumulator_holds): the address of a variable whose low
           # half A has, as a load or a store of it leaves it, or nil. A load of that variable again,
           # where nothing reads the flags the load would set, need not be made. Forgotten as the X
           # note is, and on anything that writes A.
@@ -300,7 +300,7 @@ module VBlank
 
           # --- instructions ---
           #
-          # WRITTEN OUT AS SOURCE rather than made from blocks: a method made from a block carries
+          # Written out as source rather than made from blocks: a method made from a block carries
           # the block with it, and Ruby will not let another Ractor call one, so a game built in a
           # Ractor (as the GBA run's tests build every console's) could not be lowered.
 
@@ -530,7 +530,7 @@ module VBlank
             @held_at_branches[target] << (@held == GONE ? NOTHING_HELD : @held)
           end
 
-          # LONG BRANCHES MADE SHORT WHERE THEY REACH. A conditional branch carries one signed byte, so
+          # Long branches made short where they reach. A conditional branch carries one signed byte, so
           # #branch_long writes the opposite branch over a BRL, five bytes, for a target that may be
           # anywhere in the bank: where a label will be is not known while code is written, and most
           # are written after the branch to them. On the path a branch does not take, that is two

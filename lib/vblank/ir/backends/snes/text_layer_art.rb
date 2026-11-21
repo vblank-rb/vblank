@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE TEXT LAYER'S TILES AND MAPS, worked out while the game is built (Runtime::TextLayer runs
+        # The text layer's tiles and maps, worked out while the game is built (Runtime::TextLayer runs
         # them).
         #
         # A painted screen paints text into tiles of eight bits a pixel, which is slow on this

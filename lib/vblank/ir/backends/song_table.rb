@@ -3,30 +3,30 @@
 module VBlank
   module IR
     module Backends
-      # A GAME'S SONGS AND SOUND EFFECTS, AS A TABLE THE CONSOLE'S PLAYER READS, worked out while the
+      # A game's songs and sound effects, as a table the console's player reads, worked out while the
       # program is built, for the two consoles whose players read this one table: SNES::Music and
       # Genesis::Music, each a subclass. Each console's player is its own (its Runtime::Music).
       #
       # Everything a note does is worked out here, in Ruby: the writes to the sound chips it means
       # (a subclass's #song_writes) and the entries of the interpreter's sound log it is
-      # (Reference::Player#play_song_frame and #play_effect_frame), as GROUPS of commands — a chip
+      # (Reference::Player#play_song_frame and #play_effect_frame), as groups of commands — a chip
       # write, a few bits set, or an entry into the cartridge's sound log. The player on the console
       # only walks each part's notes a frame at a time, settles who sounds on a voice two players
       # want, and hands each note's groups to the chips, so it plays a note exactly as the lowering
       # plays a beep.
       #
-      # What a subclass supplies: SONGS, what a cartridge too full calls the songs; RECORDED_PARTS and
+      # What a subclass supplies: songs, what a cartridge too full calls the songs; RECORDED_PARTS and
       # PARTS; LoweringError, its console's; #song_writes, its chip writes; #sound_command, one of
       # them as a command of a group; #music_assembler; #recording_volume, a recorded note's volume
       # as its chip wants it; #not_made_yet_error; and #console_title.
       #
-      # WHO SOUNDS ON A VOICE. The interpreter settles it by a rank of 24 bits (IR::Tunes.song_rank,
+      # Who sounds on a voice. The interpreter settles it by a rank of 24 bits (IR::Tunes.song_rank,
       # IR::Tunes.effect_rank); the player keeps instead each rank's place among every rank the game
       # can have, the lowest first (#rank_place), as the Color's does. The order is the same, so
       # every comparison comes out the same, and rank 0 — nobody, or a song of no priority — is
       # place 0.
       #
-      # THE TABLE, all of it 16-bit words, every place in it counted from its start:
+      # The table, all of it 16-bit words, every place in it counted from its start:
       #
       #   0..10         where the songs, the song lists, the effects, the effects in the order a
       #                 frame plays them, which ranks are an effect's, and the effect lists are
@@ -98,15 +98,15 @@ module VBlank
         NOTE_WOBBLE = 12 # Where its wobble's record is, nought for a note that holds its pitch
         NOTE_SHAPES = 14 # Where its shapes' record is, nought for a note that holds its shape
         NOTE_BYTES = 16
-        # A WOBBLE'S RECORD (#wobble_record), in bytes: the frames it waits, the frames each swing
+        # A wobble's record (#wobble_record), in bytes: the frames it waits, the frames each swing
         # holds, and the groups that take the voice above and below the note's pitch and log it.
         WOBBLE_WAITS = 0
         WOBBLE_SPEED = 2
         WOBBLE_UP = 4
         WOBBLE_DOWN = 6
         WOBBLE_CARRIES = 8 # 1 when a note takes up the swing where the voice's last one left it
-        # A SWELL'S RECORD (#swell_record), in bytes: how much the count must reach for a step of
-        # loudness, and where each of three lists of groups is, one for each of VOLUMES.
+        # A swell's record (#swell_record), in bytes: how much the count must reach for a step of
+        # loudness, and where each of three lists of groups is, one for each of volumes.
         SWELL_STEP = 0
         SWELL_STARTS = 2
         SWELL_HOLDS = 34
@@ -119,7 +119,7 @@ module VBlank
         COMMAND_BYTES = 6
 
         # ...and in an effect's record, and each of its parts' entries (where its notes are and how
-        # many, and CHANNEL, as a song's part has them).
+        # many, and channel, as a song's part has them).
         EFFECT_RANK = 0
         EFFECT_GROUP = 2
         EFFECT_PRIORITY = 4
@@ -133,9 +133,9 @@ module VBlank
         # parts that play recordings (RECORDED_PARTS, PARTS).
         CONSOLE_PARTS = 4
 
-        # A RECORDED PART'S CHANNEL: past the console voices' channels, this and its place among the
+        # A recorded part's channel: past the console voices' channels, this and its place among the
         # song's recorded parts. Its notes are played in Runtime::Recordings' places, the part's own
-        # number there (OWNER) the place among them one up.
+        # number there (owner) the place among them one up.
         RECORDED_CHANNEL = 0x10
         def self.recorded?(channel) = channel >= RECORDED_CHANNEL
 
@@ -148,7 +148,7 @@ module VBlank
         GROUP_END = 0
         GROUP_LOG = 4
 
-        # WHAT A TUNE STOPPING LOGS. The interpreter logs [:stop_music] whichever tune it was
+        # What a tune stopping logs. The interpreter logs [:stop_music] whichever tune it was
         # (Reference::Player#silence_song), and which voices the stop lets go of depends on the
         # tune. A tune whose every voice an effect holds logs no note to tell it by, so the
         # cartridge logs each tune's stop as an entry of its own, [:stop_music, name], which reads
@@ -248,7 +248,7 @@ module VBlank
         # the row of "recording_plays" a recorded part's note plays (Lowering::Sound#recorded_note_row),
         # for its recording, its pitch, its volume as written and its shape (the note's or the part's).
         #
-        # SONGS' NOTES APART (+notes_apart+), for a console that keeps them out of the table because
+        # Songs' notes apart (+notes_apart+), for a console that keeps them out of the table because
         # the table would not fit where its player reads it (SNES::SongBanks). Each song part's two
         # lists of notes then go one after another in #apart_note_words instead of after the song's
         # record, and the part's entry names where each list starts there as a note's number, counted
@@ -431,7 +431,7 @@ module VBlank
         # Reference::Player#record_note_volume); its channel; and, in a game that follows the music
         # volume, the group that writes and logs its loudness at each of the voices' volumes.
         #
-        # A NOTE'S TWO GROUPS. Its head is its [:note ...] and [:voice ...]; its tail the wave or
+        # A note's two groups. Its head is its [:note ...] and [:voice ...]; its tail the wave or
         # noise voice's own entry, if it is on one. In a game that follows the music volume the
         # player plays its loudness between the two, worked out from the level at the time
         # (Runtime::Music), as the interpreter logs it there — and the tail leaves out what the
@@ -494,7 +494,7 @@ module VBlank
            written, song.keeps_voices || song_writes.sounds?(channel, frequency, volume, fade), nil, wobble, shapes, swell, steps]
         end
 
-        # A NOTE THAT SLIDES ITS PITCH. The first square voice of the Advance and the Color slides
+        # A note that slides its pitch. The first square voice of the Advance and the Color slides
         # by itself, a step every so many 128ths of a second, and the sound chip here has nothing of
         # the kind. So the steps are worked out here (Audio::PitchSlide#counts_from), as a list with
         # a group for each frame of the note, nil where the frame moves nothing, and all the player
@@ -529,7 +529,7 @@ module VBlank
 
         def slide_stop_commands(channel) = song_writes.slide_stop(channel).map { |write| sound_command(write) }
 
-        # A NOTE THAT SWELLS UNDER THE MUSIC VOLUME. The voice climbs by itself, as far as the top,
+        # A note that swells under the music volume. The voice climbs by itself, as far as the top,
         # whatever the level is, so the player counts along with it (Runtime::Music's
         # rt_music_swells, IR::Tunes::Swell) and strikes it at the level. Worked out here, at every
         # loudness the count can be at: where it starts (#swell_start_commands); the note held there;
@@ -550,7 +550,7 @@ module VBlank
           keep_group(writes.map { |write| sound_command(write) } + [[GROUP_LOG, yield(entry), 0]])
         end
 
-        # A NOTE THAT STEPS ITS SHAPES: a group for each of its four frames, its source written and
+        # A note that steps its shapes: a group for each of its four frames, its source written and
         # its [:duty ...] entry logged, or nil where the shape is the frame before's
         # (Reference::Player#step_shapes). Each shape is a recording of its own, and the sound
         # chip takes up a new one where the one playing comes round, a wave later at most.
@@ -566,7 +566,7 @@ module VBlank
           record
         end
 
-        # A NOTE THAT WOBBLES ITS PITCH: the pitch registers above and below the note's are worked
+        # A note that wobbles its pitch: the pitch registers above and below the note's are worked
         # out here, so all the player does is count (Runtime::Music's rt_music_wobbles), and a
         # move is a group like a note's: its writes, and its [:wobble ...] entry in the sound log.
         def wobble_record(channel, frequency, vibrato)
@@ -579,7 +579,7 @@ module VBlank
           record
         end
 
-        # A NOTE OF A PART THAT PLAYS A RECORDING (Reference::Player#play_recorded_note): its head logs
+        # A note of a part that plays a recording (Reference::Player#play_recorded_note): its head logs
         # [:note ...] once the note has a place (Runtime::Recordings), and nothing is written to a
         # voice of the console's own; its row of "recording_plays" (#words' +recordings+, one up), nought
         # for a note that sounds nothing — a rest, or one at a volume of nought — which gives the
@@ -612,7 +612,7 @@ module VBlank
           [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row, levels]
         end
 
-        # A RECORDED NOTE UNDER THE MUSIC VOLUME, at every level there is: the group that logs its
+        # A recorded note under the music volume, at every level there is: the group that logs its
         # loudness there, and the voice's volume for it. Whole numbers worked out here, so the player
         # only looks one up. The note's own NOTE_WOBBLE word marks where, a recorded note having
         # no wobble.
@@ -732,7 +732,7 @@ module VBlank
                                "square parts, one wave part and one noise part. To fix this, remove the extra parts."
         end
 
-        # A NOTE'S OWN WAVEFORM OR RATTLE IN A GAME THAT SETS ITS MUSIC VOLUME, which the build does not
+        # A note's own waveform or rattle in a game that sets its music volume, which the build does not
         # make yet: a new music volume reaching a held note is written from the part's waveform and
         # rattle (#loudness_group), not the note's.
         def refuse_unmade_note_voices!(song)
@@ -746,7 +746,7 @@ module VBlank
           )
         end
 
-        # A PART THAT PLAYS A RECORDING, where the build does not make it yet: in a game that sets its
+        # A part that plays a recording, where the build does not make it yet: in a game that sets its
         # music volume, or more of them in a song than recordings sound at once.
         def refuse_unmade_recorded_parts!(song)
           recorded = song.voices.select { |part| IR::Tunes.part_kind(part) == :recorded }
