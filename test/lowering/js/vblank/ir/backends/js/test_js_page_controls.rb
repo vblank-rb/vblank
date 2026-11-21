@@ -4,7 +4,7 @@ require "test_helper"
 require "web_page"
 require "json"
 
-# THE SCREEN AND THE KEYS AS DATA. A page template can write them out (`<%= controls.to_json %>`)
+# The screen and the keys as data. A page template can write them out (`<%= controls.to_json %>`)
 # so a site shows the controls in its own design and sizes the frame before the game loads. The
 # same facts come from JS.controls without building a page. The words the default page shows are
 # made from the same data, and the data is held to the keys rg_page.js reads.

@@ -3,7 +3,7 @@
 require "test_helper"
 require "web_page"
 
-# THE PAGE'S FRAMES, as a browser hands them over: a frame of the browser's that comes late finds
+# The page's frames, as a browser hands them over: a frame of the browser's that comes late finds
 # several of the game's passes owed, and plays them all before it draws the last; one that comes
 # early finds none. Whatever the browser does, every picture put on the canvas is the picture of
 # one whole pass, and a pass costs the browser's collector little.
@@ -75,7 +75,7 @@ class TestJSPageFrames < Minitest::Test
     end
   end
 
-  # WHAT A PASS ALLOCATES in a room where nothing moves, counted by V8's allocation sampler (the
+  # What a pass allocates in a room where nothing moves, counted by V8's allocation sampler (the
   # harness's "allocated" step). Each byte is garbage the browser's collector takes back, and a page
   # that leaves it tens of kilobytes a pass, sixty times a second, pauses for it. The budget is the
   # page's own reading of buttons and the runtime's list of sprites, a few kilobytes, with room to

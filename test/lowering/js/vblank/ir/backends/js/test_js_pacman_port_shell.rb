@@ -6,7 +6,7 @@ require "json"
 require "tmpdir"
 require "shell_tests"
 
-# THE PAC-MAN PORT BUILT AS A SHELL, PLAYED AS A WEB PAGE (test_pacman_port_shell.rb has what the
+# The Pac-Man port built as a shell, played as a web page (test_pacman_port_shell.rb has what the
 # port and its answer keys are). The page takes a copy of pacman.gba at Load ROM, unpacks it with
 # the port's own routine, keeps the pack in the browser's storage, and plays Pac-Man on the tape as
 # examples/pacman.rb's page does, pixel for pixel at the end of each stretch of the tape.

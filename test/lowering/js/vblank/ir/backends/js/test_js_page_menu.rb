@@ -5,7 +5,7 @@ require "json"
 require "vblank/live"
 require "web_page"
 
-# THE MENU OVER A WEB PAGE'S GAME (runtime/rg_page_menu.js), held to the Ruby copy vblank run plays
+# The menu over a web page's game (runtime/rg_page_menu.js), held to the Ruby copy vblank run plays
 # (Live::Menu and Live::Settings): the same keys go through both, and what each holds is compared
 # after every key. A page lays out its own text, so what is compared is what the menu says: the
 # headings, the line chosen, each line's words, and the words of a refusal.
