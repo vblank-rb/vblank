@@ -9,14 +9,14 @@ module VBlank
         # A background held to a box (`show_only_inside`) beside something that needs the same part
         # of the display, or beside a second one on the same screen.
         #
-        # A CONSOLE HOLDS A LAYER TO A BOX WITH A WINDOW: a rectangle of the screen the display is
+        # A console holds a layer to a box with a window: a rectangle of the screen the display is
         # told about, with a switch for each layer saying whether it is drawn inside the rectangle
         # and another for outside it. The display looks the switches up for every pixel as it draws,
         # so nothing is drawn and then hidden, and what is behind the layer shows where it is off.
         #
         # One window is one box, so two backgrounds held to boxes on one screen are refused.
         #
-        # ON THE ADVANCE the display has two windows and one set of switches for "outside every
+        # On the Advance the display has two windows and one set of switches for "outside every
         # window". The light, a status bar and a fade held to part of the screen or put under a
         # layer each set those switches too, and the one window left over cannot hold the box: where
         # the two windows cross, the first one's switches win, so the boxed layer would show inside

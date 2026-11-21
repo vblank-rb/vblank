@@ -6,12 +6,12 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # `inside` clips what it draws, but only what it draws DIRECTLY. A `call` to
+        # `inside` clips what it draws, but only what it draws directly. A `call` to
         # a routine is a branch to code built once, outside any area — so a routine
         # that draws, called from inside an `inside` block, stays clipped in the
         # reference interpreter (which re-checks the area every time it runs the
         # routine) but not on the console (which bakes the clip into the routine's
-        # own instructions wherever THAT routine happens to be lowered, never at the
+        # own instructions wherever that routine happens to be lowered, never at the
         # call site). The two backends would show a different picture, and nothing
         # crashes to say so.
         #
@@ -76,7 +76,7 @@ module VBlank
             calls + node.statement_bodies.flat_map { |child| find_calls(child) }
           end
 
-          # Does the func named +name+ draw on the bitmap screen OUTSIDE any area of its
+          # Does the func named +name+ draw on the bitmap screen outside any area of its
           # own — directly, or through a routine it calls, however many hops away?
           # Returns the draw node (for the message), or nil. +seen+ stops a call
           # cycle.

@@ -18,10 +18,10 @@ module VBlank
         # background is right there, so the screen is clearly working.
         #
         # This is the sibling of {EmptyTiledScreen}, and the split between them is
-        # about which advice is TRUE, not about tidiness. When a tiled screen has
+        # about which advice is true, not about tidiness. When a tiled screen has
         # no background and no sprite, the author almost certainly meant to draw
         # the bitmap way, and EmptyTiledScreen tells them to change one line to
-        # `screen :bitmap`. Say that here and it would be wrong: this game HAS a
+        # `screen :bitmap`. Say that here and it would be wrong: this game has a
         # background, so switching screens would throw it away. The fix is the
         # other one — put the drawing where the tiled screen can see it, or drop
         # the call. So this check speaks only once the program has committed to

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # WHAT A BUILD THAT SHOWS THE GAME'S SCREEN IN A BORDER DOES NOT MAKE YET (a game laid out for
+        # What a build that shows the game's screen in a border does not make yet (a game laid out for
         # the Game Boy Color, built for the Advance: Console::AdvanceKit::COLOR_SCREEN).
         #
         # The Advance's build moves the game's picture to the middle of its screen and draws the

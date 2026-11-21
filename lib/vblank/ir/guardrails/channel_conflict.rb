@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A SOUND EFFECT AND A SONG PART THAT SHARE ONE OF THE CONSOLE'S VOICES.
+        # A sound effect and a song part that share one of the console's voices.
         #
         # The console has a small, fixed set of voices, and a sound effect plays on one of them
         # directly. So does a song part that names one of them. When a game does both, the two
@@ -14,7 +14,7 @@ module VBlank
         #
         # Three pairs, one per voice the console plays itself:
         #
-        #   * `beep` and a song's SECOND square part. A one-part song leaves the beep's voice
+        #   * `beep` and a song's second square part. A one-part song leaves the beep's voice
         #     free; a second part is the only voice left.
         #   * `wave` and a song part on the wave voice. There is one, so any such part collides.
         #   * `noise` and a song part on the noise voice. Likewise.
@@ -42,7 +42,7 @@ module VBlank
 
           private
 
-          # A beep shares the SECOND square voice, so one square part is fine. A wave tone or a
+          # A beep shares the second square voice, so one square part is fine. A wave tone or a
           # noise hit shares the only voice of its kind, so one part is already a collision.
           def collides?(song, verb)
             return Tunes.parts_on(song, :square) >= Audio::Music::MAX_SQUARE_PARTS if verb == :beep
@@ -50,7 +50,7 @@ module VBlank
             Tunes.parts_on(song, verb).positive?
           end
 
-          # The words for +song+ sharing a voice with the effects +verb+ plays (a key of EFFECTS).
+          # The words for +song+ sharing a voice with the effects +verb+ plays (a key of effects).
           def conflict_message(verb, program, song)
             case verb
             when :beep then beep_message(program, song)
