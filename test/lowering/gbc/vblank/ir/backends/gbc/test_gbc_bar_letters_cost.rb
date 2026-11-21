@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "digest"
 
-# A STATUS BAR'S LETTERS WRITTEN BY NUMBERS THE GAME WORKS OUT, on the Color. A game whose text
+# A status bar's letters written by numbers the game works out, on the Color. A game whose text
 # is not known when it is built (read from a table, or from a data pack) writes each letter with
 # `bar.set_tile col, row, number`, the number counting through the bar's tileset keys. The
 # console's own games put a letter in the window's map as one byte worked out with an add (Pan
@@ -53,7 +53,7 @@ class TestGBCBarLettersCost < Minitest::Test
     assert_in_delta few, many, 0.005, "#{LETTERS_A_PASS} letters from 48 tiles cost #{(many - few).round(4)} of a frame more than from 4"
   end
 
-  # THE BUDGET: a letter by number is the game's own read of the number, a read of the table of
+  # The budget: a letter by number is the game's own read of the number, a read of the table of
   # cells and the cell written, so it costs at most this many times a letter named in the program,
   # which is the cell written alone. Written as tests of the number against each of 48 keys, a
   # letter cost four times one named.
@@ -68,7 +68,7 @@ class TestGBCBarLettersCost < Minitest::Test
                     "a letter by number costs #{(by_number * 100).round(3)}% of a frame, by name #{(by_name * 100).round(3)}%"
   end
 
-  # A PORT'S TEXT, READ FROM ITS DATA PACK AT PLACES WRITTEN IN THE PROGRAM. A cartridge is built with
+  # A port's text, read from its data pack at places written in the program. A cartridge is built with
   # the player's copy read, so every number of the pack is known as it is built: `text[3]` is one
   # tile, and the letter costs what a letter named in the program costs, with no table read. A
   # number standing for no tile (0xFF here) writes nothing either way.
@@ -135,7 +135,7 @@ class TestGBCBarLettersCost < Minitest::Test
     end
   end
 
-  # A COLUMN KEPT IN A VARIABLE the build proves stays in a byte is read as that byte, as a column
+  # A column kept in a variable the build proves stays in a byte is read as that byte, as a column
   # ANDed with 0xFF is: the cell's place is the row's start plus that byte, not the four numbers the
   # general routine takes. Its letters cost little more than those at columns written in the program:
   # the column's own working out and keeping. Through the general routine they cost more than twice as much.

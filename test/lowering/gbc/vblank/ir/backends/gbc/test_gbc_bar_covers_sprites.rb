@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A STATUS BAR COVERING SPRITES ON THE COLOR (Runtime::Picture#emit_bar_covers). The display's sprite
+# A status bar covering sprites on the color (Runtime::Picture#emit_bar_covers). The display's sprite
 # layer is switched off partway down each frame, and how that happens depends on what else the
 # frame is doing. `test_status_bar.rb` plays the plain case on every lowering.
 class TestGBCBarCoversSprites < Minitest::Test
@@ -43,14 +43,14 @@ class TestGBCBarCoversSprites < Minitest::Test
     end
   end
 
-  # A SCREEN WITH BENT ROWS has the display's interrupt on every line, so the switch is made there.
+  # A screen with bent rows has the display's interrupt on every line, so the switch is made there.
   def test_a_bar_covers_sprites_on_a_screen_with_bent_rows
     program = covering_bar { |field| field.scroll_each_row { |row| row % 4 } }
 
     assert_equal [true], frames_with_sprite_cut_at_the_bar(program, 12).uniq
   end
 
-  # A PASS RUNNING LATE leaves a blank with no switches written, and the sprites must come back for
+  # A pass running late leaves a blank with no switches written, and the sprites must come back for
   # the top of the frame all the same.
   def test_a_bar_covers_sprites_on_a_game_whose_passes_run_late
     assert_equal [true], frames_with_sprite_cut_at_the_bar(covering_bar(work: 2500), 40).uniq
