@@ -78,7 +78,7 @@ class TestFractionDivision < Minitest::Test
     end
   end
 
-  # THE ROUTINE SKIPS STEPS IT CAN PROVE GIVE NOTHING, so every size of answer goes through a
+  # The routine skips steps it can prove give nothing, so every size of answer goes through a
   # different way in: answers just either side of each place it can skip to, numerators and
   # divisors of every width, and the two numbers whose sizes do not fit a signed number. Drawn
   # from a fixed seed, so a failure names a case that fails again.
@@ -112,7 +112,7 @@ class TestFractionDivision < Minitest::Test
     end
   end
 
-  # WHAT ONE FRACTION DIVIDE COSTS, in instructions the console ran: the same divide written
+  # What one fraction divide costs, in instructions the console ran: the same divide written
   # forty times a pass against twenty, and the difference shared out over the twenty added.
   # That counts reading the two numbers and keeping the answer as well as the routine.
   private def instructions_per_divide(numerator, divisor, title, starts_as: 0.0, &worked_out)
@@ -134,8 +134,8 @@ class TestFractionDivision < Minitest::Test
     (per_frame.last - per_frame.first) / 20
   end
 
-  # A STEP OF THE LONG DIVISION IS THREE INSTRUCTIONS, AND STEPS THAT CAN ONLY GIVE NOUGHT ARE
-  # NOT RUN. An answer whose whole part needs fifteen bits runs every step, and the whole
+  # A step of the long division is three instructions, and steps that can only give nought are
+  # not run. An answer whose whole part needs fifteen bits runs every step, and the whole
   # divide, reading and keeping included, comes to under 140. An answer a little over a
   # hundred has nothing in its top eight bits and one below one nothing in its top sixteen, so
   # they skip eight steps and sixteen, three instructions each — whatever size the divisor is.
@@ -150,7 +150,7 @@ class TestFractionDivision < Minitest::Test
                     "a divisor below one skips as much as any other"
   end
 
-  # MADE WHOLE STRAIGHT AWAY, ONLY THE WHOLE PART'S STEPS RUN. A wall's height is a number over
+  # Made whole straight away, only the whole part's steps run. A wall's height is a number over
   # its distance rounded to the nearest pixel, `(scale / distance + 0.5).to_i`, and an answer a
   # little over a hundred has eight whole bits. Kept as a fraction it runs twenty-four steps;
   # made whole it runs eight, sixteen steps of three instructions fewer, and gives back at most
@@ -175,7 +175,7 @@ class TestFractionDivision < Minitest::Test
     assert_equal Int32::MAX, Int32.div_fix(Int32::MIN, -1, 0), "the one overflow a plain divide has"
   end
 
-  # Dividing by nought is NOT held at the end of the range the way dividing by nearly
+  # Dividing by nought is not held at the end of the range the way dividing by nearly
   # nought is. It gives a bare 1 or -1 following the numerator, the same as a plain divide,
   # which a number holding a fraction reads as the smallest fraction there is. The sweep
   # above checks the console gives the same; a game that can reach this gives its divisor
@@ -190,7 +190,7 @@ class TestFractionDivision < Minitest::Test
   # a real game fell into it.
   #
   # Holding the answer at the end of the range is the safe half: a distance near nothing gives
-  # the biggest number rather than a negative one. But the number is now AT the end of the range,
+  # the biggest number rather than a negative one. But the number is now at the end of the range,
   # and one more step in the same direction has nowhere to go — an add wraps, because that is
   # what a signed 32-bit add does, and the answer comes back very negative.
   #
@@ -233,7 +233,7 @@ class TestFractionDivision < Minitest::Test
   #
   # `(a / b).to_i` and `(a / b + 0.5).to_i` want only the answer's whole part, and the
   # console works that out without the fraction's steps. These hold it to the bits the
-  # interpreter gives, which are NOT what a whole-number divide would give in three places:
+  # interpreter gives, which are not what a whole-number divide would give in three places:
   # making whole rounds down where a divide rounds toward nought, an answer with no room is
   # held at the end of the range before it is made whole (and adding the half to that wraps
   # it), and dividing by nought gives a bare 1 or -1 before it is made whole.

@@ -3,7 +3,7 @@
 require "test_helper"
 require "conformance_fixture"
 
-# TELLING THE COPYING ENGINE WHAT TO COPY. The console has an engine that moves a block of
+# Telling the copying engine what to copy. The console has an engine that moves a block of
 # memory on its own, and it is told what to do through three registers that sit side by side:
 # where to copy from, where to, and how much — and writing the third is what starts it. So the
 # address of the first is the only one that has to be built; the other two are a step along
