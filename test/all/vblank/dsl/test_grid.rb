@@ -82,7 +82,7 @@ class TestGrid < Minitest::Test
     assert_match(/0..29/, err.message)
   end
 
-  # ...and it is the NUMBER that gets checked, not the Ruby class it arrived as. A
+  # ...and it is the number that gets checked, not the Ruby class it arrived as. A
   # coordinate the author fixed is the same fact whether it turns up bare or already
   # wrapped for the tree, and a check that asked after the class let the wrapped one
   # through — silently drawing off the board, which is the thing this error exists to stop.

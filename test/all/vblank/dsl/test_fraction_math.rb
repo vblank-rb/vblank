@@ -57,7 +57,7 @@ class TestFractionMath < Minitest::Test
 
   # The reason the operation exists: a plain `*` on the same two numbers overflows,
   # and the marker goes somewhere else entirely — here, right off the screen. Both
-  # backends have to be wrong the SAME way, which is what makes this a fair contrast
+  # backends have to be wrong the same way, which is what makes this a fair contrast
   # rather than a claim about one of them.
   def test_a_plain_multiply_overflows_and_loses_the_marker
     screen = game_player.run(marker_program(plain: true)).screen
