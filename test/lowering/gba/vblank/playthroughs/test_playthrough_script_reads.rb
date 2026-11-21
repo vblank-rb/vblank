@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHAT A SCRIPT CAN ASK OF THE GAME IT STEERS, on every way of running it: how many passes of the game
+# What a script can ask of the game it steers, on every way of running it: how many passes of the game
 # loop have finished (`game.passes`), and whether the game has a variable (`game.var?`). The game counts
 # its own passes at the end of each, and every fourth pass is heavy enough to take the console more than
 # a frame, so on the cartridge the passes fall behind the frames and still match the game's own count.

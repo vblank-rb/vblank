@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A PLAYING STARTED FROM A GAME AND NOT A CARTRIDGE, AND A SEED PER PLAYING. A way that runs the game
+# A playing started from a game and not a cartridge, and a seed per playing. A way that runs the game
 # itself (the interpreter, the game as C, its rules alone) needs only the checked program, so a game
 # handed to a playthrough is checked and never lowered, measured or assembled. And a playing can
 # start the game's random numbers somewhere else, with no build for each seed: its seed is added to

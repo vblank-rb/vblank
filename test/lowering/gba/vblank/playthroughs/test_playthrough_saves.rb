@@ -7,7 +7,7 @@ require "pathname"
 require "zlib"
 require VBlank.root.join("examples/hero").to_s
 
-# A PLAYTHROUGH AND THE CARTRIDGE'S SAVE MEMORY: it can start holding a save, and it hands
+# A playthrough and the cartridge's save memory: it can start holding a save, and it hands
 # back the save memory as it left it — to write to a file, or to start the next playthrough
 # from.
 #
@@ -17,7 +17,7 @@ require VBlank.root.join("examples/hero").to_s
 class TestPlaythroughSaves < Minitest::Test
   private def hero = Hero.build_rom(out: StringIO.new, err: StringIO.new, profile: false)
 
-  # FILE 1, NEW GAME, RIGHT held for +steps+ frames — a step a frame — and START to save.
+  # FILE 1, new game, right held for +steps+ frames — a step a frame — and START to save.
   # The wait at the end is for the save to be written, which the game does a piece at a
   # time as it goes round its loop.
   private def walk_and_save(steps)
@@ -39,8 +39,8 @@ class TestPlaythroughSaves < Minitest::Test
 
   private def steps_in_first_file(played) = played.game.var(:shown0)
 
-  # A PLAYTHROUGH THAT SAVES HANDS BACK SAVE MEMORY, AND THE NEXT ONE STARTED FROM IT IS IN
-  # THAT SAVE: the file screen shows the walk the first one saved.
+  # A playthrough that saves hands back save memory, and the next one started from it is in
+  # that save: the file screen shows the walk the first one saved.
   def test_a_save_handed_back_starts_the_next_playthrough_in_it
     cartridge = hero
     walked = walk_and_save(20).play(cartridge)
@@ -50,7 +50,7 @@ class TestPlaythroughSaves < Minitest::Test
     assert_equal 20, steps_in_first_file(file_screen.play(cartridge, save: walked.save)), "from the save, it holds the walk"
   end
 
-  # THE SAVE CAN BE WRITTEN TO A FILE, AND A PLAYTHROUGH STARTED FROM THE FILE: by its path,
+  # The save can be written to a file, and a playthrough started from the file: by its path,
   # as text or as a Pathname.
   def test_a_save_file_on_disk_starts_a_playthrough_in_that_save
     cartridge = hero
@@ -63,7 +63,7 @@ class TestPlaythroughSaves < Minitest::Test
     end
   end
 
-  # THE SAVE A PLAYTHROUGH STARTS FROM IS LEFT AS IT WAS. The game goes on to save over it —
+  # The save a playthrough starts from is left as it was. The game goes on to save over it —
   # here it continues the walk of twenty, walks eight more and saves — and that is in the
   # save handed back, while the one handed in still holds twenty and can start another.
   def test_the_save_a_playthrough_starts_from_is_left_as_it_was
@@ -75,7 +75,7 @@ class TestPlaythroughSaves < Minitest::Test
     assert_equal 20, steps_in_first_file(file_screen.play(cartridge, save: first)), "the save it started from is untouched"
   end
 
-  # TWO PLAYTHROUGHS OF ONE CARTRIDGE AT THE SAME MOMENT EACH GET THEIR OWN SAVE BACK. Each
+  # Two playthroughs of one cartridge at the same moment each get their own save back. Each
   # console keeps its save memory somewhere of its own, so these two, both running and both
   # saving, do not write into each other's.
   #
@@ -100,7 +100,7 @@ class TestPlaythroughSaves < Minitest::Test
     assert_equal([12, 20], playing.map(&:value).map { |save| steps_in_first_file(file_screen.play(cartridge, save: save)) })
   end
 
-  # NO SAVE FILE IS LEFT BESIDE THE CARTRIDGE, which is where an emulator left to itself
+  # No save file is left beside the cartridge, which is where an emulator left to itself
   # writes one — and the next playing would then start in the last one's save. The cartridge
   # a console plays is a file the framework writes among the machine's temporary files, so
   # beside it is there: a playthrough that saves leaves no new save file among them.
@@ -161,7 +161,7 @@ class TestPlaythroughSaves < Minitest::Test
   # The seconds the clock has counted since the hour set.
   private def seconds_past_the_hour(played) = (played.game.var(:minute) * 60) + played.game.var(:second)
 
-  # THE CLOCK SET IN ONE PLAYTHROUGH GOES ON IN THE NEXT, started from its save: the cartridge
+  # The clock set in one playthrough goes on in the next, started from its save: the cartridge
   # carries its clock chip from one power-on to the next as it carries its save memory, and the
   # emulator keeps what the chip counted beside the save memory in its file. The chip counts the
   # computer's own seconds, so the first playthrough plays until it has counted two, and the
@@ -193,7 +193,7 @@ class TestPlaythroughSaves < Minitest::Test
 
   # --- what a tape says about where it started ---
 
-  # A TAPE SAYS WHETHER IT WAS RECORDED FROM POWER-ON OR FROM A SAVE, and which save, for a
+  # A tape says whether it was recorded from power-on or from a save, and which save, for a
   # person to tell which tape belongs with which: a checksum of the save's bytes, as it says
   # one of the cartridge's. It keeps saying it through a file. The save itself is not in the
   # tape: a tape is the presses, and played on another cartridge it wants that one's own.
@@ -208,7 +208,7 @@ class TestPlaythroughSaves < Minitest::Test
     assert_equal from_a_save, read_back
   end
 
-  # A TAPE RECORDED FROM A SAVE IS PLAYED FROM ONE. Played from power-on it would be the same
+  # A tape recorded from a save is played from one. Played from power-on it would be the same
   # presses on a different game, which is never what was meant — so it is refused, before
   # anything is played, with how to hand the save over.
   def test_a_tape_recorded_from_a_save_is_refused_without_one
@@ -238,7 +238,7 @@ class TestPlaythroughSaves < Minitest::Test
 
   # --- two cartridges, one save ---
 
-  # TWO CARTRIDGES STARTED FROM ONE SAVE BOTH BEGIN IN IT. Each is asked what its file
+  # Two cartridges started from one save both begin in it. Each is asked what its file
   # screen shows of the first file, and that is compared with the twenty steps the save
   # holds: read from the first cartridge and then from the second, so it is each of the two
   # that is known to be in the save. From power-on the file is empty on both.
@@ -285,7 +285,7 @@ class TestPlaythroughSaves < Minitest::Test
     end
   end
 
-  # A SAVE AND A LEAD-IN CAN BE GIVEN TOGETHER: the console is switched on holding the save,
+  # A save and a lead-in can be given together: the console is switched on holding the save,
   # the lead-in is played, and what is compared starts there. The lead-in here waits for
   # the file screen to have read its files, so the first frame compared already shows them.
   def test_a_save_and_a_lead_in_are_given_together
@@ -311,7 +311,7 @@ class TestPlaythroughSaves < Minitest::Test
     assert_match(/\Astarts from: a save 0x\h{8} after a lead-in\z/, played.tape.to_s.lines[2].chomp)
   end
 
-  # A SAVE FOR EACH CARTRIDGE: a port and its original keep the same moment in saves that share
+  # A save for each cartridge: a port and its original keep the same moment in saves that share
   # no bytes, so each starts from its own. One save holds a walk of twenty steps and the other
   # of eight, and each cartridge's file screen shows the walk its own save holds, whichever way
   # round the two are given; nil starts that one from power-on.
@@ -405,7 +405,7 @@ class TestPlaythroughSaves < Minitest::Test
     assert_operator err.message.length, :<, 400
   end
 
-  # A SAVE FROM A CARTRIDGE WITH ANOTHER SIZE OF SAVE MEMORY IS REFUSED, with both sizes,
+  # A save from a cartridge with another size of save memory is refused, with both sizes,
   # before the console is switched on — and in the words of somebody who handed over a save,
   # not of somebody who made one by hand.
   def test_a_save_of_another_size_than_the_cartridges_is_refused
