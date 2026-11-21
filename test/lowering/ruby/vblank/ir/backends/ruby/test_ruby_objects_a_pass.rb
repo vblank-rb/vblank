@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT THE RUBY RUNTIME ALLOCATES A PASS. Every object a pass makes, and every byte of memory one
+# What the Ruby runtime allocates a pass. Every object a pass makes, and every byte of memory one
 # takes, is work for Ruby's garbage collector: memory taken counts toward the next collection as
 # objects do, and enough of it makes Ruby mark every object the process holds, which in a big game
 # stops it for several frames. Ways a busy game took a lot: a slice of one of the screen's arrays
