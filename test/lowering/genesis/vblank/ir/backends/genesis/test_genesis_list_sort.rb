@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST PUT IN ORDER BY THE NUMBERS ANOTHER LIST HOLDS (IR list_sort), as the Genesis writes it in
+# A list put in order by the numbers another list holds (IR list_sort), as the Genesis writes it in
 # place, does what the interpreter does on every pass (Genesis::CheckedRun): the numbers change every
 # pass, with level ones and ones below nought, so a sort that is not stable, or compares without the
 # sign, puts the places the wrong way round. The list is walked by pointer when its first item is in

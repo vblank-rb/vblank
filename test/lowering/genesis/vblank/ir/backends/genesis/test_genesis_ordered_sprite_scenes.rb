@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A TITLE WHOSE SPRITES ARE DRAWN IN AN ORDER THE GAME WORKS OUT, and a later scene with sprites
+# A title whose sprites are drawn in an order the game works out, and a later scene with sprites
 # of its own. A Genesis places the sprites that show on every pass, back to front, into a table of
 # 80 rows, so the title's sprites take no row while the other scene is up, whatever their order.
 # Together the two scenes declare more sprites than the table holds; each alone fits.

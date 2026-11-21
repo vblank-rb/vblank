@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# TEN MOVING PARTS RUN BY A GAME'S OWN LOGIC: a loop of ten, each turn reading four slots of the
+# Ten moving parts run by a game's own logic: a loop of ten, each turn reading four slots of the
 # game's lists and writing two, every eighth pass, so the loop's cost is one frame's against the
 # frames beside it.
 #
@@ -74,7 +74,7 @@ module ListLoopGames
   end
 end
 
-# WHAT THAT LOOP COSTS THE GENESIS, measured in the emulator, and that the lists hold what the
+# What that loop costs the Genesis, measured in the emulator, and that the lists hold what the
 # interpreter's hold.
 class TestGenesisListLoopPace < Minitest::Test
   # How much of a frame the pass that runs the loop may take over a pass that does not: with the

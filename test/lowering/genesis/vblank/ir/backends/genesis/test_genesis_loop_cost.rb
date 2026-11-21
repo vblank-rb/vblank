@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE GENESIS, measured in the emulator: a `repeat`, and a game's `while i < n`
+# A turn of a loop on the Genesis, measured in the emulator: a `repeat`, and a game's `while i < n`
 # with `i += 1` last, which the build lowers as a counted loop (LoopForm#counted_while). The 68000's
 # own way is a count in a data register, ADDQ and CMP on it and a branch, or DBF, 10 cycles a turn
 # taken (68000 timing tables, "Miscellaneous Instruction Execution Times"). A turn here keeps its count

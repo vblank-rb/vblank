@@ -3,10 +3,10 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE GENESIS, `x = row[i]`, measured in the emulator: the index
+# A list read at a worked-out index on the Genesis, `x = row[i]`, measured in the emulator: the index
 # read, A0 pointed at the list, the index tested against its length, scaled, the slot read, widened
 # and stored (Genesis::Lowering#emit_slot_address). The console's own code reads a field of a record
-# it holds the address of in one MOVE with a 16-bit displacement, 12 cycles for a byte or a word and
+# it holds the address of in one move with a 16-bit displacement, 12 cycles for a byte or a word and
 # 16 for a long (68000 timing tables, "Move Byte and Word Instruction Execution Times"); a list is
 # reached from a number instead, so a read pays for the index's load, the slot's address and the
 # store besides, and the test where the index is not known to be inside.
