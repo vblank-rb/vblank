@@ -4,7 +4,7 @@ require "tmpdir"
 require "all/vblank/builder/test_pack_color_lists"
 require "pack_at_start_tests"
 
-# A LIST OF COLOURS FROM THE PACK, ITS PACK LEFT OUT: the games of PackColorListGames
+# A list of colours from the pack, its pack left out: the games of PackColorListGames
 # (test/all/vblank/builder/test_pack_color_lists.rb) built with `pack_at_start: true` and handed the
 # pack file the all-in-one build made show the made-up original's own palette where each list is
 # drawn. That each plays as its all-in-one build on every pass is the registry's

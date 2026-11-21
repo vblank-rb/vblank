@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# CELLS OF A BACKGROUND FROM THE DATA PACK DRAWN IN FRONT OF THE SPRITES (`cells_in_front: true`,
+# Cells of a background from the data pack drawn in front of the sprites (`cells_in_front: true`,
 # Builder::PackBackgrounds#mark_tiles_in_front). A Genesis original marks a cell of its map for in
 # front with the cell's top bit, its priority, and a sprite passing under such a cell is hidden by
 # the cell's drawn pixels and shows through its see-through ones, as the console draws it. A port
@@ -21,7 +21,7 @@ module PackCellsInFrontGames
   GENESIS_FRONT_CELL = ->(tile, front) { tile | (front ? 1 << 15 : 0) }
 
   # Two rows of four cells, each [tile, in front]. Tile 0 draws nothing, and tiles 1 to 3 have
-  # see-through places among their drawn ones (PLACES).
+  # see-through places among their drawn ones (places).
   CELLS = [[1, true], [1, false], [3, true], [2, false],
            [0, true], [2, true], [1, false], [3, false]].freeze
   ACROSS = 4
@@ -40,27 +40,27 @@ module PackCellsInFrontGames
   SPRITE_AT = [4, 4].freeze
   SPRITE_SIDE = 8
 
-  # A SPRITE IN FRONT (`in_front: true`), declared before the walker so only its mark puts it in
+  # A sprite in front (`in_front: true`), declared before the walker so only its mark puts it in
   # front: a checkerboard of its own colour and see-through places, over the same cells as the walker.
   POINTER_COLOR = MadeUpOriginalLayouts::PALETTE[12]
   POINTER_PLACES = Array.new(SPRITE_SIDE * SPRITE_SIDE) { |at| ((at % 8) + (at / 8)).even? }.freeze
 
-  # A SECOND SPRITE IN FRONT, of one colour all over, over the same cells: the pointer and it take
+  # A second sprite in front, of one colour all over, over the same cells: the pointer and it take
   # turns in front of each other a frame each (`draw_in_order ..., take_turns: true`), and whichever
   # is in front is over the cells in front as well.
   HAND_COLOR = MadeUpOriginalLayouts::PALETTE[14]
 
-  # A SECOND AREA, for a background walking between areas: the same cells, each mark the other way.
+  # A second area, for a background walking between areas: the same cells, each mark the other way.
   FAR_CELLS = CELLS.map { |tile, front| [tile, !front] }.freeze
-  # The passes the walking game (#front_areas_game_and_file) writes WRITTEN in the first area on,
-  # walks to the second on, and writes WRITTEN there on.
+  # The passes the walking game (#front_areas_game_and_file) writes written in the first area on,
+  # walks to the second on, and writes written there on.
   NEAR_WRITTEN_PASS = 4
   FAR_WALK_PASS = 7
   FAR_WRITTEN_PASS = 10
 
   VBlank::Testing::InRactors.share_constants(self)
 
-  # THE GAME WALKING BETWEEN TWO AREAS (`map:` a Hash by area) marking cells in front: :near is
+  # The game walking between two areas (`map:` a Hash by area) marking cells in front: :near is
   # CELLS and :far FAR_CELLS, each a slot of map cells the unpacking writes, both over the one slot
   # of tiles, or with +own_tiles+ each area over a slot of its own holding the same tiles. Told
   # WRITTEN by a slot of one place (`set_cells: pack[:changes]`), it writes it at WRITTEN_AT in each
@@ -102,10 +102,10 @@ module PackCellsInFrontGames
     [b.program, b.made_data_pack_file]
   end
 
-  # +cells+ with WRITTEN at WRITTEN_AT.
+  # +cells+ with written at WRITTEN_AT.
   private def with_written(cells) = cells.dup.tap { |written| written[WRITTEN_AT] = WRITTEN }
 
-  # THE GAME OF TWO SPRITES IN FRONT TAKING TURNS: the pointer and the hand, each of one colour all
+  # The game of two sprites in front taking turns: the pointer and the hand, each of one colour all
   # over and both in front, at SPRITE_AT over the original's map with its cells in front, put in
   # order with `take_turns:` given +take_turns+.
   private def turns_game(folder, take_turns: true)
@@ -137,7 +137,7 @@ module PackCellsInFrontGames
     (top...(top + SPRITE_SIDE)).flat_map { |y| (left...(left + SPRITE_SIDE)).map { |x| [x, y] } }
   end
 
-  # The made-up Genesis original: CELLS as its map at MAP_AT, its two banks at COLORS_AT, PLACES as
+  # The made-up Genesis original: cells as its map at MAP_AT, its two banks at COLORS_AT, PLACES as
   # its tiles at TILES_AT, and each cell's tile and mark as bytes, for a port that writes map cells.
   private def front_original(folder)
     tiles = PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
@@ -155,10 +155,10 @@ module PackCellsInFrontGames
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # THE GAME: the original's map as a background that reads its cells' marks, and the sprite over
+  # The game: the original's map as a background that reads its cells' marks, and the sprite over
   # it. +map+ is :console for the Genesis's own cells, or :map_cells for map cells the unpacking
   # writes. +cells_in_front+ is what the background is given. With +written+, the background is
-  # told WRITTEN and writes it at WRITTEN_AT on pass WRITTEN_PASS. With +pointer+ a sprite in front
+  # told written and writes it at WRITTEN_AT on pass WRITTEN_PASS. With +pointer+ a sprite in front
   # (POINTER_PLACES) is over the walker. Hands back the program and the pack file the build made
   # (nil with the pack left out).
   private def front_game_and_file(folder, map: :console, cells_in_front: true, written: false, pointer: false,
@@ -207,7 +207,7 @@ module PackCellsInFrontGames
 
   private def front_game(folder, **) = front_game_and_file(folder, **).first
 
-  # THE ANSWER KEY for the pixel at (+x+, +y+), inside the first two rows of cells: a cell's drawn
+  # The answer key for the pixel at (+x+, +y+), inside the first two rows of cells: a cell's drawn
   # place in bank 0's colour where the cell is in front or no sprite is over it, the sprite's colour
   # where it is over a see-through place or a cell behind it, and nil (whatever is behind) where
   # neither draws.
@@ -231,7 +231,7 @@ module PackCellsInFrontGames
     end.to_h.compact
   end
 
-  # CELLS with WRITTEN at WRITTEN_AT.
+  # CELLS with written at WRITTEN_AT.
   private def cells_written = CELLS.dup.tap { |cells| cells[WRITTEN_AT] = WRITTEN }
 
   private def shown_pixels(screen, wanted) = wanted.keys.to_h { |x, y| [[x, y], screen.pixel(x, y)] }

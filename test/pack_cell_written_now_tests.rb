@@ -3,8 +3,8 @@
 require "tmpdir"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
-# A CELL OF A BACKGROUND FROM THE DATA PACK WRITTEN `now: true` SHOWS WHAT IT SHOWS WRITTEN WITHOUT
-# IT, once the frame it was written on is drawn: by a told number and by a place in a slot of told
+# A cell of a background from the data pack written `now: true` shows what it shows written without
+# it, once the frame it was written on is drawn: by a told number and by a place in a slot of told
 # cells, each written in the game and worked out as it runs, and blanked again. When it shows is
 # the Color cartridge's (test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_pack_cell_shown_now.rb).
 # Played by each console that writes a cell while it draws (test/console/gba/ and gbc/); the Super
