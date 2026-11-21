@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A LIST'S ITEMS WRITTEN INTO A LIST OF BYTES AS ONE COPY (IR list_pack), for a console whose
+      # A list's items written into a list of bytes as one copy (IR list_pack), for a console whose
       # lowering has a routine that copies a run of a list's slots: what a save's snapshot is made of
       # (Builder::SaveJobs#save_job_snapshot).
       #
@@ -16,13 +16,13 @@ module VBlank
       # written into is kept in bytes and never taken from its front, and neither is a pool's field
       # laid out at a stride (#list_pack_block?, the lowering's).
       #
-      # WHAT THE LOWERING SUPPLIES, beside ControlFlow's hooks (fresh_label, place_label, jump,
+      # What the lowering supplies, beside ControlFlow's hooks (fresh_label, place_label, jump,
       # jump_unless, statement):
       #
       #   list_pack_block?(node)        whether the build knows this step's slots are a copy's
       #   emit_list_pack_block(node)    the copy, for a run known to fit
       module ListPackBlocks
-        # EVERY CARTRIDGE LOWERING THAT WRITES list_pack ITS OWN WAY, by the lowering's name, with why
+        # Every cartridge lowering that writes list_pack its own way, by the lowering's name, with why
         # its way is cheaper there: the ones that mix this module in, and the Advance's, which tests the
         # run in its own instructions (GBA::Lists#emit_list_pack). A lowering not named here takes the
         # loop (IR::ListPacking::Loops); test_list_pack_blocks.rb holds the five to this list, both
