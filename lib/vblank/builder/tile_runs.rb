@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # TILES WHOSE PIXELS THE GAME PAINTS AS IT RUNS: `tiles :box, from: list, count: n`.
+    # Tiles whose pixels the game paints as it runs: `tiles :box, from: list, count: n`.
     #
     # Every other tile is a picture fixed while the cartridge is built, uploaded once and
     # merged with any tile that came out the same. These are the opposite on every count. The
@@ -18,7 +18,7 @@ module VBlank
     # pixels, the left one in the low four bits, and each four bits is a place in the run's
     # colour list, place 0 see-through. A tile is eight rows of four bytes.
     #
-    # THAT FORM IS THE ADVANCE'S, and every other console converts it as it copies, which is
+    # That form is the Advance's, and every other console converts it as it copies, which is
     # work for each tile on each `changed`. A game that repaints many tiles a frame on one of
     # those sets `console_format: true` and writes the bytes the console keeps instead
     # (Console::Description#tile_planes), which are copied with nothing converted. It changes
@@ -49,7 +49,7 @@ module VBlank
 
       private
 
-      # WHICH RUNS ARE OWED A COPY, as bits of a few variables rather than a flag apiece: a bit
+      # Which runs are owed a copy, as bits of a few variables rather than a flag apiece: a bit
       # per run, thirty to a variable so a mask never reaches the sign bit. That is what lets
       # the gap between frames ask one question of all of them (see #finalize_tile_copies).
       RUNS_PER_MASK = IR::Nodes::CopyOwedTiles::RUNS_PER_MASK  # :nodoc:
@@ -153,13 +153,13 @@ module VBlank
         DSL::TileRun.new(self, name)
       end
 
-      # COPY EACH RUN WHOSE LIST MOVED, in the gap between frames, and only on a frame where
+      # Copy each run whose list moved, in the gap between frames, and only on a frame where
       # the game asked for it. Calling `changed` sets a flag; the gap copies and clears it. That is
       # what makes three `changed` in one frame one copy, and what keeps the copy out of the
       # middle of a frame, where the top of the screen would show the old pixels and the
       # bottom the new.
       #
-      # THE GAME LOOP ASKS ONE QUESTION, however many runs there are: is any bit of any mask
+      # The game loop asks one question, however many runs there are: is any bit of any mask
       # set? Only then does it call the routine that copies — the one place the code for each
       # run lives. The game loop is run on every frame of every scene, so a check and a copy
       # written into it for each run were paid by every scene, the one the player plays in
@@ -197,7 +197,7 @@ module VBlank
         end
       end
 
-      # A LIST A RUN PAINTS FROM MUST NOT BE SHIFTED. Dropping the front item moves where the
+      # A list a run paints from must not be shifted. Dropping the front item moves where the
       # first item lives — the list becomes a ring that wraps round its own memory — so its
       # bytes are no longer in the order the tiles read them. Refused here, once every routine
       # is built, so that a `shift` anywhere in the game is seen and both backends refuse it

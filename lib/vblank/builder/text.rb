@@ -32,7 +32,7 @@ module VBlank
       # same sprite hardware composites glyphs over it exactly the same way.
       TILE_HARDWARE_MODES = %i[tiled rotozoom].freeze  # :nodoc:
 
-      # WHERE A LINE OF TEXT SITS, named instead of counted. These go where the left
+      # Where a line of text sits, named instead of counted. These go where the left
       # edge goes, so `draw_text "PONG", :center, 40, :white` centres it.
       #
       # A number is still right when you actually want a number. What a number cannot
@@ -223,7 +223,7 @@ module VBlank
         return record(Build.draw_text(text, x, y, colors.first, font: font)) if colors.length == 1
 
         # A bitmap screen paints where it is called, and the words are the same words in
-        # either colour — so they are painted ONCE, with the test worked out first to pick
+        # either colour — so they are painted once, with the test worked out first to pick
         # which colour. Written the long way, as the words under a test and again under its
         # opposite, it takes no longer and is every pixel of the words twice over.
         which = text_color_test(showing)
@@ -358,7 +358,7 @@ module VBlank
       # to choose between; two need a test, so a pair without `showing:` is refused
       # rather than one of them silently winning.
       #
-      # TWO AND NO MORE, on purpose. A pair with a test is one sprite that changes
+      # Two and no more, on purpose. A pair with a test is one sprite that changes
       # colour, because a test is 0 or 1 and that is always one of the two. Three would
       # need the number the game gave held inside the list for it, which costs a check
       # on every character of every frame — and a third colour is rare enough that
@@ -450,7 +450,7 @@ module VBlank
         [first, within.last - first + (within.exclude_end? ? 0 : 1)]
       end
 
-      # WORDS HELD IN A LIST (see DSL::ListText): +length+ of its character codes from item +from+,
+      # Words held in a list (see DSL::ListText): +length+ of its character codes from item +from+,
       # all of it from there when not given. How wide they come out is known only as they are
       # drawn, so the left edge is a number or a variable, and each word of it is one colour.
       def draw_list_text(list, x, y, color, font:, from:, length:, placed:)
@@ -551,7 +551,7 @@ module VBlank
       # nowhere for the bitmap draw_text/draw_number to plot pixels. Instead each
       # character becomes a tiny hardware sprite — one 8x8 glyph — that the console
       # composites over the game every frame. Because a sprite is drawn for you each
-      # frame, tiled text is declared ONCE (before the game loop, like `sprite`) and
+      # frame, tiled text is declared once (before the game loop, like `sprite`) and
       # then stays; a live number's sprite chooses which digit to show from its value
       # each frame, so it updates itself with nothing to call in the loop.
 
@@ -567,7 +567,7 @@ module VBlank
       # character is one of them, and a sprite with no lit pixels in it would spend a
       # slot to paint nothing at all. A HUD line with two spaces in it is two slots
       # back for the game.
-      # A pair of colours becomes a pair of POSES on the one sprite — the same glyph
+      # A pair of colours becomes a pair of poses on the one sprite — the same glyph
       # twice, once in each colour, with the test choosing between them every frame.
       # That is the whole saving: the console is already changing which picture each
       # sprite shows for free, so a label that changes colour costs no more slots than
@@ -712,18 +712,18 @@ module VBlank
               "Use a smaller font (the built-in :default and :tiny fit), or draw this text on a `screen :bitmap`."
       end
 
-      # Text a VERB draws for you, rather than text the author placed — a `menu`'s rows.
+      # Text a verb draws for you, rather than text the author placed — a `menu`'s rows.
       # While this is in force, the "declare it once, above the game_loop" rule below
       # does not apply.
       #
       # That is not the rule being weakened, because the rule was never about this text.
-      # It is about an AUTHOR'S OWN call site: tiled text is declared once and redrawn
+      # It is about an author's own call site: tiled text is declared once and redrawn
       # for you every frame, and making the author write the call above the loop is what
       # makes that visible. A verb that owns its drawing has no call site to misplace —
       # the author wrote `menu`, and where a menu goes is decided by menu's own rule,
       # which is per-frame work and the same on both screens.
       #
-      # It holds the verb's NAME rather than a flag, because the other rule this text
+      # It holds the verb's name rather than a flag, because the other rule this text
       # meets does still apply and only its wording needs fixing: a bitmap menu really
       # cannot belong to a layer, and the message should say `menu` — what the author
       # wrote — rather than `draw_text`, which they never typed (see

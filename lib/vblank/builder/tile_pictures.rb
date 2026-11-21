@@ -54,7 +54,7 @@ module VBlank
                                         run: part.run, shown: shown, bytes_shown: part.bytes_shown)
       end
 
-      # ONE RUN OF TILES TAKING TURNS THROUGH PICTURES: the run +name+ of +count+ tiles +side+
+      # One run of tiles taking turns through pictures: the run +name+ of +count+ tiles +side+
       # pixels square drawn from +colors+, the list in memory it shows, and the table in the
       # cartridge holding +bytes+, each picture's tiles one after another. A group of `tile_pictures`
       # is one of these; a group of a pack's tiles is one for each background and bank that draws

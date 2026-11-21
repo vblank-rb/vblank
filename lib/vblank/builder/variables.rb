@@ -267,7 +267,7 @@ module VBlank
         mirror_save(name)
       end
 
-      # EVERY FLAT VERB WITHOUT ITS `!`. A word without `!` never changes a variable, so each
+      # Every flat verb without its `!`. A word without `!` never changes a variable, so each
       # says which word does — and, where there is one, how to get the same number without
       # changing anything (see {ChangingWord}).
       #
@@ -558,7 +558,7 @@ module VBlank
         end
       end
 
-      # The node to store in +name+. A variable that holds NAMES turns the one it was given
+      # The node to store in +name+. A variable that holds names turns the one it was given
       # into that name's number; everything else keeps the meaning it has everywhere — a bare
       # symbol is another variable, and a Float marks the variable as holding a fraction.
       def stored_node(name, value)
@@ -591,7 +591,7 @@ module VBlank
       # delta is held between.
       #
       # A fixed step is just the number and its negative. A step the game works out
-      # goes through a hidden variable first, so it can be read as a DISTANCE: a
+      # goes through a hidden variable first, so it can be read as a distance: a
       # negative one would otherwise invert the range and drive the variable away from
       # its target for ever, which is silent and looks like a physics bug. Taking the
       # size of it means the step sets how fast, and the target sets which way.

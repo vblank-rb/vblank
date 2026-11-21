@@ -37,7 +37,7 @@ module VBlank
     # these verbs.
     #++
     module Tiled
-      # WHAT THE BUILD KNOWS ABOUT ONE BACKGROUND, from the line that declares it to the
+      # What the build knows about one background, from the line that declares it to the
       # last pass before the tree is handed over.
       #
       # A background gathers its facts over a whole program. It is declared in one place,
@@ -47,7 +47,7 @@ module VBlank
       # against each other: a layer that turns has no scroll of its own, so scrolling one
       # and then turning it is a friendly error either way round.
       #
-      # ONE RECORD PER BACKGROUND, rather than one collection per fact, because the facts
+      # One record per background, rather than one collection per fact, because the facts
       # are read together. "Can this background turn?" is three of them at once, and every
       # rule that spans two would otherwise be a lookup in each, kept in step by hand —
       # the exact failure `pool` exists to spare a game writing its own data.
@@ -57,7 +57,7 @@ module VBlank
       #
       # Every field but +node+, +scene_gates+, +bends_rows+, +pivot+, +pivot_map_point+, +boxed_in_part+
       # and +hidden_whole+ holds
-      # the NAME of a hidden variable the build allocated, and is nil until the program does the
+      # the name of a hidden variable the build allocated, and is nil until the program does the
       # thing that needs it. So a background that is never scrolled has no +scroll_x+, and asking
       # #scrolls? is the same question as asking whether the game ever scrolled it.
       DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,  # :nodoc:
@@ -72,7 +72,7 @@ module VBlank
 
         # Has the build wired this one up to turn — allocated its angle and size, and
         # arranged for its matrix to be written every frame? Not the same question as
-        # whether it is a layer of the turning KIND, which a `screen :rotozoom`
+        # whether it is a layer of the turning kind, which a `screen :rotozoom`
         # background is from the line that declares it and before anything turns it.
         # That one is Builder#background_turns?, off the node's own flag.
         def turns_each_frame? = !angle.nil?
@@ -134,7 +134,7 @@ module VBlank
       #   `:solid` keeps black as a colour, so that an outline in black does not come out full of
       #   holes.
       #--
-      # BLACK AS A COLOUR. A tile has no marker of its own for "nothing here", so black drawn by
+      # Black as a colour. A tile has no marker of its own for "nothing here", so black drawn by
       # colour stands for it. A tile set that sets `black: :solid` holds its pictures as place
       # numbers, every backend then reads them as it reads any such art, and black takes a colour
       # slot of its own on the console. See #solid_black_image. The pixels of a list the game owns
@@ -152,7 +152,7 @@ module VBlank
         black = tile_map.delete(:black) { :see_through }
         refuse_unknown_black!(name, black)
 
-        # A sheet with no keys at all: import EVERY cell as a numbered tile, ready for a
+        # A sheet with no keys at all: import every cell as a numbered tile, ready for a
         # map that picks tiles by that number.
         return define_sheet_tileset(name, from, tile, transparent, solid, black) if from && tile_map.empty?
 
@@ -199,7 +199,7 @@ module VBlank
               "layer behind show through black, or black: :solid, which keeps black as a colour."
       end
 
-      # BLACK AS A COLOUR. A tile has no marker of its own for "nothing here", so black drawn by colour
+      # Black as a colour. A tile has no marker of its own for "nothing here", so black drawn by colour
       # stands for it, and an outline in black comes out full of holes. Art given as place numbers
       # never had that trouble: place 0 is see-through and black at any other place is a colour. So
       # a tileset that sets `black: :solid` holds its pictures as place numbers, every backend then
@@ -209,7 +209,7 @@ module VBlank
       # its answer for any tileset that did not ask: the same tile stored twice, which is what two
       # answers about one tile cost.
       #
-      # A PICTURE GIVEN AS COLOURS IN A LIST READ FROM THE DATA PACK AS THE GAME STARTS. Such a list
+      # A picture given as colours in a list read from the data pack as the game starts. Such a list
       # holds a marker for each colour (IR::StartFile), and the picture's pixels are the game's own
       # colours, so no pixel is at any place of it: the build cannot find the place the all-in-one
       # build finds. Places added after the list's own would grow it past sixteen, or past what the
@@ -277,7 +277,7 @@ module VBlank
       # one showing when the game starts.
       #
       # ```ruby
-      # rooms = background :rooms, tiles: :dungeon, map: { hall: HALL, cave: CAVE }
+      # rooms = background :rooms, tiles: :dungeon, map: { hall: hall, cave: CAVE }
       # rooms.show_map :cave       # the whole room is the cave now
       # ```
       #
@@ -296,7 +296,7 @@ module VBlank
       #
       # ```ruby
       # rooms = background :rooms, tiles: :dungeon,
-      #                    map:   { hall: HALL,       cave: CAVE, sky: SKY },
+      #                    map:   { hall: hall,       cave: cave, sky: SKY },
       #                    walls: { hall: HALL_WALLS, cave: CAVE_WALLS }
       # ```
       #
@@ -339,7 +339,7 @@ module VBlank
       #   `set_cell` may write later.
       # * `cells_in_front:` - the cells that are drawn in front of sprites that are `in_front:`.
       #--
-      # WHY `held:` IS A SETTING, AND WHY IT IS OFF UNLESS ASKED FOR. The display reads the map while
+      # Why `held:` is a setting, and why it is off unless asked for. The display reads the map while
       # it draws, so a change shows on this frame or the next by where on the screen the display has
       # got to, and nobody can tell for one cell. A message box growing a size a frame is seventy
       # cells, and there the same writes show part of each size, or a size early on a quiet frame
@@ -465,7 +465,7 @@ module VBlank
               "make its map smaller."
       end
 
-      # ONE NAME IN SEVERAL SCENES IS A BACKGROUND OF EACH, and two things do not fit that. A
+      # One name in several scenes is a background of each, and two things do not fit that. A
       # declaration outside every scene is on screen in all of them, so beside a scene's own it
       # would be two backgrounds up together under one name. And a bend or a turn is kept once for
       # each name by every lowering, so a second scene's would be lost or would land on the first.
@@ -565,7 +565,7 @@ module VBlank
         # into. The node is kept in it so `.rotate`/`.scale`, which come later on the
         # handle, can mark this one as the layer that turns — see #make_background_affine.
         #
-        # A record already there is KEPT and given the new node, never replaced: a program
+        # A record already there is kept and given the new node, never replaced: a program
         # that declares one name twice has already set things on the first one, and a
         # fresh record would drop them — a scroll it forgot would stop being moved to the
         # gap between frames and would tear where the author wrote it.
@@ -591,9 +591,9 @@ module VBlank
                                         scene: declaring_scene, bar_top: bar_top, above_row: above_row,
                                         alone: alone != false, hides_sprites: alone == :without_sprites,
                                         affine: @screen_mode == :rotozoom, **(sets || {})))
-        # WHICH SCENE THIS BACKGROUND BELONGS TO, so that everything written for it each
+        # Which scene this background belongs to, so that everything written for it each
         # frame is written only while that scene is the live one. Where a background sits
-        # is a property of the console's LAYER rather than of the background, and scenes
+        # is a property of the console's layer rather than of the background, and scenes
         # take turns with the layers — so two backgrounds that share one would both write
         # its position every frame, and whichever was declared later would win.
         #
@@ -659,7 +659,7 @@ module VBlank
       # variables. An internal hook, not a DSL verb — `background(...).rotate` /
       # `.scale` are the surface.
       #
-      # TURNING IS A PROPERTY OF THE BACKGROUND, NOT OF THE SCREEN, and that is the whole
+      # Turning is a property of the background, not of the screen, and that is the whole
       # reason this hook exists rather than a flag on `background`. The console has two
       # arrangements of tile layers that matter here: four layers that scroll and none
       # that turn, or two that scroll plus one that turns and resizes. Which one a game
@@ -707,7 +707,7 @@ module VBlank
                 "or `blit`."
         end
 
-        # A bend gives each row its own sideways SCROLL, and a layer that turns has no
+        # A bend gives each row its own sideways scroll, and a layer that turns has no
         # scroll to give — it moves by turning. Before a tiled background could turn, the
         # screen check above already covered this; now it has to be said.
         if declared_background(name).turns_each_frame?
@@ -748,13 +748,13 @@ module VBlank
         @program.background_readings = readings unless readings.empty?
       end
 
-      # A LAYER THAT TURNS CANNOT ALSO SCROLL, and a program can write the two in either
+      # A layer that turns cannot also scroll, and a program can write the two in either
       # order. Turning first and scrolling second is refused where the scroll is written
       # (see {Background#ensure_not_affine!}); this is the other order, where the scroll
       # is already recorded and turning the layer would quietly stop it working — the
       # console pans this kind of layer by moving its whole matrix, and its own scroll
       # registers do nothing at all.
-      # A LAYER THAT TURNS CANNOT ALSO BE GIVEN OTHER COLOURS, and the reason is where its
+      # A layer that turns cannot also be given other colours, and the reason is where its
       # colours are kept. A scrolling layer's cells each name a group of sixteen colours to
       # draw from, and giving the layer another list means writing that group. A turning
       # layer's cells hold a tile number and nothing else, so its tiles read the whole table
@@ -812,7 +812,7 @@ module VBlank
               "`screen :tiled` above this background."
       end
 
-      # WHICH OF A BACKGROUND'S OWN TILES EACH KEY MEANS, so `set_tile` can be written
+      # Which of a background's own tiles each key means, so `set_tile` can be written
       # the way the map was — the tileset's own keys, or, for a sheet imported as
       # numbered tiles, those numbers. Every tile of the tileset is shipped whether the
       # map used it or not, so a door can be drawn in the tileset and only ever appear
@@ -822,7 +822,7 @@ module VBlank
         named.to_h { |key, image| [key, index_of[image]] }.compact
       end
 
-      # Import a tileset from a sheet by CHARACTER: slice the file into cells of the
+      # Import a tileset from a sheet by character: slice the file into cells of the
       # given size and define the cell each character points at as an image, returning
       # the character => image-name map the tileset is built from. Each character's
       # value is a cell number or [column, row]. The internal image names are unique
@@ -873,11 +873,11 @@ module VBlank
                             solid_images: solid_numbers.map { |n| by_number[n] }.uniq }
       end
 
-      # EVERY MAP THIS BACKGROUND CAN SHOW, as [names, drawn] — the names in the order they
+      # Every map this background can show, as [names, drawn] — the names in the order they
       # were declared, and one [grid of tile-image names, tile list] per map.
       #
       # A background usually has one map and its name is the background's own. Give `map:`
-      # or `from:` a HASH instead and it has several, one showing at a time: name => map,
+      # or `from:` a hash instead and it has several, one showing at a time: name => map,
       # in the order written, the first being the one showing at boot.
       def background_maps(name, tiles, set, map:, from:)
         chars = map.is_a?(Hash)
@@ -899,7 +899,7 @@ module VBlank
                                   "Define one first with `tiles :#{tiles}, ...`.")
       end
 
-      # A BACKGROUND WHOSE MAPS DRAW FROM SEVERAL SETS OF TILES, which is how a game moves
+      # A background whose maps draw from several sets of tiles, which is how a game moves
       # between areas: `tiles:` names each set by the area it belongs to, and `map:` gives
       # each area's maps under the same name. The maps are counted in the order written,
       # area after area, which is the number `show_map` takes.
@@ -909,7 +909,7 @@ module VBlank
       # pictures, every set's tiles one after another, each map as numbers into those, and
       # the three operands that hold which tiles and maps belong to which set.
       #
-      # AREAS OF THE SAME TILES ARE ONE SET. Two areas whose tilesets hold the same pictures
+      # Areas of the same tiles are one set. Two areas whose tilesets hold the same pictures
       # (one tileset named for both, or a data pack's areas over one slot of tiles) are one
       # set, named for the first of them, and each area's maps number into it. A walk between
       # them then hands the layer another map and nothing else: no tiles come in, so no frame
@@ -997,7 +997,7 @@ module VBlank
               "each map must have a name of its own, in every area."
       end
 
-      # A LAYER THAT TURNS HOLDS ITS WHOLE MAP AT ONCE. Its cells are read through the turn,
+      # A layer that turns holds its whole map at once. Its cells are read through the turn,
       # so any of them can come into view on any frame, and there is no edge of the view to
       # bring a strip in at. So a map too big for its grid, or maps of different sizes, cannot
       # be a turning background's.
@@ -1009,7 +1009,7 @@ module VBlank
               "of :#{name} one size, 64x64 cells or smaller, or use a background that does not turn."
       end
 
-      # A BACKGROUND ON A LAYER IS DECLARED ONCE. The console draws a layer every frame from
+      # A background on a layer is declared once. The console draws a layer every frame from
       # the moment its tiles and map are in video memory, so a tiled background belongs above
       # the game loop or in a scene, which is built once off the loop. Put up again on every
       # pass of the loop, it reaches the screen at a different moment on each backend, and the
@@ -1048,7 +1048,7 @@ module VBlank
       end
 
       # Turn a `map:` into a grid of tile-image names. Its cells are whatever the
-      # tileset is KEYED by, and a row writes them one of two ways: as a String, one
+      # tileset is keyed by, and a row writes them one of two ways: as a String, one
       # character per cell, or as an Array, one element per cell. The two are the same
       # grid — a String row is the typed-out form, and it can only reach a tileset whose
       # keys are single characters, which is why the Array form exists at all. A level
@@ -1076,7 +1076,7 @@ module VBlank
         [img_rows, by_key.values.uniq]
       end
 
-      # WHICH TILES A TILESET HAS, said in an error. A tileset somebody wrote out has a
+      # Which tiles a tileset has, said in an error. A tileset somebody wrote out has a
       # handful of keys and naming them all is the whole answer — you can see at a glance
       # which one you meant. One a level was computed against can have hundreds, and
       # listing those buries the single fact the reader came for under a wall of numbers.
@@ -1099,7 +1099,7 @@ module VBlank
       # its author wrote — characters, or tile numbers; one imported whole from a sheet
       # has no keys of its own, and its keys are the numbers the sheet was sliced into.
       #
-      # A CHARACTER map over that second kind is the one combination with no answer, and
+      # A character map over that second kind is the one combination with no answer, and
       # it is worth its own error: the characters it is written in mean nothing there, so
       # every cell would be wrong rather than one of them.
       def tiles_by_key(name, tiles, set, rows)
@@ -1115,7 +1115,7 @@ module VBlank
         set[:by_number]
       end
 
-      # A map written as CHARACTERS, judged on the cells rather than on the shape it
+      # A map written as characters, judged on the cells rather than on the shape it
       # arrived in — because the same mistake can be written either way. A block of text
       # and rows of single-character strings are the same map, and so is an Array whose
       # cells happen to be single characters, which is what somebody reaches for first
@@ -1190,11 +1190,11 @@ module VBlank
         end
       end
 
-      # WHICH CELLS ARE WALLS, as the grid it already is rather than as rectangles.
+      # Which cells are walls, as the grid it already is rather than as rectangles.
       #
       # This is the same answer #wall_rects starts from, kept in its own shape because the
       # two are wanted for different things. Rectangles are what a person reads and what a
-      # box test wants; the grid is what a MOVER wants, because asking "is the cell I am
+      # box test wants; the grid is what a mover wants, because asking "is the cell I am
       # stepping into a wall" costs the same whatever the room looks like, where testing
       # every rectangle costs what the room is made of. See Background#solid_lookup.
       #
@@ -1212,7 +1212,7 @@ module VBlank
         img_rows.map { |row| row.map { |img| !img.nil? && solid.include?(img) } }
       end
 
-      # EVERY MAP'S WALLS, one grid per map in the order they were declared.
+      # Every map's walls, one grid per map in the order they were declared.
       #
       # With no `walls:` they come off the picture — the cells whose tile the tileset
       # marked `solid:` — which is what a small game wants and what every game wrote
@@ -1226,7 +1226,7 @@ module VBlank
         map_names.map { |map_name| wall_grid(given[map_name]) }
       end
 
-      # One `walls:` grid as cells of true/false. A cell is a wall unless it is BLANK, and
+      # One `walls:` grid as cells of true/false. A cell is a wall unless it is blank, and
       # blank is a space, a `.`, a `0` or nothing — so a grid drawn by hand and a collision
       # layer decoded out of somewhere else are both read the same way, with no list of
       # which values mean which to keep in step with the data.
@@ -1280,7 +1280,7 @@ module VBlank
         rects
       end
 
-      # Normalize a background map into a grid of CELLS, whatever shape it was written
+      # Normalize a background map into a grid of cells, whatever shape it was written
       # in: a block of text is split on newlines (blank lines dropped) and each line
       # into its characters; an Array is its rows already, and a row that is a String is
       # split the same way while a row that is an Array is its cells already. So the
