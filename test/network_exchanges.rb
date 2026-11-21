@@ -2,8 +2,8 @@
 
 require "json"
 
-# THE EXAMPLE EXCHANGES (docs/network/exchanges.json) PLAYED AGAINST ANYTHING THAT TAKES AND GIVES
-# TEXT, as a relay does. Each implementation has its own copy of this player in its own language and
+# The example exchanges (docs/network/exchanges.json) played against anything that takes and gives
+# text, as a relay does. Each implementation has its own copy of this player in its own language and
 # reads the same file, so a relay in Ruby, one in JavaScript and the real one are held to one thing.
 #
 # The relay is given as +connect+, which makes one machine's link: something that answers

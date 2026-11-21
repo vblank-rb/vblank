@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A TURN OF WORK ON SMALL VARIABLES COSTS, for each console's own cost test. A routine called
+# What a turn of work on small variables costs, for each console's own cost test. A routine called
 # once a pass goes round a loop of 64 turns, against the same routine going round 32, so the two
 # differ by 32 turns and nothing else. Each turn works three variables the build can prove stay in
 # 16 bits (Backends::NumberRanges): a place stepped and masked to ten bits, a second masked to

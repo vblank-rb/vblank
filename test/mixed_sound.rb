@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE SOUND OF EVERY FRAME, ON BOTH BACKENDS, BYTE FOR BYTE.
+# The sound of every frame, on both backends, byte for byte.
 #
 # The interpreter works out every byte of sound the cartridge's mixer writes (Reference#mixed_sound),
 # and this holds it to the cartridge. The cartridge keeps two buffers and mixes into the one that is
@@ -10,7 +10,7 @@
 # The two backends do not start counting frames at the same moment — the console spends frames
 # setting itself up before the game's first pass — so each list is taken from its first slice
 # with any sound in it, and the two must agree from there for as long as both run. What that
-# cannot see is the two being a frame apart on EVERYTHING; it does see one sound landing a frame
+# cannot see is the two being a frame apart on everything; it does see one sound landing a frame
 # late against another, which is what a test plays two sounds for.
 module MixedSound
   # How many frames more the console is run than the interpreter, to cover the frames it spends
