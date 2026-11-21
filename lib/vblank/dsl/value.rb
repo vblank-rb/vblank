@@ -577,13 +577,13 @@ module VBlank
 
       # Keep the variable within [lo, hi].
       def clamp!(lo, hi)
-        mutate { @builder.clamp!(@name, operand_matching(lo, "compare"), operand_matching(hi, "compare")) }
+        mutate { @builder.clamp_variable!(@name, operand_matching(lo, "compare"), operand_matching(hi, "compare")) }
       end
 
       # Move the variable toward +target+ by at most +step+ each call, never
-      # overshooting — the chase-at-a-top-speed move (see Builder#approach!).
+      # overshooting — the chase-at-a-top-speed move (see Builder#approach_variable!).
       def approach!(target, step)
-        mutate { @builder.approach!(@name, operand_matching(target, "compare"), operand_matching(step, "add")) }
+        mutate { @builder.approach_variable!(@name, operand_matching(target, "compare"), operand_matching(step, "add")) }
       end
 
       # Turn +velocity+ round when this number is at either end of +range+: at or below the low
@@ -616,17 +616,17 @@ module VBlank
 
       # Replace the variable with its absolute value.
       def abs!
-        mutate { @builder.abs!(@name) }
+        mutate { @builder.absolute_variable!(@name) }
       end
 
       # Force the variable negative: it becomes -|value|.
       def negate_abs!
-        mutate { @builder.negate_abs!(@name) }
+        mutate { @builder.negate_absolute_variable!(@name) }
       end
 
       # Flip the variable's sign.
       def flip!
-        mutate { @builder.flip!(@name) }
+        mutate { @builder.negate_variable!(@name) }
       end
 
       # --- the same five as new numbers, leaving this one alone ---

@@ -2,23 +2,13 @@
 
 module VBlank
   module DSL
-    # A word that changes a variable ends in `!`, and this is the sentence that says so when one
-    # is written without it — on a variable's handle, on a pool field, and as a flat verb.
+    # The sentences a refusal says when a game writes a verb the library keeps for itself, or a
+    # low-level test where plain Ruby does the same.
     #
-    # It lives in one place because the wording and the advice under it are one promise to the
-    # reader: the same slip should read the same way whichever of the three shapes it was written
-    # in. Written twice, the two copies differed in how they named an operand, and one of them
-    # answered a variable by describing the whole build.
+    # They live in one place because the wording and the advice under it are one promise to the
+    # reader: the same slip reads the same way wherever it is written.
     module ChangingWord
       module_function
-
-      # +written+ is the call as the author wrote it (`abs :hp`), +bang+ the same with
-      # its `!`, +instead+ how to get the same number without changing anything, and +at+ the line
-      # they wrote it on.
-      def refusal(written:, bang:, instead: "", at: "")
-        "`#{written}` does not change a variable. A word that changes a variable ends in `!`. " \
-          "To change it, write `#{bang}`.#{instead}#{at}"
-      end
 
       # A word the library keeps for itself. A game writes these in plain Ruby.
       def old_verb_refusal(word, at: "")
@@ -30,19 +20,6 @@ module VBlank
       def low_level_test_refusal(word, plain_if, at: "")
         "A game does not need `#{word}`. To fix this, write `#{plain_if}` and put the block's lines " \
           "under it, with `end` after them.#{at}"
-      end
-
-      # The arguments of a flat verb as the author wrote them: a name with its colon, a number as
-      # itself, a variable's handle by the variable's name. Anything else — a number worked out
-      # on the spot — has no name, and stands as `...`. Inspecting it instead would describe the
-      # whole build, since a handle holds the builder that made it.
-      def arguments_text(arguments)
-        arguments.compact.map do |argument|
-          case argument
-          when Symbol, Numeric, String, true, false then argument.inspect
-          else as_source_text(argument) || "..."
-          end
-        end.join(", ")
       end
 
       # An operand as the author would write it: a variable by its own name, a number as itself.

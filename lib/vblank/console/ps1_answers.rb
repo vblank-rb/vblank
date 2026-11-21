@@ -199,9 +199,6 @@ module VBlank
         clock: refused("a PlayStation has no clock chip. Ask the player for the time on a screen of the game's own, " \
                        "if the game needs it."),
         saves_keep_everything: works,
-        negate: works, negate!: works, flip: works, flip!: works, abs: works, abs!: works,
-        negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
-        approach: works, approach!: works,
         list: works,
         func: works("`fast:` means nothing on a PlayStation, which runs all of its code alike."),
         call: works,

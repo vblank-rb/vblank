@@ -20,8 +20,8 @@ module VBlank
     # ```
     #
     # A variable that must survive turning the console off is a `save_var`. Words such as
-    # `negate!`, `abs!`, `clamp!` and `approach!` change a variable in place; the same words
-    # without the `!` are on the variable's own handle and give a new number instead.
+    # `flip!`, `abs!`, `clamp!` and `approach!` on a variable's handle change it in place; the same
+    # words without the `!` give a new number instead.
     #--
     # The list of names itself (ensure_var / the @variables set) is builder core,
     # shared by every concern, so it stays in Builder; these verbs just record the ops
@@ -210,21 +210,13 @@ module VBlank
         mirror_save(name)
       end
 
-      # Flips a variable's sign, so 5 becomes -5 and -5 becomes 5.
-      #
-      # Use it to turn a speed round. `flip!` is the same verb.
-      #
-      # ```ruby
-      # dx.flip! if x > 232   # bounce off the right edge
-      # ```
-      #
-      # * `name` - the variable to change, as a symbol or its handle.
-      def negate!(name)
+      # Flips a variable's sign.
+      # Called by a variable's own handle (`flip!`), not written in a game.
+      def negate_variable!(name)  # :nodoc:
         record(Build.negate(name))
         ensure_var(name)
         mirror_save(name)
       end
-      alias flip! negate!
 
       # Copy one variable's value into another: dest = src.
       #
@@ -238,122 +230,25 @@ module VBlank
         mirror_save(dest)
       end
 
-      # Makes a variable positive: a negative number loses its sign, and any other is left alone.
-      #
-      # ```ruby
-      # distance = x - target
-      # distance.abs!   # how far apart they are, whichever side
-      # ```
-      #
-      # Without the `!`, `distance.abs` gives the positive number and leaves the variable as it is.
-      #
-      # * `name` - the variable to change, as a symbol or its handle.
-      def abs!(name)
+      # Makes a variable positive.
+      # Called by a variable's own handle (`abs!`), not written in a game.
+      def absolute_variable!(name)  # :nodoc:
         record(Build.abs(name))
         ensure_var(name)
         mirror_save(name)
       end
 
-      # Makes a variable negative: a positive number gets a minus sign, and any other is left alone.
-      #
-      # ```ruby
-      # speed.negate_abs!   # always heading left, whatever it was
-      # ```
-      #
-      # * `name` - the variable to change, as a symbol or its handle.
-      def negate_abs!(name)
+      # Makes a variable negative.
+      # Called by a variable's own handle (`negate_abs!`), not written in a game.
+      def negate_absolute_variable!(name)  # :nodoc:
         record(Build.negate_abs(name))
         ensure_var(name)
         mirror_save(name)
       end
 
-      # Every flat verb without its `!`. A word without `!` never changes a variable, so each
-      # says which word does — and, where there is one, how to get the same number without
-      # changing anything (see {ChangingWord}).
-      #
-      # A number is what each gives back, on the variable's own handle.
-      CHANGING_HANDLE_WORDS = { abs: :abs, negate_abs: :negate_abs, negate: :flip, flip: :flip,  # :nodoc:
-                                clamp: :clamp, approach: :approach }.freeze
-
-      # :method: abs
-      #
-      # Does not change a variable. To make one positive, write `x.abs!`. To get the positive
-      # number and leave the variable as it is, write `x.abs` on its handle.
-      #
-      # Calling `abs :x` raises an error that says so.
-
-      # :method: negate_abs
-      #
-      # Does not change a variable. To make one negative, write `x.negate_abs!`. To get the
-      # negative number and leave the variable as it is, write `x.negate_abs` on its handle.
-      #
-      # Calling `negate_abs :x` raises an error that says so.
-
-      # :method: negate
-      #
-      # Does not change a variable. To flip its sign, write `x.negate!` (or `x.flip!`). To get the
-      # flipped number and leave the variable as it is, write `x.flip` on its handle.
-      #
-      # Calling `negate :x` raises an error that says so.
-
-      # :method: flip
-      #
-      # Does not change a variable. To flip its sign, write `x.flip!`. To get the flipped number
-      # and leave the variable as it is, write `x.flip` on its handle.
-      #
-      # Calling `flip :x` raises an error that says so.
-
-      # :method: flip!
-      #
-      # Flips a variable's sign, so 5 becomes -5 and -5 becomes 5. It is the same verb as
-      # `negate!`.
-      #
-      # ```ruby
-      # dx.flip! if x > 232   # bounce off the right edge
-      # ```
-
-      # :method: clamp
-      #
-      # Does not change a variable. To hold one inside a range, write `x.clamp! 0, 239`. To get
-      # the held number and leave the variable as it is, write `x.clamp(0, 239)` on its handle.
-      #
-      # Calling `clamp :x, 0, 239` raises an error that says so.
-
-      # :method: approach
-      #
-      # Does not change a variable. To move one toward a target, write `x.approach! target, step`.
-      # To get the new number and leave the variable as it is, write `x.approach(target, step)`
-      # on its handle.
-      #
-      # Calling `approach :x, target, step` raises an error that says so.
-
-      # Written out as source rather than made from a block, so another Ractor can call them —
-      # see {IR::Node.operands} for why a block-backed method cannot be.
-      CHANGING_HANDLE_WORDS.each_key do |verb|
-        class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
-          def #{verb}(name = nil, *rest)
-            raise ArgumentError, changing_verb_message(:#{verb}, name, rest)
-          end
-        REFUSAL
-      end
-
-      # Holds a variable inside a range: below the lowest it becomes the lowest, above the highest
-      # it becomes the highest, and in between it is left alone.
-      #
-      # The limits can be fixed numbers or things the game works out as it runs, such as a limit
-      # that depends on the level.
-      #
-      # ```ruby
-      # x.clamp! 0, 239              # keep it on screen
-      # speed.clamp! 0, top_speed    # a limit the game changes
-      # ```
-      #
-      # Without the `!`, `x.clamp(0, 239)` gives the held number and leaves the variable as it is.
-      #
-      # * `name` - the variable to change.
-      # * `min_val` - the lowest it may be: a number, a variable or a handle.
-      # * `max_val` - the highest it may be.
-      def clamp!(name, min_val, max_val)
+      # Holds a variable inside a range.
+      # Called by a variable's own handle (`clamp!`), not written in a game.
+      def clamp_variable!(name, min_val, max_val)  # :nodoc:
         record(Build.clamp(name, DSL::Value.node_for(min_val), DSL::Value.node_for(max_val)))
         ensure_var(name)
         ensure_var(min_val)
@@ -361,25 +256,9 @@ module VBlank
         mirror_save(name)
       end
 
-      # Moves a variable toward a target by at most one step each time it runs, and never past it.
-      #
-      # Once the variable is within a step of the target it lands exactly on it and stays there.
-      # Use it to chase with a top speed: an enemy that homes in, a camera that eases to the
-      # player, a paddle that tracks the ball.
-      #
-      # ```ruby
-      # cpu_y.approach! ball_y - PADDLE_H / 2, CPU_SPEED
-      # ```
-      #
-      # The step can be a fixed number or something the game works out as it runs, such as an
-      # easing whose speed depends on how far there is to go. A fixed step must be above 0. A step
-      # the game works out is read as a distance, so a negative one still moves toward the target
-      # and a step of 0 holds still.
-      #
-      # * `name` - the variable to move.
-      # * `target` - where it is heading: a number, a variable or a calculation.
-      # * `step` - the most it may move each time it runs.
-      def approach!(name, target, step)
+      # Moves a variable toward a target by at most one step, and never past it.
+      # Called by a variable's own handle (`approach!`), not written in a game.
+      def approach_variable!(name, target, step)  # :nodoc:
         # A step the author fixed has to be positive. One the game works out is read as a
         # distance instead (see #emit_approach_bounds), so there is nothing to check here.
         fixed_step = DSL::Value.fixed_number(step)
@@ -411,22 +290,6 @@ module VBlank
       end
 
       private
-
-      # What one of those says: the line as it was written, what changes the variable, and where
-      # the same number comes from instead.
-      def changing_verb_message(verb, name, rest)
-        written = DSL::ChangingWord.arguments_text([name, *rest])
-        said = written.empty? ? "" : " #{written}"
-        at = Messages::AuthorSource.at_author_line
-        DSL::ChangingWord.refusal(written: "#{verb}#{said}", bang: "#{verb}!#{said}",
-                                  instead: new_number_advice(verb, name), at: at)
-      end
-
-      def new_number_advice(verb, name)
-        handle = name.is_a?(Symbol) ? "the handle that `var :#{name}` gives you" : "the variable's handle"
-        " To get a new number and keep the variable as it is, use " \
-          "`.#{CHANGING_HANDLE_WORDS.fetch(verb)}` on #{handle}."
-      end
 
       # A handle for a variable, carrying a fraction if that is what it holds. Every
       # route to a variable goes through here, so `var :px, 3.5` and a later

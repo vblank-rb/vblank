@@ -240,9 +240,6 @@ module VBlank
                      "of its own that asks the player. After that, the time moves on with the chip, " \
                      "and the save keeps it."),
         saves_keep_everything: works,
-        negate: works, negate!: works, flip: works, flip!: works, abs: works, abs!: works,
-        negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
-        approach: works, approach!: works,
         list: works,
         func: works("`fast:` means nothing on a Game Boy Color, which runs all of its code alike."),
         call: works,
