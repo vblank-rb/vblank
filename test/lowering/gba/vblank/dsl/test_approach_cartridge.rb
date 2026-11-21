@@ -9,7 +9,7 @@ class TestApproachCartridge < Minitest::Test
   include VBlank::Console::Hardware
   include ApproachGames
 
-  # A FLOOR ABOVE ITS CEILING, which bounds worked out as the game runs can reach. The value
+  # A floor above its ceiling, which bounds worked out as the game runs can reach. The value
   # is held at the floor and then at the ceiling, so the ceiling wins and the answer is the
   # ceiling wherever the value started — on both runners, for the word that changes the
   # variable and the word that hands back a new number.

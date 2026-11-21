@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW MANY BYTES A GAME COPIES INTO VIDEO MEMORY WHILE IT RUNS, by what copied them.
+# How many bytes a game copies into video memory while it runs, by what copied them.
 #
 # A game copies pictures into the memory the screen is drawn from in three ways after it boots:
 # tiles it paints from a list, a whole map handed to a background, and a sprite kept to one

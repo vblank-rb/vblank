@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "all/vblank/dsl/test_background_room_cells"
 
-# A CELL OF A ROOM CHANGED WHILE THE GAME RUNS, on the Advance's cartridge, read in the emulator.
+# A cell of a room changed while the game runs, on the Advance's cartridge, read in the emulator.
 # What it shows on every run is in test/all/vblank/dsl/test_background_room_cells.rb. A map the
 # cartridge brings into view a strip at a time keeps the changed cell as the view moves, and a
 # cell of a second area of its own tiles is that area's picture.
@@ -46,7 +46,7 @@ class TestBackgroundRoomCellsCartridge < Minitest::Test
     assert_backends_agree(program, frames: [OPEN_IN_HALL, SCROLL_AWAY, SCROLL_BACK].map { |pass| pass + SETTLED })
   end
 
-  # A PIECE OF THE COPY HOLDS THE SCREEN'S INTERRUPT OFF NO LONGER THAN THE MIXER CAN WAIT. The
+  # A piece of the copy holds the screen's interrupt off no longer than the mixer can wait. The
   # copy is made in the gap after show_map, and how long it takes is measured in the emulator: the
   # line the next pass starts on, against the same game that changes no cell and so copies nothing.
   # A piece is MapStreaming::KEPT_COPY_PIECE_CELLS of the cells measured. Its lines must be no more

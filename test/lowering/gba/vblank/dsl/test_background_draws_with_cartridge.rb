@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_background_draws_with"
 
-# A RECOLOURED BACKGROUND ON THE ADVANCE'S CARTRIDGE, its pixels read in the emulator. What
+# A recoloured background on the Advance's cartridge, its pixels read in the emulator. What
 # `draw_with` does to a background on every run is in
 # test/all/vblank/dsl/test_background_draws_with.rb.
 class TestBackgroundDrawsWithCartridge < Minitest::Test
@@ -24,7 +24,7 @@ class TestBackgroundDrawsWithCartridge < Minitest::Test
   # that never tints still reads it, so the build has to write "no tint" there before anything
   # does: the console makes no promise about what its memory holds at power-on. The emulator
   # hands out cleared memory, so a game finding nought proves nothing. This puts a tint in the
-  # note FIRST, in the gap between loading the cartridge and running its first instruction,
+  # note first, in the gap between loading the cartridge and running its first instruction,
   # and asks whether the layer still shows its list's own colours.
   def test_a_layer_drawn_with_a_list_ignores_what_the_tint_note_held_at_power_on
     require_emulator!
@@ -37,7 +37,7 @@ class TestBackgroundDrawsWithCartridge < Minitest::Test
     end
   end
 
-  # THE SAME FOR WHERE THE LAYER'S LIST IN FORCE STARTS, in a game that changes screen kind and
+  # The same for where the layer's list in force starts, in a game that changes screen kind and
   # starts on a tiled screen. Setting that screen up copies the background colours and then puts
   # each layer's list in force back over them (PaletteTint#emit_changed_bg_lists_again), which
   # reads that variable before the game's own first statement has run. A stale word there would
@@ -127,7 +127,7 @@ class TestBackgroundDrawsWithCartridge < Minitest::Test
   # The console draws every pixel by looking a colour up in one shared table, and the
   # framework normally lets two pictures drawn from the same colours share one group of
   # sixteen entries — a saving nobody has to hear about. It stops being invisible the moment
-  # a layer can be recoloured, because the swap writes INTO that group: anything else
+  # a layer can be recoloured, because the swap writes into that group: anything else
   # reading it would change colour too, and nothing in the program would say why.
   #
   # So a layer that can be recoloured gets a group nobody else reads. This is the test that
