@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/ir/backends/reference/test_save_memory_rules.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/ir/backends/reference/test_save_memory_rules.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# THE RULES OF THE SAVE MEMORY A PROGRAM SAYS IT HAS, kept by the interpreter.
+# The rules of the save memory a program says it has, kept by the interpreter.
 #
 # Battery-backed memory takes any byte anywhere, as often as you like. Flash does not: a write
 # can only turn bits off, and the only way to turn them back on is to wipe a whole 4K block,

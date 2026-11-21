@@ -9,7 +9,7 @@ require "test_helper"
 
 # The game both files play.
 module PerSceneModeOnTheAdvanceGames
-  # FROM A PAINTED PICTURE TO A TURNING ONE, the whole display changes: the console stops
+  # From a painted picture to a turning one, the whole display changes: the console stops
   # showing the bitmap the title painted the moment the rotozoom screen takes over, so where
   # the new scene draws nothing, what shows is the backdrop — not the title's red.
   private def rotozoom_after_a_bitmap_title

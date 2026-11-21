@@ -4,7 +4,7 @@ require "test_helper"
 
 require "differential"
 
-# THE TESTS OF vblank/ir/test_differential.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/ir/test_differential.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # The differential test: the same program on both backends, compared over the
@@ -44,7 +44,7 @@ class TestDifferentialOnTheAdvance < Minitest::Test
 
   # --- bitmap mode: the direct-color framebuffer ---
 
-  # THE EFFECTS THAT CHANGE NOTHING THAT WAS DRAWN — a fade, a tint, the camera.
+  # The effects that change nothing that was drawn — a fade, a tint, the camera.
   #
   # These are the hardest thing for a comparison like this to see, and for a while it
   # could not: reading the interpreter's stored cells shows the picture underneath an
