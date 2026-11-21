@@ -3,7 +3,7 @@
 require "test_helper"
 require "pose_color_list_tests"
 
-# THE COLOUR TABLES OF A SPRITE WHOSE POSES FOLLOW THEIR LISTS, in the PlayStation's video RAM. A
+# The colour tables of a sprite whose poses follow their lists, in the PlayStation's video RAM. A
 # colour table is a row of 16 or 256 entries under the screen's pages (PS1::TextureMemory), and the
 # graphics chip reads a sprite's texture through whichever table its drawing names, a background's
 # as readily as one of the sprites' own.
@@ -14,7 +14,7 @@ class TestPS1PoseColorLists < Minitest::Test
   TABLE_LINES = VBlank::IR::Backends::PS1::TextureMemory::TABLE_LINES
   VRAM_WIDTH = VBlank::Console::PS1Hardware::VRAM_WIDTH
 
-  # A LIST THE GAME NEVER CHANGES, FOLLOWED BY A SPRITE AND A BACKGROUND, IS READ THROUGH ONE TABLE:
+  # A list the game never changes, followed by a sprite and a background, is read through one table
   # the background's, which holds :warm's colours for good. :cold, which the game changes, has the
   # table of its own the sprites read it through. Given a table of its own, the pose of :warm would
   # make a third.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RECORDED PART THAT SITS BETWEEN THE SPEAKERS, on the PlayStation. Each voice of its sound chip has
+# A recorded part that sits between the speakers, on the PlayStation. Each voice of its sound chip has
 # a volume for the left speaker and one for the right, so a part's shade is heard as it was given: the
 # near side at the note's loudness, the far side less by how far off the middle it sits (Audio::Pan).
 class TestPS1RecordedPan < Minitest::Test

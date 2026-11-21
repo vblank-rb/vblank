@@ -112,7 +112,7 @@ class TestPS1R3000 < Minitest::Test
     assert_equal [0x3C080000 | (there >> 16), 0x35080000 | (there & 0xFFFF)], linked.image.unpack("V*")
   end
 
-  # "The loaded data is NOT available to the next opcode" (psx-spx, CPU): a nop goes between a load
+  # "The loaded data is not available to the next opcode" (psx-spx, CPU): a nop goes between a load
   # and an instruction that reads what it loaded, and nowhere else.
   def test_a_load_is_followed_by_a_nop_only_when_the_next_instruction_reads_it
     asm = R3000.new("loads")
@@ -152,7 +152,7 @@ class TestPS1R3000 < Minitest::Test
     assert_equal [0x1500FFFF, 0x2508FFFF], linked.image.unpack("V*")
   end
 
-  # A BRANCH'S SLOT IS FILLED WITH THE INSTRUCTION BEFORE IT where running that instruction after the
+  # A branch's slot is filled with the instruction before it where running that instruction after the
   # branch has decided comes to the same thing: the processor runs the slot either way.
   ADDIU_T1 = 0x25290001 # addiu t1, t1, 1
   BNE_T0 = 0x15000000   # bne t0, zero
