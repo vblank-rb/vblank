@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_input"
 
-# A SLOW GAME'S PRESSES IN THE INTERPRETER, told that each pass takes two frames — which only the
+# A slow game's presses in the interpreter, told that each pass takes two frames — which only the
 # interpreter can be told. The buttons as every run plays them are in
 # test/all/vblank/builder/test_input.rb.
 class TestInputInterpreter < Minitest::Test

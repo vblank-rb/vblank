@@ -3,7 +3,7 @@
 require "test_helper"
 require "brr_recordings"
 
-# WHAT THE INTERPRETER MIXES of a recording given in the Super Nintendo sound chip's own format
+# What the interpreter mixes of a recording given in the Super Nintendo sound chip's own format
 # (Builder#sample's `brr:`): the samples the chip decodes, a byte each, sample for sample the same
 # as the game given them by hand (BRRRecordings, fullsnes's arithmetic), round the loop. The
 # computer builds are held to this mix by their checked runs; the Super Nintendo plays the bytes
