@@ -10,14 +10,14 @@ module PackTilePictureGames
 
   # The pictures the slot :belt holds, one tile each.
   BELT = [PLACES[3], PLACES[1], PLACES[2]].freeze
-  # Cell 0 a still tile; the others name tile 2, which takes turns through BELT, plain, mirrored,
+  # Cell 0 a still tile; the others name tile 2, which takes turns through belt, plain, mirrored,
   # and upside down in bank 1.
   WORDS = [ADVANCE_CELL.(1), ADVANCE_CELL.(2), ADVANCE_CELL.(2, mirrored: true), ADVANCE_CELL.(2, bank: 1, upside_down: true)].freeze
   GENESIS_WORDS = [GENESIS_CELL.(1), GENESIS_CELL.(2), GENESIS_CELL.(2, mirrored: true),
                    GENESIS_CELL.(2, bank: 1, upside_down: true)].freeze
   BELT_AT = TILES_AT + (PLACES.length * 32)
 
-  # A LAIR AFTER A TITLE, EACH SCENE IN COLOURS OF ITS OWN, as a Genesis game's scenes are: three lists
+  # A lair after a title, each scene in colours of its own, as a Genesis game's scenes are: three lists
   # the game changes take three of a Genesis's four palettes for good, so each scene's backgrounds
   # have the fourth, and the two scenes' together need two. The lair's map draws from four banks,
   # two of its cells naming tile 2 (in bank 0, and bank 1 upside down), which takes turns through
@@ -129,7 +129,7 @@ module PackTilePictureGames
     [b.program, b.made_data_pack_file]
   end
 
-  # A MAP OF +cells+ CELLS FOR #title_belt_game_and_file: still tiles in both banks and each way
+  # A map of +cells+ cells for #title_belt_game_and_file: still tiles in both banks and each way
   # turned, every third cell naming tile 2, which takes turns through the belt.
   def self.title_belt_words(cells)
     Array.new(cells) do |at|
@@ -138,7 +138,7 @@ module PackTilePictureGames
     end
   end
 
-  # A BELT ON A TITLE'S SCREEN: a background of the made-up Genesis original whose map is +words+
+  # A belt on a title's screen: a background of the made-up Genesis original whose map is +words+
   # (its map kept after its tiles, so it can be as long as a test wants), tile 2 taking turns through
   # the belt in both banks. With +in_other_lists+ each bank is drawn with two other lists of its own
   # in turn as the game plays, as a title's colours cycle; the registry plays it both ways. Gives back the
@@ -183,7 +183,7 @@ module PackTilePictureGames
     [b.program, b.made_data_pack_file]
   end
 
-  # A SUPER NINTENDO ORIGINAL WHOSE MOVING CELL IS WRITTEN BY THE GAME, as a retail game writes
+  # A Super Nintendo original whose moving cell is written by the game, as a retail game writes
   # its moving blocks into the arena when a stage starts: the map names only the still cell at tile
   # 0, and the cell at tile 2 (tiles 2, 3, 18 and 19, a 16x16 cell's four quarters) takes turns
   # through the belt, each quarter a picture further on than the one before. Its still quarters
@@ -237,7 +237,7 @@ module PackTilePictureGames
     [b.program, b.made_data_pack_file]
   end
 
-  # A WORLD OF MANY ROOMS WHOSE TILES TAKE TURNS, over a slot of colours in sixteen banks, as a
+  # A world of many rooms whose tiles take turns, over a slot of colours in sixteen banks, as a
   # port's field is: ROOM_COUNT rooms, each a map of its own over one slot of tiles, and
   # ROOM_KEYS of those tiles taking turns through the belt's three pictures, each key a picture
   # further on than the one before. Room +room+'s map is ROOM_ACROSS cells naming keys in banks 0
@@ -351,7 +351,7 @@ module PackTilePictureGames
   end
 end
 
-# A TILE OF A BACKGROUND FROM THE DATA PACK TAKING TURNS THROUGH PICTURES OF ANOTHER SLOT
+# A tile of a background from the data pack taking turns through pictures of another slot
 # (Builder::PackTilePictures), as a retail game rewrites a tile of its video memory while the map
 # stays still: the conveyor of a machine, water at the edge of a lake. The answer key is the made-up
 # data itself: every cell naming the tile shows the picture shown, in the cell's own bank and turn.
@@ -473,7 +473,7 @@ class TestPackTilePictures < Minitest::Test
     end
   end
 
-  # A BELT DRAWN WITH OTHER LISTS OF COLOURS: the background's banks are drawn with lists of the
+  # A belt drawn with other lists of colours: the background's banks are drawn with lists of the
   # game's own, a list a pass in turn, and the cells naming the moving tile show its picture in the
   # list shown, as its still cells do.
   def test_a_belt_drawn_with_other_lists_shows_its_pictures_in_them
@@ -528,8 +528,8 @@ class TestPackTilePictures < Minitest::Test
     end
   end
 
-  # A WORLD OF MANY ROOMS WHOSE TILES TAKE TURNS, BUILT WITH ITS PACK LEFT OUT, FITS THE CONSOLE'S
-  # MEMORY. Which banks and turns the maps name is in the file, so each room holds a run of every
+  # A world of many rooms whose tiles take turns, built with its pack left out, fits the console's
+  # memory. Which banks and turns the maps name is in the file, so each room holds a run of every
   # key turned every way for every bank. Every one of those runs shows the same pictures, so they
   # show them from one list: the group's pictures once, not once for each room and bank, which
   # would be more than the console's roomier memory.

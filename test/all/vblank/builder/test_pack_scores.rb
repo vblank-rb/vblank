@@ -4,7 +4,7 @@ require "test_helper"
 require "digest"
 require "tmpdir"
 
-# THE ORIGINAL'S SONGS AS NOTES, read from the data pack (Builder::PackScores). The answer key is
+# The original's songs as notes, read from the data pack (Builder::PackScores). The answer key is
 # the same song written by hand as a Score: the game reading its notes from the pack must play
 # exactly what the game holding them plays.
 class TestPackScores < Minitest::Test
@@ -50,7 +50,7 @@ class TestPackScores < Minitest::Test
   # A game playing one song of two square parts: from the pack when +from+ is given, by hand otherwise.
   # +views+ keeps both parts' records as one slot of bytes, and reads each through a view of notes
   # (DSL::PackSlot#as_notes), the second to the slot's end.
-  # +timed+ reads the song's length and loop from the pack (TIMING), where the game by hand writes
+  # +timed+ reads the song's length and loop from the pack (timing), where the game by hand writes
   # the same length and `plays_once: true`, or with +comes_round+ the same length coming round to
   # its start.
   private def song_game(from = nil, views: false, timed: false, comes_round: false)
@@ -171,7 +171,7 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  # A COLOR SOUND DRIVER'S NOTES, with their voices' settings (`slots.voiced_notes`): a square
+  # A color sound driver's notes, with their voices' settings (`slots.voiced_notes`): a square
   # part whose notes give the voice's period, an envelope, a duty, vibrato and a slide, and a wave
   # part whose notes give periods, vibrato and a shade between the speakers. Each record is [at,
   # length, key, volume, its settings as Original::PackNote keeps them], beside the note written by
@@ -248,7 +248,7 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  # A DRUM WHOSE HITS RATTLE ON SOME NOTES AND A WAVE PART THAT CHANGES WAVE, from voiced records
+  # A drum whose hits rattle on some notes and a wave part that changes wave, from voiced records
   # (Original::PackNote's bytes 25 and 26), as a Game Boy driver sets NR43's bit 3 and the wave for
   # each note it strikes. A record's wave is one of the part's (`notes(waves: [...])`): a wave of
   # the copy, a shape, or the copy's other wave. A rest's settings mean nothing. Its twin read as
@@ -324,7 +324,7 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  # A WAVE OF THE COPY'S (`plays: pack[:waves].wave(1)`), as a Color or Advance driver keeps its
+  # A wave of the copy's (`plays: pack[:waves].wave(1)`), as a Color or Advance driver keeps its
   # wave voice's patterns, sixteen bytes each. Its twin read as the game starts is in
   # test/pack_scores_at_start_tests.rb.
   def test_a_wave_part_playing_a_wave_from_the_pack_plays_as_written_by_hand
@@ -337,7 +337,7 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  # A RECORDED PART BETWEEN THE SPEAKERS, as a Super Nintendo driver pans each note: shades read
+  # A recorded part between the speakers, as a Super Nintendo driver pans each note: shades read
   # from the pack's voiced records, heard where they sit on a console whose chip pans each voice,
   # and from both speakers where every recording is mixed into one sound.
   SHADED_TUNE = [
@@ -389,7 +389,7 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  # A SOUND EFFECT OF PITCHES BETWEEN KEYS THAT GLIDE, as a Super Nintendo driver's effect script
+  # A sound effect of pitches between keys that glide, as a Super Nintendo driver's effect script
   # sets the chip's pitch word under a sounding note: voiced records naming hz in 16ths and
   # GLIDES, on a recorded part, and a drum part whose hits name hz too.
   GLIDING = [

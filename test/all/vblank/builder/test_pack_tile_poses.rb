@@ -33,7 +33,7 @@ module PackTilePoseGames
   ORIGIN = [8, 16].freeze
   SIZE = [16, 16].freeze
   # The same frames wholly below and right of the object's place, which is then outside the
-  # picture, at [-8, -1]: each piece lands where SPIN's land from ORIGIN.
+  # picture, at [-8, -1]: each piece lands where SPIN's land from origin.
   SPIN_BELOW = [[PIECE.(8, 1, 0x40), PIECE.(16, 1, 0x42)], [PIECE.(8, 1, 0x42), PIECE.(16, 1, 0x40)]].freeze
   ORIGIN_ABOVE_LEFT = [-8, -1].freeze
 
@@ -61,7 +61,7 @@ module PackTilePoseGames
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # THE GAME, as a block a Builder or VBlank.game runs: a set of four tiles, a pose of it for each
+  # The game, as a block a Builder or VBlank.game runs: a set of four tiles, a pose of it for each
   # of +frames+ (each pose's options made by +pose+ from the pack and the frame's start), a ball
   # spinning through them, and the set loaded from a picture of the game's own on the first pass.
   # With +balls+ more than one, that many balls of the first pose stand side by side on one row,
@@ -112,13 +112,13 @@ module PackTilePoseGames
   end
 end
 
-# A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE ONE OF THE ORIGINAL'S FRAMES (Builder::SpriteTiles,
+# A pose of a set of sprite tiles whose pieces are one of the original's frames (Builder::SpriteTiles,
 # `image ..., tiles_from:, frame:`). The answer key is the same poses with their pieces written by
 # hand, which is what the made-up frames say.
 class TestPackTilePoses < Minitest::Test
   include PackTilePoseGames
 
-  # The game of +frames+ (each a list of PIECE's bytes) in place of SPIN.
+  # The game of +frames+ (each a list of PIECE's bytes) in place of spin.
   private def game_of_frames(folder, frames) = ball_game_builder(original(folder, frames: frames), frames: frames)
 
   private def screens(program, passes) = (1..passes).map { |pass| game_player.run(program, frames: pass).screen.to_a }
