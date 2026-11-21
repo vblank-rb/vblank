@@ -27,13 +27,13 @@ module VBlank
       # same verbs a game is written in. It is the screen fade's sibling and is built the
       # same way (see ScreenFade), which is why the two read alike at the call site.
       #
-      # WHAT IS WALKED IS HOW FAR THE PICTURE HAS BROKEN UP, from 0 (as drawn) to the
+      # What is walked is how far the picture has broken up, from 0 (as drawn) to the
       # biggest block there is, and the size of a block is one more than that. Counting
       # from nothing is what lets the guardrail below read a `pixelate_in` off the tree
       # the way the fade's reads a `fade_in`: it is the only thing that sets the target
       # to nought.
       #
-      # WHY IT HOLDS A FRACTION. There are sixteen sizes and a walk lasts tens of frames,
+      # Why it holds a fraction. There are sixteen sizes and a walk lasts tens of frames,
       # so a whole-number step would either jump or stand still. A variable that holds a
       # fraction steps by exactly the distance over the frames asked for and lands on the
       # last one, so the number an author writes is the number they get. The display is
@@ -206,7 +206,7 @@ module VBlank
         # The walk's variables and the routine that moves them, declared once however many
         # places in the game pixelate.
         #
-        # THE SIZE IS SHOWN AND THEN MOVED, the order the screen fade keeps, and the size
+        # The size is shown and then moved, the order the screen fade keeps, and the size
         # shown is kept beside the walk because the two are a step apart: `pixelate_size`
         # reads what is on screen, not where the walk has got to.
         #
@@ -246,7 +246,7 @@ module VBlank
           end
         end
 
-        # WHERE THIS GAME'S PIXELATE SITS, and there is one of it — which things are drawn
+        # Where this game's pixelate sits, and there is one of it — which things are drawn
         # in blocks is settled before the game runs (see `pixelate`). Set on either verb
         # it holds for both.
         def place_screen_pixelate!(under)

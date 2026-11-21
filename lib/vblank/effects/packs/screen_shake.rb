@@ -134,9 +134,9 @@ module VBlank
         # the second `shake_screen` finds them rather than declaring a second shake.
         #
         # The routine owns the camera while a shake lasts: it flips the direction,
-        # moves the picture that far, and counts down. The settle branch comes FIRST so
+        # moves the picture that far, and counts down. The settle branch comes first so
         # the last shaking frame is really shown — the branch below it takes the count
-        # to zero, and only the NEXT frame puts the picture back. Once settled the
+        # to zero, and only the next frame puts the picture back. Once settled the
         # count goes negative, so a game that is not shaking does no work at all.
         def screen_shake_state
           @screen_shake_state ||= begin
