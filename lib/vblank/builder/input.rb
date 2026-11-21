@@ -47,7 +47,7 @@ module VBlank
       #
       # * `button` - the button's name, as a symbol, or `:any` for any button.
       # * `player:` - whose controller: a number from 1, or `:any` for every connected player.
-      def held(button, player: 1)
+      def held(button, player: 1, &)
         reject_block!(:held, button) if block_given?
         check_button!(button)
         check_player!(player)
@@ -67,7 +67,7 @@ module VBlank
       #
       # * `button` - the button's name, as a symbol, or `:any` for any button.
       # * `player:` - whose controller: a number from 1, or `:any` for every connected player.
-      def pressed(button, player: 1)
+      def pressed(button, player: 1, &)
         reject_block!(:pressed, button) if block_given?
         check_button!(button)
         check_player!(player)
