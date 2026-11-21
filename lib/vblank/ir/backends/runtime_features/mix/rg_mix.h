@@ -1,12 +1,12 @@
 /*
- * THE MIXER: several recordings sounding at once, added together a frame at a time into one
+ * The mixer: several recordings sounding at once, added together a frame at a time into one
  * stream of sound, the way the console's own software mixer does it (Backends::Reference::Mixer
  * does the same arithmetic in Ruby, and is held to the console byte for byte; this is held to
  * it).
  *
  * The console has no voice that plays a recording by itself, only one that plays a stream it is
  * handed. So the game's CPU adds every sounding recording together into that stream, a frame's
- * slice of it at a time, and that is what this does. Each recording plays on a VOICE of the
+ * slice of it at a time, and that is what this does. Each recording plays on a voice of the
  * mixer — there are a fixed number — which it gives back when it ends.
  */
 #ifndef RG_MIX_H
@@ -41,8 +41,8 @@ extern const uint8_t rg_game_recording_low_bytes[];
  * voice busy it takes the quietest of the song's notes falling away, or is dropped. */
 void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back, int32_t loops);
 
-/* A NOTE OF THE SONG'S on part +lane+ (counted among its parts that play recordings), from a song
- * of +rank+ (IR::Tunes.song_rank) — or of SOUND EFFECT number +effect+, of the effect's rank, for an
+/* A note of the song's on part +lane+ (counted among its parts that play recordings), from a song
+ * of +rank+ (IR::Tunes.song_rank) — or of sound effect number +effect+, of the effect's rank, for an
  * +effect+ other than -1. +sound+ is the recording, the step, how far back it reads, and
  * its shape (whether it has one, then four numbers), and +loudness+ is out of 512. Which voice it
  * gets is the interpreter's rule (Reference::Mixer#start_music_note): the part's own, unless its
@@ -66,7 +66,7 @@ int32_t rg_mix_rescale_music(int32_t lane, int32_t loudness);
 void rg_mix_stop(int32_t recording);
 
 /*
- * A RECORDING'S SETTINGS IN THE FILE (IR::StartFile::RecordingSettings): the rate it was recorded
+ * A recording's settings in the file (IR::StartFile::RecordingSettings): the rate it was recorded
  * at, the sample a held note reads back to, and its envelope. The game works a play and a note
  * out from them as it is built, so it holds a stand-in for each number worked out, and these
  * write the number again from the file. Each writes entries of +into+: the game's own array for
@@ -96,7 +96,7 @@ void rg_mix_fill_steps(int32_t *into, const int32_t *rules);
 void rg_mix_fill_holds(int32_t *into, const int32_t *rules);
 void rg_mix_fill_shapes(int32_t *into, const int32_t *rules);
 
-/* A RECORDING'S LENGTH IN THE FILE (IR::StartFile::RecordingSettings#length): how many of its
+/* A recording's length in the file (IR::StartFile::RecordingSettings#length): how many of its
  * samples it plays, 1 at least and the room the game holds for them at most.
  *
  * rg_mix_fill_length: that length. +rules+: its four numbers, the room, how many entries, and each
@@ -111,7 +111,7 @@ void rg_mix_fill_shapes(int32_t *into, const int32_t *rules);
 void rg_mix_fill_length(int32_t *into, const int32_t *rules);
 void rg_mix_fill_backs(int32_t *into, const int32_t *rules);
 
-/* A RECORDING IN THE SUPER NINTENDO SOUND CHIP'S FORMAT IN THE FILE (IR::StartFile::BRR), decoded
+/* A recording in the Super Nintendo sound chip's format in the file (IR::StartFile::BRR), decoded
  * as the game starts as Audio::SNESRecording#decoded decodes it, held as IR::StartFile::BRR says.
  *
  * rg_mix_fill_brr: the samples, into +samples+, and how many there are and the sample a held note

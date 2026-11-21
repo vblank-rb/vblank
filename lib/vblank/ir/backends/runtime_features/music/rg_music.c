@@ -1,11 +1,11 @@
 /*
- * THE MUSIC PLAYER, the sound effects and the pitch wobble, swell and shape stepping that only
+ * The music player, the sound effects and the pitch wobble, swell and shape stepping that only
  * notes do (see rg_music.h). A runtime feature (backends/runtime_features.rb): this file is
  * included at the end of rg_sound.c, for a game that plays a tune or a sound effect, so it reads
  * the sound runtime's own voices as if it were written there. A game with neither builds without
  * it.
  *
- * THE PLAYER. A song is a set of parts played together, each walking its own list of notes, all
+ * The player. A song is a set of parts played together, each walking its own list of notes, all
  * reading one frame counter so they stay in step. Every frame the player first catches up with
  * what the game asked for — a different tune silences the old one and starts the new one from
  * its first frame — then plays each part's next note if it is due on this frame, then moves the
@@ -18,7 +18,7 @@
  * if the game has the mix feature), a voice the game's own beep, wave or stop_wave took
  * (voice_taken_by_game), and a windowless run printing a moment (moment_printed).
  *
- * WHAT THE LOWERING WRITES for the player, all whole numbers. (The rules it reads from
+ * What the lowering writes for the player, all whole numbers. (The rules it reads from
  * rg_game_sound_rules are described atop rg_sound.c.)
  *
  * rg_game_effects: how many sound effects there are, 1 if each wave note puts its waveform in — any
@@ -326,7 +326,7 @@ static void follow_level(int32_t now) {
 
 /* --- a pitch that wobbles --- */
 
-/* A NOTE A VOICE WOBBLES, by the voice it is on (Audio::Vibrato says what a wobble is, and
+/* A note a voice wobbles, by the voice it is on (Audio::Vibrato says what a wobble is, and
  * IR::Tunes::Wobble how it steps): its vibrato's bits (no depth holds still), the frames still to
  * wait, the frames the swing it is in has left, whether that swing is the one above, the steps it
  * moves the pitch by now, and the ticks a wave of the note's own pitch lasts. */
@@ -356,7 +356,7 @@ static void wobble_start(int32_t voice, const int32_t *note) {
   *was = (wobble){vibrato, vibrato >> VIBRATO_AFTER_AT, carries ? was->left : 0, carries ? was->rising : 0, 0, note[3]};
 }
 
-/* A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, by the voice it is on
+/* A song's swelling note held under the music volume, by the voice it is on
  * (IR::Tunes::Swell says how it is counted): whether the voice has one, its step, how loud the voice
  * has it now, the 256ths of a 64th counted toward its next step, whether it is still swelling, and
  * the note's wave and shape, to strike it again with: a drum hit's hiss, on the noise voice. */
@@ -374,7 +374,7 @@ static void swell_strike(int32_t voice, const swell_walk *swell, int32_t volume,
   else square_start(voice, swell->wave_ticks, swell->eighths_high, volume, fade, 0);
 }
 
-/* EVERY SWELLING NOTE HELD UNDER THE MUSIC VOLUME, at the end of the player's frame before the
+/* Every swelling note held under the music volume, at the end of the player's frame before the
  * wobbles and the shapes, which put a note struck again back at its frame's pitch and shape, the
  * voices in order (Reference::Player#step_swells): struck again at the loudest the
  * music volume lets a note be, holding, or where it was held, swelling on, and logged as it is;
@@ -412,7 +412,7 @@ static void swell_start(int32_t voice, const int32_t *note, int32_t eighths_high
   swells[voice] = (swell_walk){1, fade & FADE_STEP_BITS, volume, 0, 1, note[3], eighths_high};
 }
 
-/* A SQUARE NOTE'S SHAPES, by the voice it is on (Audio::Duty says what they are, and
+/* A square note's shapes, by the voice it is on (Audio::Duty says what they are, and
  * Reference::Player#step_shapes how they step): the shapes' bits, the frame of the note it is on,
  * and whether they change at all — a note of one shape is never stepped. */
 typedef struct {
@@ -450,7 +450,7 @@ static void shape_stop(int32_t voice) {
   swell_stop(voice);
 }
 
-/* EVERY SQUARE NOTE THAT STEPS ITS SHAPES given the shape of the frame it is on, at the end of the
+/* Every square note that steps its shapes given the shape of the frame it is on, at the end of the
  * player's frame after the wobbles, the voices in order (Reference::Player#step_shapes), and logged
  * as it changes. The shape is written every frame, so a held note sounded again at a new music
  * volume is back in its frame's shape. */
@@ -471,7 +471,7 @@ static void wobble_stop(int32_t voice) {
   if (voice <= RG_WAVE_VOICE) wobbles[voice].vibrato = 0;
 }
 
-/* EVERY WOBBLING VOICE MOVED ON, once at the end of the player's frame, the voices in order
+/* Every wobbling voice moved on, once at the end of the player's frame, the voices in order
  * (Reference::Player#step_wobbles), and logged as each moves its pitch. Once its wait is over a
  * voice is put at its note's pitch moved by its steps every frame, so a held note sounded again at
  * a new music volume, at its own pitch, is back where its wobble has it. A square voice takes the
@@ -558,7 +558,7 @@ static int32_t note_sounds(int32_t kind, int32_t pitch, int32_t volume, int32_t 
   return kind != PART_WAVE || wave_quarters_at(volume) != 0;
 }
 
-/* A NOTE IN ITS OWN WAVEFORM, in a game whose sound effects play the wave voice. The tune and an
+/* A note in its own waveform, in a game whose sound effects play the wave voice. The tune and an
  * effect can each want theirs in the voice, which holds one, so a note there — not a rest — puts
  * its own in first when another is there, switching the voice on, as the console's player does.
  * Nothing is put in as a tune starts, since an effect may hold the voice then; and the game's own
@@ -591,7 +591,7 @@ static void silence_song(void) {
  * unless the game's sound effects play that voice too, when each note puts its own in instead
  * (see wave_put_in).
  *
- * A TUNE THAT PLAYED ONCE AND ENDED is looked at first (IR::Tunes.plays_once? has the rule every
+ * A tune that played once and ended is looked at first (IR::Tunes.plays_once? has the rule every
  * backend keeps). While the game still names it and has not asked to stop, nothing plays: its parts
  * go quiet on the frame after its last, and it stays that way. Anything else the game asks for —
  * another tune, no tune, or a stop and the same tune named again — forgets the end, and is then
@@ -654,7 +654,7 @@ static void play_recorded_note(const part_walk *part, const int32_t *note) {
   if (level_variable) hold_note((held_note){0, part->tone, pitch == 0 ? 0 : loudness, 0, 0, 0});
 }
 
-/* HOW A NOTE ON A SQUARE OR THE NOISE VOICE FADES OR SWELLS (IR::Tunes.said_fade), as the voice's
+/* How a note on a square or the noise voice fades or swells (IR::Tunes.said_fade), as the voice's
  * four bits of it: what the note or its part set, or else the voice's own way — a drum hit rings
  * out as its part sets, and a square note holds. */
 static int32_t note_fade(const part_walk *part, const int32_t *note) {
@@ -662,17 +662,17 @@ static int32_t note_fade(const part_walk *part, const int32_t *note) {
   return part->kind == PART_NOISE ? part->fade : 0;
 }
 
-/* HOW A NOTE ON THE FIRST SQUARE VOICE SLIDES ITS PITCH (IR::Tunes.said_slide), as the voice's seven
+/* How a note on the first square voice slides its pitch (IR::Tunes.said_slide), as the voice's seven
  * bits of it, or 0 to hold it. Only the song's first square part can set one. */
 static int32_t note_slide(const int32_t *note) { return (note[4] >> SLIDE_AT) & SLIDE_BITS; }
 
-/* A DRUM HIT'S NOISE BITS (IR::Tunes.said_metallic): its own where it said whether it rattles, else
+/* A drum hit's noise bits (IR::Tunes.said_metallic): its own where it said whether it rattles, else
  * its part's. */
 static int32_t note_noise_bits(const part_walk *part, const int32_t *note) {
   return note[5] & HAS_NOISE_BITS ? (note[5] >> NOISE_BITS_AT) & NOISE_BITS : part->tone;
 }
 
-/* A WAVE NOTE'S WAVEFORM (IR::Tunes.said_wave): its own where it named one, else its part's. */
+/* A wave note's waveform (IR::Tunes.said_wave): its own where it named one, else its part's. */
 static int32_t note_waveform(const part_walk *part, const int32_t *note) {
   return note[5] & HAS_WAVE ? (int32_t)((uint32_t)note[5] >> WAVE_AT) : part->tone;
 }
@@ -689,7 +689,7 @@ static void log_wave_or_noise(const char *what, int32_t who, const part_walk *pa
   }
 }
 
-/* THE SPEAKER A NOTE PLAYS FROM (IR::Tunes.note_side): PAN_LEFT, PAN_RIGHT, or nought for both. */
+/* The speaker a note plays from (IR::Tunes.note_side): PAN_LEFT, PAN_RIGHT, or nought for both. */
 static int32_t note_pan(const int32_t *note) { return (int32_t)(((uint32_t)note[4] >> PAN_AT) & PAN_BITS); }
 
 /* The log's line for a note setting its voice (IR::Tunes.voice_entry): with the note's fade after it
@@ -798,7 +798,7 @@ static void refuse_too_many_effects(void) {
 }
 
 /* START effect number +effect+ at the next frame, from its first note, whether or not it is
- * sounding already (Reference::Player#request_effect). If another of its GROUP is sounding or
+ * sounding already (Reference::Player#request_effect). If another of its group is sounding or
  * already asked for — the first of them, in the order they were declared — one of lower priority
  * is not played, and one of at least that priority stops that one on the next frame and starts in
  * its place. */
@@ -907,7 +907,7 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
   }
 }
 
-/* ONE SOUND EFFECT'S FRAME (Reference::Player#play_effect_frame). Cut off by another of its group,
+/* One sound effect's frame (Reference::Player#play_effect_frame). Cut off by another of its group,
  * it stops first. Asked for, it starts from its first note; past its last frame it lets go of
  * what it still holds; and sounding, it plays whatever notes are due. */
 static void play_effect_frame(int32_t effect) {
@@ -947,7 +947,7 @@ static void play_effect_frame(int32_t effect) {
 
 static void play_song_frame(void);
 
-/* SOUND EFFECTS PLAY AROUND THE SONG, highest rank first (IR::Tunes.effects_by_rank): the effects
+/* Sound effects play around the song, highest rank first (IR::Tunes.effects_by_rank): the effects
  * that outrank the tune before its parts, the rest after. So a note that loses its voice to one
  * due on the same frame is never written at all — whoever writes a voice first on a frame keeps
  * it. */
@@ -970,7 +970,7 @@ static void rg_music_sound_frame(void) {
   step_shapes();
 }
 
-/* A TUNE NAMED `this_frame: true`, started where the game names it rather than at the next frame
+/* A tune named `this_frame: true`, started where the game names it rather than at the next frame
  * (Reference::Player#start_song_here): the catching up and the tune's first frame, here, so the
  * next frame plays its second. The sound effects are not moved on — they had this frame already. */
 void rg_music_start_here(void) {
@@ -978,7 +978,7 @@ void rg_music_start_here(void) {
   if (switch_to_wanted_song() && playing >= 0) play_song_frame();
 }
 
-/* AN EFFECT ASKED FOR `this_frame: true`, started where the game asks rather than at the next frame
+/* An effect asked for `this_frame: true`, started where the game asks rather than at the next frame
  * (Reference::Player#start_effect_here): in rank order, every effect of a group waiting to be cut
  * off is cut off, and this one plays its first frame. Nothing sounding is moved on. One not played
  * because another of its group outranks it is not asked for, and nothing happens. */
@@ -1518,7 +1518,7 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
     }
   }
 
-  /* WHAT THE PART IS DOING AT THE LOOP FRAME, for a song that comes round (IR::Tunes.loop_passes):
+  /* What the part is doing at the loop frame, for a song that comes round (IR::Tunes.loop_passes):
    * a part with a note starting there needs nothing; one silent there and sounding at the end is
    * silenced there; one holding a note across it sounds that note again there every time after
    * the first, unless the song ends on the same note. */

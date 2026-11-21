@@ -52,7 +52,7 @@ void rg_music_hold(int32_t held);
 void rg_music_follow_level(const int32_t *level);
 
 /*
- * A PART'S NOTES IN THE FILE (IR::StartFile::Notes): records of twelve bytes that a port's
+ * A part's notes in the file (IR::StartFile::Notes): records of twelve bytes that a port's
  * unpacking writes (Original::PackNote), low byte first: the tick a note starts on and how many
  * ticks it lasts (two bytes each, 0 for until the next), its key (0 to 127, anything else a rest),
  * which of the part's instruments it plays and its volume (0 to 15), each the part's own where
@@ -91,7 +91,7 @@ void rg_music_follow_level(const int32_t *level);
  * of a note is one the game worked out as it was built: nothing here tunes a key or times a tick. */
 void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *rules, const int32_t *tick_frames);
 
-/* A SONG'S LENGTH IN THE FILE (IR::StartFile::SongLength): the tick it ends or comes round on,
+/* A song's length in the file (IR::StartFile::SongLength): the tick it ends or comes round on,
  * and the tick it comes round to, each a number a port's unpacking wrote. The game holds the most
  * frames the song can last as its length, and this writes the frames those ticks fall on over the
  * song's length and loop frame in +music+, before any of its parts' notes are made. +rules+: where
@@ -104,7 +104,7 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
  * song's number for that, so its parts' notes are then made for a song that does not come round. */
 void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
 
-/* A PART'S WAVE IN THE FILE (IR::StartFile::Wave): sixteen bytes from +at+ on, two steps a byte,
+/* A part's wave in the file (IR::StartFile::Wave): sixteen bytes from +at+ on, two steps a byte,
  * the earlier in the high four bits, as the Game Boy's wave memory keeps them. The game holds a
  * stand-in for it as waveform number +which+ of +waveforms+ (rg_sound.c says the layout), and this
  * writes the wave's 32 steps over it. */
