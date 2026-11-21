@@ -4,12 +4,12 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE PICTURE, written as C: the drawing statements, a scene taking the screen over, and
+        # The picture, written as C: the drawing statements, a scene taking the screen over, and
         # the art they draw with. Mixed into Lowering, beside the logic.
         #
         # The drawing itself is done by runtime/rg_screen.c, a port of the interpreter's picture;
         # what this half does is lay it out in the interpreter's order and hand over the art. All of
-        # the art is worked out HERE, in Ruby, with the interpreter's own readings of it — which
+        # the art is worked out here, in Ruby, with the interpreter's own readings of it — which
         # pixel of a tile shows what is behind, which color a pixel of a picture is — so the C
         # never has a second opinion about a pixel.
         module Picture
@@ -33,7 +33,7 @@ module VBlank
           # rows, and the columns and rows of the grid it comes round at.
           MAP_FIELDS = 5
           MAX_BACKGROUNDS = 64
-          # THE RUNTIMES' SPRITE TABLES (RG_MAX_SPRITES, handed to each runtime with the build's own
+          # The runtimes' sprite tables (RG_MAX_SPRITES, handed to each runtime with the build's own
           # numbers, StateFile#values) hold a row for every sprite the game declares, each scene's
           # apart: where each was last drawn, and the sprites on screen this frame. A console counts
           # only the sprites a screen shows together
@@ -203,7 +203,7 @@ module VBlank
              runtime_array("border_pixels", "int16_t", border_pixels)]
           end
 
-          # THE BORDER ROUND THE GAME'S SCREEN, where the console shows that screen in the middle of a
+          # The border round the game's screen, where the console shows that screen in the middle of a
           # bigger one (Console::Description#bordered?): a picture of the whole screen, a colour a
           # pixel row by row, which the window shows with the game's screen over its middle
           # (rg_screen_framed). The game's own (`border`) or VBlank's, as the cartridge draws it
@@ -233,13 +233,13 @@ module VBlank
           # is fifteen bits of colour or -1 for see-through, so sixteen signed bits hold it: a
           # game's pictures are most of its program, and four bytes a pixel doubled them.
           #
-          # A PICTURE READ FROM THE START FILE IS NOT WRITTEN AT ALL: the routine reading the file
+          # A picture read from the start file is not written at all: the routine reading the file
           # fills every pixel of it, once for each list it is drawn with, so what the program held
           # there would be thrown away. Written out, a title's poses each drawn in every set of
           # colours its lists hold are hundreds of megabytes of stand-ins. So those pictures come
           # after the pixels written, as room the game makes as it starts (StartFileFills#build_start_file_pixel_room).
           #
-          # A POSE READ FROM THE START FILE IS HELD ONCE, however many sets of colours draw it: its
+          # A pose read from the start file is held once, however many sets of colours draw it: its
           # pixels are the places of its frame, and each image of it is those pixels and a list of
           # the colours its set puts at each place, which the runtime looks each pixel up in as it
           # draws (rg_game_images' fourth number). A title's actors followed through sixty sets of
@@ -601,7 +601,7 @@ module VBlank
              runtime_array("tiles_in_front", "uint8_t", tiles_in_front.empty? ? [0] : tiles_in_front, writable: true)]
           end
 
-          # WHICH OF A BACKGROUND'S TILES ARE IN FRONT OF THE SPRITES (Nodes::Background#in_front): a
+          # Which of a background's tiles are in front of the sprites (Nodes::Background#in_front): a
           # byte for each of its +tile_count+ tiles, 1 for one in front, added to +tiles_in_front+;
           # hands back where they start there, the background's RG_BG_FRONT, or NOT_IN_FRONT for a
           # background that did not ask for cells in front. The runtime paints the cells showing
@@ -628,10 +628,10 @@ module VBlank
           # RG_BG_FRONT of a background with no cells in front of the sprites.
           NOT_IN_FRONT = -1
 
-          # EVERY BACKGROUND'S TILES, written into +tile_pixels+, and where each background's start
+          # Every background's tiles, written into +tile_pixels+, and where each background's start
           # there, by background.
           #
-          # A BACKGROUND WHOSE MAP IS READ FROM THE START FILE IS NOT WRITTEN AT ALL. Its tiles are
+          # A background whose map is read from the start file is not written at all. Its tiles are
           # the file's: its tables of colours, and after every set its slots' tiles as places, empty until
           # the routine reading the file fills them (StartFileFills#record_start_file_background_fill), and before them the
           # tiles the game holds, which are a tile the game paints (see-through until it does), a
@@ -774,7 +774,7 @@ module VBlank
           # placed fade's layer can be and still leave +thing+ as drawn, or NO_LAYER when every
           # placed fade reaches it.
           #
-          # The interpreter takes the NAMES of everything declared in the fade's layer or in
+          # The interpreter takes the names of everything declared in the fade's layer or in
           # front of it, scenery and sprites in one list, and leaves a thing as drawn when its
           # name is among them (Reference#set_blend_for). So two things with one name are left or
           # reached together, by whichever of them was declared further forward, and that is the
@@ -876,7 +876,7 @@ module VBlank
             Array(bg.recolors).each_index.map { |step| bg.list_swaps(step) }
           end
 
-          # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each) has its
+          # A background that follows several lists the game changes (Background#follows_each) has its
           # tiles written again for every set each of those lists can hold, list after list, the set
           # a list was declared with first, and every other list as declared in each. No set is a
           # pair of two lists' sets, which would be one list's sets times the other's. The picture is
@@ -915,7 +915,7 @@ module VBlank
           # The rules for one background and one list it follows, made once, or nil where none of
           # its tiles is drawn from the list.
           #
-          # A BACKGROUND READ FROM THE START FILE draws its maps' cells through a table of colours for
+          # A background read from the start file draws its maps' cells through a table of colours for
           # each bank, so the rules name the tables of the banks drawn from the list, and leave room
           # for the cells a slot told it, whose banks are in the file, where the routine reading the
           # file can write (StartFileFills#record_start_file_followed_tiles).
@@ -1348,7 +1348,7 @@ module VBlank
           end
 
           # Which picture a sprite showing pose number +pose+ (one of its poses, already checked)
-          # is DRAWN from, in the colors it is drawn with now. Its pictures are a row of poses in
+          # is drawn from, in the colors it is drawn with now. Its pictures are a row of poses in
           # its own colors, then a row for each list it can be drawn with
           # (Reference#object_recolor), and rg_place_of_choice returns which row it is on.
           #
@@ -1400,7 +1400,7 @@ module VBlank
           # declared one first.
           def pictures_held_by(name, list) = sets_held_by(list).map { |colors| image_number(name, colors) }
 
-          # A POSE WHOSE LIST ITS FRAME PICKS AS THE GAME STARTS (IR::StartFile::Pose#bank_lists): for
+          # A pose whose list its frame picks as the game starts (IR::StartFile::Pose#bank_lists): for
           # each bank, the list of that bank where +obj+ follows it, or nil; nil for any other pose.
           # Such a pose has its own picture, in its frame's bank's colours, and then the pictures of
           # each followed bank's list; which of them it starts at, and which list it follows, are
@@ -1470,7 +1470,7 @@ module VBlank
                  picture_collided(node.b_poses, node.b_pose), value(node.b_x), value(node.b_y))
           end
 
-          # Which picture a sprite COLLIDES as: the one of +poses+ its pose names, in its own
+          # Which picture a sprite collides as: the one of +poses+ its pose names, in its own
           # colors whatever it is drawn with, since a swap of colors moves no pixel. The pose is
           # not checked first here; rg_pose_image reads it the way the interpreter does.
           def picture_collided(poses, pose)

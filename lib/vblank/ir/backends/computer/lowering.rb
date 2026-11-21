@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # ONE PROGRAM, WRITTEN OUT FOR A COMPUTER, as a tree of statements (Statements): globals,
+        # One program, written out for a computer, as a tree of statements (Statements): globals,
         # routines, tables of numbers, and calls into a runtime. Make one per program, as a build's
         # own lowering (Native::Lowering writes the tree as C, JS::Lowering as JavaScript,
         # Ruby::Lowering as Ruby), and ask it for the text. Each build supplies #build_name, what a
@@ -37,7 +37,7 @@ module VBlank
                                               and: "rg_both", or: "rg_either"
                                             })
 
-          # EVERY KIND THIS LOWERING WRITES, each by a method of its own called by name in #lower and
+          # Every kind this lowering writes, each by a method of its own called by name in #lower and
           # #value_by_kind; read by test_native_kind_coverage.rb and #refuse_unlowered_kinds!. A
           # declaration writes nothing where it is (#lower_nothing).
           STATEMENT_KINDS = (%i[
@@ -186,7 +186,7 @@ module VBlank
             end
           end
 
-          # EVERY KIND THIS BACKEND CANNOT WRITE YET, listed rather than found out. Native
+          # Every kind this backend cannot write yet, listed rather than found out. Native
           # trails the other two backends, so a kind may be missing here — but only on this list,
           # which test_native_kind_coverage.rb holds against every kind there is. A kind leaves
           # the list the day it joins STATEMENT_KINDS or VALUE_KINDS.
@@ -267,7 +267,7 @@ module VBlank
           # How many bytes each type an array can be written in takes.
           ARRAY_TYPE_BYTES = Ractor.make_shareable({ "int8_t" => 1, "uint8_t" => 1, "int16_t" => 2, "uint16_t" => 2, "int32_t" => 4 })
 
-          # THE BYTES THE GAME SETS ASIDE FOR WHAT THE START FILE FILLS (Statements::StartFileArray): the
+          # The bytes the game sets aside for what the start file fills (Statements::StartFileArray): the
           # tables, colours and numbers a build that reads its pack as the game starts keeps while it runs,
           # in whichever language it is written. The written game names only their sizes, so what it holds
           # at run time is not in its length. Public for the tests of what such a build costs
@@ -276,7 +276,7 @@ module VBlank
             top_level.sum { |item| item.is_a?(Statements::StartFileArray) ? item.count * ARRAY_TYPE_BYTES.fetch(item.type) : 0 }
           end
 
-          # THE BYTES OF ROOM THE GAME MAKES AS IT STARTS FOR THE SPRITE PICTURES THE START FILE FILLS
+          # The bytes of room the game makes as it starts for the sprite pictures the start file fills
           # (StartFileFills#build_start_file_pixel_room), which the written game names only by size.
           # Public for the same tests; asking lowers the program.
           def start_file_image_room_bytes
@@ -284,7 +284,7 @@ module VBlank
             (@image_pixel_count - @image_pixels_held) * ARRAY_TYPE_BYTES.fetch("int16_t")
           end
 
-          # THE BYTES OF ROOM THE GAME MAKES AS IT STARTS FOR THE BACKGROUND TILES THE START FILE FILLS,
+          # The bytes of room the game makes as it starts for the background tiles the start file fills,
           # the same way. Public for the same tests; asking lowers the program.
           def start_file_tile_room_bytes
             top_level
@@ -341,7 +341,7 @@ module VBlank
             end
           end
 
-          # THE GAME'S HALF OF THE STATE IMAGE (runtime/rg_state.h): every global the build wrote and every
+          # The game's half of the state image (runtime/rg_state.h): every global the build wrote and every
           # list, found among the finished top level, so a global added anywhere in the lowering, a
           # routine's place and locals among them (Resumable), is in the image without being named
           # here. A global is a field of one number, "game." and its name; a list is "list." and the
@@ -520,7 +520,7 @@ module VBlank
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES, and these builds keep every pool AS LISTS,
+          # A pool is kept in the layout its placement gives, and these builds keep every pool as lists,
           # whatever layout the game names for the console it is made as: a list of the runtime's for
           # each of the pool's lists (runtime/rg_list.h), each item as wide as the list. A layout is
           # where a cartridge keeps a pool in the console's memory so its processor reaches a field
@@ -710,7 +710,7 @@ module VBlank
 
           # A counted loop. The count is read once, before the first pass, as the interpreter
           # reads it; the index counts 0, 1, 2... and is stored in the game's variable at the
-          # top of each pass; and +stop_when+ is asked BEFORE the body, so a loop already
+          # top of each pass; and +stop_when+ is asked before the body, so a loop already
           # finished on its first pass runs the body no times.
           def lower_repeat(node)
             count = local_name("count")
@@ -747,7 +747,7 @@ module VBlank
                            Statements::If.new(condition: in_range, body: [eval_call("rg_call_routine", picked)])])]
           end
 
-          # Picks the scene to run by the variable, read ONCE: a scene usually ends by setting
+          # Picks the scene to run by the variable, read once: a scene usually ends by setting
           # the variable to the next scene, and reading it again per clause would run that one
           # too, in the same pass.
           def lower_case(node)
@@ -950,7 +950,7 @@ module VBlank
           end
           def value_of_shift_right(node) = call("rg_shr", value(node.operand), Statements::Int.new(node.bits))
 
-          # A READING OF THE CARTRIDGE'S CLOCK, asked of the runtime by its place in
+          # A reading of the cartridge's clock, asked of the runtime by its place in
           # IR::Clock::READINGS. Where the time comes from is the runtime's driver's to set: the
           # computer's clock in a window, the test's moment with none (rg_driver.h).
           #
@@ -963,7 +963,7 @@ module VBlank
 
           def sets_clock? = @sets_clock.nil? ? (@sets_clock = IR::Clock.sets_clock?(@program)) : @sets_clock
 
-          # SETTING THE CLOCK: the runtime works out how far the time set is from its clock's, and
+          # Setting the clock: the runtime works out how far the time set is from its clock's, and
           # the game keeps the two parts in its saved numbers (Reference#exec_set_clock).
           def lower_set_clock(node)
             parts = [node.year, node.month, node.day, node.hour, node.minute, node.second].map { |part| value(part) }

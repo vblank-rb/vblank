@@ -136,7 +136,7 @@ module VBlank
           # The interpreter's options, so a test makes either the same way. +save+ is the save
           # memory the game starts with (an IR::SaveImage), a new cartridge's unless one is
           # handed over. What a run leaves in its save memory is put back into it, so handing
-          # the SAME one to two runs is the console turned off and on again, as it is for the
+          # the same one to two runs is the console turned off and on again, as it is for the
           # interpreter.
           def initialize(save: SaveImage.new)
             unless save.is_a?(SaveImage)
@@ -321,7 +321,7 @@ module VBlank
           attr_reader :read_program
           private :read_program
 
-          # WHAT THE MIXER MADE AND IS PLAYING, as the interpreter answers it — at the end of the
+          # What the mixer made and is playing, as the interpreter answers it — at the end of the
           # run, or at the frame boundary a watching block or an input script asks at. Every
           # frame's slice of sound, oldest first; the recordings sounding, a voice each, in the
           # order of the voices; the most that sounded at once; how many plays were dropped; the
