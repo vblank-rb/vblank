@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHICH RUNTIME A GAME GETS, read with nothing assembled. A runtime nobody needs is left out, so a
+# Which runtime a game gets, read with nothing assembled. A runtime nobody needs is left out, so a
 # game that does not use a feature builds the same bytes.
 class TestSNESRuntimeCarries < Minitest::Test
   SNES = VBlank::IR::Backends::SNES

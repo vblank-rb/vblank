@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME THAT KEEPS A SMALL SAVE RECORD, as a high-score table is: a list of 61 bytes, loaded at
+# A game that keeps a small save record, as a high-score table is: a list of 61 bytes, loaded at
 # power-on. Setting the record up fills the table of places and the record's own lists, and writes
 # and sums the table, before the game's first pass. On the Super Nintendo that work must cost no
 # more than one frame beyond what the same game with no record takes, as on the Color

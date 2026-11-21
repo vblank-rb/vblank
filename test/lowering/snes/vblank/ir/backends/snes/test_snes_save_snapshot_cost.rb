@@ -3,7 +3,7 @@
 require "test_helper"
 require "save_snapshot_cost_games"
 
-# WHAT A SAVE'S SNAPSHOT OF A LIST COSTS ON THE SUPER NINTENDO, measured in the emulator: a record
+# What a save's snapshot of a list costs on the Super Nintendo, measured in the emulator: a record
 # keeping a list of 64 words, 256 bytes, copied into the record's buffer on the pass the save is asked
 # (SaveSnapshotCostGames). Each run of the list's slots is one MVN (Lowering#emit_list_pack_block),
 # seven cycles a byte (fullsnes, "65XX Block Move"): the opcode and its two banks fetched again, the
