@@ -31,7 +31,7 @@ module VBlank
 
       attr_reader :name
 
-      # PUT THE BAR'S TOP AT SCREEN ROW +row+, which may be something the game works out. The
+      # Put the bar's top at screen row +row+, which may be something the game works out. The
       # bar covers the screen from there to the bottom, so a row at the bottom of the screen or
       # past it puts the whole bar out of view, and a row above the top is the top.
       #
@@ -44,7 +44,7 @@ module VBlank
         self
       end
 
-      # HIDE THE SPRITES UNDER THE BAR, or show them again: for a menu brought up over the field,
+      # Hide the sprites under the bar, or show them again: for a menu brought up over the field,
       # where the score bar in play lets the ball show over it. With +covers+ true no sprite shows
       # from the bar's top to the bottom of the screen, and a sprite partly above the top shows
       # its part above. Like a move, it is shown from the gap between frames, so a bar moved and
@@ -64,7 +64,7 @@ module VBlank
       # The row the bar's top is at, as the game last set it, as a {Value}.
       def top = Value.new(@builder, Build.var_ref(@top_var), name: @top_var)
 
-      # PUT A DIFFERENT TILE IN ONE CELL OF THE BAR: a digit of the score, a heart lost. The
+      # Put a different tile in one cell of the bar: a digit of the score, a heart lost. The
       # same as a background's `set_tile`: +col+ and +row+ are cells of the bar's map, and the
       # tile is named the way the map was written.
       #
@@ -81,12 +81,12 @@ module VBlank
         self
       end
 
-      # A BAR IS NOT HELD TO A BOX. It is already held to the rows from its top down, and the
+      # A bar is not held to a box. It is already held to the rows from its top down, and the
       # console uses the part of its display that would hold the box for that.
       def show_only_inside(*) = refuse_box!("show_only_inside")
       def show_everywhere = refuse_box!("show_everywhere")
 
-      # SHOW ANOTHER OF THE BAR'S MAPS, for a bar declared with several. The whole bar changes in
+      # Show another of the bar's maps, for a bar declared with several. The whole bar changes in
       # one call, which is how a game clears a message that is too many cells to change with
       # `set_tile` in one pass: give the bar an empty map and show it. Cells changed with
       # `set_tile` before this are forgotten. Cells changed after it, in the same pass too, show

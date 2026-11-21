@@ -37,7 +37,7 @@ module VBlank
         operand.is_a?(Value) ? operand.node : Build.to_value_node(operand)
       end
 
-      # THE NUMBER THIS OPERAND ALREADY HAS, or nil when the game works it out as it runs.
+      # The number this operand already has, or nil when the game works it out as it runs.
       # The sibling of #node_for, and the same idea: ask for the answer rather than for the
       # class, because "a number the author wrote" is not one Ruby type. A bare 5, a literal
       # already wrapped for the tree, and a handle standing for one are the same fact, and a
@@ -63,7 +63,7 @@ module VBlank
       # @param name [Symbol, nil] the variable name, if this handle names one
       # @param fraction_bits [Integer, nil] how many fraction bits it carries; nil for a
       #   plain whole number (see {Fraction} for what carrying a fraction means)
-      # +declaring+ is how to tell somebody to declare THIS kind of thing with a fraction,
+      # +declaring+ is how to tell somebody to declare this kind of thing with a fraction,
       # given the number they wrote. A variable and a list declare it differently, and the rules
       # for lining two scales up are otherwise the same — so the rules live here once and
       # only the advice changes.
@@ -88,12 +88,12 @@ module VBlank
         @builder.track_expression(self)
       end
 
-      # A NUMBER THE FRAMEWORK BUILDS TO HAND TO AN AUTHOR'S BLOCK: the row a bend is working
+      # A number the framework builds to hand to an author's block: the row a bend is working
       # out, the instance a pool's routine runs on. A block is free to ignore what it is
       # handed — a bend the same on every row, a routine with nothing to do with its
       # instance — and a number the author never asked for is not one the author threw away.
       # So it is not tracked as one (see Builder#track_expression), and every number the
-      # block works out FROM it still is.
+      # block works out from it still is.
       #
       # Not a handle: it names no place the author may write to, and nothing here pretends
       # it does.
@@ -223,7 +223,7 @@ module VBlank
       # name of its own (a pool field, a list slot). For a message that wants to say which.
       attr_reader :name
 
-      # WHETHER THIS STANDS FOR A PLACE THAT KEEPS A NUMBER, rather than being a working-out
+      # Whether this stands for a place that keeps a number, rather than being a working-out
       # of one. A handle names somewhere — a variable here, a pool field in {FieldRef} — so
       # writing one down and doing nothing else with it is ordinary: `hero.x` on its own
       # line is pointless but harmless. An EXPRESSION is a number worked out and handed
@@ -272,7 +272,7 @@ module VBlank
         @scale.fraction?
       end
 
-      # THE NAMES THIS VALUE HOLDS, or nil where it holds plain numbers. A variable declared
+      # The names this value holds, or nil where it holds plain numbers. A variable declared
       # with a name — `var :mode, :title` — keeps one of a set of them, and what is stored is
       # the number each name was given (see {NameSet}). Read by `call`, which turns "the name
       # this variable holds" into the routine of that name.
@@ -300,8 +300,8 @@ module VBlank
         scaled(Build.neg(@node), @scale.bits)
       end
 
-      # Multiply. A fraction times a plain COUNT is ordinary multiplication and keeps the
-      # fraction — twice as fast is twice as fast. A fraction times another FRACTION is
+      # Multiply. A fraction times a plain count is ordinary multiplication and keeps the
+      # fraction — twice as fast is twice as fast. A fraction times another fraction is
       # the one that overflows on the way, so it becomes the full-width multiply
       # automatically; see {Fraction} for why that is the point of the whole thing.
       def *(other)
@@ -316,8 +316,8 @@ module VBlank
 
       # Division, truncated toward zero (so -7 / 2 is -3).
       #
-      # Dividing by a plain COUNT is ordinary division and keeps the fraction — half the
-      # speed is half the speed. Dividing by another FRACTION is the one that needs care,
+      # Dividing by a plain count is ordinary division and keeps the fraction — half the
+      # speed is half the speed. Dividing by another fraction is the one that needs care,
       # for the mirror of the reason `*` does: two numbers multiplied up by the same amount
       # divide that amount straight back out, so the answer would come back a whole number.
       # The framework widens the numerator first to stop that, which is what {Build.div_fix}
@@ -407,16 +407,16 @@ module VBlank
         Value.new(@builder, Build.bit_not(@node))
       end
 
-      # `.then` ON A NUMBER, which Ruby will happily answer and a game must not. Every Ruby
+      # `.then` on a number, which Ruby will happily answer and a game must not. Every Ruby
       # object has `then`, so `(flags & DOOR).then { open_it }` would run the block while the
-      # game is BUILT and record `open_it` with no test around it: the door opens every frame.
+      # game is built and record `open_it` with no test around it: the door opens every frame.
       def then(*)
         raise ArgumentError,
               "`.then` does not branch on a number. A number is not a yes or a no. To fix this, " \
               "compare it and write `if`: `if (flags & 4) != 0 ... end`.#{at_dsl_line}"
       end
 
-      # RUBY ASKED FOR A PLAIN NUMBER, and this is one the game works out.
+      # Ruby asked for a plain number, and this is one the game works out.
       #
       # Ruby calls this when it wants a real Integer and was handed something else.
       # Without it the program stops with "no implicit conversion of VBlank::DSL::Value into
@@ -479,12 +479,12 @@ module VBlank
       #   speed = var :speed, (3 * 65536) / 2     # 1.5, with 16 fraction bits
       #   step  = speed.times_fraction(speed, fraction_bits: 16)   # 2.25, kept the same way
       #
-      # Both sides must carry the SAME number of fraction bits, and so does the answer.
+      # Both sides must carry the same number of fraction bits, and so does the answer.
       #
       # Nothing checks that for you: you give the number of bits at each multiply, and
       # the framework has no idea which of your variables hold fractions. That is a
       # deliberate stopping point rather than an oversight. The alternative is for the
-      # scale to travel WITH the value, so `a * b` does the right thing because the
+      # scale to travel with the value, so `a * b` does the right thing because the
       # compiler knows what a and b are and mixing scales is a build error — much
       # closer to what this framework promises, and much more machinery (a type on
       # every Value, inference through every operation, conversions at every boundary
@@ -575,7 +575,7 @@ module VBlank
         mutate { @builder.decrease!(@name, align!(amount, "subtract")) }
       end
 
-      # THE SAME THREE WITHOUT THE `!`. These three have no new-number meaning of their own —
+      # The same three without the `!`. These three have no new-number meaning of their own —
       # `set` answers no question at all, and a new number from adding is what `+` already is —
       # so each says which word to write instead (see {ChangingWord}).
       # Written out as source rather than made from a block, so another Ractor can call them —
@@ -658,7 +658,7 @@ module VBlank
         mutate { @builder.flip!(@name) }
       end
 
-      # --- the same five as NEW numbers, leaving this one alone ---
+      # --- the same five as new numbers, leaving this one alone ---
       #
       # A word without `!` never changes anything, which is what Ruby's own Integer#abs and
       # Comparable#clamp promise and what `apart.abs <= reach` reads as. Each is the number
@@ -737,12 +737,12 @@ module VBlank
         Value.new(@builder, Build.binop(op, @node, node_of(other)))
       end
 
-      # A COUNT WRITTEN INTO THE PROGRAM that moves every bit off the end. The number is
+      # A count written into the program that moves every bit off the end. The number is
       # right there to read, so this is a mistake the build can see, and it is always a
       # mistake: the answer no longer depends on what was shifted, and somebody who
       # wanted nothing would have written nothing.
       #
-      # A count the GAME works out is left alone. That one comes out of data and can land
+      # A count the game works out is left alone. That one comes out of data and can land
       # anywhere, which is exactly why IR::Int32 pins what happens when it lands outside.
       def refuse_shift_past_width!(op, places)
         count = Value.fixed_number(places)
@@ -761,11 +761,11 @@ module VBlank
               "holds. #{advice}#{at_dsl_line}"
       end
 
-      # A ZERO WRITTEN INTO THE PROGRAM as the number to divide by. Like the shift above it
+      # A zero written into the program as the number to divide by. Like the shift above it
       # is a mistake the build can read, and always a mistake: there is no answer, so the
       # game would be handed 1 or -1 (see IR::Int32.quotient_by_zero) and carry on with it.
       #
-      # A divisor the GAME works out is left alone, since that one can come to nought on
+      # A divisor the game works out is left alone, since that one can come to nought on
       # some frame nobody foresaw. What it gives then is pinned, and the same everywhere.
       #
       # A fraction too small to keep counts as a written zero, because zero is what it is
@@ -787,7 +787,7 @@ module VBlank
               "#{advice}#{at_dsl_line}"
       end
 
-      # A number that HOLDS A FRACTION keeps that fraction in its own low bits, so a bit
+      # A number that holds a fraction keeps that fraction in its own low bits, so a bit
       # operation on one changes the fraction rather than the number the author can see —
       # and nothing in the answer would show it. Refuse it and say which side is at fault.
       def whole_numbers_only!(op, other)
@@ -800,7 +800,7 @@ module VBlank
               "number you can see. Use `.to_i` first to drop the fraction.#{at_dsl_line}"
       end
 
-      # An operation whose two sides must be at the SAME scale — adding, subtracting,
+      # An operation whose two sides must be at the same scale — adding, subtracting,
       # comparing. The result carries whatever scale they agreed on.
       def same_scale_binop(op, other)
         node = align!(other, describe_op(op))

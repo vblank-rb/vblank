@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A SET OF SPRITE TILES THE GAME LOADS AS IT RUNS, handed back by `sprite_tiles`. Poses drawn
+    # A set of sprite tiles the game loads as it runs, handed back by `sprite_tiles`. Poses drawn
     # from it are pictures (`image :spin0, tiles_from: :ball_tiles, pieces: [...]`); this is how
     # the game puts other pixels in its tiles.
     class SpriteTileSet
