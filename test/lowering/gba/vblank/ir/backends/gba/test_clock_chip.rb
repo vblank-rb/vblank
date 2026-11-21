@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# THE CARTRIDGE READS ITS CLOCK CHIP. A cartridge that carries a clock has a small chip with a
+# The cartridge reads its clock chip. A cartridge that carries a clock has a small chip with a
 # watch battery of its own, reached through three of four pins the cartridge brings out: the
 # console clocks a command into it a bit at a time and clocks the date and time back out the same
 # way. The first reading of the time after each wait for the screen reads it, and every reading
@@ -59,7 +59,7 @@ class TestClockChip < Minitest::Test
                  console_readings(v))
   end
 
-  # A CHIP WHOSE BATTERY RAN OUT: there, never set, and every reading 0. It starts counting the
+  # A chip whose battery ran out: there, never set, and every reading 0. It starts counting the
   # hours 1 to 12, as such a chip does, so this is also where the cartridge telling it to count in
   # 24 hours is held to working — the chip says it is there only once that has been done.
   def test_a_chip_whose_battery_ran_out_is_there_and_not_set
@@ -74,7 +74,7 @@ class TestClockChip < Minitest::Test
     assert_equal READINGS.to_h { |name| [name, 0] }, console_readings(v)
   end
 
-  # FRAME BY FRAME THE SAME AS THE INTERPRETER, through midnight on new year's eve: the cartridge's
+  # Frame by frame the same as the interpreter, through midnight on new year's eve: the cartridge's
   # readings pass after pass are the interpreter's, from the pass where the console's start-up
   # frames have gone by. Started half a second before the second turns, so neither run reads a
   # second turn over within the frames the console spends starting up.
@@ -129,7 +129,7 @@ class TestClockChip < Minitest::Test
     end
   end
 
-  # THE CHIP IS NEVER WRITTEN — the emulator would keep its own time whatever it was told — so
+  # The chip is never written — the emulator would keep its own time whatever it was told — so
   # the cartridge keeps how far the time set is from the chip's and adds it on. Pass by pass that
   # is what the interpreter reads, the second turning over on the same frame, for a chip that
   # was set before and one whose battery ran out.
@@ -156,7 +156,7 @@ class TestClockChip < Minitest::Test
     end
   end
 
-  # THE TIME SET IS THERE AT THE NEXT POWER-ON, from the save memory: switched off an hour, the
+  # The time set is there at the next power-on, from the save memory: switched off an hour, the
   # cartridge reads the time set an hour on — read as it starts up, before the save has been read
   # back, the chip's own time, as the interpreter does; and read before the game loop, once it
   # has, the time set, though the chip has not been read again in between.
@@ -172,7 +172,7 @@ class TestClockChip < Minitest::Test
     assert_equal [22, 9], [back.var(:hour_at_power_on), back.var(:hour_before_the_loop)]
   end
 
-  # WHAT READING THE CHIP COSTS A PASS: a command of eight bits out, seven bytes of eight back,
+  # What reading the chip costs a pass: a command of eight bits out, seven bytes of eight back,
   # each bit a few writes to the pins and a read, and each byte's two digits made a number. That
   # comes to about a thousand instructions, a few of a frame's lines run from the cartridge — and
   # once a pass however many readings the game makes.

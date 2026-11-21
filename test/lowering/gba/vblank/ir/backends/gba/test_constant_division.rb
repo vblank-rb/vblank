@@ -7,7 +7,7 @@ require "test_helper"
 # divide instruction, so these used to trap into a BIOS routine every time; now the
 # build works out a reciprocal and the console multiplies instead.
 #
-# Nothing about the DSL changes, so what these tests care about is that the ANSWERS are
+# Nothing about the DSL changes, so what these tests care about is that the answers are
 # still exactly right — the whole trick rests on a rounded reciprocal being close enough
 # for every numerator there is — and that the shortcut is really being taken.
 #
