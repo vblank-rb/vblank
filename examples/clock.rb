@@ -10,7 +10,7 @@
 #
 # Two things here are worth copying into a game of your own.
 #
-# ASK FIRST. A cartridge may have no clock at all — most emulators give a cartridge none unless
+# The example asks first whether there is a clock. A cartridge may have no clock at all — most emulators give a cartridge none unless
 # they are told to — and a clock whose battery ran out was never set. Either way every reading
 # is 0, so a game that does not ask shows 00:00:00 and looks broken. This one says which it is.
 #
@@ -25,16 +25,16 @@
 #
 # The clock also works in SkyEmu.
 #
-# FOR THE ADVANCE ALONE. A Game Boy Color cartridge's clock counts days and keeps no date, so a
+# It is for the Advance alone. A Game Boy Color cartridge's clock counts days and keeps no date, so a
 # game there shows the time only once it sets the clock (`clock.set_to`), from a screen of its own
 # that asks the player; this one never asks, and on a Color would only ever say it was not set.
 #
-# PAINT WHEN IT CHANGES. The time moves on once a second, so the face is painted once a second
+# It paints only when the time changes. The time moves on once a second, so the face is painted once a second
 # and left alone in between, through `keep_showing`. The screen here keeps two pictures and
 # shows them in turn, so that nobody ever sees one half drawn; `keep_showing` is what paints a
 # change into both, where painting it once would flicker between the new second and the old.
 #
-# HOW LONG IT HAS BEEN RUNNING is the one thing the console does know, clock chip or no clock
+# How long it has been running is the one thing the console does know, clock chip or no clock
 # chip, and the bottom line shows it. `frames_since_power_on` counts every frame the screen has
 # shown since the power came on, setting up included, and about sixty of them make a second.
 #

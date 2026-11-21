@@ -10,7 +10,7 @@
 # doing it. Build it and run `rom.profile` — how little of each frame is left over is the
 # point of the example.
 #
-# WHAT A FRAME IS SPENT ON, and it is not what people guess. Nearly all of it is the ray
+# What a frame is spent on is not what people guess. Nearly all of it is the ray
 # casting: sixty rays, each marching until it meets a wall, each one a handful of table reads
 # and a divide. The DRAWING is cheap by comparison — the sky and the floor are one transfer
 # each, and a wall column is one fill however tall it is. If you want the frame back, cast

@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "dsl_verbs"
+require "shouting_paragraphs"
 
 # Every verb has a doc comment written for the game author, because the website's reference is
 # generated from those comments (with RDoc). The comment opens with text for the author; what is
@@ -10,15 +11,13 @@ require "dsl_verbs"
 # verb and where it is written.
 class TestVerbDocComments < Minitest::Test
   include DslVerbs
+  include ShoutingParagraphs
 
   # The verbs whose comment is still to be written for an author. Each is taken off this list in the
   # commit that documents it, and a verb on the list that is documented fails the test until it is.
   # A verb made from source text or by `alias` has no `def` to carry a comment: it is documented
   # with a `# :method: name` comment, which RDoc reads and DslVerbs finds (see Builder::Variables).
   VERBS_AWAITING_DOCS = %i[].freeze
-
-  # The line that opens the part RDoc leaves out.
-  ENGINEER_NOTES_START = /\A--\s*\z/
 
   def test_every_verb_has_text_for_a_game_author
     problems = verb_problems
@@ -42,12 +41,7 @@ class TestVerbDocComments < Minitest::Test
     assert_empty VERBS_AWAITING_DOCS - dsl_verbs, "These are not DSL verbs (any more): #{(VERBS_AWAITING_DOCS - dsl_verbs).join(', ')}"
   end
 
-  # A paragraph that opens with two or more words in capitals ("THE GAME HOLDS HANDLES. ...") reads as
-  # shouting on the site. A lead-in to several paragraphs is a Markdown subheading (### or lower),
-  # a lead-in to one paragraph is its plain first sentence, and one to engineer material goes
-  # behind `#--` where capitals may stay.
-  SHOUTING_OPENING = /\A(?:[A-Z][A-Z0-9'-]+[ ,]+(?:[A-Z][A-Z0-9'-]+|A|I)|A[ ,]+[A-Z][A-Z0-9'-]{3,})\b/
-
+  # See ShoutingParagraphs for the rule and the three ways to meet it.
   def test_no_author_paragraph_opens_in_capitals
     shouted = verb_comments.flat_map { |where, lines| shouting_paragraphs(where, lines) } +
               container_comments_of_builder.flat_map { |where, lines| shouting_paragraphs(where, lines) }
@@ -78,27 +72,6 @@ class TestVerbDocComments < Minitest::Test
   end
 
   private def relative(file) = file.delete_prefix("#{VBlank.root}/")
-
-  # The paragraphs of the author text (up to `#--`, outside code fences) that shout, each as
-  # "where): the opening words".
-  private def shouting_paragraphs(where, lines)
-    author = lines.take_while { |line| !line.match?(ENGINEER_NOTES_START) }
-    fenced = false
-    paragraph_open = true
-    found = []
-    author.each do |line|
-      fenced = !fenced if line.lstrip.start_with?("```")
-      if line.strip.empty?
-        paragraph_open = true
-      elsif paragraph_open && !fenced && line.match?(SHOUTING_OPENING)
-        found << "#{where}): #{line[0, 50]}"
-        paragraph_open = false
-      else
-        paragraph_open = false
-      end
-    end
-    found
-  end
 
   # Verb => what is wrong, with the file and line to open, for each verb that has a problem.
   private def verb_problems

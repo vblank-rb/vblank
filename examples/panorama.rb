@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# A PICTURE WIDER THAN THE SCREEN, shown whole where it fits and panned across where it does not.
+# Panorama — a picture wider than the screen, shown whole where it fits and panned across where it does not.
+#
 # `ruby examples/panorama.rb` builds the Advance's cartridge; `vblank build examples/panorama.rb
 # --format=web` (or native, or ruby) builds the same file for a computer.
 #

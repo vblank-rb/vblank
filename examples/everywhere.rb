@@ -1,9 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# ONE GAME FILE FOR FOUR CONSOLES: the Game Boy Advance, the Game Boy Color, the Super Nintendo and
-# the Sega Genesis. `ruby examples/everywhere.rb` builds a cartridge for each of them from the one
-# block below.
+# Everywhere — one game file for four consoles.
+#
+# The consoles are the Game Boy Advance, the Game Boy Color, the Super Nintendo and the Sega
+# Genesis. `ruby examples/everywhere.rb` builds a cartridge for each of them from the one block
+# below.
 #
 # A ball bounces round the edges of the screen with a click at every wall, under the game's name,
 # while a little tune plays.

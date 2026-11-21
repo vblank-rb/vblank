@@ -1,7 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# A tear-free demo. Three balls bounce around, and the WHOLE screen is cleared and
+# Buffered bounce — three balls on a screen that never tears.
+#
+# Three balls bounce around, and the whole screen is cleared and
 # repainted every single frame — the "redraw everything" pattern that tears a
 # direct-color game once it draws enough. Here it's flawless, because
 # `tear_free: true` draws each frame to a hidden screen and shows it all at once,

@@ -27,7 +27,7 @@
 #   * WHICH ONE IS ME — in a match over a network, each machine shows an arrow over its own
 #     walker (`drawing_for_local_player` and `mark`), and the game stays the same on every machine.
 #
-# THE CONSOLES. It is for the Game Boy Advance and the Game Boy Color, as one player. Both
+# It is for the Game Boy Advance and the Game Boy Color, as one player. Both
 # consoles read one controller, so a cartridge for either is a one-player walk round the meadow:
 # `players: { computer: 1..4, else: 1 }` says four seats on a computer and one on a cartridge,
 # and `most_players` makes the matching number of walkers. They are here rather than left

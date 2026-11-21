@@ -1,8 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Draws colored pixels and rectangles on a painted screen: a flag in the middle, three dots
-# under it, and a marker in each corner.
+# Pixels — colored pixels and rectangles on a painted screen.
+#
+# It draws a flag in the middle, three dots under it, and a marker in each corner.
 #
 # Everything is placed from the screen's own size (`screen_width`, `screen_height`), so the
 # same picture comes out right on the Game Boy Advance's 240x160 screen, the Super Nintendo's

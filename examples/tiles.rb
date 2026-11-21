@@ -16,13 +16,13 @@
 #
 # A room is not static, either, and it changes at two scales.
 #
-# ONE CELL AT A TIME: `room.set_tile col, row, "."` is how a door opens, a pot breaks,
+# One cell at a time: `room.set_tile col, row, "."` is how a door opens, a pot breaks,
 # a bomb takes a wall out, or a pushed block moves. Without it every one of those has
 # to be a sprite drawn over the scenery, out of a budget a game would rather spend on
 # things that move. Here the inner chamber's door opens when you press A and shuts
 # when you press B, and it is one line each way, in the map's own characters.
 #
-# A WHOLE ROOM AT ONCE: give `background` several maps instead of one and
+# A whole room at once: give `background` several maps instead of one and
 # `room.show_map :cavern` hands it a different one — which is what walking through a
 # door is in a game with a lot of rooms. Written a cell at a time the same thing is
 # hundreds of `set_tile` calls in one frame, and the screen would show half of each

@@ -49,7 +49,7 @@
 #     files = save_data :file, copies: 3 do keep px, py, mist, steps, random_numbers end
 #     files[slot].save        files[slot].load        files[n].peek(steps)
 #
-# CONTINUE, COPY TO NEXT and ERASE are grey while the picked file is empty: a menu row can
+# The rows Continue, Copy to next and Erase are grey while the picked file is empty: a menu row can
 # ask a question the game works out, `enabled: files[slot].good?`, and it is asked every
 # frame. A save cut off by the power going out keeps the last good one — each file is kept
 # twice — and none of that is anything the game says.

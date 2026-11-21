@@ -22,7 +22,7 @@
 # view would show the backdrop rather than the meadow coming round again. The view here
 # stops at the edges, which is what a room wants anyway.
 #
-# GOING THROUGH THE DOOR is not a cut. Handing a background another map happens on one
+# Going through the door is not a cut. Handing a background another map happens on one
 # frame, and one frame of a whole screen changing reads as a glitch, so the door hides
 # it: the picture breaks up into bigger and bigger blocks (`pixelate_out`), the room is
 # swapped while the blocks are at their biggest and nobody can read the screen, and the
@@ -48,7 +48,7 @@
 # in blocks is a switch the console keeps on each background and each sprite, and the
 # name's is simply left off.
 #
-# EACH ROOM HAS ITS OWN COMPANY, a cat in the cabin and a butterfly out in the meadow, and
+# Each room has its own company, a cat in the cabin and a butterfly out in the meadow, and
 # `picture_groups` says which picture belongs to which room. The console keeps the pictures of
 # sprites in a small memory of its own, and a game of many rooms needs far more of them than fit.
 # Pictures in a group are only kept there while `show` says the group's room is up, so it is one
