@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SHORT QUEUE OF TWO-BYTE NUMBERS costs a few dozen cycles an operation, as a queue of bytes does
+# A short queue of two-byte numbers costs a few dozen cycles an operation, as a queue of bytes does
 # (TestGBCByteLists). Each pass here makes three hundred operations, which at the thousands of
 # cycles a push once cost would take many frames.
 class TestGBCHalfLists < Minitest::Test

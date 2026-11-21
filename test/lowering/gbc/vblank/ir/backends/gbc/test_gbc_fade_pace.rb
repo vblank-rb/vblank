@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A WHOLE-SCREEN FADE COSTS A GAME BOY COLOR, measured in the emulator. A Color has no blend, so
+# What a whole-screen fade costs a Game Boy Color, measured in the emulator. A Color has no blend, so
 # a fade is every colour the game shows walked toward black (Runtime::Picture#emit_tint), and a busy
 # screen fading out has its amount change every pass, so every colour is walked again every pass.
 # The Color has no multiply either, and a walk that multiplied each channel of each colour took
