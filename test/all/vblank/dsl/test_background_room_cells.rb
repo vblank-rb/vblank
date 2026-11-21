@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_background_areas"
 
-# A CELL OF A ROOM CHANGED WHILE THE GAME RUNS (Background#set_tile), on a background walking
+# A cell of a room changed while the game runs (Background#set_tile), on a background walking
 # between areas whose rooms are maps of different sizes: a chest that opens. The change shows on
 # the frame written, stays as the view scrolls the cell out and back in, and lasts until `show_map`
 # puts that room up again, the way a console's own game keeps a room's cells in work memory and
@@ -74,7 +74,7 @@ module RoomCellGames
     end
   end
 
-  # THE GAME: the hall in the house's tiles and the pit in the cave's, one background walking
+  # The game: the hall in the house's tiles and the pit in the cave's, one background walking
   # between them. With +writes+ it opens each chest with set_tile; without, +opened+ names the
   # rooms whose map holds the chest open already (the answer key).
   def self.baked_rooms_game(writes: true, opened: [], same_size: false)
@@ -110,7 +110,7 @@ module RoomCellGames
     end
   end
 
-  # ONE ROOM OF 80x20 CELLS, more than any console's grid holds: its chest opened with set_tile on
+  # One room of 80x20 CELLS, more than any console's grid holds: its chest opened with set_tile on
   # OPEN_IN_HALL, or, without +writes+, open in the map already; scrolled away and back. +across+
   # and +down+ make the room another size.
   def self.big_room_game(writes: true, across: 80, down: 20)
@@ -133,7 +133,7 @@ module RoomCellGames
     b.program
   end
 
-  # THE SAME BIG ROOM WITH A ROW OF CELLS OPENED IN A LOOP (`repeat`), each pass: the first
+  # The same big room with a row of cells opened in a loop (`repeat`), each pass: the first
   # LOOPED_CELLS cells of row 2. Without +writes+ the map holds them open already.
   LOOPED_CELLS = 6
 
@@ -162,7 +162,7 @@ module RoomCellGames
     b.program
   end
 
-  # THE SAME FROM THE DATA PACK: the town's map two cells across and the castle's four, so of two
+  # The same from the data pack: the town's map two cells across and the castle's four, so of two
   # sizes, each a slot of map cells, and the cells told by a slot (#told_slot_areas_game_and_file).
   # The town's top left takes place 1 on OPEN_IN_HALL, the view goes off the map and back, the
   # castle's last cell takes place 0 on OPEN_IN_PIT, and the town comes up again on WALK_BACK.

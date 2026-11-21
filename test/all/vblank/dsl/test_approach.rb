@@ -13,7 +13,7 @@ require "test_helper"
 
 # The games both files play.
 module ApproachGames
-  # A FLOOR ABOVE ITS CEILING: every value held between 50 and 10, by the word that changes the
+  # A floor above its ceiling: every value held between 50 and 10, by the word that changes the
   # variable and by the word that hands back a new number.
   private def floor_above_its_ceiling
     builder = VBlank::Builder.new
@@ -56,7 +56,7 @@ module ApproachGames
   end
 
   # The same marker, but the step and the limit are variables, so it runs the lowering
-  # that EVALUATES a bound instead of loading a fixed one.
+  # that evaluates a bound instead of loading a fixed one.
   #
   # Read two moments, and pick them so no single wrong answer can pass both. Early, the
   # marker is mid-journey at a spot that is neither the target nor the limit — only the
@@ -320,7 +320,7 @@ class TestApproach < Minitest::Test
     assert_equal 90, i[:x]
   end
 
-  # A FLOOR ABOVE ITS CEILING, which bounds worked out as the game runs can reach. The value
+  # A floor above its ceiling, which bounds worked out as the game runs can reach. The value
   # is held at the floor and then at the ceiling, so the ceiling wins and the answer is the
   # ceiling wherever the value started — on both runners, for the word that changes the
   # variable and the word that hands back a new number.
