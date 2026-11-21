@@ -124,7 +124,7 @@ module VBlank
           # then each folder above it, for a compile_flags.txt, one flag to a line, and reads
           # the file with those.
           #
-          # So the flags are written from here, from the same list a compile is handed (warnings;
+          # So the flags are written from here, from the same list a compile is handed (WARNINGS;
           # build/build.zig keeps a copy for the desktop build, which a test holds to it). The
           # file names folders on this machine, so it is written rather than checked
           # in — and nobody runs anything to get it: every build looks at it and writes it again

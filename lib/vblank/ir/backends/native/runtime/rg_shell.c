@@ -401,7 +401,7 @@ typedef enum { NO_PACK_KEPT, KEPT_PACK_READ, KEPT_PACK_NOT_READ } kept_pack;
 
 /* What is kept at +path+.
  *
- * A pack this build does not read is not told to the player in a box. It is what an older build of
+ * A pack this build does not read is not told to the player in a BOX. It is what an older build of
  * the game kept, which every player who takes a new build has; nothing went wrong and there is
  * nothing in its path or its size a player can use. Why it was not read goes on the error stream,
  * for whoever made the build, and the menu says the data must be read again (its start file's

@@ -34,7 +34,7 @@ module VBlank
         #    does), and the chip steps straight between. That is how the console's own games drew a near
         #    wall. The face is cut into strips along its rows' lines (#each_strip), and each strip into
         #    cells by walking its edges across it (#each_cell_in_strip), not by cutting it again.
-        # 3. Cut where the picture would run past a byte: a piece whose place on the picture spans more
+        # 3. Cut where the picture would run past a BYTE: a piece whose place on the picture spans more
         #    than 256 is cut at 256 past its least, as often as it takes. The picture repeats by the
         #    chip's texture window (GP0 E2h), so each piece's places are moved by whole pictures to
         #    start between 0 and the picture's size.
@@ -52,11 +52,11 @@ module VBlank
         # the shading gives it; and the chip scales red, green and blue alike, so a shading that does
         # anything else to a colour than darken it (a tint, a fog) is drawn as the colour darkened.
         #
-        # A corner is numbers numbers, by these places: X and Y, in sixteenths of a pixel; U_SOURCE,
-        # V_SOURCE and nearness, what the place on the picture is worked out from (without perspective
+        # A corner is NUMBERS numbers, by these places: X and Y, in sixteenths of a pixel; U_SOURCE,
+        # V_SOURCE and NEARNESS, what the place on the picture is worked out from (without perspective
         # u and v themselves, with sixteen fraction bits, and no nearness; in perspective u and v over
         # the distance and one over the distance, as Reference::FaceEdges.in_perspective has them);
-        # TEXEL_U, TEXEL_V, the whole texel the corner sends; and shade, a lit face's colour with sixteen
+        # TEXEL_U, TEXEL_V, the whole texel the corner sends; and SHADE, a lit face's colour with sixteen
         # bits of fraction (#corner_from_list), and nought on a face that is not lit. Every sum is IR::Int32's,
         # so it wraps where the processor's does.
         #
@@ -413,7 +413,7 @@ module VBlank
           #
           # Only what is read again is stepped, the rest left as the start's. On a line across the screen
           # the texel is worked out afresh, so it is not stepped (SCREEN_CUT_NUMBERS). A cut on the picture
-          # comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE or nearness again
+          # comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE or NEARNESS again
           # (LATE_CUT_NUMBERS). Each multiply left out is one the runtime spares a corner.
           def corner_between(from, to, from_side, to_side, number, line, spans)
             start, finish, start_side, finish_side = from_side.negative? ? [from, to, from_side, to_side] : [to, from, to_side, from_side]

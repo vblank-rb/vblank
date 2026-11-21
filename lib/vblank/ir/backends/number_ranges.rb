@@ -100,7 +100,7 @@ module VBlank
           @ranges = @declared.merge(@ranges.reject { |_name, range| range == WHOLE })
         end
 
-        # The variables proven to stay in +range+ (BYTE or half), in the order the program first
+        # The variables proven to stay in +range+ (BYTE or HALF), in the order the program first
         # writes them. A variable in a byte is in two as well.
         def variables_within(range)
           return @bytes if range == BYTE

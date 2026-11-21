@@ -42,7 +42,7 @@ require_relative "ps1/checked_run"
 module VBlank
   module IR
     module Backends
-      # The game as a PlayStation program: the same program every other backend runs, lowered to the
+      # The game as a PLAYSTATION program: the same program every other backend runs, lowered to the
       # R3000A, the console's processor, and written as a PS-X EXE, the file a PlayStation's BIOS loads
       # from a disc and an emulator or a loader on a real console takes as it is.
       #
