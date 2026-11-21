@@ -12,7 +12,7 @@ module VBlank
 
         module_function
 
-        # THE ONE DECISION. Every write comes here, whatever its spelling: +current+ is what the place
+        # The one decision. Every write comes here, whatever its spelling: +current+ is what the place
         # holds, +value+ what it is given, +tests+ the tests open around the line, +label+ the place as
         # the author wrote it. The block puts a value in the place, for Ruby's own kind of write. The
         # answer is what the name holds afterwards.

@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     module PlainRuby
-      # INSTANCE VARIABLES IN GAME CODE. A part of a game is a plain class, and it keeps what it
+      # Instance variables in game code. A part of a game is a plain class, and it keeps what it
       # knows in instance variables: `@busy = 0` in `initialize`, `if @busy == 1` and `@busy = 1` in
       # the method its routine calls. Ruby runs that method once, while the game is built, so on
       # its own `if @busy == 1` would be decided then, from the 0 Ruby holds, and the game would
@@ -404,7 +404,7 @@ module VBlank
           refuse_named_object!(label, current)
         end
 
-        # A NAMED VALUE IS THE GAME'S FROM ITS FIRST NUMBER. The line that first gives a named
+        # A named value is the game's from its first number. The line that first gives a named
         # instance variable (or a named field) a number, while setting up or anywhere else, makes its
         # game variable, starting at power-on from that number as `var` would. From then on it holds
         # the variable, so every read is the game's, wherever it is recorded: in another routine, in a
@@ -439,7 +439,7 @@ module VBlank
           values.all? { |value| Steps.variable?(value) || STARTS.any? { |kind| value.is_a?(kind) } }
         end
 
-        # A NAMED HASH OR ARRAY OF NUMBERS is a game variable for each key, each starting from the
+        # A named hash or array of numbers is a game variable for each key, each starting from the
         # number Ruby holds there and named after the key (`tilt_counters_left`). The game reads and
         # changes one at a key known while building (`@tilt_counters[side] += 1`, with `side` a
         # symbol of a Ruby loop). A key the game works out has no slot to name, so the copy refuses
@@ -621,7 +621,7 @@ module VBlank
                          "#{Messages::AuthorSource.at_author_line}"
         end
 
-        # WHAT GAME CODE DID TO THE INSTANCE VARIABLES NOBODY NAMED, one build's worth, kept by the
+        # What game code did to the instance variables nobody named, one build's worth, kept by the
         # builder. A plain one game code reads and changes is the silent bug a name fixes:
         #
         # - read before game code changes it (`if @busy == 1` above `@busy = 1`): the read was
@@ -696,7 +696,7 @@ module VBlank
             flag.tested_nil ||= current.nil?
           end
 
-          # A PLAIN TRUE OR FALSE (OR NIL) IN GAME CODE is decided while building wherever a test asks
+          # A plain true or false (or NIL) in game code is decided while building wherever a test asks
           # it. That is right for a flag the build keeps for itself, and wrong for one the game keeps,
           # and two facts together tell the second: a test on it guards game code, and game code
           # leaves it changed. Asked once every routine is recorded, so the order the build met them

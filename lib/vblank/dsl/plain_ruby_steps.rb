@@ -368,7 +368,7 @@ module VBlank
 
           def keep_side_value(value) = @answer = value
 
-          # A TEST ON A PLAIN FLAG (`if @open`, `unless @planned`) in game code, which Ruby decides
+          # A test on a plain flag (`if @open`, `unless @planned`) in game code, which Ruby decides
           # here, once. Whether that is right depends on what the flag guards (InstanceVariables::Uses,
           # #refuse_game_flags!): a once-guard keeps work that is built, and a game flag keeps what the
           # game does as it plays. The side Ruby runs is watched for statements recorded into the
@@ -418,7 +418,7 @@ module VBlank
           def refuse_jump!(_word) = nil
         end
 
-        # A test the game makes as it plays. BOTH sides run, once each, to record their code into
+        # A test the game makes as it plays. Both sides run, once each, to record their code into
         # the two arms of one branch.
         class GameTest
           def initialize(condition)
@@ -491,7 +491,7 @@ module VBlank
         end
 
         # A `while` or `until`, whose test is asked again each time round. On a plain value that
-        # is all it is. On a game test the body runs ONCE, recording itself into a loop in the
+        # is all it is. On a game test the body runs once, recording itself into a loop in the
         # game, and the second asking closes that loop.
         class LoopTest
           def initialize(test, stops_when:, written: nil)

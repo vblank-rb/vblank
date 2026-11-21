@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     module PlainRuby
-      # WHETHER A NAME IN A GAME BLOCK BECOMES A GAME VARIABLE, AND WHY. A game is plain Ruby, and a
+      # Whether a name in a game block becomes a game variable, and why. A game is plain Ruby, and a
       # Ruby local, instance variable, slot or attribute holds what its line worked out while the
       # game is built. Where game code changes it, or a test the game makes as it plays changes it,
       # that is not enough: the name has to hold a game variable instead, a promotion. Every yes or
@@ -93,7 +93,7 @@ module VBlank
           @under_test = {}.compare_by_identity
         end
 
-        # IS THIS LOCAL A GAME VARIABLE? Asked of a write or a read of a local, at that node.
+        # Is this local a game variable? Asked of a write or a read of a local, at that node.
         #
         # A name is a game variable if `var` made it (:made_by_var), or it is given a number and
         # also changed in game code (:changed_in_game_code), or it is worked out in game code and
@@ -129,7 +129,7 @@ module VBlank
           LocalNames.var_call?(write) ? nil : :assign
         end
 
-        # WHAT A TEST THE GAME MAY MAKE PROMOTES FIRST. A test the game makes runs both its sides
+        # What a test the game may make promotes first. A test the game makes runs both its sides
         # while building, so a plain name changed on a side would end up with the last side's value
         # whichever way the game goes. So before the sides run, a name changed in +sides+ is given a
         # variable, if the test turns out to be the game's (Promotion.value_under_test), wherever it
@@ -169,7 +169,7 @@ module VBlank
         # test the game makes?
         def write_under_test(write) = Answer.new(@under_test.fetch(write, :not_read_after_test))
 
-        # DOES A PLAIN LOCAL KEEP A COPY OF ITS LINE'S NUMBER? Asked of the line +write+.
+        # Does a plain local keep a copy of its line's number? Asked of the line +write+.
         #
         # A Ruby local holds the number its line worked out. Here a local given a game value holds
         # a working-out, which the game works out again at each read, so it reads the number of
@@ -214,7 +214,7 @@ module VBlank
         def plain_number?(local) = plain_name?(local) && !local.parameter? && starts_as_number?(local)
 
         class << self
-          # THE RUN-TIME HALF, asked as the rewritten block runs.
+          # The run-time half, asked as the rewritten block runs.
 
           # Does +value+, held by a plain name about to be changed under +test+, need a hidden
           # variable of its own (Writes.promote)? Not unless the test is the game's

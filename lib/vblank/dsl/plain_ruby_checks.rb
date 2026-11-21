@@ -5,12 +5,12 @@ module VBlank
     module PlainRuby
       # Refuses what a game block cannot use, before any of it runs.
       #
-      # NOTHING HERE LISTS WHAT IS BANNED, except a few calls that have no constant to look at.
+      # Nothing here lists what is banned, except a few calls that have no constant to look at.
       # There is no end of gems and libraries, so a name in the block is refused unless it is
       # known to be the game's own, VBlank's, or a harmless piece of Ruby. These checks catch
       # mistakes. They are not a wall: the game's own helper in another file can call anything.
       #
-      # THE CALLS ARE CHECKED AS THE GAME IS DECLARED, from the source alone. The constants wait
+      # The calls are checked as the game is declared, from the source alone. The constants wait
       # until the game is built, since one defined lower down the author's file is not there
       # yet, so what they need goes into the rewritten block as plain data (see #constant_check).
       class BlockChecks
@@ -91,7 +91,7 @@ module VBlank
           node.compact_child_nodes.each { |child| refuse_outside_calls!(child) }
         end
 
-        # A WHOLE FILE OF A GAME (DSL::PlainRuby.rewritten_file). What its methods and blocks do is
+        # A whole file of a game (DSL::PlainRuby.rewritten_file). What its methods and blocks do is
         # game code, checked as a game block is. Its other lines run once as the file is loaded,
         # setting up as the lines above a game block do (bringing in files, making constants with
         # `Ractor.make_shareable`), so they are plain Ruby. A plain file it loads that holds game
