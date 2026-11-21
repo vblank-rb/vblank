@@ -4,7 +4,7 @@ require "test_helper"
 require "many_tiles"
 require "all/vblank/builder/test_pack_poses_sharing_tiles"
 
-# WHAT A SCREEN DRAWN FROM ONE SLOT OF AN ORIGINAL'S TILES COSTS THE GENESIS'S VIDEO MEMORY. A retail
+# What a screen drawn from one slot of an original's tiles costs the Genesis's video memory. A retail
 # game loads a screen's tiles once, and every map cell and sprite piece names them by number, turned
 # by the console's own bits. So the build of such a screen holds each of the slot's tiles it shows
 # once, whoever draws it and whichever way round. These read the video memory the console drew from.

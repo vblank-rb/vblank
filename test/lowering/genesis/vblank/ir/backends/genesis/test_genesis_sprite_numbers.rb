@@ -2,13 +2,13 @@
 
 require "test_helper"
 
-# A SPRITE WHOSE NUMBERS HAVE TO BE WORKED OUT. The Genesis places a pass's sprites in one walk
+# A sprite whose numbers have to be worked out. The Genesis places a pass's sprites in one walk
 # that keeps its place in registers, and a game's sprites give their place, their picture and
 # whether they show as variables, read where they live. A program built by hand can give any of
 # them as a sum, a product or an item of a list, which calls the runtime between two sprites of
 # the walk: the sprites after it must still land in the rows after it.
 #
-# A SPRITE THAT BELONGS TO A SCENE shows while its own flag is set and its scene is up, which the
+# A sprite that belongs to a scene shows while its own flag is set and its scene is up, which the
 # builder writes as a product of the two. The Genesis tests each instead of multiplying, so two
 # dozen sprites in a scene cost about what they cost outside one.
 class TestGenesisSpriteNumbers < Minitest::Test

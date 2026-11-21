@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SPRITE OVER A PAINTED PICTURE ON A GENESIS (`sprite ..., over_picture: true`): a sprite of the tiled
+# A sprite over a painted picture on a Genesis (`sprite ..., over_picture: true`): a sprite of the tiled
 # screen's kind, placed over the plane the painted picture is on (Genesis::Runtime::Paint). The picture
 # keeps the first palette and most of video RAM, so the sprites have the other three palettes and the
 # tiles between the picture's and the scroll table. What the sprite does, asked of every run, is in

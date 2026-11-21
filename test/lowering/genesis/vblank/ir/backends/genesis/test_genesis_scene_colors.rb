@@ -3,7 +3,7 @@
 require "test_helper"
 require "scene_color_games"
 
-# EACH SCENE'S PALETTES, as the Genesis build lays them out (Art's +scene_colors+): what a scene whose
+# Each scene's palettes, as the Genesis build lays them out (Art's +scene_colors+): what a scene whose
 # own pictures need more than the palettes left is told, and the one way of writing the loop whose
 # hand-over frame would show the leaving scene's sprites in the arriving scene's colours.
 class TestGenesisSceneColors < Minitest::Test
