@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A SCENE DOES TO THE SCREEN AS IT TAKES OVER, asked of the program with no backend
+# What a scene does to the screen as it takes over, asked of the program with no backend
 # running. Both backends carry this plan out — the interpreter by painting, the lowering by
 # telling the console — so what it says is what both of them do.
 class TestSceneHandover < Minitest::Test

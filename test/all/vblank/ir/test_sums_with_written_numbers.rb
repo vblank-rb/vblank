@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SUM WITH ONE SIDE A NUMBER WRITTEN IN THE PROGRAM, at the values where working it out a byte
+# A sum with one side a number written in the program, at the values where working it out a byte
 # at a time is most likely to go wrong: either side of nought, the edges of a byte and of two
 # bytes, the ends of the range. A lowering may work such a sum out where the number is, rather
 # than through the sum it uses for two numbers it cannot know: a shift by a whole number of

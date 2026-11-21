@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT A SCENE PUTS UP AS IT TAKES OVER, asked the same way of both backends.
+# What a scene puts up as it takes over, asked the same way of both backends.
 #
 # A scene owns its scenery, its sprites' pictures and the tiles it paints, and they go up as
 # declared each time it takes over (see IR::SceneHandover). The interpreter and the console do
@@ -34,7 +34,7 @@ class TestSceneHandoverScenarios < Minitest::Test
     def initialize(name:, program:, frames:, probe:, color:, console_frames: nil, broken: nil) = super
   end
 
-  # WHAT A BROKEN SCENARIO DOES TODAY, pinned exactly, so the row fails if it gets better — the
+  # What a broken scenario does today, pinned exactly, so the row fails if it gets better — the
   # day it does, the broken: comes out — and also if it goes wrong some other way, which a row
   # that merely expected to fail would hide. +why+ is the fault in words. +interpreter_shows+ is
   # the colour the interpreter shows at the probe instead of the right one (nil when it is
