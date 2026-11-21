@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# A SMALL TILED GAME WHOSE SLOW PASS FINISHES ON ITS SECOND FRAME, built for any console a
+# A small tiled game whose slow pass finishes on its second frame, built for any console a
 # comparison lines up, for each console's test of `passes_compared_at: :end`. A box steps one pixel
 # right a pass, and the game counts its passes. On the slow build every fourth pass has much to do
 # between counting itself and moving the box, more than a frame's worth, so it takes two frames and
@@ -10,7 +10,7 @@ require "stringio"
 # That is what an original does on a heavy pass, and the quick build is the port that finishes every
 # pass in one frame.
 #
-# THE SLOW PASS'S TURNS ARE MEASURED, NOT WRITTEN DOWN. Its work is a busy loop, so it is still at
+# The slow pass's turns are measured, not written down. Its work is a busy loop, so it is still at
 # work when the frame ends, wherever the console's emulator reads the frame. How many turns take a
 # frame is the lowering's, and it gets quicker, so a count written in a test stopped making a pass of
 # two frames at a speed-up of the lowering (the Super Nintendo's was moved from 700 to 1400 to 2100).
@@ -146,7 +146,7 @@ module SlowPassGames
     VBlank::Playthroughs::Playthrough.power_on_and_lead_in(cartridge, lead_in: lead_in).game.var(:passes)
   end
 
-  # AFTER LEAD-INS OF THE SAME FRAMES the slow build is passes behind the quick one, as an original
+  # After lead-ins of the same frames the slow build is passes behind the quick one, as an original
   # that runs late now and then is behind its port. The comparison starts on the first cartridge's
   # pass, whichever is ahead. Here the quick second build is past it, and its passes before that
   # cannot be compared: an error naming both passes, not a pass between the two silently left out.
@@ -192,7 +192,7 @@ module SlowPassGames
                                                                          lead_ins: [long, short], readings: { x: :x }
   end
 
-  # A PRESS WHILE THE SECOND CATCHES UP. The first's lead-in taps RIGHT on the frame after the short
+  # A press while the second catches up. The first's lead-in taps RIGHT on the frame after the short
   # lead-in ends, and the quick second, led in by the short one or not at all, is still behind the
   # slow first there: it plays that frame while it catches up, and is held what the first's lead-in
   # held on it, so the tap moves its box too. The answer key is the second led in as far as the tap.
@@ -200,7 +200,7 @@ module SlowPassGames
   # A second lead-in that tapped on a frame of its own is not the first's cut short, and is not
   # held the first's tap again.
   #
-  # THE TAP GOES ON A FRAME THE SLOW FIRST BUILD READS: one held during the second frame of a slow
+  # The tap goes on a frame the slow first build reads: one held during the second frame of a slow
   # pass is read by no pass of the first, which read its buttons as the pass began, while the quick
   # second reads it, so the two would part for a reason of their own. Which frames those are moves
   # with how long the cartridge takes to set up, so the tap is put on the first frame after the short

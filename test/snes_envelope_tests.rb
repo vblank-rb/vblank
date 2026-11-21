@@ -3,7 +3,7 @@
 require "digest"
 require "tmpdir"
 
-# AN INSTRUMENT GIVEN THE SUPER NINTENDO SOUND CHIP'S OWN ENVELOPE BYTES (Audio::SNESEnvelope), by
+# An instrument given the Super Nintendo sound chip's own envelope bytes (Audio::SNESEnvelope), by
 # hand or read from the data pack, on every console whose build shapes a recording: the Advance's
 # and the Super Nintendo's. Each console's folder has a test file that includes these:
 #

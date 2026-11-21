@@ -3,41 +3,41 @@
 require "differential"
 require "native_comparison"
 
-# IS THE SOUND THE DESKTOP BUILD MAKES THE SOUND THE CARTRIDGE MAKES? For any game:
+# Is the sound the desktop build makes the sound the cartridge makes? For any game:
 #
 #   include SoundComparison
 #   assert_native_sounds_like_the_console(program, frames: 300, buttons: { 3 => [:a], 4 => [:a] })
 #
 # The console's own voices never pass through memory — its sound chip makes each wave itself — so
 # there are no bytes to compare. The answer key is what comes out of the emulator, and it is
-# judged the way an ear would: frame by frame, is each voice as LOUD, at the same PITCH, with the
+# judged the way an ear would: frame by frame, is each voice as loud, at the same pitch, with the
 # same thin or full TONE. One voice at a time, because two voices added together have no one
 # pitch to measure; the emulator can leave voices out of its mix, and so can the desktop build.
 #
 # It is deterministic: the emulator and the desktop build each play the same run the same way
 # every time, so a comparison that passes once passes always.
 #
-# IT REFUSES TO PASS ON NOTHING. Every voice it is asked about has to be heard on the console,
+# It refuses to pass on nothing. Every voice it is asked about has to be heard on the console,
 # and has to hold a note long enough for its pitch to be compared at least once — or, for the
 # noise voice, hiss long enough for how bright it is to be; a run where that never happens fails
 # and says so, rather than passing because there was nothing to differ.
 #
-# HOW LOUD EACH KIND OF VOICE IS READ. A square voice and the noise voice are two heights and
+# How loud each kind of voice is read. A square voice and the noise voice are two heights and
 # nothing between, so how loud one is is how far it jumps from one to the other (Heard#jump). The
 # wave voice climbs its waveform a step at a time and never jumps its whole height at once, so
 # how loud it is is how tall the wave stands, top to bottom (Heard#height) — read from the
 # emulator's sound with its drift taken back out (#without_drift). All three come out in the same
 # steps, 0 to 15: the wave voice at its loudest is as tall as a square voice's jump at volume 15.
 #
-# THE NOISE VOICE IS JUDGED ITS OWN WAY, because a hiss is a pattern and not a wave. It has no
-# pitch to read from the spacing of its rises, so what is compared in its place is how BRIGHT it
+# The noise voice is judged its own way, because a hiss is a pattern and not a wave. It has no
+# pitch to read from the spacing of its rises, so what is compared in its place is how bright it
 # is: how often it changes, counted as how many times it crosses its own middle through three
 # frames (Heard#brightness). And a slow hiss, a rumble, stays high or low for frames at a time,
 # so a frame with no jump in it is not a silent one: its loudness is asked only where one of the
 # two jumps (#hiss_loudness_difference). The pattern itself — which way it stands on each step —
 # is a test of its own, for a hiss slow enough that every step shows (Heard#runs).
 #
-# THE TOLERANCES, and why each is there. The emulator does not hand over what the chip does but
+# The tolerances, and why each is there. The emulator does not hand over what the chip does but
 # what a speaker would get: resampled, and filtered a little.
 #
 #   - LOUDNESS, a step and a half of a voice's fifteen. A step, because a note that fades a step
@@ -46,18 +46,18 @@ require "native_comparison"
 #     little, so a jump reads a shade taller or shorter than it is. That allowance is never what
 #     lets a voice go missing: heard on one and silent on the other is a difference whatever
 #     the loudness.
-#   - THE NOISE VOICE'S LOUDNESS, two steps and a half. A square wave jumps hundreds of times a
+#   - The noise voice's loudness, two steps and a half. A square wave jumps hundreds of times a
 #     frame, so a frame is as loud as the voice was at the frame's start. A low hiss jumps a few
 #     times a frame, and each jump is as tall as the volume at the moment it falls — a moment the
 #     two can put either side of a step of the fade, on top of the step their fades can already
 #     be apart.
-#   - A FRAME EITHER WAY, for loudness. A fading note steps down on a clock of the chip's own
+#   - A frame either way, for loudness. A fading note steps down on a clock of the chip's own
 #     that is not in step with the frames, so a step can fall a frame early or late. So a frame
 #     is as loud as it should be if it matches the console's frame before, the same frame, or
 #     the one after.
-#   - PITCH, one part in a hundred, and TONE, a fiftieth of the wave. Resampling moves each edge
+#   - PITCH, one part in a hundred, and tone, a fiftieth of the wave. Resampling moves each edge
 #     of the wave by a fraction of a sample, in a wave of a hundred or so.
-#   - HOW BRIGHT A HISS IS, three parts in twenty and three crossings. A hiss slower than the
+#   - How bright a hiss is, three parts in twenty and three crossings. A hiss slower than the
 #     console hands its voices on is the same pattern on both, step for step, and the two counts
 #     are a few crossings apart: one at either end of the three frames can fall inside them on
 #     one and outside on the other, which is the three. The fastest hisses step several times
@@ -262,7 +262,7 @@ module SoundComparison
   # has to be heard: name the voices the run uses, and leave out one it never does. +side+ is the
   # speaker both are heard from, the left unless it says the right.
   #
-  # For the same reason a button reaches the two on DIFFERENT PASSES of the game, which matters
+  # For the same reason a button reaches the two on different passes of the game, which matters
   # where the game is racing something of its own; "The console starts its game a frame or two
   # after the desktop build" in .claude/testing/native-sound.md says how to hold one so it does not.
   def assert_native_sounds_like_the_console(program, frames:, buttons: {}, voices: SQUARE_VOICES, side: :left)
@@ -286,7 +286,7 @@ module SoundComparison
   # does so over and over, which is a good deal more than this.
   WAVES_BROKEN_SPARE = 1
 
-  # THE WAVES THEMSELVES, on every frame, a note changing or not: how many waves a square voice
+  # The waves themselves, on every frame, a note changing or not: how many waves a square voice
   # breaks, going back to the start of its wave where the chip carries on (Diagnostics::SoundRecording
   # says how one is found). Counted where the voice is loud enough to read (READABLE_SHARE), and as
   # a total for the run, since the two do not break theirs on the same frame. The loudness, pitch
