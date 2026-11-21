@@ -520,7 +520,7 @@ module VBlank
             end
           end
 
-          # The shading as a table, made once for each shading and screen.
+          # The shading as a TABLE, made once for each shading and screen.
           #
           # On the tear-free screen a pixel is a palette number, so the table is one row of 256
           # bytes for each level, darkest first: for each palette number, the number of the colour
@@ -603,7 +603,7 @@ module VBlank
           # levels (Reference::Shade#shaded_corner), so a shade's top sixteen bits are its level.
           #
           #   r0 corners left, r3 a corner's words, r4 the levels, r5 the shade, r6 a corner's
-          #   light, r1 lightest
+          #   light, r1 LIGHTEST
           def emit_corners_lit
             unlit = gensym
             load_var(4, :_face_shading)
@@ -2248,7 +2248,7 @@ module VBlank
           # r0 = r1 divided by the count in r0 (one or more), truncated toward nought as Int32.div
           # does: how far a row, or a stretch of one, steps a pixel.
           #
-          # A row is seldom wide, so most counts are under reciprocals, and for those the divide is
+          # A row is seldom wide, so most counts are under RECIPROCALS, and for those the divide is
           # a multiply: the number's size times 2**32 / count rounded up, top half kept. Rounding up
           # makes that the true quotient or one more (the excess is the number times under one
           # 2**32th of the count, so under one), and one more is seen by multiplying back. A count

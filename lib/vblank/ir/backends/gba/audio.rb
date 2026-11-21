@@ -2707,7 +2707,7 @@ module VBlank
           # Where things start is a byte offset into this same data, so nothing in it needs to know
           # where the cartridge puts it — except the recordings, which are data of their own, and
           # whose addresses are filled in once everything has a place (Emit#link_data). A lane a
-          # tune does not use points at a row that waits for never.
+          # tune does not use points at a row that waits for NEVER.
           def score_blob
             entry_bytes = 1 << @entry_shift
             soundings = (@song_numbers.keys + @effects).flat_map { |name| IR::Tunes.soundings(@songs.fetch(name)) }.uniq
@@ -2845,7 +2845,7 @@ module VBlank
           end
 
           # A part's events on its lane, each worked out here so the player only copies it, and
-          # a row after the last that waits for never. An event may name its own instrument and
+          # a row after the last that waits for NEVER. An event may name its own instrument and
           # loudness; one that does not plays the part's.
           def lane_rows(lane, part, events)
             if lane.kind == :recorded
@@ -2897,7 +2897,7 @@ module VBlank
           end
 
           # A wave row's last word, in a game where a wave note names a waveform of its own: where
-          # the note's waveform is in the score (#wave_row_at), and nothing on a row waiting for never.
+          # the note's waveform is in the score (#wave_row_at), and nothing on a row waiting for NEVER.
           # Nothing on any other lane's rows, or in any other game.
           def row_waveform(lane, part, event)
             return "".b unless @note_waves && lane.kind == :wave

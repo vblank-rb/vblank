@@ -122,7 +122,7 @@ module VBlank
           WORK = %i[cycles of_cycle years into months].to_h { |part| [part, work_var(part)] }.freeze
 
           # The registers the routines work in: ACC for the byte going out or coming back, TMP for
-          # the pins' value, spare as the bit count, and HIGH holding the pins' address. All four
+          # the pins' value, SPARE as the bit count, and HIGH holding the pins' address. All four
           # are a statement's own scratch, never held across one. Every routine but one is called
           # only between statements, so nothing the game holds is in them; the one that adds a time
           # the game set is called as a value is being worked out, and keeps every register it

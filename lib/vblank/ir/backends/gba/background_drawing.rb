@@ -237,7 +237,7 @@ module VBlank
             write_reg16(REG_WINOUT, (WIN_ALL_LAYERS & ~bar_layer) | WIN_EFFECT)
           end
 
-          # A background held to a box (Reference#exec_box_background) is the display's second window.
+          # A background held to a BOX (Reference#exec_box_background) is the display's second window.
           #
           # A window is a rectangle of the screen the display is told about, and two switches for
           # each layer: whether it is drawn inside the rectangle, and whether outside every window.
@@ -897,7 +897,7 @@ module VBlank
           # comes up at the start of the gap the pass's wait ends in.
           #
           # A gap has started since the pass began when the screen's interrupt has counted one
-          # (Frames: COUNT moved from seen, the mark taken as the pass began) or has one waiting,
+          # (Frames: COUNT moved from SEEN, the mark taken as the pass began) or has one waiting,
           # which it does when the gap started while interrupts were held off (GBATEK, Interrupt
           # Control: IF bit 0 is set as V-Blank starts, and stays set until the handler clears it).
           # Before the game loop's first mark the marks are not yet a pass's, and the layers are

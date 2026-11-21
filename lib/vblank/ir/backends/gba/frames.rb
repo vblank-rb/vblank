@@ -73,7 +73,7 @@ module VBlank
           end
 
           # ...and read at the top of each pass: the difference since last time, held between one
-          # and most, left where anything that needs it can read it.
+          # and MOST, left where anything that needs it can read it.
           #
           # Held at both ends, and the low end is not tidiness. This console's memory is not zero
           # at power-on, so on the very first pass both marks are rubbish and their difference
@@ -125,7 +125,7 @@ module VBlank
             @primitives.load_var(TMP, SEEN)
             @emitter.emit(ASM.sub_reg(ACC, ACC, TMP)) # the breaks that went by...
             if spent
-              # ...held to most, as a step is, so the count spent at power-on is past it whatever
+              # ...held to MOST, as a step is, so the count spent at power-on is past it whatever
               # the marks held then and however long the first pass took.
               within = @emitter.gensym
               @emitter.emit(ASM.cmp_imm(ACC, MOST))
