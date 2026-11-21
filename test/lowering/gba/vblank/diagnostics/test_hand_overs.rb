@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SCENE THAT RUNS LATE ON THE FRAME THE GAME HANDS OVER TO IT, said by `rom.profile`.
+# A scene that runs late on the frame the game hands over to it, said by `rom.profile`.
 #
 # The play scene here does enough work each pass to fill most of a frame, and holds most of the
 # 32K the console keeps sprite pictures in. The work alone fits a frame; the work and the copy

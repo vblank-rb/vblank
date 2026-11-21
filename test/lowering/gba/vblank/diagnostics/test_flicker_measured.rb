@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# {Flicker} read off a REAL RUN, through `rom.profile`.
+# {Flicker} read off a real run, through `rom.profile`.
 #
 # The rule itself is tested as a pure comparison in test_flicker.rb. This file is
 # about the half that cannot be faked: reading both of a tear-free screen's
@@ -17,7 +17,7 @@ class TestFlickerMeasured < Minitest::Test
 
   # How many marks the trail lays down before it stops, and how far apart.
   #
-  # IT STOPS ON PURPOSE. A trail that ran on for ever would wrap and lay every mark
+  # It stops on purpose. A trail that ran on for ever would wrap and lay every mark
   # down again on the other picture, so the two would agree in the end and a broken
   # game would read as a clean one — for a reason that has nothing to do with the
   # rule. Bounded, both programs below are permanently settled well before the
@@ -25,7 +25,7 @@ class TestFlickerMeasured < Minitest::Test
   MARKS = 24
   STEP = 8
 
-  # A TRAIL, written the way somebody writes one the first time: add a mark a frame
+  # A trail, written the way somebody writes one the first time: add a mark a frame
   # and never repaint. Half the marks land in each of the screen's two pictures, and
   # once the trail stops they stay that way.
   private def losing_rom
@@ -63,7 +63,7 @@ class TestFlickerMeasured < Minitest::Test
 
   # A game that repaints the whole screen every frame: nothing is ever left behind.
   #
-  # It steps a whole mark's width a frame, ON PURPOSE. A mark that crawled a pixel at a
+  # It steps a whole mark's width a frame, on purpose. A mark that crawled a pixel at a
   # time would overlap itself and leave only a sliver of difference between the two
   # pictures — under the floor, and the reading would come out clean whether or not the
   # rule was right. Stepping clear each time makes a wrong rule show up.
@@ -79,7 +79,7 @@ class TestFlickerMeasured < Minitest::Test
     end
   end
 
-  # A STILL PICTURE THAT TAKES SEVERAL FRAMES TO DRAW: every pass clears the screen and paints
+  # A still picture that takes several frames to draw: every pass clears the screen and paints
   # it red again a dot at a time, which is too slow for one frame. The player sees a red screen
   # that never changes, because a page is shown only once its pass is done. Half way through a
   # pass the page being drawn is red at the top and still black at the bottom, and it stays
@@ -98,7 +98,7 @@ class TestFlickerMeasured < Minitest::Test
 
   private def flicker_of(rom) = VBlank::Diagnostics::Profiler.run(rom, frames: 12).flicker
 
-  # THE BEAD'S CASE. A pass that takes several frames leaves its page half drawn across a
+  # The bead's case. A pass that takes several frames leaves its page half drawn across a
   # two-frame gap, and that half disagrees with the page on screen. But the player never sees
   # the half-drawn page, so nothing flickers.
   def test_a_still_picture_drawn_over_several_frames_is_not_caught
@@ -108,7 +108,7 @@ class TestFlickerMeasured < Minitest::Test
     refute_predicate reading, :losing?, "the picture on screen never changes, got #{reading.pixels} pixels"
   end
 
-  # THE ONE THAT MATTERS. The console really is showing two different pictures in
+  # The one that matters. The console really is showing two different pictures in
   # turn, and the reading says so and says where.
   def test_a_dissolve_drawn_once_is_caught_on_the_console
     reading = flicker_of(losing_rom)
@@ -119,7 +119,7 @@ class TestFlickerMeasured < Minitest::Test
     assert_equal 40, reading.first[1], "the stuck pixels are on the row the dots are drawn on"
   end
 
-  # ...and the same drawing put into both pictures is NOT caught. This is the
+  # ...and the same drawing put into both pictures is not caught. This is the
   # acceptance the bead turned on: a game that adds on purpose and handles it must
   # not be warned about, and no build-time check can tell it from the one above.
   def test_the_same_dissolve_drawn_into_both_pictures_is_not_caught
@@ -137,7 +137,7 @@ class TestFlickerMeasured < Minitest::Test
     refute_predicate reading, :losing?
   end
 
-  # WHY THE WINDOW IS TWO FRAMES AND NOT ONE, pinned rather than asserted in a comment.
+  # Why the window is two frames and not one, pinned rather than asserted in a comment.
   #
   # Only one picture is drawn into per frame, so a one-frame window sees one of them
   # take its turn and the other stand still — and which one that is depends on where

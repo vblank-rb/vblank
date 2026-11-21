@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT ASKING ABOUT FULL COLLECTIONS COSTS A BUILD: one more run of a scene, however many
+# What asking about full collections costs a build: one more run of a scene, however many
 # collections the game has. Each run plays the scene in the emulator, so a run a collection is
 # minutes of every build of a game with dozens of them, and every cold test cartridge too.
 class TestFullCollectionsCost < Minitest::Test
