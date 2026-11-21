@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # A WINDOW TO PLAY A GAME IN: the device Session shows a game on when a person is playing it.
+    # A window to play a game in: the device Session shows a game on when a person is playing it.
     # The window, the keyboard and the clock are SDL3's, a C library every desktop has a build of,
     # reached through Fiddle, Ruby's own way of calling a C library: no C of this library's to
     # compile.
@@ -24,7 +24,7 @@ module VBlank
     # is open; so does the key above Tab, and on a gamepad the guide button, or Back and Start
     # together. Escape, or closing the window, stops the play.
     #
-    # THE MENU is drawn over the picture in the window's own pixels, not the game's: the picture is
+    # The menu is drawn over the picture in the window's own pixels, not the game's: the picture is
     # the console's few pixels made big and square, and the menu over it is as sharp as the screen
     # can show, a Retina screen's two pixels a point included (the window asks SDL for them). Menu
     # gives where each box and word goes; the boxes are drawn here as triangles with their edges
@@ -33,7 +33,7 @@ module VBlank
     # opens. What could not be used in the settings file is said over the picture as well as on the
     # terminal, and what a shell tells the player (#tell_in_box) at the foot, until a button is pressed.
     #
-    # THE SOUND goes to the computer's speaker through an SDL audio stream, a queue the speaker
+    # The sound goes to the computer's speaker through an SDL audio stream, a queue the speaker
     # plays from at its own steady rate while the game puts a frame's samples in at the end of
     # each pass. The window reports how much is waiting (#sound_waiting), and the session paces the
     # play by it, so the game keeps the speaker's time and the queue holds steady at a few frames:
@@ -50,7 +50,7 @@ module VBlank
 
       # Where SDL3 is looked for when neither +library:+ nor VBLANK_SDL3 names it: the names each
       # system's loader finds by itself, then the folders Homebrew installs into on a Mac.
-      # On Windows, the bare name, which the loader looks for beside Ruby and on PATH, and then the
+      # On Windows, the bare name, which the loader looks for beside Ruby and on path, and then the
       # folder RubyInstaller's build tools (MSYS2) install their libraries into, where
       # `ridk exec pacman -S mingw-w64-ucrt-x86_64-sdl3` puts it.
       def self.libraries(windows: Gem.win_platform?)
@@ -137,7 +137,7 @@ module VBlank
                                            SCANCODES_BY_KEY_NAME.fetch(WindowMenu::QUICK_LOAD_KEY) => :load })
       KEY_CODES = Ractor.make_shareable({ up: 82, down: 81, left: 80, right: 79, enter: 40 })
 
-      # A GAMEPAD'S BUTTONS, by SDL's numbers for them (each one's place in Settings::PAD_BUTTONS),
+      # A gamepad's buttons, by SDL's numbers for them (each one's place in Settings::PAD_BUTTONS),
       # and the console's button each is: the settings' (pad.a = east), and to begin with the
       # console's own layout, as the desktop build has it — A on the right (SDL's "east"), B below
       # it ("south"), the back and start buttons, the shoulders, the D-pad.
@@ -278,7 +278,7 @@ module VBlank
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
       end
 
-      # THE WINDOW FITTED TO THE GAME IT WILL PLAY, once it is known: a window opened before its game
+      # The window fitted to the game it will play, once it is known: a window opened before its game
       # was built (vblank run opens it at once, at the console's size, while a helper process builds
       # the game) takes the game's picture size and its own keys here (#initialize's +width+,
       # +height+, +pixel_size+, +game_controls+ and +buttons+). The settings file is read again with
@@ -492,7 +492,7 @@ module VBlank
       # the window until a button is pressed, as the desktop build shows it.
       def tell_in_box(words) = @menu.tell(words)
 
-      # WHY THE PLAY ENDED (a save file that is not the game's, a game that stopped on a fault), in a
+      # Why the play ended (a save file that is not the game's, a game that stopped on a fault), in a
       # box titled +title+ over the last picture, as the desktop build tells it: nothing plays under
       # it, the speaker is emptied, and the window waits on its events, drawn again after each, until
       # a button answers the box as its OK does, or the window is closed or Escape pressed. Never a
@@ -624,7 +624,7 @@ module VBlank
         @sdl.SDL_Quit
       end
 
-      # THE BINDING: SDL3's functions as Ruby methods, made the first time a window is asked for
+      # The binding: SDL3's functions as Ruby methods, made the first time a window is asked for
       # and kept for each library file, one set for each Ractor (Fiddle's handles are its own).
       def self.binding_for(library)
         require_fiddle!
@@ -855,7 +855,7 @@ module VBlank
         [[wide / @shown_width, high / @shown_height].min, WindowMenu::SCALES.max].min
       end
 
-      # A BOX TOO BIG FOR THE WINDOW MAKES THE WINDOW BIGGER, as the desktop build's does
+      # A box too big for the window makes the window bigger, as the desktop build's does
       # (rg_sdl.c's grow_window_for_messages): while a box is shown that does not fit
       # (Menu#messages_fit?), the window is made the smallest whole number of times the picture that
       # holds it, no bigger than the screen has room for, and goes back to the size the settings set

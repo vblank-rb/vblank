@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # A GAME PLAYED LIVE, A PASS AT A TIME, THROUGH A DEVICE. The game is built as Ruby and run in
+    # A game played live, a pass at a time, through a device. The game is built as Ruby and run in
     # this process (IR::Backends::Ruby#live_game). At the end of each of its frames it hands the
     # session the picture and the frame's sound; the session waits for that frame to end, shows
     # the device the picture, hands it the sound, asks it whether to stop, and gives the game the
@@ -43,12 +43,12 @@ module VBlank
     #   now                          the time, in seconds, from any start that does not move back
     #   wait_until(seconds)          returns at that time, or at once if it has gone; the next pass starts then
     #
-    # A DEVICE WITH A SPEAKER IS PACED BY IT (#wait_for_speaker): the speaker plays a second of
+    # A device with a speaker is paced by it (#wait_for_speaker): the speaker plays a second of
     # sound in a second, so the play waits on it, a frame a pass, keeping a few frames of sound
     # waiting. That is what keeps the sound whole: on the clock's beat below, a pass that missed
     # its frame skips one, and the speaker is a frame's sound short.
     #
-    # WITH NO SPEAKER, THE FRAMES KEEP THE CONSOLE'S BEAT. On the console the screen ends a frame
+    # With no speaker, the frames keep the console's beat. On the console the screen ends a frame
     # every sixtieth of a second or so whether the game is ready or not: a pass that finishes early
     # waits for the end of its frame, and one that finishes late has missed the end of one or more
     # and waits for the next. The session keeps the time the current frame began on that even
@@ -66,7 +66,7 @@ module VBlank
       # waiting is how far what a person sees and hears trails the buttons they press.
       SPEAKER_AHEAD_FRAMES = 4
 
-      # THE PASS THE GAME SETS ITSELF UP IN, which the play's speed leaves out (Rate): its pass, the
+      # The pass the game sets itself up in, which the play's speed leaves out (Rate): its pass, the
       # frames it took and the seconds to their end. A first pass played in fast forward shares its
       # frame with the passes after it, so none is left out.
       Setup = Data.define(:passes, :frames, :seconds)
@@ -177,7 +177,7 @@ module VBlank
         masks
       end
 
-      # SAVE STATES, which only a device with a person at it asks for (SDL's menu and keys). The game
+      # Save states, which only a device with a person at it asks for (SDL's menu and keys). The game
       # asks at the top of each frame boundary, the one place a state can be taken or put back (the
       # runtime's rg_live_serve_state_request), and these hand the question to the device. Only a device
       # that has asked (#take_state_request gave a request) is handed the other four, so a device
@@ -200,7 +200,7 @@ module VBlank
 
       private
 
-      # THE GAME'S SAVE MEMORY, KEPT IN A FILE between runs when the device has one (SDL, a window with a
+      # The game's save memory, kept in a file between runs when the device has one (SDL, a window with a
       # folder for the game: #save_file) and the game has save memory. The file's bytes go in as the game
       # starts, so a file that is not the size of the save stops the play before it begins, saying so. A
       # change is written soon after (Ruby's rg_save_file_is_due?) and the rest as the play ends.
@@ -236,7 +236,7 @@ module VBlank
         masks
       end
 
-      # THE GAME'S OWN WORK OVER THE PASS JUST ENDED, from the buttons handed to it to now, and the
+      # The game's own work over the pass just ended, from the buttons handed to it to now, and the
       # time Ruby spent collecting garbage inside it, into the play's Lateness. The pass the game
       # sets itself up in is left out, as is one played in fast forward: both are meant to run long.
       def record_pass_time(speed)
@@ -248,7 +248,7 @@ module VBlank
         @lateness.record(work_seconds: work, collection_seconds: LatenessTally.seconds_collecting_since(@collection_began))
       end
 
-      # ONE FULL COLLECTION, ONCE THE GAME HAS SET ITSELF UP. Ruby keeps young objects apart from old
+      # One full collection, once the game has set itself up. Ruby keeps young objects apart from old
       # ones and mostly looks only at the young; now and then it looks at every object it has, a full
       # collection, and how long that takes grows with everything alive. Building a big game leaves
       # a great many objects (the game's tree, its pictures, the setup's own), and left alone Ruby
@@ -290,7 +290,7 @@ module VBlank
         @events_announced = events.length
       end
 
-      # A GAME THAT STOPPED ITSELF — it halted, or came to its end — leaves its last picture on the
+      # A game that stopped itself — it halted, or came to its end — leaves its last picture on the
       # screen, as the console does: the picture is shown a frame at a time, the window still read
       # and pause and its menu still working, until the device asks to stop. A play told how many
       # passes to go on for counts each picture shown here as one of them, so it still ends. The
@@ -324,7 +324,7 @@ module VBlank
         end
       end
 
-      # FAST FORWARD plays up to +speed+ of the game's frames for each picture shown, in the time
+      # Fast forward plays up to +speed+ of the game's frames for each picture shown, in the time
       # of one: a machine that can goes that many times the console's speed and no faster. A
       # picture is shown, and the next frame's time waited for, once that many passes
       # have been played or the frame's time is up, so a machine that cannot go that fast still
@@ -363,7 +363,7 @@ module VBlank
         @fast_forward_passes = 0
       end
 
-      # A PAUSE holds the game between two passes, for as long as the device holds it. The time
+      # A pause holds the game between two passes, for as long as the device holds it. The time
       # held is not the game's: the next frame begins when the pause ends, so the beat does not
       # count it as frames missed, and the play's rate leaves it out. The device empties its
       # speaker as the pause begins, so the game carries on with nothing queued from before.
@@ -375,7 +375,7 @@ module VBlank
         restart_pacing
       end
 
-      # WITH A SPEAKER, THE SPEAKER PACES THE PLAY, as an emulator's sound sync does. Its own clock
+      # With a speaker, the speaker paces the play, as an emulator's sound sync does. Its own clock
       # plays a second of samples in a second, so once a frame's sound is handed to it the next pass
       # waits only while more than SPEAKER_AHEAD_FRAMES of sound are waiting. A pass is a frame:
       # no frame is skipped, and a late pass, or a wait that wakes late, only uses up some of what is

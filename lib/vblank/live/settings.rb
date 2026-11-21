@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # WHAT THE WINDOW KEEPS FOR A PLAYER, and the settings file it is kept in: the window's own
+    # What the window keeps for a player, and the settings file it is kept in: the window's own
     # settings (WindowMenu::Settings, which the menu changes), which key and gamepad button is each
     # console button, and the keys the window keeps for itself (hotkeys). The rules are the desktop
     # build's, written again in Ruby from its runtime/rg_window.c — the same lines, the same
@@ -275,7 +275,7 @@ module VBlank
       # read next, a game's: that file keeps only what it holds, and what changes while it plays.
       def mark_inherited = @owned.clear
 
-      # THE SETTINGS AS TEXT for the file: every one, for the file every game shares, or with
+      # The settings as text for the file: every one, for the file every game shares, or with
       # +own_only+ only those the file being written to holds for itself, for a game's own.
       def text(own_only: false)
         all = !own_only
@@ -317,7 +317,7 @@ module VBlank
         "#{lines.join("\n")}\n"
       end
 
-      # READS SETTINGS TEXT over what is there now: each line it names a setting in replaces that
+      # Reads settings text over what is there now: each line it names a setting in replaces that
       # one and leaves the others, and that setting is now the file's own. Gives what could not be
       # used, a sentence each.
       def read(text)
