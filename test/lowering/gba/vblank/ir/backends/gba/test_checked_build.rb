@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A CARTRIDGE BUILT TO BE CHECKED AGAINST THE INTERPRETER (GBA.new(checked: true)) keeps how its run
+# A cartridge built to be checked against the interpreter (GBA.new(checked: true)) keeps how its run
 # stands where a reader of it looks (GBA::Runtime::Frame, by the names every console's reader asks
 # for): how many passes have ended, which one the screen shows, whether the game waits, the frames
 # each pass took, how it stands and what went wrong. Read back here in the emulator, a frame at a

@@ -5,7 +5,7 @@ require "differential"
 require "stringio"
 require "color_screen_tests"
 
-# A GAME LAID OUT FOR THE GAME BOY COLOR, ON THE ADVANCE'S CARTRIDGE (Backends::GBA::BorderSprites):
+# A game laid out for the Game Boy Color, on the Advance's cartridge (Backends::GBA::BorderSprites):
 # its 160×144 picture at its own size in the middle of the 240×160 screen, a border round it, read
 # back in the emulator.
 module BorderGames
