@@ -1,5 +1,5 @@
 /*
- * THE PICTURE IN FLAT BLOCKS (Reference @block, Reference::SpriteBlocks): `pixelate`, and the
+ * The picture in flat blocks (Reference @block, Reference::SpriteBlocks): `pixelate`, and the
  * painting and reading it changes. A runtime feature (backends/runtime_features.rb): this file is
  * included at the end of rg_screen.c, for a game that pixelates, so it reads the screen's own
  * state and painters as if it were written there. A game that never pixelates builds without it.

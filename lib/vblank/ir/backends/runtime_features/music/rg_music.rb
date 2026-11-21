@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE MUSIC PLAYER (`play_song`, `play_sound_effect`, `stop_music`, `hold_music`): songs walked a
+# The music player (`play_song`, `play_sound_effect`, `stop_music`, `hold_music`): songs walked a
 # frame at a time, the sound effects that are songs walked by the same player, the voices claimed by
 # rank, the music volume followed, and the pitch wobble, swell and shape stepping that only notes do.
 # Joined into the runtime's class after rg_sound.rb (and after the mix, for a game that has both)
@@ -273,7 +273,7 @@ def rg_step_wobbles
   end
 end
 
-# A SQUARE NOTE'S SHAPES, by its voice: rg_sound.c's shape_walk, and its other shape functions.
+# A square note's shapes, by its voice: rg_sound.c's shape_walk, and its other shape functions.
 RgShapeWalk = Struct.new(:bits, :frame, :steps)
 RG_EIGHTHS_OF_SHAPE = [1, 2, 4, 6].freeze
 
@@ -298,7 +298,7 @@ def rg_shape_stop(voice)
   rg_swell_stop(voice)
 end
 
-# A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, by its voice: rg_sound.c's swell_walk, and its
+# A song's swelling note held under the music volume, by its voice: rg_sound.c's swell_walk, and its
 # other swell functions.
 RgSwellWalk = Struct.new(:active, :step, :volume, :counted, :swelling, :wave_ticks, :eighths_high)
 RG_LOUDEST = RG_VOLUMES - 1
