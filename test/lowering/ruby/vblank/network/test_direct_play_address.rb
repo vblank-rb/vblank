@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE ADDRESS A MACHINE JOINS, written HOST:PORT, and what is said about one that cannot be used.
+# The address a machine joins, written HOST:PORT, and what is said about one that cannot be used.
 class TestDirectPlayAddress < Minitest::Test
   Address = VBlank::Network::DirectPlay::Address
 

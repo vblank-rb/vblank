@@ -5,7 +5,7 @@ require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
 
-# WHICH PLAYER I AM, IN A MATCH. Each machine of a match is a different player, and the game may
+# Which player i am, in a match. Each machine of a match is a different player, and the game may
 # draw that (examples/wanderers.rb puts an arrow over the machine's own walker) but may not keep it.
 # These play wanderers as a match of two and four machines, with a checkpoint on every pass, so any
 # difference in what the game remembers is named at once.

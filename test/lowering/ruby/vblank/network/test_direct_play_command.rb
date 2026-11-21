@@ -7,7 +7,7 @@ require "timeout"
 require "tmpdir"
 require "English"
 
-# `vblank run GAME --host` IN ONE PROCESS AND `--join ADDRESS` IN ANOTHER, over a TCP port on this computer,
+# `vblank run GAME --host` in one process and `--join address` in another, over a TCP port on this computer,
 # the way two people would play: the match, the plain words it says, and what happens to one when the
 # other is killed. They play with no window and hold buttons (--no-window, --keys), since a test has no one
 # at the keyboard. The pieces under it are tested without processes in test_direct_connection.rb.
@@ -63,7 +63,7 @@ class TestDirectPlayCommand < Minitest::Test
     [hosting, joining].each { |run| assert_match(/agreed on every checkpoint/, run.lines.join) }
   end
 
-  # A MATCH IN WINDOWS, EACH GAME BUILT IN A HELPER (Live::BuildHelper) and played in the window's own
+  # A match in windows, each game built in a helper (Live::BuildHelper) and played in the window's own
   # process, as a person plays one: SDL's dummy windows, which nobody sees. The game file notes each
   # process that loads it: the command and its helper, on each computer.
   def test_two_windows_play_one_match_each_game_built_by_a_helper
