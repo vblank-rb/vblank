@@ -7,7 +7,7 @@ require "test_helper"
 module ListFillWordGames
   SIZE = 3328
 
-  # A byte list of SIZE items, all 0, filled each pass as +fill+ says, with a few items read
+  # A byte list of size items, all 0, filled each pass as +fill+ says, with a few items read
   # into variables so both backends can be read the same way.
   private def filling(&fill)
     proc do
@@ -31,7 +31,7 @@ module ListFillWordGames
   READINGS = %i[first before inside after last held].freeze
 end
 
-# A LIST SET TO ONE VALUE IN ONE STEP: `list.fill value`, or a run of it, `list.fill value,
+# A list set to one value in one step: `list.fill value`, or a run of it, `list.fill value,
 # from: f, count: n`. Clearing a box a game letters text into is the case: thousands of bytes
 # set to one value when the box opens, which a loop setting them one at a time spends most of
 # a frame on. The same fills on the Advance's cartridge, and what one costs there, are in

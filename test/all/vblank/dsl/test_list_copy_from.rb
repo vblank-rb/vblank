@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RUN OF A TABLE COPIED INTO A LIST AT ONCE: `list.copy_from(table, at: start, count: n)`.
+# A run of a table copied into a list at once: `list.copy_from(table, at: start, count: n)`.
 # The table is pictures or text built into the cartridge, the start is worked out as the game
 # runs (which letter, which frame), and the list then holds exactly those n entries. A loop of
 # `list[i] = table[start + i]` says the same thing a byte at a time; this is one copy.

@@ -181,7 +181,7 @@ module HeldTilesGames
   end
 end
 
-# A BACKGROUND WHOSE CELL CHANGES ALL SHOW ON ONE FRAME.
+# A background whose cell changes all show on one frame.
 #
 # Without `held: true` a cell is written where the game says, and the display, which reads the map
 # as it draws, shows it on this frame or the next by how far down the screen it has got. With it,
@@ -270,7 +270,7 @@ class TestHeldTiles < Minitest::Test
   end
 end
 
-# A SCENE TAKING OVER FORGETS ONLY THE CHANGES WAITING FOR ITS OWN BACKGROUNDS. A box every screen
+# A scene taking over forgets only the changes waiting for its own backgrounds. A box every screen
 # shows, changed earlier in the pass a scene takes over in, still shows the change on the next
 # frame. Played on each console that shows a scene's background beside a box every screen shows
 # (the Color shows one background at a time): test/console/<console>/vblank/dsl/.

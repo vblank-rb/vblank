@@ -85,7 +85,7 @@ class TestHardwareSpriteScale < Minitest::Test
   # that only moves — each does strictly more work, ending in a division the author never
   # wrote. The three programs differ in exactly one thing, so the comparison is of the
   # transform and nothing else, and what is compared is the code the build EMITTED for each.
-  # (This used to compare an ESTIMATE of the three. `rom.profile` measures the real thing.)
+  # (This used to compare an estimate of the three. `rom.profile` measures the real thing.)
   def test_resizing_emits_more_than_turning_emits_more_than_moving
     moving = emitted_bytes(sized_program)
     turning = emitted_bytes(sized_program(angle: 45))
