@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class JS
-        # ONE PROGRAM, WRITTEN OUT AS JAVASCRIPT. Make one per program and ask for #source.
+        # One program, written out as JavaScript. Make one per program and ask for #source.
         #
         # It is the shared lowering's own, printed as JavaScript. Computer::Lowering turns a program
         # into a small tree of statements (Computer::Statements): globals, routines, tables of numbers, and

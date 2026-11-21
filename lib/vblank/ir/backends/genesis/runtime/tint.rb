@@ -5,12 +5,12 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE COLOURS A GAME CHANGES AS IT RUNS: a fade, a tint, and a list of sprite colours told to hold
+          # The colours a game changes as it runs: a fade, a tint, and a list of sprite colours told to hold
           # other colours (`recolor`). All three are one thing on a Genesis, the colour memory written again, so
           # they are one piece of the runtime.
           #
           # The colour memory holds the colours as the screen shows them, three bits a channel; the game's
-          # colours have five. So the cartridge keeps the game's own colours in work RAM (the table COLORS, a
+          # colours have five. So the cartridge keeps the game's own colours in work RAM (the table colors, a
           # word for each place of the colour memory, 5-5-5 as every other console's are), and the colour
           # memory is worked out from it: each colour moved by the fade or tint in force, then cut to the
           # bits the console keeps, as the interpreter cuts a picture it shows. A fade moves the colour the
@@ -33,15 +33,15 @@ module VBlank
           # from those tables and put together. A sum is walked from one value to the next by adding keep, so
           # the tables take no multiply at all. That is the shape of a Genesis game's own fade: work once a
           # step what each colour needs, rather than three multiplies for each colour on every pass. Each
-          # colour's channels are taken apart once when the game sets it (SPLIT), not on each step of a fade.
+          # colour's channels are taken apart once when the game sets it (split), not on each step of a fade.
           #
           # Nothing is written to the colour memory at once. A change marks the palette lines it touched as owed
           # (DIRTY, a bit for each of the four lines), and as the pass ends (rt_colors_prepared, before the wait)
           # every place the game uses in a marked line is worked out into a copy of the colour memory in work RAM
           # (CRAM; USED holds how many places of each palette, and the backdrop is always one) — worked out then
           # because the sixty colours take longer than the blank does, and a colour written after it is on the
-          # screen for a frame. The blank only copies the lines worked out (rt_colors_written, OWED a bit a line
-          # as DIRTY is), so the colours change on the frame the game set them, with the sprite table and the
+          # screen for a frame. The blank only copies the lines worked out (rt_colors_written, owed a bit a line
+          # as dirty is), so the colours change on the frame the game set them, with the sprite table and the
           # scroll. The video chip takes a write to its colour memory at any address, a line at a time as
           # well as all 128 bytes (Sega's Genesis Software Manual, the VDP's CRAM write), so a list told
           # other colours costs its own line and no other: on a pass that changes nothing, nothing is worked
@@ -112,7 +112,7 @@ module VBlank
             # rt_scene_colors(table): a scene taking over writes its own palettes into the game's colours
             # (Lowering::Picture#emit_scene_colors). The table is a word, how many palettes, then for each its
             # number, how many of its places hold a colour, and its fifteen colours, a word each. Each palette
-            # written is marked in DIRTY, so it is worked out again as the pass ends, through the fade or tint
+            # written is marked in dirty, so it is worked out again as the pass ends, through the fade or tint
             # in force.
             def emit_scene_colors(asm, memory, at)
               asm.label("rt_scene_colors")
@@ -237,7 +237,7 @@ module VBlank
               asm.rts
             end
 
-            # rt_tint_tables: TABLES worked out for the walk in force, each channel's sum walked over its 32
+            # rt_tint_tables: tables worked out for the walk in force, each channel's sum walked over its 32
             # values by adding keep. Uses D0 to D7 and A0. A sum (c × keep + add) is under 2^13 and its top
             # three bits are the channel's three, which go in their place in the colour memory's word,
             # 0000 BBB0 GGG0 RRR0:
@@ -246,7 +246,7 @@ module VBlank
             #
             # A shift right by nine is two of the 68000's shifts, each paid for by the bit, so each channel's
             # sum is kept as a long shifted LEFT instead (by 7, 11 and 15, under 2^28): its top half is then
-            # the sum shifted right by 9, 5 and 1, and SWAP, one short instruction, brings it down. Keep is
+            # the sum shifted right by 9, 5 and 1, and swap, one short instruction, brings it down. Keep is
             # shifted the same, so one add a channel walks the sum on.
             #
             # Toward black or white every channel's add is the same, so the three sums are one: the three
@@ -376,7 +376,7 @@ module VBlank
             # rt_colors_hold_places(table, which, first, count) is the same for a list that shares its palette
             # with other lists (Art#share_held_palette): +first+ is the place before the list's first, counted
             # over the whole colour memory (a palette is sixteen), and +count+ is one less than how many places
-            # it has, so the set goes into its own places alone. SETS notes the set at +first+, so each list
+            # it has, so the set goes into its own places alone. Sets notes the set at +first+, so each list
             # in a palette is noted apart; rt_colors_hold is the palette's first place and all fifteen.
             def emit_hold(asm, memory, at)
               asm.label("rt_colors_hold")
@@ -414,16 +414,16 @@ module VBlank
               asm.rts
             end
 
-            # rt_colors_prepared, as a pass ends: each line DIRTY marks is worked out into CRAM, its used places
+            # rt_colors_prepared, as a pass ends: each line dirty marks is worked out into CRAM, its used places
             # through the walk in force and the rest of its places nothing (the backdrop, place 0 of line 0, is
             # always used), and owed to the colour memory. A pass that marked no line costs a test.
             #
-            # A line whose colours the game changed (CHANGED) has each colour taken apart into its channels as
+            # A line whose colours the game changed (changed) has each colour taken apart into its channels as
             # it is worked out; a line only the walk moved, a fade's every pass, reads its channels back from
-            # where they were noted (SPLIT), which leaves three reads from the tables a colour and no shift.
+            # where they were noted (split), which leaves three reads from the tables a colour and no shift.
             # The 68000 shifts a bit at a time, so the two shifts that take a colour apart are as long as the
             # rest of its work. The channels are noted only while a walk is in force: a game that changes its
-            # colours with no fade or tint pays nothing for the note, and its lines stay CHANGED until a walk
+            # colours with no fade or tint pays nothing for the note, and its lines stay changed until a walk
             # first moves them.
             def emit_prepared(asm, memory, at)
               asm.label("rt_colors_prepared")
@@ -466,7 +466,7 @@ module VBlank
               asm.move(:w, at.call(USED, palette * 2), asm.d(7))
               asm.moveq(Art::OWN_COLORS, asm.d(4))
               asm.sub(:w, asm.d(7), asm.d(4))
-              # Line 0 counts the backdrop too, one more than its used places, so its count less one is USED.
+              # Line 0 counts the backdrop too, one more than its used places, so its count less one is used.
               unless palette.zero?
                 asm.subq(:w, 1, asm.d(7))
                 asm.branch(:mi, "#{skip}_unused")
