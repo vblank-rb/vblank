@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_site_coverage"
 
-# EVERY LINE OF THE BUILDER THAT TAKES A PACK HANDLE IS REACHED BY A REGISTERED GAME
+# Every line of the builder that takes a pack handle is reached by a registered game
 # (PackSiteCoverage in test/pack_site_coverage.rb says how the lines are found and what reaching
 # one means). The registry's games are held to their all-in-one builds by PackParityTests, so a
 # verb with no game here is a verb nothing holds to that.
