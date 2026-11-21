@@ -4,6 +4,28 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a screen faded all the way out and never brought back:
+        #
+        # > This game fades the screen fully to <color> and never fades back. <What still
+        # > shows.> To fix this, use `fade :<color>, 0` when the fade is finished. For a fade
+        # > over time, move a variable from 0 to 100 and give it to `fade`.
+        #
+        # What still shows is, for a fade over the whole screen:
+        #
+        # > A full fade covers everything, so the screen stays one flat color and the game is
+        # > not visible behind it. Anything drawn after the fade is covered too.
+        #
+        # And for a fade kept under a layer (`under:`):
+        #
+        # > A full fade under :<layer> covers everything behind that layer, so the game is
+        # > not visible. Only :<layer> and what is in front of it still show.
+        #
+        # The game still runs and draws everything, but nothing shows through a full fade, so
+        # the screen is one flat color. The usual way in is to fade out for a change of scene
+        # and forget to fade back in. Add `fade :<color>, 0` where the new scene starts. A fade
+        # whose amount the game works out as it runs is not warned about.
+        #
+        #--
         # A screen faded all the way out and never brought back.
         #
         # A full fade blends every layer completely into one color, so nothing shows
@@ -16,6 +38,7 @@ module VBlank
         # Only a fade whose amount is a plain number is judged. A fade driven by a
         # variable is how a fade over time is written, and where it ends up is not
         # knowable here, so those programs are left alone.
+        #++
         class FadeNeverLifted
           NAME = :fade_never_lifted
           PLAIN_NAME = "a fade never lifted"

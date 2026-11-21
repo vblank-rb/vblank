@@ -4,6 +4,19 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a screen tinted all the way and never brought back:
+        #
+        # > This game tints the screen fully and never lifts the tint. A full tint mixes the
+        # > color in completely, so the screen stays one flat color and the game is not
+        # > visible behind it. Anything drawn after the tint is covered too. To fix this, use
+        # > an amount of 0 when the tint is finished. For a tint over time, move a variable
+        # > from 0 to 100 and give it to `tint`.
+        #
+        # The game still runs and draws everything, but a tint of 100 shows only its color.
+        # Tint back to 0 where the tinted part of the game ends. A tint whose amount the game
+        # works out as it runs is not warned about.
+        #
+        #--
         # A screen tinted all the way and never brought back.
         #
         # The same silent flat screen {FadeNeverLifted} catches, reached by the other
@@ -19,6 +32,7 @@ module VBlank
         # Only a tint whose amount is a plain number is judged. A tint driven by a
         # variable is how a tint over time is written, and where it ends up is not
         # knowable here, so those programs are left alone.
+        #++
         class TintNeverLifted
           NAME = :tint_never_lifted
           PLAIN_NAME = "a tint never lifted"

@@ -6,6 +6,18 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a game whose code just ends, with no `halt` and no `game_loop`:
+        #
+        # > This program does not stop at the end of your code. Nothing tells the console to
+        # > stop. So after the last line, it runs whatever is next in memory (garbage). To fix
+        # > this, end with `halt`. Or run a `game_loop`, which loops forever.
+        #
+        # A console does not stop when a game's last line has run. It carries on and runs
+        # whatever comes next in its memory, which can crash it or fill the screen with
+        # rubbish. The usual case is a game that draws one picture and stops there. End the
+        # game with `halt` to keep the picture, or put the game in a `game_loop`.
+        #
+        #--
         # A program has to stop somewhere. If its top-level flow just ends — no
         # `halt`, no forever-running `game_loop` — the console doesn't stop at the
         # last line: it keeps executing whatever bytes come next in memory, which
@@ -18,6 +30,7 @@ module VBlank
         # (always-infinite) `loop`, or a `call` into a func that itself never
         # returns. Everything else (a draw, an if, a case, a call to a func that
         # returns) falls through to the next line, and off the end if it's last.
+        #++
         class Termination
           NAME = :termination
           PLAIN_NAME = "a program that runs off the end"

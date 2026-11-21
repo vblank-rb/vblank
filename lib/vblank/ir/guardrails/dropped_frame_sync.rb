@@ -4,6 +4,18 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a `wait_vblank` written inside a `game_loop`, which already waits
+        # once a frame:
+        #
+        # > This game waits for the screen with `wait_vblank`, but `game_loop` already waits
+        # > once per frame. So this wait does nothing, and the game plays the same without it.
+        # > To place the wait yourself, build with `frame_sync: :manual`.
+        #
+        # Nothing is broken: the extra wait is left out, so the game does not run at half
+        # speed. Remove the `wait_vblank`, or build with `frame_sync: :manual` and write every
+        # wait yourself. The warning is given once, however many such waits the game has.
+        #
+        #--
         # A `wait_vblank` written inside a game loop, which already waits once a pass.
         #
         # Under `frame_sync: :auto` the framework opens every `game_loop` pass with the
@@ -19,6 +31,7 @@ module VBlank
         # find. It ignores the program and runs as an ordinary check in the Validator's
         # list, which keeps every message the developer reads on the one Report#print_findings
         # path.
+        #++
         class DroppedFrameSync
           NAME = :dropped_frame_sync
           PLAIN_NAME = "a dropped wait for the screen"
