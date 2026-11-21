@@ -3,10 +3,10 @@
 require "test_helper"
 require "differential"
 
-# THE TESTS OF vblank/builder/test_recolor.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_recolor.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A LIST OF SPRITE COLOURS THAT HOLDS OTHER COLOURS while the game runs. A sprite told to
+# A list of sprite colours that holds other colours while the game runs. A sprite told to
 # draw with a list is drawn in whatever that list holds now, so one list can dress a
 # goblin in one room and a bat in the next: the list is a slot, and `recolor` says what
 # is in it.
@@ -120,7 +120,7 @@ class TestRecolorOnTheAdvance < Minitest::Test
     end
   end
 
-  # THE SHAPE THIS IS FOR: a room's things stand on one pool, each drawn with one of a few
+  # The shape this is for: a room's things stand on one pool, each drawn with one of a few
   # lists that are slots, and walking into the next room fills every slot from that room's
   # row of sets on the same frame. Four slots declared alike, so each has to have a group of
   # its own; room 0 wears sets 0 to 3 and room 1, from the third pass, sets 4 to 7.

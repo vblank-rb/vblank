@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/builder/test_pool.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_pool.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # A pool: many of a component (a thing with named fields that behaves), stamped out
@@ -60,7 +60,7 @@ class TestPoolOnTheAdvance < Minitest::Test
     assert_match(/remove `fast: true`/, message, "and the way out that keeps the capacity")
   end
 
-  # A POOL NO MEMORY CAN HOLD is refused at its own line, by name. The roomier memory is
+  # A pool no memory can hold is refused at its own line, by name. The roomier memory is
   # 256K and a pool over the ceiling is kept there whole, so one bigger than that fits
   # nowhere — whatever else the game declares, and whether or not it said `fast: false`.
   # 10,800 things of 25 bytes are 270,000 bytes: more than the roomier memory, and less than
@@ -92,7 +92,7 @@ class TestPoolOnTheAdvance < Minitest::Test
                  "the same pool at a word a field is four times the size")
   end
 
-  # WHAT IS COUNTED IS WHAT IS BUILT, to the byte. Seven byte fields, the byte that says a
+  # What is counted is what is built, to the byte. Seven byte fields, the byte that says a
   # slot is live and four slot numbers of two bytes are sixteen bytes a slot, so 1024 slots
   # are the ceiling exactly — read here off the lists the build was really handed.
   def test_a_pool_exactly_at_the_ceiling_is_built_and_one_slot_more_is_refused

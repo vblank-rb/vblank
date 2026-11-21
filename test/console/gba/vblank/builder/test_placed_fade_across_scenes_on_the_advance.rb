@@ -77,7 +77,7 @@ module PlacedFadeAcrossScenesGames
   end
 end
 
-# A FADE PLACED IN THE STACK IS THE GAME'S, AND STAYS UNTIL THE GAME LIFTS IT. A scene that takes
+# A fade placed in the stack is the game's, and stays until the game lifts it. A scene that takes
 # over says nothing about the fade, so what it shows is faded as the scene before left it: its
 # own scenery, what every scene shows and the backdrop. A game fades out, changes scene and fades
 # in on that rule.
@@ -174,7 +174,7 @@ class TestPlacedFadeAcrossScenesOnTheAdvance < Minitest::Test
     end
   end
 
-  # A PAINTED SCREEN HAS NO LAYERS for a fade to fall between, so a painted scene that takes over
+  # A painted screen has no layers for a fade to fall between, so a painted scene that takes over
   # shows as it was painted.
   def test_a_painted_scene_that_takes_over_shows_as_painted
     screen = shown(painted_room, frames: SETTLED)
@@ -183,7 +183,7 @@ class TestPlacedFadeAcrossScenesOnTheAdvance < Minitest::Test
     assert_equal GREEN, screen.pixel(*CORNER)
   end
 
-  # THE DISPLAY MIXES ONE THING AT A TIME, and a fade placed in the stack holds that until it is
+  # The display mixes one thing at a time, and a fade placed in the stack holds that until it is
   # lifted. So a see-through layer the second scene brings is solid over the faded room.
   def test_a_see_through_layer_the_second_scene_brings_is_solid_while_the_fade_stays
     [room_with_mist, room_with_mist(with_sprite: true)].each do |game|
