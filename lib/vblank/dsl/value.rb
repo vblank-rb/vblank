@@ -19,11 +19,6 @@ module VBlank
     # A number written with a decimal point (`speed = 1.5`) keeps a fraction. Whole numbers and
     # fractions mix where the meaning is plain: `speed + 1` is one faster. Where it is not, the
     # build stops and says which side to change with `to_i` or `to_f`.
-    #
-    # The methods ending in `!` (`clamp!`, `approach!`, `flip!`, `abs!`, `negate_abs!`,
-    # `bounce!`) change the variable they are called on. The same words without the `!` give a
-    # new number and leave the variable alone. A new number that is worked out and never used
-    # is a friendly error, because the work it stands for does nothing.
     #--
     # A Value that names a variable can be mutated — set / add / sub / clamp /
     # approach — which records the matching statement into the program. An
@@ -69,7 +64,7 @@ module VBlank
       # literal: the one place that makes one is #coerce, whose handle is used up by the operator
       # it was made for. A verb that ever hands one back must check them here.
       def self.fixed_number(operand) # :nodoc:
-        node = operand.is_a?(Value) ? operand.node : operand # :nodoc:
+        node = operand.is_a?(Value) ? operand.node : operand
         return node if node.is_a?(Integer)
 
         node.value if node.is_a?(IR::Node) && node.kind == :int
