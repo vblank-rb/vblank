@@ -2,11 +2,11 @@
 
 module VBlank
   module IR
-    # THE LAYERS A PROGRAM CAN BE SEEN THROUGH, and how an amount becomes a mix.
+    # The layers a program can be seen through, and how an amount becomes a mix.
     #
     # A display blends a see-through layer with what is behind it as it draws, taking a
     # share of each: so much of the layer, so much of what is under it, added together
-    # channel by channel. The shares come in STEPS, sixteen to a whole, and the two need
+    # channel by channel. The shares come in steps, sixteen to a whole, and the two need
     # not add to a whole — past one, the mix is brighter than either side and a channel
     # stops at its brightest.
     #

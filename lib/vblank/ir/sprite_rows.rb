@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHICH ROW OF A FIXED TABLE OF SPRITES EACH SPRITE IS GIVEN, when the rows are handed out
+    # Which row of a fixed table of sprites each sprite is given, when the rows are handed out
     # while the program is built and a machine draws only so many.
     #
     # A machine that composes its sprites in hardware reads them from a table of a fixed size,
@@ -12,7 +12,7 @@ module VBlank
     # exactly what two scenes picked by the same variable are. A title screen's lettering and
     # the room the game is played in take turns, so they can take turns at the same rows.
     #
-    # WHAT SHARES, AND WHAT KEEPS A ROW OF ITS OWN. A sprite shares when its scene is the only
+    # What shares, and what keeps a row of its own. A sprite shares when its scene is the only
     # thing that puts it up, written in the shape the builder writes (see
     # Movement#objects_shown_by_scene), and its scene is picked by the variable that picks the
     # most of them. Everything else keeps a row of its own for the whole program: what every
@@ -22,7 +22,7 @@ module VBlank
     # copy and never reach the table. Two scenes the variable picks with the same value are up
     # together, so they count as one.
     #
-    # THE ORDER STILL HOLDS ON EVERY SCREEN. A sprite of its own row keeps that row on every
+    # The order still holds on every screen. A sprite of its own row keeps that row on every
     # screen, so the sprites that share are laid out in the stretches between those: in each
     # stretch, every scene's sprites start from the same row and go on in their own order. A
     # sprite of its own row drawn between two stretches stands between two scenes' sprites, and

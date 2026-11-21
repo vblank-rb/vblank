@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # SPRITES SHOWN OVER A PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`): the
+    # Sprites shown over a picture the game paints (`sprite ..., over_picture: true`): the
     # console's own sprites on a bitmap screen, drawn over the picture and never into it.
     #
     # A question about the program, asked by the interpreter, by every lowering that draws one
