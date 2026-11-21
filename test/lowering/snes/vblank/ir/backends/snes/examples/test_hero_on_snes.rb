@@ -8,7 +8,7 @@ require VBlank.root.join("examples/hero").to_s
 # a save and back to the file screen — held to the interpreter after every pass, within a step of
 # each colour where the two mix differently (SNES::HeadlessRun::NearPicture).
 class TestHeroOnSNES < Minitest::Test
-  # A picks FILE 1 and then NEW GAME (the cursor opens there for an empty file); the walk starts
+  # A picks FILE 1 and then new game (the cursor opens there for an empty file); the walk starts
   # beside the sign, so A opens it; up walks into the mist; START saves and SELECT goes back. The
   # buttons are by the console's frames, a few apart: a pass of hero takes two of them on a Super
   # Nintendo, and its first more.

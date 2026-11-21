@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A BACKGROUND HELD TO A BOX (`show_only_inside`), on the Super Nintendo, costs nothing while the
+# A background held to a box (`show_only_inside`), on the Super Nintendo, costs nothing while the
 # screen is drawn: the display's windows hide the layer outside the box, and a copying channel writes
 # the window's edges a line at a time from a short table (Runtime::BackgroundBox, fullsnes "SNES PPU
 # Window"). What the processor spends is the box written at each frame boundary, and the table made
@@ -45,7 +45,7 @@ class TestSNESBackgroundBoxCost < Minitest::Test
     1 - rom.profile(out: StringIO.new, frames: FRAMES).idle_share
   end
 
-  # THE BUDGET for a box that stays still: the verb's five numbers kept each pass, and handed at the
+  # The budget for a box that stays still: the verb's five numbers kept each pass, and handed at the
   # frame boundary to rt_background_box, which compares them with the last ones and finds nothing
   # changed. Some five hundred of the processor's cycles, of a frame's 262 lines of 1364 clocks:
   # under one per cent of a frame. Kept to the screen in the lowered code before each call, as the
@@ -59,7 +59,7 @@ class TestSNESBackgroundBoxCost < Minitest::Test
     assert_operator still, :<, MOST_SHARE_STILL_BOX, "a still box costs #{(still * 100).round(3)}% of a frame"
   end
 
-  # THE BUDGET for a box that moves every pass: the still box's write, the box kept to the screen in
+  # The budget for a box that moves every pass: the still box's write, the box kept to the screen in
   # 32 bits (four clamps), and the table of at most five steps made again in the blank with the
   # window registers: some seven hundred cycles more than a still box, under two and a half per cent
   # of a frame. A console game moving a window writes the same table.

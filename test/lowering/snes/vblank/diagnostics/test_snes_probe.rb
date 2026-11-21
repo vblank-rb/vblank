@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE PICTURE OF A RUNNING SUPER NINTENDO CARTRIDGE as the probe hands it to the reader: four bytes
+# The picture of a running Super Nintendo cartridge as the probe hands it to the reader: four bytes
 # a pixel, red first, made again only when bsnes drew a different picture.
 class TestSNESProbe < Minitest::Test
   # Each of the console's 32768 colours as the picture's four bytes: every five-bit channel widened

@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A PORT READS ITS ORIGINAL'S TABLES OFF THE CARTRIDGE FILE, which has no build record: the video
+# A port reads its original's tables off the cartridge file, which has no build record: the video
 # memory, the colours, the sprite table and the sound chip's registers, as bytes, and the sprite table
 # as boxes. The cartridge is a small game built here and written to a file, a white box on a blue
 # field at (40, 60); the same cartridge read with its build record is the answer key for where the
@@ -27,7 +27,7 @@ class TestConsoleTablesOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  # The game read with its build record, and a probe over its bare file, both FRAMES frames in.
+  # The game read with its build record, and a probe over its bare file, both frames frames in.
   private def with_recorded_and_bare
     Dir.mktmpdir("cartridges") do |folder|
       built = boxed_game
