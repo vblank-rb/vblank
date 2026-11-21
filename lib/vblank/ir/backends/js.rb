@@ -102,6 +102,17 @@ module VBlank
           program
         end
 
+        # The screen's size and every button's keys for +game+ as the page would write them
+        # (Page::Controls, which answers #to_json), without building a page: what a site needs to
+        # show the controls and size the frame. +console+ is the one the game is built as, the first
+        # it names when left out.
+        def controls(game, console: nil, settings: {})
+          program = checked_program(game, console: console, settings: settings, err: nil)
+          described = program.described_console
+          Page.controls(screen: described.framed_screen_size, pixel_size: described.pixel_size, buttons: described.buttons,
+                        players: program.most_players || 1)
+        end
+
         # The web build's own check, on a program however it was made: every console-only step,
         # said in plain words, in a Guardrails::ValidationError when the game can reach one and to
         # +err+ when it cannot. One in a routine nothing calls is a warning, since the lowering leaves it out
