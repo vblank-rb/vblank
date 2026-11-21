@@ -40,7 +40,7 @@ module VBlank
       # @param map_names [Array<Object>] the maps this background was declared with, in
       #   order — what `show_map` names. One entry (the background's own name) for a
       #   background declared with a single map, which can never be handed another.
-      # @param node [IR::Node] the statement that declared it, so a `rotate`/`scale` written
+      # @param node [IR::Node] the statement that declared it, so a `rotate!`/`scale` written
       #   on the same line can tell that it is still part of declaring this background
       #   rather than something the frame does to it (see {#on_declaration_line?})
       # @param tile_pictures [Array<Symbol>] the pictures its tileset draws, which is what
@@ -772,12 +772,12 @@ module VBlank
       # {Builder::Tiled#make_background_affine} for why.
       #
       #   world = background :world, tiles: :terrain, map: map
-      #   world.rotate 15          # tilt the whole picture
-      #   world.rotate spin        # or however far `spin` holds
+      #   world.rotate! 15         # tilt the whole picture
+      #   world.rotate! spin       # or however far `spin` holds
       #
       # The angle wraps, so 370 is the same as 10. A background that never turns keeps its
       # upright angle and costs nothing extra.
-      def rotate(degrees)
+      def rotate!(degrees)
         angle_var, = affine_vars
         fixed = Value.fixed_number(degrees)
         declaring = !fixed.nil? && on_declaration_line?
@@ -791,6 +791,7 @@ module VBlank
         extend_declaration_tail if declaring
         self
       end
+      alias rotate rotate!  # :nodoc: until examples/dive/title.rb is moved to rotate!
 
       # Draw the background bigger or smaller as a whole, about the middle of the screen —
       # the affine counterpart to a sprite's `scale`. 1.0 is the size it was drawn at, 2.0
@@ -820,7 +821,7 @@ module VBlank
       end
 
       # The background's heading as a {Value}, degrees clockwise from upright, 0..359.
-      # Reading it needs `screen :rotozoom`, same as {#rotate}.
+      # Reading it needs `screen :rotozoom`, same as {#rotate!}.
       def angle
         angle_var, = affine_vars
         Value.new(@builder, Build.var_ref(angle_var), name: angle_var)
@@ -866,7 +867,7 @@ module VBlank
       # middle, set down at a point of the screen. This one does move the picture, since it
       # says where the map lies: upright at its drawn size the map is moved so the two points meet.
       def turns_around(x, y, map_point: nil)
-        affine_vars # this background is one that turns — the same claim `rotate`/`scale` make
+        affine_vars # this background is one that turns — the same claim `rotate!`/`scale` make
         refuse_bad_map_point!(map_point)
         @builder.set_background_pivot(@name, require_integer_pixel!(x, "x"), require_integer_pixel!(y, "y"),
                                       map_point: map_point)
@@ -877,7 +878,7 @@ module VBlank
 
       # A plain scroll moves a `screen :tiled` layer's own pan registers, which a rotozoom
       # (`screen :rotozoom`) layer doesn't have — it pans by moving its whole matrix instead
-      # (see #rotate / #scale). Friendly error rather than a register write that does
+      # (see #rotate! / #scale). Friendly error rather than a register write that does
       # nothing on real hardware.
       # On `screen :bitmap` a background is stamped into the one picture where it is
       # declared and nothing draws it again, so there is no cell left to change — the
@@ -1199,7 +1200,7 @@ module VBlank
         raise ArgumentError,
               "#{@name}.#{verb} scrolls a background straight. Background :#{@name} turns and " \
               "resizes instead. A layer that turns has no scroll of its own. To move it, use " \
-              "#{@name}.rotate or #{@name}.scale."
+              "#{@name}.rotate! or #{@name}.scale."
       end
 
       # This background's angle and size variables, allocated the first time they are
@@ -1227,7 +1228,7 @@ module VBlank
       end
 
       # ...and a turn that was part of the declaration leaves the declaration open, so a
-      # second one chained after it (`.scale(16.0).rotate(45)`) is part of it too.
+      # second one chained after it (`.scale(16.0).rotate!(45)`) is part of it too.
       def extend_declaration_tail
         @declaration_tail = @builder.last_statement
       end

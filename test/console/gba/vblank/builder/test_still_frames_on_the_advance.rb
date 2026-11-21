@@ -245,7 +245,7 @@ class TestStillFramesOnTheAdvance < Minitest::Test
       game_loop do
         field.scroll_to(*SCROLL)
         tick += 1
-        turner.rotate 90 if tick == CHANGE_AT
+        turner.rotate! 90 if tick == CHANGE_AT
       end
     end
 

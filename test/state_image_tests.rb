@@ -299,7 +299,7 @@ module StateImageTests
       n = var :n, 0
       game_loop do
         n += 1
-        board.rotate(n * 7) if n % 6 == 1
+        board.rotate!(n * 7) if n % 6 == 1
         repeat(5) { wait_vblank }
       end
     end

@@ -74,7 +74,7 @@ module VBlank
       # scrolling ones. The number of tile layers a `:tiled` screen has is not written here. The
       # console lays its tile layers out two ways: four that scroll, or two that scroll plus one
       # that turns and resizes. A game gets the second exactly when it turns a background, with
-      # `background(...).rotate` or `.scale`, so the build reads the arrangement off what was
+      # `background(...).rotate!` or `.scale`, so the build reads the arrangement off what was
       # declared. Declaring more scrolling layers than the arrangement holds is an error that names
       # both numbers, and a layer is never left undrawn quietly.
       #

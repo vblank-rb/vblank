@@ -629,11 +629,9 @@ module VBlank
         mutate { @builder.negate_variable!(@name) }
       end
 
-      # --- the same five as new numbers, leaving this one alone ---
+      # --- the same five as new numbers ---
       #
-      # A word without `!` never changes anything, which is what Ruby's own Integer#abs and
-      # Comparable#clamp promise and what `apart.abs <= reach` reads as. Each is the number
-      # its `!` form would store.
+      # Each is the number its `!` form would store.
 
       # How far this is from nought.
       def abs = new_number(Build.absolute(@node), "abs!")

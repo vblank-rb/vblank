@@ -17,7 +17,7 @@ module VBlank
         # A word that used to change a variable and now works out a new one (`d.abs` where
         # `d.abs!` was meant) gets a message of its own:
         #
-        # > `<word>` works out a new number and leaves the variable as it is. Nothing uses that
+        # > `<word>` works out a new number. Nothing uses that
         # > number here, so this line does nothing. A word that changes a variable ends in `!`. To
         # > change the variable, write `<word>!`.
         #
@@ -101,7 +101,7 @@ module VBlank
           # so the likeliest meaning is the `!` form, and the message says it by name.
           def self.changing_message(value)
             bare = value.bang_spelling.delete("!")
-            "`#{bare}` works out a new number and leaves the variable as it is. Nothing uses " \
+            "`#{bare}` works out a new number. Nothing uses " \
               "that number here, so this line does nothing. A word that changes a variable ends " \
               "in `!`. To change the variable, write `#{value.bang_spelling}`."
           end

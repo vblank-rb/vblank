@@ -944,7 +944,7 @@ module VBlank
 
     # Does :+name+ turn and resize rather than scroll? True from the line that declares
     # it on `screen :rotozoom`, where that is the only kind of layer there is, and from
-    # the first `.rotate`/`.scale` anywhere else. A {Background} handle asks this rather
+    # the first `.rotate!`/`.scale` anywhere else. A {Background} handle asks this rather
     # than keeping an answer of its own, because the fact is settled in two places at two
     # moments and a copy on the handle was a second answer to keep in step.
     def background_turns?(name)

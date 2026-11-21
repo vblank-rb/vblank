@@ -107,7 +107,7 @@ class TestSceneHandoverScenariosOnTheAdvance < Minitest::Test
       red_and_blue_art
       tiles :set, "#" => :red_art, "o" => :blue_art
       field = background :field, tiles: :set, map: Array.new(16) { ("#" * 8) + ("o" * 8) }
-      across_a_bitmap_screen { |tick| field.rotate 180 if tick == 2 }
+      across_a_bitmap_screen { |tick| field.rotate! 180 if tick == 2 }
     end
   end
 end

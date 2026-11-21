@@ -62,7 +62,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
 
   def test_made_to_turn_and_left_upright_it_shows_as_the_drawn_one
     pictures = assert_shows_as_the_drawn_one("upright") do |layer|
-      layer.rotate(0)
+      layer.rotate!(0)
       game_loop { wait_vblank }
     end
 
@@ -107,7 +107,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         layer.scale.approach! 1.0, 0.25
         spin += 7
-        layer.rotate spin
+        layer.rotate! spin
       end
     end
 
@@ -179,7 +179,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         layer.scale.approach! 1.0, 0.25
         spin += 7
-        layer.rotate spin
+        layer.rotate! spin
       end
     end
   end

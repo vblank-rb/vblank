@@ -441,7 +441,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       scene :title do
         sword = layer(:sword) do
           declared = background(:sword, tiles: :marks, map: map).scale(ZOOMED_IN)
-          turning ? declared.rotate(90) : declared
+          turning ? declared.rotate!(90) : declared
         end
         sword.scale.approach! 1.0, 1.0
         sword.angle.approach! 0, 10 if turning

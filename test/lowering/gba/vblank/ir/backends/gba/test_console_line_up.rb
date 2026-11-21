@@ -55,7 +55,7 @@ class TestConsoleLineUp < Minitest::Test
       image(:floor, "#" => :blue) { SOLID_TILE }
       tiles :set, "#" => :brick, "." => :floor
       bg = background :bg, tiles: :set, map: FULL_MAP # square, which a turning map must be
-      game_loop { bg.rotate bg.angle + 5 }
+      game_loop { bg.rotate! bg.angle + 5 }
     end
 
     assert_equal BOOT_FRAMES[:bitmap], measured_offset(bitmap, "OFSBMP"), "bitmap boot cost changed"

@@ -20,8 +20,7 @@ module VBlank
     # ```
     #
     # A variable that must survive turning the console off is a `save_var`. Words such as
-    # `flip!`, `abs!`, `clamp!` and `approach!` on a variable's handle change it in place; the same
-    # words without the `!` give a new number instead.
+    # `flip!`, `abs!`, `clamp!` and `approach!` on a variable's handle change it in place, as in Ruby.
     #--
     # The list of names itself (ensure_var / the @variables set) is builder core,
     # shared by every concern, so it stays in Builder; these verbs just record the ops

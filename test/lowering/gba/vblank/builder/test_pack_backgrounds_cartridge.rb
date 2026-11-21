@@ -64,7 +64,7 @@ class TestPackBackgroundsCartridge < Minitest::Test
         game_loop do
           layer.scale.approach! 1.0, 0.25
           spin += 7
-          layer.rotate spin
+          layer.rotate! spin
         end
       end
 

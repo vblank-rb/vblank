@@ -14,7 +14,7 @@ class TestConsoleAnswers < Minitest::Test
     image(:dark, "#" => :black) { "########\n" * 8 }
     tiles :floor, "#" => :dark
     board = background :board, tiles: :floor, map: ["#" * 4] * 4
-    game_loop { board.rotate 30 }
+    game_loop { board.rotate! 30 }
   end
 
   # A sprite turned by a little more each pass: its angle is worked out as the game runs.

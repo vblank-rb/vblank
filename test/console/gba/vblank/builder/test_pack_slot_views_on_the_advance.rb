@@ -29,7 +29,7 @@ class TestPackSlotViewsOnTheAdvance < Minitest::Test
       spin = var :spin, 0
       game_loop do
         spin += 11
-        layer.rotate spin
+        layer.rotate! spin
       end
     end
   end

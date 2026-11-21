@@ -792,7 +792,7 @@ class TestNativePicture < Minitest::Test
       room = background :room, tiles: :room, map: ["#..#...#" * 4] * 32
       n = 0
       game_loop do
-        room.rotate 30
+        room.rotate! 30
         record_statement(VBlank::IR::Build.scroll_background(:room, x: VBlank::IR::Build.var_ref(:n), y: VBlank::IR::Build.int(5)))
         n += 7
       end

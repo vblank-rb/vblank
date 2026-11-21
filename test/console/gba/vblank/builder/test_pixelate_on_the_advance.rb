@@ -209,7 +209,7 @@ class TestPixelateOnTheAdvance < Minitest::Test
       screen screen_kind
       instance_exec(&ROOM_TILES)
       board = background :board, tiles: :set, map: ROOM
-      board.rotate 20
+      board.rotate! 20
       board.scale 0.8
       pixelate size if size
       game_loop {}

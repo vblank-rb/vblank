@@ -169,8 +169,8 @@ instance variables.
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.
 - `@x = 2`, `h[:x] = 2` and `sprite.x = 2` follow game tests like any other write (`@x` once it is
   named, see "Instance variables").
-- Numbers have `abs`, `clamp`, `approach` (new numbers) and `abs!`, `clamp!`, `approach!` (change
-  the variable); `variables.md` has the arithmetic, division and fractions.
+- Numbers have `abs`, `clamp`, `approach` and `abs!`, `clamp!`, `approach!`, as in Ruby: a method
+  ending in `!` changes what it is called on, and one without gives a new value; `variables.md` has the arithmetic, division and fractions.
 
 ## Tests
 

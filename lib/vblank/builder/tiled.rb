@@ -562,7 +562,7 @@ module VBlank
         streams = IR::TileMap.streams?(grids)
 
         # The line that makes the record every later fact about this background is written
-        # into. The node is kept in it so `.rotate`/`.scale`, which come later on the
+        # into. The node is kept in it so `.rotate!`/`.scale`, which come later on the
         # handle, can mark this one as the layer that turns — see #make_background_affine.
         #
         # A record already there is kept and given the new node, never replaced: a program
@@ -656,7 +656,7 @@ module VBlank
       # {Background#scale}): mark it as the layer that turns, allocate its angle and size
       # variables, boot them to upright and 1.0, and remember it needs its matrix written
       # every frame. Idempotent — the first call wires it up, later ones reuse the same
-      # variables. An internal hook, not a DSL verb — `background(...).rotate` /
+      # variables. An internal hook, not a DSL verb — `background(...).rotate!` /
       # `.scale` are the surface.
       #
       # Turning is a property of the background, not of the screen, and that is the whole
@@ -807,7 +807,7 @@ module VBlank
                  "This program names neither screen"
                end
         raise ArgumentError,
-              "#{name}.rotate and #{name}.scale turn and resize the whole background. A background " \
+              "#{name}.rotate! and #{name}.scale turn and resize the whole background. A background " \
               "can turn only on `screen :tiled` or `screen :rotozoom`. #{have}. To fix this, write " \
               "`screen :tiled` above this background."
       end

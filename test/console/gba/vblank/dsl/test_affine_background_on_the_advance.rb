@@ -137,7 +137,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
       image :green, "#" => :green do "########\n" * 8 end
       tiles :t, "#" => :white, "$" => :green
       board = background :board, tiles: :t, map: map
-      board.rotate(90)
+      board.rotate!(90)
       halt
     end
 
@@ -214,7 +214,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
         tiles :t, "#" => :white
         board = background :board, tiles: :t, map: plain
         board.turns_around(*pivot) if pivot
-        board.rotate(0)
+        board.rotate!(0)
         game_loop { wait_vblank }
       end
       builder.finalize_program
@@ -244,7 +244,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
       tiles :t, "#" => :white, "$" => :red
       board = background(:board, tiles: :t, map: map).turns_around(x, y, map_point: [128, 128])
       board.scale(size) if size
-      board.rotate(degrees) if degrees
+      board.rotate!(degrees) if degrees
       game_loop { wait_vblank }
     end
     builder.finalize_program

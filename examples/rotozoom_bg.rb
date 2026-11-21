@@ -8,7 +8,7 @@
 # the whole picture as one piece instead — a title screen that zooms in, a race track
 # that spins and pulls away as you turn. (If you've played that era of games, this is
 # the classic "Mode 7" trick.) Build it with `screen :rotozoom` instead of
-# `screen :tiled`, then call `rotate`/`scale` on the background handle exactly the way
+# `screen :tiled`, then call `rotate!`/`scale` on the background handle exactly the way
 # a hardware sprite's `face_angle`/`scale` already work — same names, same units,
 # applied to a whole layer instead of one picture.
 #
@@ -19,7 +19,7 @@
 # `screen :rotozoom` is its own screen mode — not a flag on `screen :tiled` — because
 # the console gives rotate/scale hardware to a different pair of layers than the four
 # `screen :tiled` scrolls on, and a plain scroll on this layer is a friendly error (see
-# `Background#scroll_by`) telling you to `rotate`/`scale` here instead.
+# `Background#scroll_by`) telling you to `rotate!`/`scale` here instead.
 #
 # Run it to build examples/rotozoom_bg.gba:
 #   ruby examples/rotozoom_bg.rb
@@ -66,8 +66,8 @@ module RotozoomBg
     }
 
     game_loop do
-      board.rotate(board.angle - TURN_SPEED) if held(:left)
-      board.rotate(board.angle + TURN_SPEED) if held(:right)
+      board.rotate!(board.angle - TURN_SPEED) if held(:left)
+      board.rotate!(board.angle + TURN_SPEED) if held(:right)
       board.scale.approach! MAX_ZOOM, ZOOM_STEP if held(:up)
       board.scale.approach! MIN_ZOOM, ZOOM_STEP if held(:down)
     end

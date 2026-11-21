@@ -398,7 +398,7 @@ class TestIRBackendReferenceHardware < Minitest::Test
         tick += 1
         field.scroll_by 3, 1 if scrolls
         if turns
-          sword.rotate tick * 7
+          sword.rotate! tick * 7
           sword.scale 1.0 + (tick % 8).to_f / 8
         end
         instance_exec(tick, &each_frame) if each_frame

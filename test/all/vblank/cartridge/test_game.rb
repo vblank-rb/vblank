@@ -162,7 +162,7 @@ class TestGame < Minitest::Test
       image(:dark, "#" => :black) { "########\n" * 8 }
       tiles :floor, "#" => :dark
       board = background :board, tiles: :floor, map: ["#" * 4] * 4
-      game_loop { board.rotate 30 }
+      game_loop { board.rotate! 30 }
     end
     err = StringIO.new
     assert_raises(VBlank::ROMError) { g.checked_program(console: :gbc, err: err) }

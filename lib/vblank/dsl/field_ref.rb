@@ -86,7 +86,7 @@ module VBlank
 
       # The read-modify-write mutators round-trip through a scratch variable: load the slot,
       # apply the ordinary Value mutator, store it back. This reuses Value's whole mutation
-      # vocabulary unchanged. The same words without `!` are new numbers, and come from Value.
+      # vocabulary unchanged.
       def clamp!(lo, hi)
         via_scratch { |s| s.clamp!(lo, hi) }
       end
