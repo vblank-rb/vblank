@@ -4,7 +4,7 @@ require "test_helper"
 require "many_tiles"
 require "sound_comparison"
 
-# WHAT A COLOR CARTRIDGE SHOWS FROM POWER-ON UNTIL THE GAME'S FIRST FRAME. The cartridge copies its
+# What a color cartridge shows from power-on until the game's first frame. The cartridge copies its
 # art into the console before the game's first line, and a game sets itself up before its first
 # frame, which together can take several frames. A Color game whose screens fade in from white
 # never shows black on the way: the screen shows the backdrop, the first colour of its first list,
@@ -48,7 +48,7 @@ class TestGBCPowerOn < Minitest::Test
     b.program
   end
 
-  # A GAME WHOSE SCREENS BRING THEIR OWN COLOURS IN: a white title, and a second screen of eight
+  # A game whose screens bring their own colours in: a white title, and a second screen of eight
   # lists more, which together are more than the Color's eight at once. Each screen's lists come in
   # with it, and the title's are not in the console until the game first shows it. A title of
   # +title_tiles+ different tiles takes frames to copy in after the game's first frame, and until
@@ -81,7 +81,7 @@ class TestGBCPowerOn < Minitest::Test
     b.program
   end
 
-  # A GAME WHOSE FIRST SCREEN IS PAINTED white, pixel by pixel, rather than drawn from tiles.
+  # A game whose first screen is painted white, pixel by pixel, rather than drawn from tiles.
   private def white_painted_game(setting_up:)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
@@ -100,7 +100,7 @@ class TestGBCPowerOn < Minitest::Test
   # Sixteen places across the screen.
   SPOTS = [20, 60, 100, 140].product([16, 56, 96, 136]).freeze
 
-  # The frames of the first thirty a cartridge of +program+ shows black on at any of SPOTS.
+  # The frames of the first thirty a cartridge of +program+ shows black on at any of spots.
   private def black_frames(program)
     rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "WHITE")
     v = VBlank::Diagnostics::Verifier.new(rom, frames: 0)
@@ -118,7 +118,7 @@ class TestGBCPowerOn < Minitest::Test
     assert_empty black_frames(white_title_among_lists(setting_up: 20_000)), "frames that showed black"
   end
 
-  # A TITLE WITH MUCH ART, which takes two frames to copy in after the game's first, shows nothing
+  # A title with much art, which takes two frames to copy in after the game's first, shows nothing
   # drawn until then: black, the backdrop of a game that says none — and the game's own, said white,
   # the way a cartridge that fades its screens in from white starts. The memories are cleared within
   # the first frame (Runtime::Boot), so the screen is on from it: the two frames are the first two.
@@ -136,7 +136,7 @@ class TestGBCPowerOn < Minitest::Test
     assert_empty black_frames(white_painted_game(setting_up: 20_000)), "frames that showed black"
   end
 
-  # THE FRAMES SPENT SETTING UP ARE COUNTED, though the screen is off for all of them: a game that
+  # The frames spent setting up are counted, though the screen is off for all of them: a game that
   # spins before its loop notes what `frames_since_power_on` read on its first pass, and the frame
   # that pass's change is first seen on is one after that. A game that +plays+ a recording starts it
   # before it spins: a square wave of 256Hz, long enough to be heard after the first frame.
@@ -181,7 +181,7 @@ class TestGBCPowerOn < Minitest::Test
     assert_equal slow_frame - 1, slow, "and the frames spent setting up are counted"
   end
 
-  # WHEREVER IN A FRAME SETTING UP ENDS, the count is the frames shown. The first frame's copy of
+  # Wherever in a frame setting up ends, the count is the frames shown. The first frame's copy of
   # everything set up (rt_upload_whole) runs with the screen still off, a whole screen's grid of
   # cells taking a good part of a frame, so a frame that ends during it is one of the frames spent
   # setting up. Setting up that ends a little sooner or later, by a tenth of a frame at a time over
@@ -234,7 +234,7 @@ class TestGBCPowerOn < Minitest::Test
     assert_empty misread_first_passes(song: true), "the first pass reads one less than the frame it is first seen on"
   end
 
-  # THE FIRST PASS'S MOMENT WAITS FOR ITS SOUNDS. The first frame's copy can meet a frame's end
+  # The first pass's moment waits for its sounds. The first frame's copy can meet a frame's end
   # with the screen still off, and the reader then finds the first pass waiting; the screen's first
   # blank after it comes on shows that pass while the processor sleeps, before the wait reaches the
   # place the reader takes the pass's sounds at (GBC::SoundLog). Read there, the pass had no sounds
@@ -245,7 +245,7 @@ class TestGBCPowerOn < Minitest::Test
     end
   end
 
-  # THE FRAMES SET UP ARE READ ONCE THEIR COUNT IS DONE. A frame that ends while the first frame's
+  # The frames set up are read once their count is done. A frame that ends while the first frame's
   # copy runs finds the first pass waiting, and the count goes on until the screen comes on: read
   # there, it could be a frame short of what the cartridge counted, and the interpreter told it
   # read the first pass's frames_since_power_on one less. The turns here, found by playing every
@@ -256,7 +256,7 @@ class TestGBCPowerOn < Minitest::Test
     end
   end
 
-  # A GAME THAT PLAYS A RECORDING COUNTS THEM TOO: the timer that counts the frames the screen is
+  # A game that plays a recording counts them too: the timer that counts the frames the screen is
   # off for plays the recording's samples once the screen is on, and a recording started while the
   # game sets up starts with its first frame, as the interpreter's mix does.
   def test_the_frames_spent_setting_up_are_counted_in_a_game_that_plays_a_recording
@@ -267,7 +267,7 @@ class TestGBCPowerOn < Minitest::Test
     assert_equal slow_frame - 1, slow, "and the frames spent setting up are counted"
   end
 
-  # A GAME THAT KEEPS A SMALL SAVE RECORD, as a high-score table is: a list of 61 bytes, so a body
+  # A game that keeps a small save record, as a high-score table is: a list of 61 bytes, so a body
   # of 65, loaded at power-on. A retail Color cartridge that checks four such blocks at power-on
   # reaches its main loop's first pass on frame 11, measured in the emulator; setting the record up
   # must cost no more than that.

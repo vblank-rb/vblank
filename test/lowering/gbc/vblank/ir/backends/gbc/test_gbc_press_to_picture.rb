@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PRESS SHOWS ON THE FRAME AFTER IT, as the Color's own games show it. The console reads the
+# A press shows on the frame after it, as the Color's own games show it. The console reads the
 # buttons as a frame ends; the pass that runs next sees the press and moves a sprite, or scrolls a
 # background; and the gap at the end of that pass sends the sprite table and the scroll to the
 # display, so the frame after the press already shows the move. A Color cartridge sends them from a
@@ -160,7 +160,7 @@ class TestGBCPressToPicture < Minitest::Test
     assert_equal PRESS + 1, frame
   end
 
-  # EVERY SHAPE OF GAME LOOP shows a press on the frame after it, and plays as the interpreter does.
+  # Every shape of game loop shows a press on the frame after it, and plays as the interpreter does.
   def test_a_press_shows_on_the_frame_after_it_in_every_shape_of_game_loop
     white = 0x7FFF
     moved = ->(v, _frame) { v.pixel_gba(60, 104) == white && v.pixel_gba(44, 104) != white }
@@ -173,7 +173,7 @@ class TestGBCPressToPicture < Minitest::Test
     end
   end
 
-  # A MENU IN THE BAR ANSWERS A PRESS ON THE FRAME THE PASS RUNS, since the screen has not reached the
+  # A menu in the bar answers a press on the frame the pass runs, since the screen has not reached the
   # bar's rows when the pass writes them; a cell left for the blank after the pass shows a frame on.
   def test_a_bar_cell_changed_now_shows_a_frame_before_one_left_for_the_blank
     blue = 0x7C00
