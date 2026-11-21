@@ -24,8 +24,8 @@ module VBlank
       # kernel: a `background` that scrolls, and a hardware sprite the console composites
       # over it. Following is not — it is two statements a frame and two hidden variables.
       #
-      # WHAT IT ACTUALLY CHANGES, which is more than saving a line. Without it, a game
-      # whose world is bigger than the screen has to keep the hero's WORLD position in
+      # What it actually changes, which is more than saving a line. Without it, a game
+      # whose world is bigger than the screen has to keep the hero's world position in
       # variables of its own, pin the sprite's picture somewhere by hand, and point the
       # camera at the difference. The hero is then a pair of numbers rather than a sprite,
       # so none of the sprite verbs apply to it: no `move` with its automatic facing, no
@@ -41,8 +41,8 @@ module VBlank
       #   hero.move :right if held(:right)   # ordinary sprite code...
       #   # ...and the world slides left instead, because the camera follows.
       #
-      # WHAT DOES NOT COMPOSE, and it is worth knowing rather than discovering: the
-      # sprite's position is where it sits on the SCREEN, not where it stands in the
+      # What does not compose, and it is worth knowing rather than discovering: the
+      # sprite's position is where it sits on the screen, not where it stands in the
       # world. So `blocked_by` (whose walls are places on the map) and `overlaps?` against
       # something placed in the world do not line up with it. Moving, facing, animating
       # and turning all do.
@@ -61,7 +61,7 @@ module VBlank
         # is an error and not two cameras fighting over one world.
         #
         # ```ruby
-        # world = background :world, tiles: :terrain, map: MAP
+        # world = background :world, tiles: :terrain, map: map
         # hero  = sprite :guy, at: [0, 0]
         # hero.center_on_screen
         # camera_follows hero, across: world
@@ -151,10 +151,10 @@ module VBlank
         # Cheap argument checking, inline where the mistake is written rather than in a
         # guardrail — these are wrong the moment they are typed.
         def follow_camera_arguments!(sprite, across, at)
-          # THE SCREEN COMES FIRST, and the order is the point: on a bitmap screen nothing
+          # The screen comes first, and the order is the point: on a bitmap screen nothing
           # about this verb applies, so saying "you need a background" would send somebody
           # off to make one that could not help them either. A bitmap screen has no world
-          # to move through — its picture IS the screen, and panning past the edge shows
+          # to move through — its picture is the screen, and panning past the edge shows
           # the backdrop rather than more of a map.
           unless @screen_mode == :tiled
             raise ArgumentError,

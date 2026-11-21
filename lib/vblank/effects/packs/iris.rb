@@ -28,18 +28,18 @@ module VBlank
       # verbs a game is written in, the pair to `fade_out` / `fade_in` and `pixelate_out` /
       # `pixelate_in`, and called the same way.
       #
-      # IT CLOSES THE GAME'S OWN LIGHT. A game with a lantern has one light already, and the
+      # It closes the game's own light. A game with a lantern has one light already, and the
       # display has room for one; so the iris takes that light down to nothing and, on the way
       # back, gives it back as big and as dark as it was. A game with no light gets one that
       # reaches past the screen and darkens nothing (see Builder#spotlight), which is what the
       # iris opens back to.
       #
-      # A LIGHT THAT SHOWS NOTHING OUTSIDE IT (`spotlight outside: :nothing`) is closed the same
+      # A light that shows nothing outside it (`spotlight outside: :nothing`) is closed the same
       # way: the darkness of 100 a walk sets is that light switched on, and the darkness of 0 it
       # opens back to is the light off. That light darkens nothing, so an iris on it shares a
       # scene with a see-through layer (see Builder#spotlight).
       #
-      # WHAT IS WALKED IS THE RADIUS, held as a number with a fraction so a walk of any length
+      # What is walked is the radius, held as a number with a fraction so a walk of any length
       # lands on the last frame asked for, as the pixelate's is. It runs between nothing and
       # about the farthest corner of the screen from the point — never short of it, and never
       # far past it — so the circle is seen moving from the first frame to the last.
@@ -220,7 +220,7 @@ module VBlank
 
         private
 
-        # THE FIRST STEP OF A WALK GIVEN IN PIXELS, taken on the frame the walk is called, as the
+        # The first step of a walk given in pixels, taken on the frame the walk is called, as the
         # game being copied takes it: the light holds the first size at the end of that frame and
         # draws it on the next picture. The walk's own routine runs where each frame starts, so
         # by the time the game calls the walk this frame's has already run; it shows the size it
@@ -269,7 +269,7 @@ module VBlank
           state[:reach] = corner_reach(light)
         end
 
-        # HOW FAR THE FARTHEST CORNER IS, without a square root. Across and down to it are
+        # How far the farthest corner is, without a square root. Across and down to it are
         # the longer and the shorter of two sides; the longer plus half the shorter is never
         # less than the corner's distance and at most an eighth more, which is close enough
         # that the circle is moving on screen from the first frame of a walk. The middle is
@@ -285,7 +285,7 @@ module VBlank
         end
 
         # The walk's variables and the routine that moves it, declared once however many
-        # places in the game iris. The radius is SHOWN AND THEN MOVED, the order the screen
+        # places in the game iris. The radius is shown and then moved, the order the screen
         # fade keeps, so the frame a walk out arrives on is a frame showing the circle shut.
         def iris_state(light)
           @iris_state ||= begin

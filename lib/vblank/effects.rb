@@ -33,18 +33,18 @@ module VBlank
   #   - A "pack" that reached into an IR node or a register would need lowering in
   #     every backend, and would break the next one added.
   #
-  # So the test is: DOES A BACKEND HAVE TO KNOW ABOUT IT?
+  # So the test is: does a backend have to know about it?
   #
   #   No  -> it is a pack. Register it here.
   #   Yes -> it is KERNEL. Bake it into the library: a new IR node kind, its
   #          lowering in each backend, and a conformance fixture entry.
   #
-  # Said another way, and this is the quick version to carry around: a KERNEL
-  # primitive is a new thing the machine can DO. A pack is a new way to USE what it
+  # Said another way, and this is the quick version to carry around: a kernel
+  # primitive is a new thing the machine can do. A pack is a new way to use what it
   # already does. New capability is kernel; new convenience is a pack. If writing it
   # means opening a file under ir/backends/, it was never a pack.
   #
-  # Effects come in PAIRS across that line, and that is the shape to expect — the
+  # Effects come in pairs across that line, and that is the shape to expect — the
   # primitive is one register or one blend, and everything that makes it feel like a
   # game effect is a pack on top:
   #
@@ -74,7 +74,7 @@ module VBlank
   # Most packs have nothing to report and should not be made to — a pack that says
   # nothing is not a worse pack, and the default progress ignores everything, so nobody
   # has to ask whether anybody is listening. The rule is the same one that governs the
-  # rest of a pack: what it REPORTS may never change what it BUILDS. A pack that behaved
+  # rest of a pack: what it reports may never change what it builds. A pack that behaved
   # differently when somebody was watching would be a bug that only shows up in the mode
   # nobody tests.
   module Effects
