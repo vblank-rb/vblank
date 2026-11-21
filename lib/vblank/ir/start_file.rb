@@ -64,7 +64,7 @@ module VBlank
     #   walk of either, the colours of a picture of pixels, the bank a pose's frame names):
     #   +colors+ names each colour of it once (a Color in the file, a WalkedColor or a
     #   CountedWalkColor made from one, or a ChosenColor, whose list a number in the file picks),
-    #   and wherever the program would hold the colour it holds a marker naming that entry
+    #   and wherever the program would hold the colour it holds a MARKER naming that entry
     #   (.marker_of). See "MARKERS" below.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
@@ -303,7 +303,7 @@ module VBlank
 
       # A tile of a background read from the file that takes turns through pictures: +tile+, counted
       # from the background's first tile as a cell names it. The program holds it turned each of
-      # the four ways turns names, in that order, for each bank of the background's colours, a bank
+      # the four ways TURNS names, in that order, for each bank of the background's colours, a bank
       # +bank_step+ tiles after the one before, from tile +first+ of the background's tiles. A cell
       # naming it in a bank past the colours shows a tile of its own, as any cell does.
       MovingTile = Data.define(:tile, :first, :bank_step) do

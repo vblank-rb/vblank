@@ -14,7 +14,7 @@ module VBlank
     # where right pointed away from. An angle written in the game is settled while the game is
     # built, so its cosine and sine are numbers written into the program and no table is needed.
     #
-    # An angle the game works out as it runs (#turned_by_value) is looked up instead, in sines, the
+    # An angle the game works out as it runs (#turned_by_value) is looked up instead, in SINES, the
     # sine of each whole degree. It is first brought into one whole turn, nought up to just under
     # 360, so an angle below nought or past a whole turn reads the same entries as the turn it
     # comes to. A fraction of a degree is stepped to between the sines of the whole degrees
@@ -81,7 +81,7 @@ module VBlank
       end
 
       # The arrows turned (+:turn+ or +:roll+) +direction+ by +degrees+, a value the game works
-      # out as it runs, its sine and cosine read from table +sines+ (which holds sines), then
+      # out as it runs, its sine and cosine read from table +sines+ (which holds SINES), then
       # squared up. +degrees+ is a whole number when +whole+, and a fraction with sixteen bits
       # otherwise. A whole number is brought into one turn before it is made a fraction, so any
       # whole number turns as it should; a fraction holds no more than 32767 degrees either way.

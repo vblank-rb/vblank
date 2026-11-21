@@ -92,7 +92,7 @@ module VBlank
       end
 
       # Ends the helper, if it has not ended, and reaps it: given +grace+ seconds to end by itself,
-      # then asked to (term), then killed. Done once; a second call does nothing.
+      # then asked to (TERM), then killed. Done once; a second call does nothing.
       def stop_helper(grace: 0)
         return if @reaped
 

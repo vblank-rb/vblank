@@ -51,7 +51,7 @@ module VBlank
       end
 
       # The match hosted or joined, its lockstep not yet begun (Lockstep#begin_match). Refused for a
-      # game for one player or too many players; a Network failure (failures) as it comes.
+      # game for one player or too many players; a Network failure (FAILURES) as it comes.
       def open
         refuse_one_player_game!
         fingerprint = @facts.fingerprint
@@ -64,7 +64,7 @@ module VBlank
       # The line said while the others are waited for, for the one who hosts.
       def waiting_line = ("Waiting for the other players. Press Ctrl-C to give up." if @host)
 
-      # The words for +error+, one of failures. A machine whose game went another way than another
+      # The words for +error+, one of FAILURES. A machine whose game went another way than another
       # machine's first writes the tape of the match and the report into a new folder, which
       # nothing removes, and the words say where: the tape replays this machine's game on the
       # interpreter, pass for pass.
