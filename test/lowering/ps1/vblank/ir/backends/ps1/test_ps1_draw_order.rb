@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RUN OF SPRITES DRAWN IN AN ORDER A LIST HOLDS, read as the interpreter reads the list
+# A run of sprites drawn in an order a list holds, read as the interpreter reads the list
 # (Reference#names_in_draw_order): every entry it holds, however many that is, a place below nought
 # counting back from the last sprite of the run, and a place naming none of them stopping the game. The
 # builder keeps the list at the run's length and fills it with places that name its sprites, so only a

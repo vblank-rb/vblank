@@ -3,7 +3,7 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE PLAYSTATION, `x = row[i]`, measured in the emulator: the
+# A list read at a worked-out index on the PlayStation, `x = row[i]`, measured in the emulator: the
 # index tested against the list's length, shifted by the slot's width, added to the list's place and
 # the slot loaded (PS1::Lowering#emit_slot_place). The console's own code loads a field of a record
 # it holds the address of with one LW, LH or LB at a 16-bit offset (psx-spx, "CPU Load/Store
