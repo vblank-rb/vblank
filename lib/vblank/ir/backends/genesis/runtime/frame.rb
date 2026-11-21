@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE FRAME: waiting for the screen, the buttons, stopping, and going wrong.
+          # The frame: waiting for the screen, the buttons, stopping, and going wrong.
           #
           # The console draws the screen a line at a time, 224 of them, and then rests for 38 more
-          # lines' worth of time — the VERTICAL BLANK — before it starts again. A game changes the
+          # lines' worth of time — the vertical blank — before it starts again. A game changes the
           # picture's memories (video RAM, colour memory, scroll memory) in that rest, or with the
           # screen switched off, so a pass of the game loop ends by waiting for it (rt_wait_vblank): the
-          # processor sleeps (STOP) until the video chip's interrupt wakes it. Then what the pass
+          # processor sleeps (stop) until the video chip's interrupt wakes it. Then what the pass
           # changed in the picture is copied to the console (Runtime::Picture), and the buttons are
           # taken for the next pass.
           #
@@ -24,7 +24,7 @@ module VBlank
           # wrong and why. The names and their meanings are the Color's and the Super Nintendo's, so a
           # reader of any of them asks the same questions.
           module Frame
-            # How the game stands, in STATE.
+            # How the game stands, in state.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2
@@ -58,7 +58,7 @@ module VBlank
             # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
             # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
             LAST_PASS = "rt last pass"
-            # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES, 32
+            # How many frames a pass took (IR::Frames): the interrupt counts every frame (FRAMES, 32
             # bits); where a pass's wait ends, the frames since the last wait ended are what that pass
             # answers for (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
             FRAMES = "rt frames"
@@ -86,8 +86,8 @@ module VBlank
             # 1 once the screen is on: before the end of the first pass it is off.
             DISPLAY_ON = "rt display on"
 
-            # IN A GAME THAT READS HOW MANY FRAMES IT HAS SHOWN SINCE POWER-ON, the frames setting up takes
-            # are counted too. COUNTING is 1 while setting up runs and the interrupt only counts FRAMES
+            # In a game that reads how many frames it has shown since power-on, the frames setting up takes
+            # are counted too. Counting is 1 while setting up runs and the interrupt only counts frames
             # (Boot#emit, #emit_interrupt); SETTING_UP is the frames setting up took, kept one more for a
             # reader of the run, so nought means not counted yet (#emit_setting_up_counted).
             COUNTING = "rt counting"
@@ -95,7 +95,7 @@ module VBlank
 
             # The part of work RAM the interrupt touches while it only counts, which the boot clears
             # first (Boot#emit): +bytes+ from the start of work RAM, a whole number of long words, and the
-            # distance of COUNTING from A5.
+            # distance of counting from A5.
             CountingBlock = Data.define(:bytes, :flag_at)
 
             # What SHOWN holds once a stopped game's last picture is on the screen.
@@ -122,7 +122,7 @@ module VBlank
               end
             end
 
-            # +counted+ for a game that reads how many frames it has shown since power-on (COUNTING,
+            # +counted+ for a game that reads how many frames it has shown since power-on (counting,
             # SETTING_UP). Must be the first places reserved, so the interrupt's are at the start of
             # work RAM (#counting_block). +second_pad+ for a game that reads it (#reads_second_pad?).
             def reserve(memory, counted: false, second_pad: false)
@@ -159,7 +159,7 @@ module VBlank
             # Whether the game whose places are in +memory+ reads the second pad (#reserve).
             def second_pad?(memory) = memory.reserved?(SECOND_HELD)
 
-            # The CountingBlock of a game that counts the frames setting up takes: COUNTING to FRAMES.
+            # The CountingBlock of a game that counts the frames setting up takes: counting to frames.
             def counting_block(memory)
               raise LoweringError, "the frame counter's places must be reserved first" unless memory[COUNTING] == Memory::FIRST
 
@@ -190,7 +190,7 @@ module VBlank
             # them, as the interpreter's does. A5 is the game's own and is never changed. In a game that
             # plays recordings the buttons are read with the Z80 stopped.
             #
-            # +counting+ for a game that counts the frames setting up takes: while COUNTING is set the
+            # +counting+ for a game that counts the frames setting up takes: while counting is set the
             # interrupt only counts the frame, since the buttons' reading would let the Z80 go before
             # its program is in, and work RAM past the counting block is still being cleared.
             def emit_interrupt(asm, at, samples, counting: false)
@@ -259,12 +259,12 @@ module VBlank
               asm.label("rt_frame_begins_not_past")
             end
 
-            # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time, the
+            # rt_show_pass: what the pass drew, on the screen, and shown saying so. The first time, the
             # screen is still off, so everything set up so far is copied while nothing is drawn, and
             # the screen comes on in the blank after, showing it; after that, the pass's changes are
             # copied in the blank.
             #
-            # THE FRAMES ARE COUNTED FROM THE SCREEN COMING ON. Setting up and the first copy take
+            # The frames are counted from the screen coming on. Setting up and the first copy take
             # several frames of the console's time with nothing to see, and the interpreter's first
             # pass takes one: the count starts again as the picture first shows, with that frame as
             # the first, so a game counting frames (a timer, an effect that runs every frame) counts
@@ -292,7 +292,7 @@ module VBlank
 
               # Sleep until the blank's interrupt has come since this was called. The interrupt is
               # held off while the flag is looked at, so one cannot come between the look and the sleep
-              # and be waited a whole frame for; STOP lets the pending one in as it sleeps.
+              # and be waited a whole frame for; stop lets the pending one in as it sleeps.
               asm.label("rt_sleep_until_vblank")
               asm.ori_to_sr(INTERRUPTS_OFF_BITS)
               asm.clr(:w, at.call(VBLANK))
@@ -307,9 +307,9 @@ module VBlank
               asm.rts
             end
 
-            # THE FRAMES SETTING UP TOOK, COUNTED ALL THE SAME, in a game that reads how many frames it
+            # The frames setting up took, counted all the same, in a game that reads how many frames it
             # has shown since power-on. Such a game counts blanks from near the top of setting up
-            # (Boot#emit), so FRAMES holds every blank since, the one just waited for included, which ends
+            # (Boot#emit), so frames holds every blank since, the one just waited for included, which ends
             # the first pass's frame; the rest are setting up's. They go into the game's count at +count+
             # now, which the first pass reads only once its wait is over, the frames of the pass itself
             # added after (Lowering#emit_wait_vblank): where the interpreter adds them
@@ -327,7 +327,7 @@ module VBlank
             # The pad needs a moment after the line changes, which is two instructions that do
             # nothing. The bits are turned into IR::Buttons's order.
             #
-            # THE SECOND PAD is read the same way through the next port along ($A10005), in a game that
+            # The second pad is read the same way through the next port along ($A10005), in a game that
             # reads it (#reads_second_pad?). A port with nothing plugged in reads every line high, so no
             # button of it is down.
             def emit_buttons(asm, memory, at)
@@ -433,9 +433,9 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or with the screen switched on, for a game
-            # that never got as far as a frame), SHOWN marks that the end is on the screen, and the
+            # that never got as far as a frame), shown marks that the end is on the screen, and the
             # processor sleeps from then on. Going wrong is the same, with what went wrong written
-            # down first (rt_fault, D0 = what went wrong, the list and the numbers already in FAULT).
+            # down first (rt_fault, D0 = what went wrong, the list and the numbers already in fault).
             def emit_stopping(asm, at)
               asm.label("rt_halt")
               asm.moveq(HALTED, asm.d(0))

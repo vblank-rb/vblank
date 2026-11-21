@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE LISTS: a game's `list`, and every field of a pool, as the interpreter keeps them
+          # The lists: a game's `list`, and every field of a pool, as the interpreter keeps them
           # (Reference::ListValue) — items added at the back and taken from either end, read and
           # written by index, and the game stopped, in the interpreter's words, by an index outside
           # the list, an item added to a full one or taken from an empty one.
@@ -35,7 +35,7 @@ module VBlank
             # byte, an unsigned byte, a signed half, an unsigned half, a whole word.
             KEPT = { signed_byte: 0, byte: 1, signed_half: 2, half: 3, word: 4 }.freeze
 
-            # A slot's size in bytes, as the size a MOVE names.
+            # A slot's size in bytes, as the size a move names.
             SLOT_SIZES = { 1 => :b, 2 => :w, 4 => :l }.freeze
 
             module_function
@@ -178,7 +178,7 @@ module VBlank
 
             # rt_list_copy(list, table, kept, length, at, count): the list made to hold the run of the
             # table's +count+ entries from +at+, held so the run is inside the table (Reference
-            # #exec_list_copy). +table+ is the table's address, +kept+ how it keeps an entry (KEPT),
+            # #exec_list_copy). +table+ is the table's address, +kept+ how it keeps an entry (kept),
             # +length+ how many entries it has.
             def emit_copy(asm)
               asm.label("rt_list_copy")
@@ -225,7 +225,7 @@ module VBlank
               emit_copy_entry(asm)
             end
 
-            # THE RUN COPIED WITH ONE INSTRUCTION AN ENTRY, which is what a console's own game does with
+            # The run copied with one instruction an entry, which is what a console's own game does with
             # a run of a table: the list starts at its first slot once it is copied into, so the
             # entries go from the table to the slots in order, through two address registers that
             # each move on as they are read and written, and DBRA counts them. That is for a table
@@ -234,7 +234,7 @@ module VBlank
             # not fit its size): an entry is moved as it lies, a byte, a half or a long word. Any
             # other pair goes on to the loop below, an entry at a time through the slot routines.
             #
-            # A0 is the list, A2 the table, D2 how the table keeps an entry (KEPT, two to a size),
+            # A0 is the list, A2 the table, D2 how the table keeps an entry (kept, two to a size),
             # D4 the entry to start at and D5 how many, which the loop below needs kept as they are.
             def emit_copy_of_whole_run(asm)
               asm.tst(:l, asm.d(5))
@@ -291,7 +291,7 @@ module VBlank
               asm.rts
             end
 
-            # THE SLOTS (all reached with JSR):
+            # The slots (all reached with JSR):
             #
             #   rt_list_slot_of_index   A1 = the slot the index in D1 names; an index outside the list
             #                           stops the game
@@ -354,7 +354,7 @@ module VBlank
             end
 
             # The game stopped: what went wrong, the list's address, and the numbers that give how,
-            # into FAULT for the reader (Frame), then rt_fault (D0 = what went wrong).
+            # into fault for the reader (Frame), then rt_fault (D0 = what went wrong).
             def emit_faults(asm, memory)
               at = ->(plus) { asm.abs_l(memory[Frame::FAULT], plus) }
               asm.label("rt_list_full")

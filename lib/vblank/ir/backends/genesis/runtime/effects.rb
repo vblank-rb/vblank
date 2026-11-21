@@ -5,18 +5,18 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE SOUND EFFECTS PLAYER, beside the tune's (Music), the same steps as Reference::Player's, in its
+          # The sound effects player, beside the tune's (Music), the same steps as Reference::Player's, in its
           # order.
           #
           # The game asks for an effect (rt_sfx_play); at the next frame it starts from its first note, plays
           # each note once as its frame comes, and at its end lets go of the voices it still holds, quieting
-          # them. The tune and the effects share the console's four voices, and WHO SOUNDS ON ONE is settled by
+          # them. The tune and the effects share the console's four voices, and who sounds on one is settled by
           # rank (SNES::Music, "who sounds on a voice"): a note takes a voice whose holder's rank is no higher
           # than its own, and holds it while it makes a sound (rt_sfx_claim). Each frame plays the effects that
           # outrank the tune before the tune's parts and the rest after, so whoever writes a voice first on a
           # frame is whoever keeps it.
           #
-          # AN EFFECT IN A GROUP plays one at a time with the rest of its group: asked for while another of its
+          # An effect in a group plays one at a time with the rest of its group: asked for while another of its
           # group is sounding or already asked for, it is not played if its priority is lower, and otherwise
           # stops that one on the next frame and starts in its place (Reference::Player#request_effect).
           module Effects
@@ -238,7 +238,7 @@ module VBlank
 
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its parts,
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
-            # since the last frame. rt_sfx_select_ranked: the effect at place WALK of the rank order, selected,
+            # since the last frame. rt_sfx_select_ranked: the effect at place walk of the rank order, selected,
             # its number in D0.
             def emit_passes(asm, at, count)
               m = Genesis::Music
@@ -384,7 +384,7 @@ module VBlank
               asm.addq(:w, 1, state.call(FRAME))
               asm.rts
 
-              # rt_sfx_entry: ENTRY and A0 = where part PART of the effect selected is.
+              # rt_sfx_entry: ENTRY and A0 = where part part of the effect selected is.
               asm.label("rt_sfx_entry")
               asm.move(:w, at.call(PART), asm.d(0))
               asm.mulu(asm.imm(m::PART_BYTES), asm.d(0))
@@ -448,7 +448,7 @@ module VBlank
               asm.rts unless recorded
             end
 
-            # rt_sfx_recorded_note: the note at NOTE of the selected effect's part that plays a recording, D0 its
+            # rt_sfx_recorded_note: the note at note of the selected effect's part that plays a recording, D0 its
             # channel, in a place the effect owns (Recordings::EFFECT_OWNER): a note takes the place at the
             # effect's rank and logs itself if it found it; a note that sounds nothing gives the part's place
             # back, and logs itself only if the part had it (Reference::Player#play_effect_frame).
@@ -556,7 +556,7 @@ module VBlank
               asm.rts
             end
 
-            # rt_sfx_select: the effect numbered D0 selected: EFFECT, RECORD and A0 where its record is, STATE
+            # rt_sfx_select: the effect numbered D0 selected: effect, record and A0 where its record is, state
             # and A1 where its state is.
             def emit_select(asm, at)
               asm.label("rt_sfx_select")
