@@ -45,24 +45,24 @@ module VBlank
           # console's first window hides the layer outside the columns where the picture is
           # (rt_paint_camera), and the backdrop shows there.
           #
-          # The game paints into a copy in work RAM — $7F:0000 to $7F:DFFF of its upper bank, laid out
+          # The game paints into a COPY in work RAM — $7F:0000 to $7F:DFFF of its upper bank, laid out
           # the same way — and the tiles it changed go to video RAM after the pass (rt_paint_upload).
           # On a cartridge with a Super FX the copy is the chip's RAM instead (ChipPaint).
           #
           # A clear writes nothing. Copying the whole screen is 57344 bytes, fourteen blanks' worth,
           # and a game that clears every pass would pay that every pass. Instead the clear moves the
-          # screen on a generation, and a tile last painted in an older generation is the clear
+          # screen on a GENERATION, and a tile last painted in an older generation is the clear
           # colour throughout, whatever the copy holds there (the Game Boy Color's painted screen does
           # the same). Such a tile is shown by pointing its cell of the map at the clear tile, two
           # bytes instead of 64. The first paint of a tile in a generation fills it with the clear
           # colour first and points its cell back at its own tile (rt_paint_ready). So each tile
-          # keeps the generation it was last made ready in (generations, a byte a tile), and work RAM
+          # keeps the generation it was last made ready in (GENERATIONS, a byte a tile), and work RAM
           # keeps the whole map as it is to be once the pass is shown (MAP_COPY).
           #
           # What a pass sends. The tiles painted in the pass, where they are in this generation: for
           # each row of tiles the copy keeps the leftmost and rightmost tile painted since the last
-          # blank (dirty), and as the pass ends (rt_paint_prepare) each row's tiles of this generation
-          # between them are put on a list of runs, side by side in video RAM and in the copy, a copy
+          # blank (DIRTY), and as the pass ends (rt_paint_prepare) each row's tiles of this generation
+          # between them are put on a list of RUNS, side by side in video RAM and in the copy, a copy
           # each. Then, if they changed, the clear tile, the map and the colours of a fade or tint.
           #
           # On a plain cartridge a pass that clears paints only what changed (PaintLog): its paintings
@@ -1417,7 +1417,7 @@ module VBlank
             # painted in its own colour's picture, as is any colour when the count of clears comes
             # round to the one the ink was last set at.
             #
-            # INK_GENERATIONS keeps, for each ink, one more than the count of clears (clears) it was
+            # INK_GENERATIONS keeps, for each ink, one more than the count of clears (CLEARS) it was
             # last set at: nought, at power-on, is none. (+temp+ is the colour wanted, +temp+ + 2 its place's byte.)
             def emit_blit_inked(asm, memory, s)
               now = memory[Tint::COLORS_NOW]
@@ -2573,7 +2573,7 @@ module VBlank
               asm.sta(asm.direct(s.not_mask))
             end
 
-            # X at the first row of dirty to look at, four bytes a row, or on to +none+ if there is
+            # X at the first row of DIRTY to look at, four bytes a row, or on to +none+ if there is
             # none: every row on a Super FX cartridge, and on a plain one the rows painted since the
             # last pass (PaintLog keeps which).
             def emit_dirty_rows_from(asm, memory, logged, none)
@@ -2822,7 +2822,7 @@ module VBlank
               asm.label("rt_paint_upload_map_rows_sent")
             end
 
-            # rt_paint_send_runs (JSR): the runs of runs from X up to +last+, as many at a time as
+            # rt_paint_send_runs (JSR): the runs of RUNS from X up to +last+, as many at a time as
             # the blank has time for (Blank's rt_blank_left), each counted RUN_SETTING_UP more; when
             # not even the next fits, as many of its tiles as do, and the rest in the next blank.
             # One check of the blank for each handful of runs rather than for each run, which costs
@@ -2913,7 +2913,7 @@ module VBlank
             # +bank+ to video RAM's two ports, what every run shares, so each run (rt_paint_send_run)
             # sets only its own place and length. Set again after anything else could copy, as
             # after a wait for the next blank.
-            # rt_paint_send_run (JSR): the run at X of runs copied to video RAM, its tiles to their
+            # rt_paint_send_run (JSR): the run at X of RUNS copied to video RAM, its tiles to their
             # own slots. Keeps X.
             def emit_send_run(asm, memory, bank)
               h = Console::SNESHardware
@@ -2953,7 +2953,7 @@ module VBlank
             # way: under a third of a line, for the sixty or so cycles of looking at it.
             RUN_PICKING = 48
 
-            # The run at X of runs added to +chunk+, as its bytes and RUN_SETTING_UP; X on to the next.
+            # The run at X of RUNS added to +chunk+, as its bytes and RUN_SETTING_UP; X on to the next.
             def emit_add_run_bytes(asm, memory, s)
               asm.lda(asm.long_x(memory[RUNS] + 2))
               6.times { asm.asl }

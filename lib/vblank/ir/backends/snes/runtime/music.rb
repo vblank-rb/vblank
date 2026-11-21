@@ -53,7 +53,7 @@ module VBlank
             LOUDNESS = "rt music loudness"
             LEVEL_NOW = "rt music level now"
             LOUDNESS_TABLE = "rt music loudness table"
-            # The parts whose voices hold a note, in the order they first took one since the tune
+            # The parts whose voices hold a NOTE, in the order they first took one since the tune
             # started (Reference::Player's @sounding, a Hash kept in the order its keys came): each
             # part's number, two bytes apart, and where the list ends, and whether each part is in it.
             # A sound effect taking a part's voice takes the part out, and the part's next note puts
@@ -188,7 +188,7 @@ module VBlank
             # Whether the song parts' notes are apart from the table (NOTE_COPY).
             def notes_apart?(memory) = memory.reserved?(NOTE_COPY)
 
-            # A = +field+ of the note at note, a tune's or an effect's (SNES::Music's NOTE_ names): read
+            # A = +field+ of the note at NOTE, a tune's or an effect's (SNES::Music's NOTE_ names): read
             # in the table with X = NOTE, which it loads unless +x_holds_note+; or, with the notes
             # apart, from NOTE_COPY, leaving X and Y as they were.
             def emit_note_field(asm, memory, field, x_holds_note: false)
@@ -275,7 +275,7 @@ module VBlank
             # Whether a note changes as it plays in this game, and so #emit_note_changes calls anything.
             def changes_notes?(memory) = wobbles?(memory) || steps_shapes?(memory) || swells?(memory) || slides?(memory)
 
-            # The note at ENTRY and note taken up by what changes as it plays, a tune's or an effect's.
+            # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
             def emit_note_changes(asm, memory)
               asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
@@ -336,7 +336,7 @@ module VBlank
 
             # rt_music_slides: the sliding note's frame played from its record, every frame the
             # player runs, since on the Advance the voice moves by itself even under `hold_music`.
-            # rt_music_note_slide: the record of the note at note taken up, or nothing, when the
+            # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the
             # part at ENTRY plays on the one voice that slides.
             def emit_slides(asm, at, memory)
               m = SNES::Music
@@ -481,7 +481,7 @@ module VBlank
               asm.sta(record)
               asm.rtl
 
-              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at note sets,
+              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE sets,
               # from its loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level).
               asm.label("rt_music_note_swell")
               asm.ldx(at.call(ENTRY))
@@ -568,7 +568,7 @@ module VBlank
               asm.sta(asm.abs_y(memory[SHAPE_RECORD]))
               asm.rtl
 
-              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at note
+              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE
               # sets, or holding its shape (Reference::Player#set_voice).
               asm.label("rt_music_note_shapes")
               asm.ldx(at.call(ENTRY))
@@ -649,7 +649,7 @@ module VBlank
               asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
               asm.rtl
 
-              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at note
+              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE
               # sets, or holding still (Reference::Player#set_voice).
               asm.label("rt_music_note_wobble")
               asm.ldx(at.call(ENTRY))
@@ -876,7 +876,7 @@ module VBlank
               asm.jmp(asm.abs("rt_sound_group"))
             end
 
-            # rt_music_recorded_note: the note at note of a part that plays a recording, A its channel
+            # rt_music_recorded_note: the note at NOTE of a part that plays a recording, A its channel
             # (SNES::Music::RECORDED_CHANNEL on): a note takes a place for the part (rt_recordings_note),
             # and logs itself if it found one; a rest gives the part's place back and logs itself
             # whether the part had one or not (Reference::Player#play_song_frame).
@@ -923,7 +923,7 @@ module VBlank
               asm.rts
             end
 
-            # The heard recorded note at note under the music volume (Reference::Player#record_note_volume):
+            # The heard recorded note at NOTE under the music volume (Reference::Player#record_note_volume):
             # the part's record held for a new level to reach, nought for a rest, the part in HELD_ORDER,
             # and its loudness at the level given to its place and logged.
             def emit_recorded_note_level(asm, at, memory)
@@ -1136,8 +1136,8 @@ module VBlank
               asm.lda(asm.ind_long_y(memory[NOTE_POINTER]))
             end
 
-            # With a note's frame in A and the carry from comparing it with frame: kept in
-            # NEXT_NOTE_FRAME if it is ahead of frame and sooner than the one kept.
+            # With a note's frame in A and the carry from comparing it with FRAME: kept in
+            # NEXT_NOTE_FRAME if it is ahead of FRAME and sooner than the one kept.
             def emit_next_note_frame_kept(asm, at)
               kept = asm.here
               asm.bcc("rt_music_next_note_kept_#{kept}")

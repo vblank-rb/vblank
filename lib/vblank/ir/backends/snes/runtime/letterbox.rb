@@ -44,7 +44,7 @@ module VBlank
           #
           # The window is the lines with the screen off, from the line after the band's last round
           # through the blank to the line before its first. Blank's routines count the room left in
-          # it (first and last, read by Blank when a cartridge carries this). A pass's copy starts
+          # it (FIRST and LAST, read by Blank when a cartridge carries this). A pass's copy starts
           # as soon as a window is open whose interrupt is still to come (rt_letterbox_wait), which
           # is below the band, before the blank, and the pass's wait ends after that interrupt
           # (rt_letterbox_shown), so every pass still answers for a whole frame at least and the
@@ -66,8 +66,8 @@ module VBlank
             # The band wanted once the pass at hand is prepared, the same way.
             WANT_FIRST = "rt letterbox want first"
             WANT_LAST = "rt letterbox want last"
-            # The last pass's own rows of tiles, its first and one past its last (none: rows and 0),
-            # whether its bars were black (valid), and the same of the pass before it (old).
+            # The last pass's own rows of tiles, its first and one past its last (none: ROWS and 0),
+            # whether its bars were black (VALID), and the same of the pass before it (old).
             OWN_FIRST = "rt letterbox own first"
             OWN_END = "rt letterbox own end"
             VALID = "rt letterbox valid"
@@ -248,7 +248,7 @@ module VBlank
               emit_waits(asm, memory)
             end
 
-            # rt_letterbox_rows: the pass's rows from dirty, its own band, whether its bars are
+            # rt_letterbox_rows: the pass's rows from DIRTY, its own band, whether its bars are
             # black, and the band wanted: the last pass's and this one's together, or the whole screen.
             def emit_rows(asm, memory, black_places)
               at = ->(name) { asm.abs(memory[name]) }

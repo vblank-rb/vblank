@@ -598,7 +598,7 @@ module VBlank
             end
 
             # The game stopped: what went wrong, the list's place, and the numbers that give how,
-            # into fault for the reader (Frame), then rt_fault.
+            # into FAULT for the reader (Frame), then rt_fault.
             def emit_faults(asm, memory, s)
               asm.label("rt_list_full")
               emit_fault_list(asm, memory)

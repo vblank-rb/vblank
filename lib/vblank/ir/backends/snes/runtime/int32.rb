@@ -399,7 +399,7 @@ module VBlank
             # multiplied a byte by a byte on the console's multiplier, turned round when one of them
             # was negative, then shifted.
             #
-            # Sixteen products of a byte by a byte make the whole product, each added in where its
+            # Sixteen products of a byte by a BYTE make the whole product, each added in where its
             # two bytes' places put it: byte i of R0 by byte j of R1 lands i + j bytes up. Added one
             # 16-bit word at a time, a product lands on an even byte or an odd one; so the ones on
             # even bytes are added into one sum (the scratch's wide number) and the ones on odd
