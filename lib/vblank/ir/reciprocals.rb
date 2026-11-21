@@ -2,23 +2,23 @@
 
 module VBlank
   module IR
-    # HOW FAR AWAY A POINT ON A FACE IS, from one over its distance: the sum perspective needs at
+    # How far away a point on a face is, from one over its distance: the sum perspective needs at
     # every few pixels, written once so every target works it out to the same bits.
     #
-    # WHY PERSPECTIVE NEEDS IT. Across a face that leans away, equal steps on the screen are not
+    # Why perspective needs it. Across a face that leans away, equal steps on the screen are not
     # equal steps on the picture: the far half of a wall squeezes more of the picture into each
     # pixel than the near half. What does step evenly across the screen is the place on the
     # picture divided by the distance, and one over the distance. So the fill steps those two, and
     # wherever it wants the place on the picture it divides them back, which is a multiply by the
     # distance: one over one over the distance. That reciprocal is what this works out.
     #
-    # WHY A TABLE, NOT A DIVIDE. A divide is the dearest sum the consoles do, and the fill wants one
+    # Why a table, not a divide. A divide is the dearest sum the consoles do, and the fill wants one
     # every eight pixels. One over a number is its leading bits looked up in a table of 1024 and
     # moved back into place, which costs a load and two shifts. It is a little off, by up to a part
     # in a thousand; and since every target uses this table and these shifts, every target is a
     # little off the same way, so all of them draw the same pixels.
     #
-    # THE NUMBERS. One over the distance, +w+, has 26 bits of fraction (a distance of one is
+    # The numbers. One over the distance, +w+, has 26 bits of fraction (a distance of one is
     # 2**26), and the answer is the distance with 16 (a distance of one is 2**16), so the answer is
     # 2**42 / w. A distance past 16384 is taken as 16384.
     module Reciprocals

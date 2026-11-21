@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # HOW A RUMBLE'S PATTERN IS READ, as every backend that runs a motor reads it (`rumble`,
+    # How a rumble's pattern is read, as every backend that runs a motor reads it (`rumble`,
     # Nodes::Rumble). A pattern is eight bits, one a frame, turned a place to the right each frame:
     # the motor runs on a frame whose lowest bit, after the turn, is 1. That is how the Color's own
     # games keep one — Pokémon Pinball turns its pattern so — so a number from one of them plays

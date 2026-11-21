@@ -4,7 +4,7 @@ require "did_you_mean" # Offers the closest names in place of one a game never d
 
 module VBlank
   module IR
-    # A RUNNING GAME'S STATE, ASKED BY THE NAMES THE GAME GAVE IT: a variable in the game's units, a
+    # A running game's state, asked by the names the game gave it: a variable in the game's units, a
     # sprite, a background, the music's loudness. Every reader of a running game answers these the
     # same way, because each is this module over what that reader keeps: the interpreter and every
     # lowering's run (Backends::Reference::ReadingBack, which adds lists and pools), the cartridge
@@ -19,7 +19,7 @@ module VBlank
     module ReadingByName
       # A variable's number now, in the game's units: a fraction as the fraction.
       #
-      # A NAME THE PROGRAM NEVER DECLARED IS REFUSED, not read as 0. A stored number nobody wrote is
+      # A name the program never declared is refused, not read as 0. A stored number nobody wrote is
       # 0, so without this a test left reading a name that a rename took away keeps passing every
       # assertion that the number stays 0. With no program to ask (a hand-built tree with no program
       # at its root), nothing says which names exist, and the stored number is all there is.
