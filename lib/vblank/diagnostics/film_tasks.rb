@@ -5,7 +5,7 @@ require "rake/tasklib"
 
 module VBlank
   module Diagnostics
-    # A GAME'S RAKE TASK FOR FILMS: `rake film NAME=door` makes the film written in films/door.rb
+    # A game's rake task for films: `rake film NAME=door` makes the film written in films/door.rb
     # (FilmScript) and writes it as an MP4 a person can watch without running anything. In the
     # game's Rakefile:
     #
@@ -24,13 +24,13 @@ module VBlank
     #     t.sound = "ours"                             # hear a side in every film (none if unsaid)
     #   end
     #
-    # A SIDE is a label (written over its pictures) and its cartridge: a path to a cartridge file,
+    # A side is a label (written over its pictures) and its cartridge: a path to a cartridge file,
     # a built cartridge, a game to build (MY_GAME, what `VBlank.game` hands back), or a lambda
     # answering any of them, called only when that film is made. Either side can be any cartridge,
     # so a game with no retail cartridge to set beside it films two builds of its own. A film file
     # can name sides of its own (FilmScript#side).
     #
-    # CONSOLE AND LOWERING. `rake film NAME=door CONSOLE=ps1 LOWERING=ruby` sets them for one film,
+    # Console and lowering. `rake film NAME=door CONSOLE=ps1 LOWERING=ruby` sets them for one film,
     # over what the Rakefile sets (an empty one sets nothing); a side the film file names with its own
     # keeps its own. The console is the one a game to build is built for (the first the game names
     # unless set); a built cartridge or a file is for one console already, and a side that names
@@ -39,12 +39,12 @@ module VBlank
     # (Playthroughs::CommandLine::SHOWN_WAYS), which play the game itself, so a cartridge file is
     # shown only in the emulator.
     #
-    # SOUND. A film is silent unless something asks to hear it: `rake film NAME=door SOUND=ours` hears
+    # Sound. A film is silent unless something asks to hear it: `rake film NAME=door SOUND=ours` hears
     # that side, `SOUND=side_by_side` two sides one on each speaker, and `SOUND=in_turn` shows the film
     # once for each side, one heard each time (FilmSound). That is over the film file's `sound`, which is
     # over the Rakefile's #sound.
     #
-    # A SHELL. A port made from an original (a game with a data_pack) sets #shell, the game or a
+    # A shell. A port made from an original (a game with a data_pack) sets #shell, the game or a
     # lambda answering it, and each film shows two sides before the others: "shell", the port's shell
     # from its first start, and "all-in-one", the same game built all-in-one, on the same pass
     # (FilmShell). A film file with `start_from :game` counts its frames from the shell's game's

@@ -2,11 +2,11 @@
 
 module VBlank
   module Diagnostics
-    # THE SOUND OF A FILM (Film), asked for with Film.make's +sound:+: what each side put out on the
+    # The sound of a film (Film), asked for with Film.make's +sound:+: what each side put out on the
     # frames the film shows, laid under the pictures so each frame's sound plays while that frame is
     # on screen. A film with no sound asked for has no sound in it at all, and Film never makes one.
     #
-    # WHICH SIDES ARE HEARD, by the +sound:+ setting:
+    # Which sides are heard, by the +sound:+ setting:
     #
     #   "ours"          that side alone, as it made it, on both speakers
     #   :side_by_side   two sides at once: the first on the left speaker, the second on the right,
@@ -14,7 +14,7 @@ module VBlank
     #   :in_turn        the film shown once for each side, in the order of +sides:+, and each time
     #                   one side heard, as it made it
     #
-    # IN STEP WITH THE PICTURES. A console's frame is a little longer than the film's sixtieth of a
+    # In step with the pictures. A console's frame is a little longer than the film's sixtieth of a
     # second (Console::Description#frame_seconds), and its sound comes at its own rate. So each part's
     # sound, its frames' samples one after another, is stretched or squeezed to the film frames that
     # show the part: the sound of a frame plays while that frame is shown, however far into a long
@@ -22,7 +22,7 @@ module VBlank
     # frame that put out nothing (a lowering held back for its cartridge's start) is a frame of
     # silence, and so are the frames a part's end and the film's end are held for.
     #
-    # A SIDE IS HEARD THROUGH `last_frame_samples`: the samples of the frame it played last, the left
+    # A side is heard through `last_frame_samples`: the samples of the frame it played last, the left
     # speaker's then the right's, a moment at a time, as the emulator's reader (Verifier), a lowering
     # (Playthroughs::LoweredGame) and a shell's sides (FilmShell) answer it.
     class FilmSound
@@ -90,7 +90,7 @@ module VBlank
         @heard[label] = samples_by_frame
       end
 
-      # The film's sound written to +path+ as a WAV file: two speakers of sixteen-bit samples at RATE.
+      # The film's sound written to +path+ as a WAV file: two speakers of sixteen-bit samples at rate.
       def write_wav(path)
         left, right = speakers
         data = left.zip(right).flatten.pack("s<*")

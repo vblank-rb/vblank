@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A RUNNING CARTRIDGE PUT OUT OF ITS SPEAKERS ON ONE FRAME, the same on every console whose
+    # What a running cartridge put out of its speakers on one frame, the same on every console whose
     # emulator hands its sound over (Verifier#last_frame_sound).
     #
     # +samples+ are the frame's samples as the emulator mixed them: whole numbers from -32768 to

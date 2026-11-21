@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # EVERY LIST AND POOL THE GAME DECLARED, AND HOW TO HOLD EACH ONE FULL in a running cartridge.
+    # Every list and pool the game declared, and how to hold each one full in a running cartridge.
     #
     # A collection is sized for the worst moment of a game: a snake's body for the whole board,
     # sixty-four bullets for the frame that needs them. Running the game measures the moment it
@@ -11,7 +11,7 @@ module VBlank
     # fills it. Nothing works out where that happens; the build measures it instead, with each
     # collection held at its capacity (see Profiler.survey_scenes).
     #
-    # HOLDING ONE FULL is writing the numbers that record how many it holds. A list keeps its length
+    # Holding one full is writing the numbers that record how many it holds. A list keeps its length
     # in a variable, so that is the capacity. A pool marks which of its slots are live a byte each,
     # and keeps a count and a stack of the free slots beside them, so every slot is marked live,
     # the count is the capacity and the stack is empty. Its walk follows a chain through the live
@@ -20,11 +20,11 @@ module VBlank
     # are — whatever is in memory past the ones the game put there, usually nothing, and a
     # pool's fields as declared. Every word a game can write clips what it is given rather than
     # going outside memory, so a walk over them is safe. What it is not is always the same price
-    # as a walk over real items: a walk whose work depends on an item's VALUE (a test that skips
+    # as a walk over real items: a walk whose work depends on an item's value (a test that skips
     # the item when it is nought, an item used as a loop count) measures what those values
     # cost, which can be more or less than the game would ever see.
     #
-    # Only what the AUTHOR declared. The framework's own lists (a save record's buffers, a
+    # Only what the author declared. The framework's own lists (a save record's buffers, a
     # canvas's pixels) are sized for exactly what they hold, and are full or empty by design.
     module FullCollections
       # One collection: +label+ is what the author wrote (`list :xs`), and +writes+ are the
