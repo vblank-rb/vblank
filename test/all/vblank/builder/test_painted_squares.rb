@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PAINTED SCREEN IN MANY COLOURS. The Advance keeps a colour for every pixel, so a game paints
+# A painted screen in many colours. The Advance keeps a colour for every pixel, so a game paints
 # in as many as it likes. A Game Boy Color keeps every 8×8 square of its screen in one of eight
 # lists of four colours, so a painted screen there can show many colours as long as no square
 # needs more than four. These games paint in more than four, a few to a square, and every lowering

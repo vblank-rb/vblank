@@ -3,14 +3,14 @@
 require "test_helper"
 require "differential"
 
-# A PICTURE WHOSE PIXELS ARE PLACES IN ITS OWN LIST OF COLOURS.
+# A picture whose pixels are places in its own list of colours.
 #
 # Art made anywhere else on this console arrives as numbers picking out of a table, and every
 # picture the framework keeps holds a whole colour per pixel instead. Those are the same
 # picture right up until the table holds one colour twice — and a palette lifted out of a real
 # cartridge nearly always does, two blacks or two whites — because a colour then no longer says
 # which place it came from. That matters because a sprite drawn with another list swaps colours
-# BY PLACE: the two places are one colour in the art and two different colours in the list it is
+# by place: the two places are one colour in the art and two different colours in the list it is
 # drawn with, so the picture has to remember which of them each pixel meant.
 class TestPicturePlaces < Minitest::Test
   include Differential
@@ -89,7 +89,7 @@ class TestPicturePlaces < Minitest::Test
   end
 
   # A pose whose pixels are an earlier pose's pixels backwards is stored once and drawn
-  # reversed — which is only the same picture if its PLACES are that pose's places backwards
+  # reversed — which is only the same picture if its places are that pose's places backwards
   # too. Here they are not: both poses draw red beside green, out of different places of the
   # list, so drawing the second as the first reversed would show the wrong colour.
   private def two_ways_round_program

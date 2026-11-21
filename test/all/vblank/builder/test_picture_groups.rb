@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# PICTURES GROUPED BY ROOM. A scene made of many rooms shows only one room's things at a time
+# Pictures grouped by room. A scene made of many rooms shows only one room's things at a time
 # (two while the screen slides from one to the next), and the console keeps the pictures it
 # draws sprites from in a memory small enough that a whole game's things do not fit in it at
 # once. So a game says which of its pictures belong to which room, and which rooms are up; the
