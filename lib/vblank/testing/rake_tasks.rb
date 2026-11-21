@@ -12,7 +12,7 @@ require_relative "test_task"
 
 module VBlank
   module Testing
-    # A GAME'S RAKE TASKS FOR ITS OWN TESTS, one run for each lowering. In the game's Rakefile:
+    # A game's rake tasks for its own tests, one run for each lowering. In the game's Rakefile:
     #
     #   require "vblank/testing/rake_tasks"
     #
@@ -44,7 +44,7 @@ module VBlank
     # it is told the same list the games are, and it takes and refuses exactly what `consoles:` does,
     # a Rakefile that names none included.
     #
-    # A GAME FOR SEVERAL CONSOLES IS PLAYED AS EACH OF THEM on the native, JavaScript and Ruby
+    # A game for several consoles is played as each of them on the native, JavaScript and Ruby
     # lowerings, whose builds are told the console when they are made: `rake test:lowering:native`
     # then plays the suite once per console, one after the other, and each is a task of its own
     # too (`rake test:lowering:native:gbc`). CONSOLE=gbc, before any of these or `rake test:all`,
@@ -61,18 +61,18 @@ module VBlank
     # hardware can do goes in a folder that console owns, and only the runs playing games as that
     # console load it: `t.console_folders = { gbc: ["test/gbc"] }`. Every other test plays on all.
     #
-    # THE GOLDEN PATH, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
+    # The golden path, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
     # unless set; a test file a line, from the folder t.golden_from names, the one rake runs in
     # unless set), and a share of the other test files drawn at random on each run (t.golden_sample,
     # GoldenSample::SHARE unless set), on every lowering that plays each. A game that keeps no such
     # file has no such task.
     #
-    # A RUN'S HEADING names what the run plays, and its task's line in `rake -T` shows the same. A game
+    # A run's heading names what the run plays, and its task's line in `rake -T` shows the same. A game
     # whose run holds its cartridge to something other than the interpreter (a port, to its retail
     # original) names that run's own, by lowering:
     # `t.headings = { genesis: "the game built as a Sega Genesis cartridge, checked against the original" }`.
     #
-    # A TASK FOR EACH FOLDER OF TESTS, with `t.groups = "test"`: `rake test:group:enemies` plays every
+    # A task for each folder of tests, with `t.groups = "test"`: `rake test:group:enemies` plays every
     # test beneath test/enemies/ on every lowering that plays each, and `rake test:group:enemies:bat`
     # those beneath test/enemies/bat/ (SuiteGroups). `t.broad_groups = { "doors" => %w[rooms
     # enemies/test_door*.rb] }` adds a group of tests from several folders.
@@ -204,8 +204,8 @@ module VBlank
          "  CONSOLE=gbc rake test:all           only the runs that play games as one console"].join("\n")
       end
 
-      # `rake test:all`, which FAIL_FAST and RESUME turn into a run that keeps a record. Without
-      # either it keeps none. RESUME stops at a failure too, so the record stays good for the next.
+      # `rake test:all`, which FAIL_FAST and resume turn into a run that keeps a record. Without
+      # either it keeps none. Resume stops at a failure too, so the record stays good for the next.
       def play_all_runs
         resuming = ENV[Lowering::RESUME_SETTING]
         return play_runs(plays) unless resuming || ENV[Lowering::FAIL_FAST_SETTING]
@@ -220,7 +220,7 @@ module VBlank
         puts RESUMED_NOTE if resumed
       end
 
-      # The runs of +chosen+ that CONSOLE leaves, one after the other, ending with a line for each.
+      # The runs of +chosen+ that console leaves, one after the other, ending with a line for each.
       # With +golden+, a list of files, each run plays those of them it loads. With +progress+, a
       # run plays what that record shows is left of it.
       def play_runs(chosen, golden: nil, progress: nil)
@@ -294,7 +294,7 @@ module VBlank
         ENV.update(before)
       end
 
-      # Of +chosen+, the runs playing games as the console CONSOLE names; all of them when it names none.
+      # Of +chosen+, the runs playing games as the console console names; all of them when it names none.
       def chosen_by_console(chosen)
         console = Lowering.named_console(ENV)
         return chosen if console.nil?
@@ -309,7 +309,7 @@ module VBlank
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
       # before found, unless FAIL_FAST asks otherwise (#play_runs). TEST names a file, or several
-      # with commas between, and the run plays those of them it loads; +listed+ is for a TEST the
+      # with commas between, and the run plays those of them it loads; +listed+ is for a test the
       # caller has narrowed to the run's own files already.
       def play_run(lowering, console, name, listed: false)
         named = ENV["TEST"]&.split(",")&.map { |file| file.delete_prefix("./") }
