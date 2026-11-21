@@ -8,6 +8,18 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a screen that shows two see-through layers:
+        #
+        # > <The scene :name, or This game> shows two see-through layers, <names>. The console
+        # > blends one layer with what is behind it, so a screen can have one see-through layer.
+        # > Each scene can have its own.
+        #
+        # A game can have several see-through layers, as long as no screen shows two of them. Where
+        # one sits over another, the console would mix only the top two things at a pixel and the
+        # picture would differ from what was asked. To fix this, make one of the two layers solid,
+        # or put each see-through layer in a different scene.
+        #
+        #--
         # Two see-through layers on one screen.
         #
         # The console blends one layer with what is behind it, so a screen has one
@@ -29,6 +41,7 @@ module VBlank
         # A console that blends nothing (Console::Description#blends) has no see-through
         # layer to count: the build refuses the first one (Checks::ConsoleAnswers), and the
         # interpreter, which does not ask that check, refuses none there.
+        #++
         class SeeThroughPerScreen
           NAME = :see_through_per_screen
           PLAIN_NAME = "two see-through layers on one screen"

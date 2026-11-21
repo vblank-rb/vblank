@@ -4,6 +4,19 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a sprite kept out of a fade by `fade ... under:` that `pixelate` also draws in
+        # blocks:
+        #
+        # > This game fades the screen under the layer :<layer>, and it <pixelates under the layer
+        # > :name, or pixelates the whole screen>. So a sprite in :<layer> is kept out of the fade,
+        # > and it is also drawn in blocks.
+        #
+        # The console keeps a sprite out of a fade by the shape it was drawn in. A sprite in blocks
+        # has a different shape, so part of it fades and an unfaded outline shows beside it. To fix
+        # this, keep the same things out of both: `pixelate ..., under: :<layer>`. A fade that keeps
+        # every sprite out, or none, is not refused.
+        #
+        #--
         # A sprite that a placed fade keeps out of the fade, in a game that also shows
         # that sprite in blocks.
         #
@@ -22,6 +35,7 @@ module VBlank
         #
         # Only where a fade's line really falls between the sprites. A fade that keeps
         # EVERY sprite, or none of them, holds nothing off by its shape and is left alone.
+        #++
         class SpriteInBlocksKeptFromFade
           NAME = :sprite_in_blocks_kept_from_fade
           PLAIN_NAME = "a sprite in blocks that a fade is kept off"

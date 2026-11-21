@@ -4,6 +4,28 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a layer named on the `layers` line that nothing is put in:
+        #
+        # > The layer :<name> holds nothing. A layer with nothing in it changes no picture.
+        # > Usually the name is written differently in the `layer` block, or what was in it has
+        # > moved out.
+        #
+        # For several layers it starts "These layers hold nothing: <names>." For a game that puts
+        # nothing in any layer it says:
+        #
+        # > This game declares layers and puts nothing in any of them: <names>. So the stack
+        # > changes no picture.
+        #
+        # Nothing breaks, but the `layers` line is where a reader looks to learn what is in front
+        # of what, and a name there that holds nothing reads as an answer when it is not one. The
+        # usual cause is a name spelled one way on the `layers` line and another in its `layer`
+        # block.
+        #
+        # To fix this, put something in the layer with `layer :<name> do ... end`, or remove the
+        # name from the `layers` line. A layer named only as the place a fade or `pixelate` stops
+        # (`under: :<name>`) is in use and is not warned about.
+        #
+        #--
         # A layer the program named and put nothing in.
         #
         # Nothing breaks — a depth nothing sits at simply never comes up — which is
@@ -23,6 +45,7 @@ module VBlank
         # sprites for the same reason {StackNotHonored} is: a software sprite's layer
         # is on the handle and not in the tree, so a layer holding only those would
         # look empty to a check that walked the tree alone.
+        #++
         class LayerHoldsNothing
           NAME = :layer_holds_nothing
           PLAIN_NAME = "a layer that holds nothing"

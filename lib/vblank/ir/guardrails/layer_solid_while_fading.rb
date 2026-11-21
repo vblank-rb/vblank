@@ -4,6 +4,22 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a game that fades the screen under one of its layers (`fade ... under:`)
+        # and also has a see-through layer:
+        #
+        # > This game fades the screen under the layer :<under>, and it can see through the layer
+        # > :<layer>. A fade placed in the stack and a see-through layer use the same part of the
+        # > display. The display does one of them at a time.
+        #
+        # While the fade runs, the see-through layer is solid and darkens with the rest of the
+        # picture. It comes back when the fade lifts. Nothing in the code shows this, and a fade is
+        # over in half a second, so it is easy to miss.
+        #
+        # To keep the layer see-through, fade the whole screen. A fade with no `under:` changes the
+        # colours themselves instead, and leaves the layer alone. If the layer being solid for the
+        # fade is fine, the warning can stay.
+        #
+        #--
         # A game that places a fade in the stack AND sees through a layer.
         #
         # A fade over the whole screen used to be here too, and is not any more: that one
@@ -25,6 +41,7 @@ module VBlank
         #
         # This is information rather than a mistake, which is why it warns and offers the
         # way round instead of refusing: the same fade with no `under:` keeps the layer.
+        #++
         class LayerSolidWhileFading
           NAME = :layer_solid_while_fading
           PLAIN_NAME = "a see-through layer while a placed fade runs"
