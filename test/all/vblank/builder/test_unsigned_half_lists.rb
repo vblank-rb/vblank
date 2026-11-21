@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST OR A POOL FIELD OF `width: :unsigned_half`: two bytes read back with no sign, 0 to 65535,
+# A list or a pool field of `width: :unsigned_half`: two bytes read back with no sign, 0 to 65535,
 # for a place kept in 256ths of a pixel. A number outside keeps its low sixteen bits. Every run
 # plays these, each console's build checked against the interpreter on every pass.
 class TestUnsignedHalfLists < Minitest::Test

@@ -34,7 +34,7 @@ end
 # the user (like repeat's hidden index), so there's no counter to declare, reset,
 # or forget.
 #
-# These assert BEHAVIOR on the reference backend: build a small game loop, run it
+# These assert behavior on the reference backend: build a small game loop, run it
 # a fixed number of frames, and check how often (and when) the block fired. The
 # emulator test in test/lowering/gba/vblank/builder/test_timers_cartridge.rb confirms
 # the schedule holds on real hardware.

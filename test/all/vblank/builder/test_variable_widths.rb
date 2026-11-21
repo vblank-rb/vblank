@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A VARIABLE KEPT A BYTE OR TWO WIDE holds what a list's slot of that width holds: the low bits, read
+# A variable kept a byte or two wide holds what a list's slot of that width holds: the low bits, read
 # back with their sign. What it holds is the same on every lowering; only what a console pays for
 # it differs (test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_variable_widths.rb).
 class TestVariableWidths < Minitest::Test
