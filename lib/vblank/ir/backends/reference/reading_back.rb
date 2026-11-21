@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # A GAME'S OWN STATE, READ BACK BY THE NAMES THE GAME GAVE IT: a variable, a sprite, a
+        # A game's own state, read back by the names the game gave it: a variable, a sprite, a
         # background and the music (IR::ReadingByName, which every reader shares), and here a list,
         # one field of a pool, or all of it at once. The interpreter answers these, and so does a
         # game run as C (Native::HeadlessRun), from the same code — so the two answer the same
@@ -15,7 +15,7 @@ module VBlank
         # list it has none of); #list_names, every list's name, the framework's own among them; and
         # #variables_now, every variable's stored number by name.
         #
-        # EVERY NUMBER COMES BACK IN THE GAME'S UNITS. A variable or list the game keeps fractions
+        # Every number comes back in the game's units. A variable or list the game keeps fractions
         # in holds the number multiplied up (DSL::Fraction), and the program says by how much
         # (Program#var_in_game_units), so 12.5 reads as 12.5 and not as what the console stores.
         # #raw_var is the stored number, for a test about how it is kept.
@@ -71,7 +71,7 @@ module VBlank
           # from a second copy of the rule, so it holds what the saves really keep. A pool kept one
           # field at a time holds that field alone. A `save_var` saves itself and is in no record.
           #
-          # NOT EVERYTHING A RECORD KEEPS IS HERE: only what #game_state holds. The random numbers a
+          # Not everything a record keeps is here: only what #game_state holds. The random numbers a
           # record keeps are the framework's own variable, and a pool's facing, animation and colours
           # are kept beside its fields; #game_state holds none of them, so a load that lost one of
           # them does not show in this reading.

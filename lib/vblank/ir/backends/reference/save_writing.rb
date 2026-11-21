@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # WRITE A COPY OF A RECORD INTO SAVE MEMORY, holding values a test chose, so a game starts
+        # Write a copy of a record into save memory, holding values a test chose, so a game starts
         # from that save rather than being played until it makes one:
         #
         #   image = Reference.save_into(SaveImage.new, program, :file, 0, hearts: 12, name: [76, 73])

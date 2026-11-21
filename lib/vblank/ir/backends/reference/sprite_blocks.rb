@@ -6,22 +6,22 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # A SPRITE SHOWN IN FLAT BLOCKS, the way a display that draws sprites as separate
+        # A sprite shown in flat blocks, the way a display that draws sprites as separate
         # objects shows one.
         #
-        # THE BLOCKS ARE FIXED TO THE SCREEN, as a background's are: a block starts at every
+        # The blocks are fixed to the screen, as a background's are: a block starts at every
         # column and every row that is a multiple of its size. What differs is where a
         # block takes its colour from, because a sprite is a small box and a block need not
         # start inside it. The rule below is the emulator's own, read out of its renderer
         # and measured on it, and it has edges a person would not guess:
         #
-        #   * A block that starts to the LEFT of the box, or ABOVE it, shows the box's own
+        #   * A block that starts to the LEFT of the box, or above it, shows the box's own
         #     first column or row. The place it reads is held inside the box.
-        #   * The box's last block ACROSS is drawn whole, so the sprite runs on past its own
+        #   * The box's last block across is drawn whole, so the sprite runs on past its own
         #     right edge to the end of that block.
         #   * DOWN, nothing is drawn past the box's bottom edge.
         #
-        # IT IS DONE TO EACH OBJECT, NOT TO EACH SPRITE. A display draws a sprite as one or
+        # It is done to each object, not to each sprite. A display draws a sprite as one or
         # more boxes of the sizes it has — a pose trimmed to what it draws, a big picture
         # cut into pieces — and each box is put into blocks by itself, holding the place it
         # reads inside ITSELF. So which boxes a picture is drawn as is part of the answer,
@@ -55,7 +55,7 @@ module VBlank
           # sprite parts from an upright one's:
           #
           #   * A block that starts to the left of the box shows what the turned picture
-          #     would show ONE COLUMN before the box begins, where an upright sprite shows
+          #     would show one column before the box begins, where an upright sprite shows
           #     its first column. That is nearly always nothing, so a turned sprite's first
           #     part block is usually empty.
           #   * A block that starts above the box shows the box's first row, and the last
@@ -83,7 +83,7 @@ module VBlank
           # Worked out the way the display counts, in lines that come round, because that
           # is where one case comes from that nobody would guess. A box so tall, and so
           # far down, that it ends past the last line the display counts — the box of a
-          # sprite 64 pixels tall, turned, which is 128 — reads its LAST row on every row
+          # sprite 64 pixels tall, turned, which is 128 — reads its last row on every row
           # that shows. It is the same for such a box hanging off the top of the screen
           # by most of its height.
           def turned_row(py, top, height)
