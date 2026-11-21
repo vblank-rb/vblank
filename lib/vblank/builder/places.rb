@@ -2,13 +2,31 @@
 
 module VBlank
   class Builder
-    # A FIRST-PERSON VIEW OF A PLACE MADE OF FLAT FACES: a place declared once (`place`), a spot
-    # it is seen from (`viewer`), and the verb that draws it as that spot sees it (`draw_place`).
-    # A concern of {Builder}, mixed in so these stay flat DSL verbs.
+    # Places seen in 3D
     #
-    # The work of drawing is statements every target runs (IR::PlaceDrawing), held in routines made
-    # once for each place the game draws, the first time it draws it. Where one point lands
-    # (`screen_spot`) is one more routine, made only for a game that asks.
+    # A place is a shape made of flat faces, such as a room, a mine or a crate. Declare it once
+    # with `place`, name the spot it is seen from with `viewer`, and draw it as that spot sees it
+    # with `draw_place`. The game does not draw anything face by face. `screen_spot` finds where
+    # one point of a place lands on the screen, for a game made of rooms that looks through
+    # doorways.
+    #
+    # ```ruby
+    # place :cube do
+    #   a = point -1.0,  1.0, 1.0
+    #   b = point  1.0,  1.0, 1.0
+    #   c = point  1.0, -1.0, 1.0
+    #   d = point -1.0, -1.0, 1.0
+    #   face a, b, c, d, picture: :crate, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]]
+    # end
+    # eye = viewer :eye, at: [0.0, 0.0, -4.0]
+    # game_loop { draw_place :cube, seen_by: eye }
+    # ```
+    #--
+    # A concern of Builder, mixed in so these stay flat DSL verbs. The work of drawing is
+    # statements every target runs (IR::PlaceDrawing), held in routines made once for each place
+    # the game draws, the first time it draws it. Where one point lands (`screen_spot`) is one
+    # more routine, made only for a game that asks.
+    #++
     module Places
       # How near a point may be before a face is cut there, by default: a quarter of a whole.
       NEAR = 0.25
@@ -23,42 +41,49 @@ module VBlank
       PERSPECTIVES = IR::Nodes::FillFace::PERSPECTIVE_SPANS.keys.freeze
       PERSPECTIVE = IR::Nodes::FillFace::DEFAULT_PERSPECTIVE
 
-      # A place made of flat faces (see DSL::Place). The block declares its points and faces:
+      # Declares a place made of flat faces, and returns it.
       #
-      #   place :cube do
-      #     a = point -1.0,  1.0, 1.0
-      #     b = point  1.0,  1.0, 1.0
-      #     c = point  1.0, -1.0, 1.0
-      #     d = point -1.0, -1.0, 1.0
-      #     face a, b, c, d, picture: :crate, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]]
-      #   end
+      # The block declares its points and faces. Each face names its corner points, the picture
+      # laid on it, and where the corners are on that picture.
       #
-      # A place lit by a shading (`shading:`, see #shading) is drawn lit: each face's corners give
-      # their light (`face ..., light: [...]`), the place's point_lights add to it as the game runs,
-      # and each pixel is the colour the shading gives for the light it has reached.
+      # ```ruby
+      # place :cube do
+      #   a = point -1.0,  1.0, 1.0
+      #   b = point  1.0,  1.0, 1.0
+      #   c = point  1.0, -1.0, 1.0
+      #   d = point -1.0, -1.0, 1.0
+      #   face a, b, c, d, picture: :crate, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]]
+      # end
+      # ```
       #
-      # A PLACE FROM DATA, as a game reads a level from a file, is the same place without the block:
-      # +points+ each [x, y, z], and +faces+ each a Hash of what `face` takes, with its points by their
-      # number in +points+. +pictures+ lists pictures first, as `pictures` does in the block, so a
-      # face can name its picture by its number among them, as a level file numbers its pictures:
+      # A place lit by a shading is drawn lit. Each face's corners give their light with
+      # `face ..., light: [...]`, the place's point lights add to it as the game runs, and each
+      # pixel is the colour the shading gives for the light it has reached.
       #
-      #   place :mine, points: [[-1.0, 1.0, 2.0], ...], pictures: %i[rock moss],
-      #                faces: [{ points: [0, 1, 2, 3], picture: 1, on_picture: [...], light: 0.5 }, ...]
+      # A place can also come from data, as a game reads a level from a file. Leave out the block,
+      # and give `points`, each `[x, y, z]`, and `faces`, each a hash of what `face` takes with its
+      # points named by their number in `points`. A port reading a level from the player's copy
+      # gives `points` and `faces` as slots of the data pack, and says how many faces are used
+      # with `faces_used:`.
       #
-      # @param name [Symbol] the place's name
-      # @param shading [Symbol, nil] the shading the place is lit by
-      # @param points [Array<Array<Numeric>>, nil] each point's [x, y, z], for a place from data
-      # @param faces [Array<Hash>, nil] each face's points:, picture:, on_picture: and light:, for a place from data
-      # A PLACE FROM THE DATA PACK, as a port reads a level from the player's copy, gives +points+
-      # and +faces+ as slots of the pack and +faces_used+ as the number of the pack that says how
-      # many faces are used (see Builder::PackPlaces):
+      # ```ruby
+      # place :mine, points: [[-1.0, 1.0, 2.0], ...], pictures: %i[rock moss],
+      #              faces: [{ points: [0, 1, 2, 3], picture: 1, on_picture: [...], light: 0.5 }, ...]
       #
-      #   place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0),
-      #                pictures: %i[rock moss]
+      # place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0),
+      #              pictures: %i[rock moss]
+      # ```
       #
-      # @param pictures [Array<Symbol>] pictures the place lists before its faces name any
-      # @param faces_used [DSL::PackNumber, nil] for a place from the pack, how many of its faces are used
-      # @return [DSL::Place]
+      # * `name` - the place's name, as a symbol.
+      # * `shading:` - the name of the shading the place is lit by, from `shading`.
+      # * `points:` and `faces:` - the place from data.
+      # * `pictures:` - pictures to list before any face names one, so that a face can name its
+      #   picture by its number among them, as a level file numbers its pictures.
+      # * `faces_used:` - for a place from the data pack, a number of the pack that says how many
+      #   faces are used.
+      #--
+      # See DSL::Place and Builder::PackPlaces.
+      #++
       def place(name, shading: nil, points: nil, faces: nil, pictures: [], faces_used: nil, &block)
         refuse_unfit_place_source!(name, block, points, faces)
         from_pack = pack_place_given?(points, faces, faces_used)
@@ -85,23 +110,32 @@ module VBlank
         @places[name] = shape
       end
 
-      # A GAME'S OWN SHADING: for each level of light, darkest first, what each of the game's colours
-      # becomes, as the game's tables give it. +colors+ are the game's colours (numbers, as `rgb` gives,
-      # or names), and each of +levels+ is one number for each of them: the place in +colors+ of
-      # the colour it becomes at that level. A place lit by it (`place :mine, shading: :fade`) draws
-      # each pixel as the shading gives for the light the pixel has reached; a colour not in
-      # +colors+ stays as it is.
+      # Declares a shading, which says what each of the game's colours becomes at each level of
+      # light.
       #
-      #   shading :fade, colors: palette, levels: tables   # 32 levels, as a game's tables give them
+      # For each level, darkest first, `levels` has one number for each colour: the place in
+      # `colors` of the colour it becomes at that level. A place lit by the shading draws each
+      # pixel as the shading gives for the light the pixel has reached. A colour that is not in
+      # `colors` stays as it is.
       #
-      # @param name [Symbol] the shading's name
-      # @param colors [Array] the game's colours
-      # A SHADING FROM THE DATA PACK gives +colors+ as a slot of colours and +levels+ as a slot of
-      # bytes, each level's places one after another, darkest first (see Builder::PackPlaces):
+      # ```ruby
+      # shading :fade, colors: palette, levels: tables   # 32 levels, as a game's tables give them
+      # place :mine, shading: :fade do ... end
+      # ```
       #
-      #   shading :fade, colors: pack[:palette], levels: pack[:fades]
+      # A shading can come from the data pack, with `colors` as a slot of colours and `levels` as
+      # a slot of bytes holding each level's places one after another, darkest first.
       #
-      # @param levels [Array<Array<Integer>>] for each level, darkest first, a place in +colors+ for each colour
+      # ```ruby
+      # shading :fade, colors: pack[:palette], levels: pack[:fades]
+      # ```
+      #
+      # * `name` - the shading's name, as a symbol.
+      # * `colors:` - the game's colours, as numbers `rgb` gives or as names.
+      # * `levels:` - for each level, darkest first, a place in `colors` for each colour.
+      #--
+      # See Builder::PackPlaces.
+      #++
       def shading(name, colors:, levels:)
         refuse_unfit_name!("shading", name)
         @shadings ||= {}
@@ -113,17 +147,26 @@ module VBlank
         @shadings[name] = record(Build.shading(name, values, levels))
       end
 
-      # The spot a place is seen from, and which way it faces (see DSL::Viewer). +at+ is [x, y, z];
-      # +facing+ is the viewer's three arrows, each three numbers.
+      # Declares the spot a place is seen from, and which way it faces, and returns it.
       #
-      #   eye = viewer :eye, at: [0.0, 0.0, -4.0]
+      # ```ruby
+      # eye = viewer :eye, at: [0.0, 0.0, -4.0]
+      # ```
       #
-      # Where a port's viewer starts is in the level it reads, so +at+ (three numbers) and +facing+
-      # (nine: right, up, ahead) may each be numbers of the data pack (see Builder::PackPlaces):
+      # Where a port's viewer starts is in the level it reads, so `at:` and `facing:` can each be
+      # numbers of the data pack.
       #
-      #   eye = viewer :eye, at: pack[:start], facing: pack[:start_facing]
+      # ```ruby
+      # eye = viewer :eye, at: pack[:start], facing: pack[:start_facing]
+      # ```
       #
-      # @return [DSL::Viewer]
+      # * `name` - the viewer's name, as a symbol.
+      # * `at:` - where it stands, as `[x, y, z]`, or three numbers of the data pack.
+      # * `facing:` - the viewer's three arrows, `right:`, `up:` and `ahead:`, each three numbers,
+      #   or nine numbers of the data pack. Left out, it faces along the place's own arrows.
+      #--
+      # See DSL::Viewer and Builder::PackPlaces.
+      #++
       def viewer(name, at:, facing: FACING_AS_DECLARED)
         refuse_unfit_name!("viewer", name)
         if (@viewers ||= {}).key?(name)
@@ -142,34 +185,45 @@ module VBlank
       # The way a viewer faces where the game gives none: along the place's own arrows.
       FACING_AS_DECLARED = Ractor.make_shareable({ right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] })
 
-      # Draw place +name+ as +seen_by+ sees it, on the screen or inside the area an `inside` holds
-      # drawing to. A face is cut where it comes nearer than +near+ wholes to the viewer, and one
-      # seen from behind is not drawn unless +both_sides+.
+      # Draws a place as a viewer sees it, on the screen or inside the area that an `inside` holds
+      # drawing to.
       #
-      # @param name [Symbol] the place
-      # @param seen_by [DSL::Viewer] the viewer
-      # @param perspective [Symbol] how a picture is laid across a face that leans away: the near
-      #   rooms of a place in perspective and the far ones with :none, as the old games did, is a
-      #   draw_place for each
-      # @param near [Numeric] how near a point may be, in wholes
-      # @param view_angle [Integer] how wide the view is, in degrees across
-      # @param both_sides [Boolean] draw a face seen from behind too
-      # A GAME THAT KNOWS WHAT IT CAN SEE draws only that. +faces+ is a list of face numbers (what
-      # `face` gives back) the game fills as it runs, drawn in its order, a later face over an
-      # earlier one; and +window+ is the rectangle they are held to, four numbers the game works
-      # out (left, top, right, bottom, the right and bottom just past the last pixel drawn). A game
-      # made of rooms finds the rooms seen through each doorway with `screen_spot`, and draws each
-      # with its own faces and window, far rooms first.
+      # A face is cut where it comes nearer than `near` wholes to the viewer. A face seen from
+      # behind is not drawn unless `both_sides` is true.
       #
-      # @param faces [DSL::List] which faces to draw, in order; all of them when not given
-      # @param window [Array] four numbers or Values: the edges faces are held to as the game runs
-      # @param lit [Boolean] for a place with a shading, draw it lit (the default) or as its pictures are
-      # A SHAPE DRAWN WHERE THE GAME PUTS IT, a robot flying in a room: +at+ is where the place's own
-      # middle stands now, three numbers or values the game works out, and +facing+ which way the
-      # place's own arrows point, as `viewer` takes them (`bot.facing` hands a viewer's over). Each
-      # drawing stands it afresh, so one shape is drawn as many times a pass as the game likes.
-      # @param at [Array, nil] where the shape stands, [x, y, z]; nil where it was declared
-      # @param facing [Hash, nil] the shape's right:, up: and ahead: arrows; nil as it was declared
+      # ```ruby
+      # draw_place :cube, seen_by: eye
+      # ```
+      #
+      # A game that knows what it can see draws only that. `faces:` is a list of face numbers, which
+      # `face` gives back, that the game fills as it runs. They are drawn in its order, a later face
+      # over an earlier one. `window:` is the rectangle they are held to, four numbers the game
+      # works out: left, top, right and bottom, with the right and bottom just past the last pixel
+      # drawn. A game made of rooms finds the rooms seen through each doorway with `screen_spot`,
+      # and draws each with its own faces and window, far rooms first.
+      #
+      # A shape drawn where the game puts it, such as a robot flying in a room, gives `at:` and
+      # `facing:`. Each drawing stands it afresh, so one shape is drawn as many times a pass as the
+      # game likes.
+      #
+      # * `name` - the place's name.
+      # * `seen_by:` - the viewer.
+      # * `perspective:` - how a picture is laid across a face that leans away. The default works
+      #   the picture's place out exactly every sixteen pixels across a row, or every eight where
+      #   the face leans away steeply close by, and steps straight between. `:every_8_pixels` works
+      #   it out every eight, `:every_pixel` at each pixel, and `:none` stretches the picture
+      #   straight between a row's ends. Old games drew the near rooms of a place in perspective and
+      #   the far ones with `:none`, with a `draw_place` for each.
+      # * `near:` - how near a point may be, in wholes. The default is a quarter of a whole.
+      # * `view_angle:` - how wide the view is, in degrees across. The default is 90.
+      # * `both_sides:` - `true` to draw a face seen from behind too.
+      # * `faces:` - a list of the face numbers to draw, in order. All of them when not given.
+      # * `window:` - four numbers or values, the edges the faces are held to.
+      # * `lit:` - for a place with a shading, `true` (the default) to draw it lit or `false` to
+      #   draw it as its pictures are.
+      # * `at:` - where the shape's own middle stands now, as `[x, y, z]`.
+      # * `facing:` - which way the shape's own arrows point, as `viewer` takes them. `bot.facing`
+      #   hands a viewer's over.
       def draw_place(name, seen_by:, perspective: PERSPECTIVE, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
                      faces: nil, window: nil, lit: true, at: nil, facing: nil)
         shape = known_place(name, "draw_place")
@@ -195,19 +249,29 @@ module VBlank
                                 both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
       end
 
-      # Where point +point+ of place +name+ lands on the screen as +seen_by+ sees it, worked out
-      # as the game runs exactly as `draw_place` works out a face's corner, with the same +near+
-      # and +view_angle+ (and the same `inside` area). A game uses it to find the rectangle a
-      # doorway covers, to draw the room beyond it held to that (`draw_place ..., window:`).
+      # Finds where a point of a place lands on the screen as a viewer sees it, worked out as the
+      # game runs.
       #
-      #   corner = screen_spot :rooms, door_top_left, seen_by: eye
-      #   left = corner.x if corner.x < left
+      # It is worked out exactly as `draw_place` works out a face's corner, with the same `near`
+      # and `view_angle`, and the same `inside` area. A game uses it to find the rectangle a doorway
+      # covers, to draw the room beyond it held to that with `draw_place ..., window:`.
+      #
+      # ```ruby
+      # corner = screen_spot :rooms, door_top_left, seen_by: eye
+      # left = corner.x if corner.x < left
+      # ```
       #
       # Each `screen_spot` line keeps its answers in variables of its own. A shape drawn where the
-      # game puts it (`draw_place ..., at:, facing:`) is asked about with the same +at+ and +facing+.
+      # game puts it (`draw_place ..., at:, facing:`) is asked about with the same `at:` and
+      # `facing:`.
       #
-      # @param point [Integer, DSL::Value] a point's number, what `point` gave back
-      # @return [DSL::ScreenSpot]
+      # * `name` - the place's name.
+      # * `point` - a point's number, which `point` gave back.
+      # * `seen_by:` - the viewer.
+      # * `near:` and `view_angle:` - the same as for `draw_place`.
+      # * `at:` and `facing:` - the same as for `draw_place`.
+      #
+      # Returns the spot, which answers `x` and `y`.
       def screen_spot(name, point, seen_by:, near: NEAR, view_angle: VIEW_ANGLE, at: nil, facing: nil)
         shape = known_place(name, "screen_spot")
         refuse_unknown_viewer!(name, seen_by)
@@ -233,28 +297,27 @@ module VBlank
         DSL::ScreenSpot.new(answers.transform_values { |variable| value_handle_for(variable) })
       end
 
-      # Point slot +slot+ of place +name+ at picture +to+, from here on: every face that starts with
-      # the slot's picture shows +to+ instead, from the next drawing, until the slot is pointed again.
-      # A door slides through its frames, a wall of lava runs.
+      # Points a slot of a place at another picture from now on.
       #
-      #   place :hall do
-      #     pictures :door0, :door1, :door2   # numbered in a row, the frames no face starts with among them
-      #     face ..., picture: :door0, ...
-      #   end
-      #   change_picture :hall, slot: :door0, to: :door2                                # by name
-      #   change_picture :hall, slot: :door0, to: frame + hall.picture_number(:door0)   # worked out
+      # Every face that starts with the slot's picture shows the new picture instead, from the
+      # next drawing, until the slot is pointed again. A door slides through its frames, and a wall
+      # of lava runs. A slot keeps how far along the place's pictures it is from its own, so
+      # pointing it back is the same as never pointing it.
       #
-      # +slot+ is named for the picture it starts with (or is that picture's number). +to+ is a
-      # picture the place lists, by name or number, or a whole-number value the game works out: the
-      # number of one of the place's pictures (DSL::Place#picture_number), where a number that is
-      # not one is passed over and the slot keeps what it shows.
+      # ```ruby
+      # place :hall do
+      #   pictures :door0, :door1, :door2   # numbered in a row, the frames no face starts with among them
+      #   face ..., picture: :door0, ...
+      # end
+      # change_picture :hall, slot: :door0, to: :door2                                # by name
+      # change_picture :hall, slot: :door0, to: frame + hall.picture_number(:door0)   # worked out
+      # ```
       #
-      # A slot keeps how far along the place's pictures it is from its own, so pointing it back is
-      # the same as never pointing it (see #declare_place_data).
-      #
-      # @param name [Symbol] the place
-      # @param slot [Symbol, Integer] the slot, by the picture it starts with or its number
-      # @param to [Symbol, Integer, DSL::Value] the picture it shows from now on
+      # * `name` - the place's name.
+      # * `slot:` - the slot, named for the picture it starts with or by that picture's number.
+      # * `to:` - a picture the place lists, by name or number, or a whole number the game works
+      #   out: the number of one of the place's pictures. A worked-out number that is not one is
+      #   passed over and the slot keeps what it shows.
       def change_picture(name, slot:, to:)
         shape = known_place(name, "change_picture")
         slot_number = shape.slot_number(slot)
