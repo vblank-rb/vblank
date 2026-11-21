@@ -14,12 +14,7 @@ require "prism"
 class TestExamplesUseEveryVerb < Minitest::Test
   include DslVerbs
 
-  # The flat spellings of what a variable's own handle does (`flip :dx`, `abs :x`):
-  # each exists only to refuse with a friendly error naming the word to write instead, so an
-  # example calling one would not build. Builder::Variables makes them, from this list.
-  FLAT_REFUSALS = VBlank::Builder::Variables::CHANGING_HANDLE_WORDS.keys.freeze
-
-  # What a game has no reason to show, besides those: tools for finding a fault.
+  # What a game has no reason to show: tools for finding a fault.
   # `entry` is raw ARM for the Advance's processor, refused by every other console's build; a game
   # reaches for it only for what the verbs cannot say, and an example is for what they can.
   # `built_for_computer?` is a Ruby true or false read while the game is built and makes nothing
@@ -29,8 +24,7 @@ class TestExamplesUseEveryVerb < Minitest::Test
   # data pack left out, so it needs one too.
   # colors_name_of gives the name of the list a picture is drawn from, which a game needs only
   # for a pose that takes its colours from a data pack's frame; elsewhere the game wrote the name.
-  NOT_FOR_AN_EXAMPLE = (%i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?] +
-                        FLAT_REFUSALS).uniq.freeze
+  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?].freeze
 
   def test_every_verb_is_called_in_an_example
     called = Dir[VBlank.root.join("examples/**/*.rb").to_s].each_with_object(Set.new) do |path, names|

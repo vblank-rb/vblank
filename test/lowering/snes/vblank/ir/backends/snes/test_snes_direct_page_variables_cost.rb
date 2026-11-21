@@ -28,7 +28,7 @@ class TestSNESDirectPageVariablesCost < Minitest::Test
       image(:floor, "#" => :blue) { (["#" * 8] * 8).join("\n") }
       tiles :set, "#" => :floor
       background :field, tiles: :set, map: Array.new(28) { "#" * 32 }
-      crowd.times { |k| var :"crowd_#{k}", k }
+      crowd_vars = Array.new(crowd) { |k| var :"crowd_#{k}", k }
       if touching
         image(:dot, "." => :transparent, "o" => :red) { "........\n...oo...\n...oo...\n........\n" }
         ring = sprite :dot, at: [100, 50]
@@ -47,7 +47,7 @@ class TestSNESDirectPageVariablesCost < Minitest::Test
       end
       game_loop do
         call :work
-        crowd.times { |k| clamp! :"crowd_#{k}", 0, 1000 }
+        crowd_vars.each { |held| held.clamp! 0, 1000 }
         touches += 1 if touching && ring.overlaps?(dart)
       end
     end

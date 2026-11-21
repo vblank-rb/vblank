@@ -22,23 +22,25 @@ class TestBuilderIR < Minitest::Test
 
   def test_variable_ops_build_a_matching_ir_tree
     got = tree do
-      var :x, 5        # var is an alias for set!
-      store! :y, 10
-      increase! :x, 3        # immediate operand
-      decrease! :x, :y       # variable operand
-      copy_variable! :z, :x
-      flip! :z          # flip! is an alias for negate!
-      abs! :z
-      negate_abs! :z
-      clamp! :x, 0, 100
+      x = var :x, 5
+      y = var :y, 10
+      z = var :z, 0
+      x.increase! 3        # immediate operand
+      x.decrease! y        # variable operand
+      z.store! x
+      z.flip!
+      z.abs!
+      z.negate_abs!
+      x.clamp! 0, 100
     end
 
     assert_same_shape program(
       set(:x, 5),
       set(:y, 10),
+      set(:z, 0),
       add(:x, 3),
       sub(:x, :y),
-      copy(:z, :x),
+      set(:z, var_ref(:x)),
       negate(:z),
       abs(:z),
       negate_abs(:z),
@@ -49,9 +51,8 @@ class TestBuilderIR < Minitest::Test
   def test_clamp_records_one_node_not_its_byte_expansion
     # The legacy clamp expands to a pair of compares in bytes, but in the IR it
     # is a single clamp node — the inner set/if calls must not leak in.
-    got = tree { clamp! :hp, 0, 100 }
-    assert_equal 1, got.children.size
-    assert_equal :clamp, got.children.first.kind
+    got = tree { var(:hp, 0).clamp! 0, 100 }
+    assert_equal [:set, :clamp], got.children.map(&:kind)
   end
 
   def test_the_built_tree_runs_in_the_interpreter
@@ -60,7 +61,7 @@ class TestBuilderIR < Minitest::Test
     got = tree do
       x = var :x, 10
       x += 100         # 110
-      clamp! :x, 0, 20 # -> 20
+      x.clamp! 0, 20   # -> 20
     end
     assert_equal 20, game_player.run(got)[:x]
   end

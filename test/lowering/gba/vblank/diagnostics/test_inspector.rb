@@ -351,7 +351,7 @@ class TestInspector < Minitest::Test
         clear_screen :blue
         player_y -= 2 if held(:up)
         player_y += 1
-        clamp! :player_y, 0, 136
+        player_y.clamp! 0, 136
         draw_rect_at 8, :player_y, 4, 24, :white
       end
       game_loop do

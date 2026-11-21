@@ -104,7 +104,7 @@ class TestGBCLowering < Minitest::Test
         if held(:a)
           total -= 7
         else
-          clamp! :total, -5, 5000
+          total.clamp! -5, 5000
         end
       end
     end

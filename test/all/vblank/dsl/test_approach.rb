@@ -188,9 +188,9 @@ class TestApproach < Minitest::Test
 
   def test_target_may_be_another_variable
     i = interpret do
-      var :goal, 20
+      goal = var :goal, 20
       x = var :x, 0
-      x.approach! :goal, 5
+      x.approach! goal, 5
     end
     assert_equal 5, i[:x]
   end

@@ -112,15 +112,6 @@ class TestOrphanedExpression < Minitest::Test
     assert_match(/write `x\.clamp!`/, findings.first.message)
   end
 
-  # The flat verbs that name a variable have no new number to give, so the old spelling
-  # stops the build on the spot.
-  def test_a_flat_verb_without_its_bang_is_a_friendly_error
-    err = assert_raises(ArgumentError) { findings_for { abs :d } }
-
-    assert_match(/`abs :d` does not change a variable/, err.message)
-    assert_match(/write `abs! :d`/, err.message)
-  end
-
   # --- ordinary code that must not be flagged ---
 
   def test_the_same_thing_written_correctly_is_not_reported

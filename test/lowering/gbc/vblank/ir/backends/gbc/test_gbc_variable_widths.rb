@@ -56,7 +56,7 @@ class TestGBCVariableWidths < Minitest::Test
       a = var :a, 1, width: :half
       a = -a
       b = var :b, 1, width: :byte
-      negate! :b
+      b.flip!
     end
 
     refute_match(/rt_neg32/, listed)
