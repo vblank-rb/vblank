@@ -8,7 +8,7 @@ require "midpoint_circle"
 # picture with dark round it — which a Game Boy Color's hardware cannot do, so they play on the
 # Advance's runs alone.
 #
-# AN EFFECT A GAME WRITES FOR ITSELF, on nothing but what any game can use: The Minish Cap's iris,
+# An effect a game writes for itself, on nothing but what any game can use: The Minish Cap's iris,
 # copied as a pack the game brings in with `uses`. The framework knows nothing about it. The pack
 # gives the light the game's own shape — each row the midpoint circle of the row above, as that game
 # hands its rows over — and walks it with a job a pass, the way that game counts.
