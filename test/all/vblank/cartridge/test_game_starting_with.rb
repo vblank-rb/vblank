@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_features"
 
-# A GAME STARTED IN A CHOSEN STATE: `game.starting_with(mode: :playing, steps: 40, trail: [5, 6])`
+# A game started in a chosen state: `game.starting_with(mode: :playing, steps: 40, trail: [5, 6])`
 # is the same game with those variables and lists starting where the test chose, so a test plays
 # from the moment it asks about without playing to it and without the game keeping a save. It is
 # the program built with other starts, so every run plays it and each checks it against the
@@ -53,7 +53,7 @@ class TestGameStartingWith < Minitest::Test
     assert_match(/:steps is a variable/, error.message)
   end
 
-  # THE CHOSEN START IS THE BUILD'S START: a new game puts the part back where the build started it,
+  # The chosen start is the build's start: a new game puts the part back where the build started it,
   # a list holding its chosen items however its declaration fills it. Two passes: the first changes
   # both, the second changes them and starts the part over.
   module Restart
@@ -102,7 +102,7 @@ class TestGameStartingWith < Minitest::Test
     assert_equal [5, 6], player.list(:trail)
   end
 
-  # A PLAY SCENE THAT DECLARES WHERE THE HERO STANDS. A `var` line's start is set once at power-on
+  # A play scene that declares where the hero stands. A `var` line's start is set once at power-on
   # wherever it is written, so the scene's variables are the game's from the start, and a chosen start
   # stands in for the declared one as it does for a variable declared at the top. The title hands over
   # on its second pass; play draws the hero and walks him a pixel a pass.

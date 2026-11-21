@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME TOLD ITS SETTINGS ON THE HANDLE: `game.with_settings(room: 2)` is the same game built as
+# A game told its settings on the handle: `game.with_settings(room: 2)` is the same game built as
 # `settings: { room: 2 }` builds it, held as one value with its features and starts, so a test hands
 # one handle to everything that builds a game and never a hash beside it.
 class TestGameWithSettings < Minitest::Test

@@ -47,7 +47,7 @@ class TestGameConsoles < Minitest::Test
 
   COLOR_ONLY = VBlank.game("COLOR", consoles: %i[gbc]) { var :x, 1 }
 
-  # A GAME LAID OUT FOR THE COLOR, ON THE ADVANCE (Console::AdvanceKit::COLOR_SCREEN): it keeps
+  # A game laid out for the color, on the Advance (Console::AdvanceKit::COLOR_SCREEN): it keeps
   # the Color's screen, and the Advance shows that screen in a border.
   COLOR_ON_ADVANCE = VBlank.game("FRAMED", consoles: %i[gbc gba], variants: { gba: :color_screen }) do
     var :wide, screen_width

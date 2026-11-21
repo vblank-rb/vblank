@@ -114,7 +114,7 @@ class TestGame < Minitest::Test
     assert_equal 7, game_player.run(g.program)[:made]
   end
 
-  # Only a block parameter the game's block READS keeps the game on the core that declared
+  # Only a block parameter the game's block reads keeps the game on the core that declared
   # it. One that merely sits beside the block costs nothing, so such a game still builds on
   # another core.
   def test_a_block_parameter_the_block_never_reads_does_not_tie_the_game_to_its_core

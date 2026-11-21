@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SETTING THAT CANNOT BE RIGHT STOPS THE GAME AT THE LINE THAT SAID IT, before anything is read
+# A setting that cannot be right stops the game at the line that said it, before anything is read
 # or built.
 class TestOptions < Minitest::Test
   # Every build names the console its cartridge is for; nothing is taken to be for the Advance.
