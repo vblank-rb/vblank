@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WORDS NOBODY KNEW WHEN THE CARTRIDGE WAS BUILT: a name kept in a list and drawn with `draw_text`,
+# Words nobody knew when the cartridge was built: a name kept in a list and drawn with `draw_text`,
 # a letter at a time, each at its own width.
 class TestDrawTextFromAList < Minitest::Test
   include Differential

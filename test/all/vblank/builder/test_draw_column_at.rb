@@ -18,7 +18,7 @@ module DrawColumnAtTearFreeGames
       image(:ghost, "." => :transparent, "W" => :white) { "W\n.\n.\nW\n" }
       at = var :at, 0
       game_loop do
-        # Repainted every pass, because this screen has TWO pages and the loop draws on
+        # Repainted every pass, because this screen has two pages and the loop draws on
         # whichever one is hidden — a clear above the loop would paint only one of them.
         clear_screen :gray
         draw_column_at :bars, slice: 0, x: 10, top: 0, height: 8  # an even column...
@@ -34,7 +34,7 @@ module DrawColumnAtTearFreeGames
         draw_column_at :bars, slice: 0, x: 240, top: 0, height: 8    # off the right edge
         draw_column_at :bars, slice: 0, x: -1, top: 0, height: 8     # off the left edge
 
-        # ...and the same as STRIPS, which write whole pairs where they can. Both parities,
+        # ...and the same as strips, which write whole pairs where they can. Both parities,
         # a width that covers a pair exactly and one that does not, and both edges.
         draw_column_at :bars, slice: 0, x: 140, top: 20, height: 12, width: 3
         draw_column_at :bars, slice: 0, x: 151, top: 20, height: 12, width: 3
@@ -55,7 +55,7 @@ end
 # One column of a picture, stretched to a height the game works out — what a first-person view
 # is made of, and what a scaled sprite is.
 #
-# The stepping rule is the thing worth pinning: walk DOWN THE SCREEN and ask which picture row
+# The stepping rule is the thing worth pinning: walk down the screen and ask which picture row
 # belongs at each screen row. Walking the picture instead and working out where each of its rows
 # lands leaves gaps when stretching and writes some rows twice when squashing. Every test here
 # is about pixels, on both backends, because the two agreeing is what makes the interpreter
@@ -119,11 +119,11 @@ class TestDrawColumnAt < Minitest::Test
   end
 end
 
-# A PICTURE THAT IS MOSTLY NOTHING, at every size it can be drawn.
+# A picture that is mostly nothing, at every size it can be drawn.
 #
 # The console skips the see-through stretches of a column rather than asking each of its rows
 # whether there is a pixel in it, which is what makes a scaled sprite affordable. The
-# interpreter does no such thing — it walks every row — so the two agreeing IS the proof that
+# interpreter does no such thing — it walks every row — so the two agreeing is the proof that
 # the skipping never loses a pixel.
 #
 # The sizes matter more than the picture does. Turning "rows 12 to 15 of the picture" into
@@ -148,7 +148,7 @@ class TestDrawColumnAtSeeThrough < Minitest::Test
     ##.#
   ART
 
-  # THE SAME LAMP ON A PICTURE THAT IS NOT A NEAT HEIGHT — thirteen rows rather than eight.
+  # The same lamp on a picture that is not a neat height — thirteen rows rather than eight.
   # Turning a picture row into a screen row divides by the picture's height, and a height that
   # is a power of two divides by shifting where any other multiplies by a number the build
   # works out. The two arrive at the answer differently, so both are drawn here.
@@ -215,16 +215,16 @@ class TestDrawColumnAtSeeThrough < Minitest::Test
     assert_backends_agree(lamp_program(tear_free: true, art: ODD_LAMP), frames: 3, name: "TFODD")
   end
 
-  # THE TALLEST PICTURE THAT STILL SKIPS ITS EMPTY ROWS, which is 256 — the commonest height
+  # The tallest picture that still skips its empty rows, which is 256 — the commonest height
   # a sprite sheet comes in, and the one where the bookkeeping runs out of room.
   #
   # A column's stretches are shipped as pairs of row numbers and the list ends with 255. At
   # any other height no row can BE 255, so the ending byte is unmistakable; at exactly 256
-  # the bottom row is 255, and a stretch that STARTS there reads as the end of the list. The
+  # the bottom row is 255, and a stretch that starts there reads as the end of the list. The
   # pixel is in the cartridge and never drawn.
   #
   # Two columns, because only one of them is the bug: a lone pixel ON the bottom row is lost,
-  # while a stretch that merely ENDS there is read as a last row and is fine.
+  # while a stretch that merely ends there is read as a last row and is fine.
   TALL_ROWS = 256
   LONE_PIXEL_ROW = TALL_ROWS - 1
 
@@ -270,9 +270,9 @@ end
 # The same stretched column on the TEAR-FREE screen, which is the one a first-person view
 # actually wants: it repaints the whole screen every frame, and that is what tears.
 #
-# This screen holds a NUMBER per pixel rather than a color, and refuses a lone byte — the
+# This screen holds a number per pixel rather than a color, and refuses a lone byte — the
 # smallest write covers a side-by-side pair. So every pixel is a read of its pair, a splice
-# of its own half and a write back, and WHICH HALF depends on the column being even or odd.
+# of its own half and a write back, and which half depends on the column being even or odd.
 # That is why the odd column has tests of its own here.
 #
 # The two screens' pictures held against each other on the Advance's cartridge are in

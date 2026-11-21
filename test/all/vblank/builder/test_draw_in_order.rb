@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# SPRITES DRAWN IN AN ORDER THE GAME WORKS OUT. A top-down game draws whichever character
+# Sprites drawn in an order the game works out. A top-down game draws whichever character
 # stands lower on the screen in front: walk round below something and you are drawn over it,
 # walk round above it and it is drawn over you. The order changes every time two things pass
 # each other, so no order fixed when the cartridge is built is right.
@@ -61,7 +61,7 @@ module DrawInOrderGames
     end
   end
 
-  # SEVEN THINGS IN ONE ORDER, each a small block of a colour of its own, all of them over one
+  # Seven things in one order, each a small block of a colour of its own, all of them over one
   # pixel, SEVEN_AT. Each stands a pixel right of the one before and +heights+ down, so which
   # colour shows there says which of the seven is in front.
   SEVEN_COLORS = %i[red green blue yellow cyan magenta white].freeze
@@ -80,7 +80,7 @@ module DrawInOrderGames
     end
   end
 
-  # TAKING TURNS. Three blocks in a row on one line, each four pixels right of the one before,
+  # Taking turns. Three blocks in a row on one line, each four pixels right of the one before,
   # so neighbours overlap and all three overlap in the middle: red, then green, then blue,
   # named in that order. +turns+ is what `take_turns:` is given; with +count+ 2 only the first
   # two are made.
@@ -102,11 +102,11 @@ module DrawInOrderGames
     end
   end
 
-  # A RUN DRAWN IN THE ORDER A LIST OF THE GAME'S OWN HOLDS, read as the interpreter reads it
+  # A run drawn in the order a list of the game's own holds, read as the interpreter reads it
   # (Reference#names_in_draw_order): every entry the list holds, a place below nought counting back
   # from the run's last sprite, and a place naming none of its sprites stopping the game. The builder
   # keeps its own list full of the run's places, so only a run written onto the frame's drawing by hand
-  # reaches the rest. Two blocks overlap at OVERLAP: the red one first in the run, the green one second.
+  # reaches the rest. Two blocks overlap at overlap: the red one first in the run, the green one second.
   # The block is handed the list and writes the game.
   private def hand_ordered_program(&game)
     block = BLOCK
@@ -167,7 +167,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(two_program(66), frames: 2)
   end
 
-  # AN ORDER AS LONG AS THE GAME BOY COLOR KEEPS PLACES FOR (forty), the fewest of any console, so a
+  # An order as long as the Game Boy Color keeps places for (forty), the fewest of any console, so a
   # crowd every console keeps: a pool of all but two, and the enemy and the hero.
   def test_an_order_as_long_as_the_smallest_console_keeps_is_drawn
     crowd = VBlank::Console.described(:gbc).sprite_places - 2
@@ -185,7 +185,7 @@ class TestDrawInOrder < Minitest::Test
     [4, 14].each { |frames| assert_backends_agree(walking, frames: frames) }
   end
 
-  # LEVEL THINGS KEEP THE ORDER THEY HAD LAST FRAME, not the order they were declared in. The hero
+  # Level things keep the order they had last frame, not the order they were declared in. The hero
   # is declared before the enemy, so standing level from the start the enemy covers him. Starting
   # lower, in front, and walking up until he is level, he stays in front.
   private def level_program(hero_from)
@@ -210,7 +210,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(walked, frames: 12)
   end
 
-  # A THING THAT SHOWS AGAIN COMES IN AT THE BACK OF THE THINGS LEVEL WITH IT, as if newly added. The
+  # A thing that shows again comes in at the back of the things level with it, as if newly added. The
   # hero walks up from in front to level with the enemy and stays in front; hidden on the twentieth
   # pass and shown again on the twenty-fourth, he comes back behind the enemy, level as they are.
   # A pixel lower on the thirty-fourth, he is in front again. A pool's thing taken away and a new
@@ -268,7 +268,7 @@ class TestDrawInOrder < Minitest::Test
     end
   end
 
-  # MANY COMING AND GOING AT ONCE: four sprites hidden and shown on passes of their own, some level
+  # Many coming and going at once: four sprites hidden and shown on passes of their own, some level
   # with each other, some passing, and a pool whose things are spawned and taken away, all over one
   # spot. Every run plays it against the interpreter on every pass; here the spot shows one of them.
   private def comings_and_goings_program
@@ -303,7 +303,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(comings_and_goings_program, frames: [13, 26, 37, 49, 61])
   end
 
-  # THE WHOLE ORDER TURNED ROUND WHILE THINGS COME AND GO: a pool of eight over one spot, every one
+  # The whole order turned round while things come and go: a pool of eight over one spot, every one
   # turned upside down each pass so every thing passes every other, which is the most a sort that
   # turns runs round (and moves things back past many) is given, with one taken away and another
   # spawned every few passes.
@@ -335,7 +335,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(prog, frames: [10, 25, 40])
   end
 
-  # TWO POOLS OF A SCENE IN ONE ORDER, things spawned and taken away in each, and the scene put down
+  # Two pools of a scene in one order, things spawned and taken away in each, and the scene put down
   # and up again every so often: the places of a pool showing are its first, as many as it holds,
   # and none while its scene is down.
   private def scene_pools_coming_and_going_program
@@ -386,7 +386,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(prog, frames: [12, 20])
   end
 
-  # THE NUMBER IS THE GAME'S TO WORK OUT. A puff of smoke starts a step nearer the front and
+  # The number is the game's to work out. A puff of smoke starts a step nearer the front and
   # drops back; here a variable the game owns decides, and `front: :lowest` reverses it.
   private def keyed_program(boost, front:)
     block = BLOCK
@@ -410,7 +410,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(keyed_program(-10, front: :highest), frames: 2)
   end
 
-  # NUMBERS THAT ALL HOLD A FRACTION are put in order the way Ruby orders them: 54.5 is behind
+  # Numbers that all hold a fraction are put in order the way Ruby orders them: 54.5 is behind
   # 60.0, and 66.5 is in front of it. The hero's number is his y and a half, the enemy's its y,
   # given a fraction with `.to_f` (mixing the two kinds is refused; see the refusals below).
   private def fraction_program(hero_y)
@@ -434,7 +434,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(fraction_program(54), frames: 2)
   end
 
-  # A POOL'S THINGS TAKE PART ONE BY ONE. Two of them are spawned so that the older — which
+  # A pool's things take part one by one. Two of them are spawned so that the older — which
   # a pool draws in front — stands higher; in order, the lower one covers it instead.
   private def pool_program(ordered: true)
     block = BLOCK
@@ -457,7 +457,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(pool_program, frames: 2)
   end
 
-  # A POOL ALONE, SORTED AMONG ITSELF, beside an order of other things, the way one kind of thing in
+  # A pool alone, sorted among itself, beside an order of other things, the way one kind of thing in
   # a world of many stands higher in front, whatever the rest do. The younger of two puffs stands
   # lower, and a pool draws its older thing in front: here the higher, older one would be in front
   # with no order at all, so the younger is made the higher.
@@ -487,7 +487,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(puffs_program(ordered: true), frames: 3)
   end
 
-  # A NUMBER READ FROM ANOTHER OF A THING'S FIELDS. Most numbers are where a thing stands, which
+  # A number read from another of a thing's fields. Most numbers are where a thing stands, which
   # the pool's copy for drawing already holds; this one adds a field of the pool's own, so it is
   # worked out as the copy is made. The older puff stands lower and would be in front, but the
   # younger is lifted twenty pixels nearer the front.
@@ -512,7 +512,7 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(lifted_program(20), frames: 3)
   end
 
-  # A POOL'S NUMBER BELOW NOUGHT. The pool's places stay small, so a console may keep them and the
+  # A pool's number below nought. The pool's places stay small, so a console may keep them and the
   # numbers worked out from them narrower than a whole number; a number below nought must still
   # come before every number above it. The puff stands higher than the hero, its number moved
   # +shift+ from where it stands.
@@ -559,7 +559,7 @@ class TestDrawInOrder < Minitest::Test
     assert_equal color_named(:white), seven_shown(seven_program([2] * 7, front: :lowest))
   end
 
-  # THE SEVEN STAND AT A NEW ROW OF HEIGHTS EACH PASS, one after another, then stay at the last:
+  # The seven stand at a new row of heights each pass, one after another, then stay at the last:
   # in a line, the line turned round, a turned-round run behind one that stands apart, the same with
   # two level in it, all level, turned round again, and a falling line with level pairs. Each row is
   # sorted from the order the row before left, so the order turns round whole and in part, and
@@ -889,7 +889,7 @@ class TestDrawInOrder < Minitest::Test
     assert_match(/pool :dust draws nothing/, message)
   end
 
-  # THE ORDER HOLDS INSIDE EACH LAYER. A hero and a guard standing in one layer, the lower one in
+  # The order holds inside each layer. A hero and a guard standing in one layer, the lower one in
   # front, and the hero then sent behind the background: the guard stays in front of it, and the
   # hero shows only where nothing covers him.
   private def layer_changing_game(pool:)
