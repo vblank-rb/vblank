@@ -173,7 +173,7 @@ module BitOperationsCases
   EDGES = [0, 1, -1, 0x7F, 0x80, 0x7FFF, 0x8000, -0x8000, 0xFFFF, -0x10000, 0x12345678, -0x12345678,
            0x7FFFFFFF, -0x80000000].freeze
 
-  # Every count from 0 to 31 written down, both ways, on each of EDGES: the count of numbers that
+  # Every count from 0 to 31 written down, both ways, on each of edges: the count of numbers that
   # come out other than Ruby's, which must be none.
   private def every_written_count_case
     wrong_left = 0
@@ -249,7 +249,7 @@ end
 
 # Reading and writing the bits of a number: `& | ^ ~ << >>` on a Value.
 #
-# What these are FOR is packed data — a background map cell, a row of a collision
+# What these are for is packed data — a background map cell, a row of a collision
 # shape, a word of state flags — so the tests are written as that: a real packed
 # format taken apart and put back together, checked against a plain-Ruby model of
 # the same thing. A test that restated the operator ("x & 3 is x & 3") would pass
@@ -265,7 +265,7 @@ class TestBitOperations < Minitest::Test
   include BitOperationsCases
 
   # ---------------------------------------------------------------------------
-  # what a program COMPUTES (the programs are in BitOperationsCases, above)
+  # what a program computes (the programs are in BitOperationsCases, above)
   # ---------------------------------------------------------------------------
 
   def test_reading_one_bit_per_pixel_out_of_a_collision_shape

@@ -7,7 +7,7 @@ require "differential"
 # Ruby operators to get a Condition, branch on with .then / .else, compose with
 # & / |, and change a variable with .store! / .increase! / .decrease! / .clamp! / .abs! / ....
 #
-# These tests assert BEHAVIOR, not tree shape: a tiny program is built through
+# These tests assert behavior, not tree shape: a tiny program is built through
 # the DSL, run on the reference backend's fake screen, and checked by the pixels
 # it drew. So a comparison or branch is judged by what it makes the game show —
 # never by re-describing the IR it builds. (Opcode-level checks belong in the
@@ -285,7 +285,7 @@ class TestDSLExpression < Minitest::Test
     assert_equal Color.resolve(:blue), pixel_at(i, 2, 2), "d is still -3"
   end
 
-  # THE FIVE AS NEW NUMBERS, each the number its `!` word would store, with d left at -3.
+  # The five as new numbers, each the number its `!` word would store, with d left at -3.
   # Each answer is drawn as a mark at x = 40 + answer on its own row, so a wrong one lands
   # in the wrong column. A bound and a step the game works out take a different path from
   # ones written down, so both are here.
@@ -447,7 +447,7 @@ class TestDSLExpression < Minitest::Test
     assert_backends_agree(program, frames: 2)
   end
 
-  # A nought WRITTEN as the divisor is a mistake the build can read, so it says so.
+  # A nought written as the divisor is a mistake the build can read, so it says so.
   def test_dividing_by_a_written_zero_is_a_friendly_error
     { "/ 0" => ->(x) { x / 0 }, "% 0" => ->(x) { x % 0 }, "/ 0.0" => ->(x) { x.to_f / 0.0 },
       "/ a fraction too small to keep" => ->(x) { x.to_f / 0.000001 } }.each do |written, work|

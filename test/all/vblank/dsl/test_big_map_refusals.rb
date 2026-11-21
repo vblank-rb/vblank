@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A BACKGROUND WITH A MAP BIGGER THAN THE CONSOLE'S GRID CANNOT DO. Such a background
+# What a background with a map bigger than the console's grid cannot do. Such a background
 # holds only the cells around the view and copies them in again as the view moves (see
 # IR::TileMap.streams?), so changing a block of cells at once, turning the layer, or bending its
 # rows would each reach cells that are not there. One cell is changed with set_tile
