@@ -14,7 +14,7 @@ module Emitted
   # agreed a number. A change that adds four instructions to every example is
   # invisible one commit at a time and obvious against a recorded baseline.
   #
-  # GROWTH IS A FAILURE, however small, because the build is reproducible: the same
+  # Growth is a failure, however small, because the build is reproducible: the same
   # program always lowers to the same bytes (see test_build_reproducibility.rb), so
   # there is no noise for a tolerance to absorb, and a tolerance would only be a
   # budget for creep. Deliberate growth is accepted by re-recording, which is one
@@ -24,7 +24,7 @@ module Emitted
   # Per example rather than one total: a program that shrank would otherwise mask
   # one that grew. A cartridge's Color build is an entry of its own, <example>@gbc.
   #
-  # The frame-work estimate is deliberately NOT recorded. It is an estimate whose
+  # The frame-work estimate is deliberately not recorded. It is an estimate whose
   # weights are re-measured from the emulator now and then, so it would churn for
   # reasons that have nothing to do with the emitted code this file is guarding.
   module Baseline

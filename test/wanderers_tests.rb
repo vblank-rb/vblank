@@ -2,7 +2,7 @@
 
 require VBlank.root.join("examples/wanderers").to_s
 
-# FOUR PEOPLE WANDERING ONE MAP (examples/wanderers.rb), each in a colour the game picked when they
+# Four people wandering one map (examples/wanderers.rb), each in a colour the game picked when they
 # joined. A build that plays on a computer seats four; a cartridge seats the one controller its
 # console reads, so the game built for a cartridge is the one-player walk that
 # test/all/examples/test_wanderers_example.rb plays on every run. These tests play the game as a

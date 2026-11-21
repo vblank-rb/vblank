@@ -5,27 +5,27 @@
 # `rake emitted` says a ROM grew by 126 instructions. This says where they went:
 # which funcs, which lines of the game, and which kinds of operation.
 #
-# THE AXIS THAT EXPLAINS IS BYTES PER KIND, and it is worth saying why, because
+# The axis that explains is bytes per kind, and it is worth saying why, because
 # counting the operations in the tree looks like the obvious thing and is nearly
-# useless. Both sides build the same example file, so a change to the LOWERING
+# useless. Both sides build the same example file, so a change to the lowering
 # leaves the tree identical — same operations, same number of them — and only the
 # bytes each one turns into move. Counting nodes would report "no change" for
 # precisely the changes this tool exists to explain. Counting the BYTES each kind
 # of operation produced reports "clamp: 296 to 368 across 8 sites", which is the
 # answer.
 #
-# Bytes are attributed EXCLUSIVELY: a loop is charged for the loop's own
+# Bytes are attributed exclusively: a loop is charged for the loop's own
 # bookkeeping, not for its body, so the numbers down a column add up instead of
 # counting the same byte at every level of nesting.
 #
-# THE BUILD COUNTS THIS FOR ITSELF NOW — see IR::Backends::GBA::Attribution, which
+# The build counts this for itself now — see IR::Backends::GBA::Attribution, which
 # every build fills in because the estimate prices a statement by what it emitted.
 # So today's library is asked rather than watched, and what is left here is the
 # reduction: bytes per func, per kind, per line of the game.
 #
 # The watching stays for one reason, and it is the rule this whole tool is built
 # around (see tools/emitted_probe.rb): it measures with whatever the library at the
-# other end already offers, so that it can run against an OLD commit. A library from
+# other end already offers, so that it can run against an old commit. A library from
 # before the build counted anything cannot be asked, and #Recorder is how it is
 # measured anyway.
 module EmittedAttribution

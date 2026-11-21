@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A THING OF A POOL COSTS TO STEP WHEN ITS PLACE IS KEPT IN 256THS OF A PIXEL, for each
+# What a thing of a pool costs to step when its place is kept in 256THS OF A PIXEL, for each
 # console's own cost test: places from 0 to 65535, kept with `& 0xFFFF`, as a game whose things
 # move a fraction of a pixel a frame keeps them. A routine walks the pool once a pass, stepping
 # each thing's place across and down and testing whether it has passed a line; eight things against

@@ -11,17 +11,17 @@ require_relative "../lib/vblank/root"
 # Builds every example twice, once against the working tree's library and once
 # against the library at another commit, and reports what moved.
 #
-#   rake emitted              the working tree against HEAD, every example
+#   rake emitted              the working tree against head, every example
 #   rake emitted REF=HEAD~3   against some other point in history
 #   rake emitted ONLY=pong    one example (or a few: ONLY=pong,snake)
 #
-# It compares two versions of the LIBRARY, so it only means anything while working
+# It compares two versions of the library, so it only means anything while working
 # on VBlank itself — hence a contributor's rake task and not part of the
 # `vblank` command a game author runs. Every example by default: the question is
 # "did anything move anywhere", and a corpus of real programs answers that far
 # better than one does.
 #
-# THREE NUMBERS, NOT ONE, because they move independently:
+# Three numbers, not one, because they move independently:
 #
 #   code   the emitted instructions. What a change to the lowering moves.
 #   data   the embedded assets — tile pictures, maps, sound samples. A new sprite
@@ -30,7 +30,7 @@ require_relative "../lib/vblank/root"
 #   frame  the estimated work in one frame, in scanlines. An op can cost thirty
 #          instructions of ROM and nothing at all per frame.
 #
-# It reports what the compiler PRODUCES, never how long the compiler takes. A change
+# It reports what the compiler produces, never how long the compiler takes. A change
 # that only makes the build faster correctly reports "identical" here; for compiler
 # speed, reach for a profiler.
 module Emitted
@@ -89,7 +89,7 @@ module Emitted
       after.frame - before.frame
     end
 
-    # Did the two sides build the SAME program? The example file is the same on
+    # Did the two sides build the same program? The example file is the same on
     # both, so a difference here means the library builds something different from
     # it — and then a delta measures that, not just the lowering. Unknown (nil on
     # either side) is not a difference: say nothing rather than guess.
@@ -136,7 +136,7 @@ module Emitted
              "against the working tree and against #{ref}, #{subject(commit)}."
     out.puts
 
-    # The drill-down is for ONE program. Across a corpus a table of funcs and lines
+    # The drill-down is for one program. Across a corpus a table of funcs and lines
     # is a wall of text belonging to no particular game, and the summary already
     # names which example to go and look at — so narrow to it (ONLY=pong) and the
     # breakdown comes with it.
