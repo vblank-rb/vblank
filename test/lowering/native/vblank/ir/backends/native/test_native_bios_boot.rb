@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "vblank/live"
 
-# THE CONSOLE'S OWN START-UP, PLAYED BY runtime/rg_bios_boot.c, the small emulator a desktop build of
+# The console's own start-up, played by runtime/rg_bios_boot.c, the small emulator a desktop build of
 # an Advance game runs the player's BIOS in (bios_boot_harness.c drives it).
 #
 # The processor is held to small programs of its own, assembled here, which need no BIOS. The whole
@@ -108,7 +108,7 @@ class TestNativeBIOSBoot < Minitest::Test
     assert_includes run.fetch("unhandled"), "a tiled background"
   end
 
-  # THE ANSWER KEY: mGBA plays the same BIOS with the same cartridge, and every frame of the
+  # The answer key: mGBA plays the same BIOS with the same cartridge, and every frame of the
   # start-up is the same picture, pixel for pixel, and the same sound, sample for sample: the
   # console's own mix at its own rate, before anything changes the rate for a speaker. The start-up
   # ends where mGBA's does, part way through the next frame, at the cartridge's first instruction.

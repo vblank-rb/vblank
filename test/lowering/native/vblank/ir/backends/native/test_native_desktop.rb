@@ -25,7 +25,7 @@ class TestNativeDesktop < Minitest::Test
   FRAMES = 40
 
   # The title's menus worked the way a person works them, each button held for several frames:
-  # down to the music row and A to turn it off, down to DIFFICULTY and A to open it, up to NORMAL
+  # down to the music row and A to turn it off, down to difficulty and A to open it, up to normal
   # and A to choose it.
   MENU_RUN = Ractor.make_shareable(
     NativeComparison.held_for([10..15, :down], [30..38, :a], [50..55, :down], [70..78, :a], [95..100, :up], [115..122, :a])
@@ -107,7 +107,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE WINDOW KEEPS THE GAME'S SAVE IN A FILE, holding the bytes the interpreter's save memory
+  # The window keeps the game's save in a file, holding the bytes the interpreter's save memory
   # holds after the same presses — a .sav file, as an emulator keeps one.
   def test_the_program_a_player_runs_keeps_its_save_in_a_file
     game = game_that_keeps_a_count
@@ -139,7 +139,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # WHAT ENDS THE PROGRAM IS TOLD IN THE WINDOW, never in a pop-up of the system's: a save file that
+  # What ends the program is told in the window, never in a pop-up of the system's: a save file that
   # is not the game's, and a game that stopped on a fault. Each is a box over the last picture, under
   # a title of its own, with the words on the error stream as well, and the program ends once a
   # button answers it, or with nobody to answer it, once the script runs out. --told writes a line
@@ -155,7 +155,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A BOX TOO BIG FOR THE WINDOW MAKES THE WINDOW BIGGER. A Color game's window at the least scale
+  # A box too big for the window makes the window bigger. A Color game's window at the least scale
   # is its 160 by 144 screen, where a save file's path would run off it: the window is made a whole
   # number of times the screen that holds the box, while the settings file keeps the player's size.
   def test_a_box_too_big_for_the_window_makes_the_window_bigger
@@ -216,7 +216,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE WINDOW'S CLOCK IS THE COMPUTER'S, in its local time: the game is told there is a clock,
+  # The window's clock is the computer's, in its local time: the game is told there is a clock,
   # that it was set, and the date and the minute the computer says — at the start of the run or
   # at its end, should a minute turn over between the two.
   def test_the_program_a_player_runs_reads_the_computers_clock
@@ -252,7 +252,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME'S OWN KEYS (computer_keys): the window starts with them, beside VBlank's. How the window
+  # A game's own keys (computer_keys): the window starts with them, beside VBlank's. How the window
   # keeps them is tested with no window (test_native_window.rb); this is that the game's build hands
   # them to it.
   def test_the_window_starts_with_the_keys_the_game_adds
@@ -282,7 +282,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GENESIS PAD'S C: the C key presses it in a Genesis game's window, and --help names it among
+  # A Genesis pad's C: the C key presses it in a Genesis game's window, and --help names it among
   # the Genesis's buttons alone. Which key starts on which button is tested with no window
   # (test_native_window.rb); this is that the build tells the window its console's buttons.
   def test_the_c_key_presses_c_in_a_genesis_game
@@ -328,7 +328,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # PLAYER 2 ON THE KEYBOARD: the keyboard's right hand presses player 2's buttons, and player 1's
+  # PLAYER 2 on the keyboard: the keyboard's right hand presses player 2's buttons, and player 1's
   # keys stay player 1's. Which key is which, and the gamepads' players, are tested with no window
   # (test_native_seats.rb); this is that the window hands player 2's buttons to the game. --help
   # names the keys.
@@ -392,7 +392,7 @@ class TestNativeDesktop < Minitest::Test
   BUTTONS = %i[a b select start right left up down r l].freeze
   BUTTONS_HELD = BUTTONS.map { |name| :"held_#{name}" }.freeze
 
-  # WHAT A PLAYER DOES TO THE WINDOW, judged by what the game saw and what came out: hotkeys, pause
+  # What a player does to the window, judged by what the game saw and what came out: hotkeys, pause
   # and step, fast forward, the volume, the settings file and the menu over the picture. The logic
   # of each is tested with no window (test_native_window.rb); this is that the window does it.
   def test_the_window_a_player_controls
@@ -417,7 +417,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME WITH NO MENU (menu: false) builds a program that plays with no menu over its picture:
+  # A game with no menu (menu: false) builds a program that plays with no menu over its picture:
   # F1 opens nothing, and the game sees every frame. No program has Dear ImGui in it, a game with a
   # menu or without, and one with no word on it keeps its menu.
   def test_a_game_with_menu_false_builds_and_opens_no_menu
@@ -443,7 +443,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A MAC'S RETINA SCREEN has two pixels to a point each way, and SDL's stand-in display has one, so
+  # A Mac's retina screen has two pixels to a point each way, and SDL's stand-in display has one, so
   # only a real window can show the menu drawn at the screen's own scale. Drawn at the wrong one it
   # lands at half its size in the top left, away from the mouse, with its text cut off. A real
   # window opens on this Mac's screen for a few seconds.
@@ -476,7 +476,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE CONSOLE'S OWN START-UP plays before an Advance game built to use the player's BIOS (bios:)
+  # The console's own start-up plays before an Advance game built to use the player's BIOS (bios:)
   # where the player has it, and the game then plays its own frames as it would have. A scripted
   # run plays it only when told
   # (--start-up), and says how many frames it played. Without a BIOS the game starts at once and
@@ -498,7 +498,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME LAID OUT FOR THE GAME BOY COLOR, BUILT FOR THE ADVANCE IN A BORDER, fills the Advance's
+  # A game laid out for the Game Boy Color, built for the Advance in a border, fills the Advance's
   # window: 240×160 three times over, the border round the game's screen (test/border_frame_tests.rb
   # holds every pixel of it), and the game's red bar at its corner, (40, 8).
   def test_a_color_game_in_a_border_fills_the_advances_window
@@ -517,7 +517,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME OF BIG PIXELS (`pixel_size: 2`) draws a 120×80 picture and opens the Advance's window all
+  # A game of big pixels (`pixel_size: 2`) draws a 120×80 picture and opens the Advance's window all
   # the same: 240×160 three times over, each of its pixels a square of six of the window's. Its
   # white last pixel fills the window's last six rows and columns, and the blue beside it starts
   # just past them.
@@ -964,7 +964,7 @@ class TestNativeDesktop < Minitest::Test
     assert_operator escaped.variables[:frames], :<, 5, "Escape stops the play"
   end
 
-  # SAVE STATES: F5 saves the quick one and F9 puts it back, between two frames, so the game's count
+  # Save states: F5 saves the quick one and F9 puts it back, between two frames, so the game's count
   # goes back to what it was when F5 was pressed. The menu does the same with a slot: the Save
   # heading's Slot 2, then the Load heading's Slot 2. States are files beside the save asked for
   # (--save-file), and a state another game wrote is refused in plain words and the game plays on.
@@ -1039,7 +1039,7 @@ class TestNativeDesktop < Minitest::Test
 
   public
 
-  # THE SAME GAME FOR ANOTHER COMPUTER, built from this one: zig carries the C library of each, and
+  # The same game for another computer, built from this one: zig carries the C library of each, and
   # SDL is compiled for each from its own source. These are only built here, not run — nothing
   # here can run them — so what is checked is that each is a program for the computer it was asked
   # for, read off the first bytes of the file the way that computer reads them.
@@ -1061,7 +1061,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A STRIPPED PROGRAM is the same program with its debugging data left out, which is most of a
+  # A stripped program is the same program with its debugging data left out, which is most of a
   # Linux file. SDL and the menu are libraries of their own, so the data has to go at the link.
   def test_a_stripped_program_is_a_fraction_of_the_size_and_still_a_program
     Dir.mktmpdir do |dir|

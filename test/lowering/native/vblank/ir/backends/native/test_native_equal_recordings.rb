@@ -3,7 +3,7 @@
 require "test_helper"
 require "equal_recording_games"
 
-# RECORDINGS WITH THE SAME SAMPLES ARE KEPT ONCE IN A DESKTOP PROGRAM. Each recording's numbers say
+# Recordings with the same samples are kept once in a desktop program. Each recording's numbers say
 # where its samples start in the one array of them all, so recordings alike start at the same place
 # and the array holds those samples once. Here the C is the contract, so the tests read it; the
 # JavaScript and Ruby builds print the same tables.
