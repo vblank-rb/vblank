@@ -5,7 +5,7 @@ require "differential"
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 
-# A POSE OF THE PIECES OF SEVERAL BANKS (`image ..., banks:`) on the Advance's cartridge, every pixel
+# A pose of the pieces of several banks (`image ..., banks:`) on the Advance's cartridge, every pixel
 # held to the interpreter: each piece in its own bank's colours, one sprite moving the whole frame.
 # The games are test/all/vblank/builder/test_pack_pose_bank_colors.rb's made-up original.
 class TestPackPoseBanksOnTheAdvance < Minitest::Test
@@ -71,7 +71,7 @@ class TestPackPoseBanksOnTheAdvance < Minitest::Test
     end
   end
 
-  # BANKS OF FOUR COLOURS on a sprite that turns: it is one entry of the whole picture, so it is
+  # Banks of four colours on a sprite that turns: it is one entry of the whole picture, so it is
   # not cut into banks, and its places stay places in the one list of both banks. The copy is read
   # as the Color keeps its tiles, four colours each; what its bytes draw so is the interpreter's.
   def test_a_turning_sprite_of_small_banks_is_drawn_as_the_interpreter_draws_it

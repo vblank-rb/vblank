@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_slot_view_games"
 
-# ONE SLOT OF VIDEO MEMORY READ IN THREE SHAPES (PackSlotViewGames): sixteen-colour tiles by a
+# One slot of video memory read in three shapes (PackSlotViewGames): sixteen-colour tiles by a
 # ground, and through views a map of bytes over tiles of a byte a pixel by a layer that turns
 # behind it. The answer key is the same game with a slot of its own for each part, built
 # all-in-one. A build that reads its pack as the game starts is held to it too: only a build for
@@ -34,7 +34,7 @@ class TestPackSlotViewsOnTheAdvance < Minitest::Test
     end
   end
 
-  # What the game with a slot for each part shows after each of FRAMES.
+  # What the game with a slot for each part shows after each of frames.
   private def pictures_from_slots_of_their_own(from, &more)
     separate, = two_shapes_game_and_file(from, views: false, &more)
     FRAMES.to_h { |count| [count, game_player.run(separate, frames: count).screen.to_a] }
