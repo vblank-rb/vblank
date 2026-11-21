@@ -8,13 +8,13 @@ module VBlank
       module Checks
         # A status bar beside something that needs the same part of the display.
         #
-        # ON THE ADVANCE the bar is one of the background layers, kept to the rows under its top by
+        # On the Advance the bar is one of the background layers, kept to the rows under its top by
         # one of the display's windows, which is told which layers show inside it and outside. A
         # light, a fade held to a rectangle and a fade placed in the stack tell the windows which
         # layers to show as well, and one answer for both cannot be given. So a game with a bar
         # does none of them, anywhere in it.
         #
-        # ON THE COLOR the bar is the console's window: a layer of its own, read from the second
+        # On the color the bar is the console's window: a layer of its own, read from the second
         # grid of cells. A painted screen keeps its picture in that same grid, so a game with a bar
         # paints no screen. And the console puts a sprite behind the background by putting it
         # behind every coloured pixel of the background AND the window, so a sprite stacked behind

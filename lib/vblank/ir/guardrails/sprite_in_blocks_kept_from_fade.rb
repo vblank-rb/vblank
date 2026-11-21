@@ -9,7 +9,7 @@ module VBlank
         #
         # Each half is fine alone, and the two together are the one mix of this family a
         # display cannot show the way the game asks for it. A fade placed between two sprites
-        # is held off the kept one by the sprite's own SHAPE: where its drawn pixels are,
+        # is held off the kept one by the sprite's own shape: where its drawn pixels are,
         # the fade does not apply. A sprite in blocks no longer has that shape — its
         # blocks run past its edge on one side and stop short on another — so the hole in
         # the fade and the sprite drawn in it do not line up, and the sprite comes out

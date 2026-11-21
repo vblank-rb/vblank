@@ -7,7 +7,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A BACKGROUND a bitmap screen cannot move in the stack.
+        # A background a bitmap screen cannot move in the stack.
         #
         # A bitmap screen has one picture, and a `background` there stamps its tiles
         # straight into it where it is declared. After that it is not a background at
@@ -15,7 +15,7 @@ module VBlank
         # reach back and move them. So the order backgrounds come out in is the order
         # the declarations ran, whatever the stack asks for.
         #
-        # SPRITES ARE NOT LIKE THAT, and used to be caught here too. A software sprite
+        # Sprites are not like that, and used to be caught here too. A software sprite
         # is repainted every frame, so its place in the stack is a live question the
         # frame boundary answers — it draws them back to front and erases them front to
         # back (see Builder::ControlFlow#emit_frame_boundary). A stack that reorders
@@ -58,7 +58,7 @@ module VBlank
           # What a bitmap screen really paints, in the order it really paints it — and the
           # two halves are not alike, which is the whole of what this check knows.
           #
-          # A BACKGROUND stamps itself into the one picture where it is declared, so the
+          # A background stamps itself into the one picture where it is declared, so the
           # backgrounds come out in declaration order and nothing later can move them.
           # SPRITES are repainted every frame, and the frame boundary already puts them
           # in stack order, so they come out where the stack asked.

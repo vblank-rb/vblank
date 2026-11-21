@@ -7,7 +7,7 @@ module VBlank
         # A sprite shown over a painted screen (`sprite ..., over_picture: true`) in a game that also
         # has a screen drawn from tiles.
         #
-        # ON A PAINTED SCREEN THE CONSOLE'S SPRITE LAYER IS USUALLY OFF. A game that goes between a
+        # On a painted screen the console's sprite layer is usually off. A game that goes between a
         # painted screen and a tiled one keeps its tiled screens' sprites in the console's table,
         # and the layer is switched off while the painted screen is up, so they do not show over it.
         # A sprite over the picture needs that layer on, and then every sprite in the table shows:
