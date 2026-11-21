@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE WAYS A SUPER NINTENDO CARTRIDGE WORKS A SUM OUT IN PLACE when one of its numbers is written in
+# The ways a Super Nintendo cartridge works a sum out in place when one of its numbers is written in
 # the program — a product by a written number (Lowering#emit_product_by_written_number) or by a
 # comparison (#emit_product_by_comparison), a shift
 # right read from where the number is kept (#emit_shift_right_from_place), two shifts right taken as
@@ -36,7 +36,7 @@ class TestSNESWrittenNumberPaths < Minitest::Test
 
   Build = VBlank::IR::Build
 
-  # Each of EDGES in turn, one a pass, and every answer above for it kept in a variable of its own.
+  # Each of edges in turn, one a pass, and every answer above for it kept in a variable of its own.
   def self.game_of_edges
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
@@ -112,7 +112,7 @@ class TestSNESWrittenNumberPaths < Minitest::Test
     b.program
   end
 
-  # SUMS INTO A BYTE OR HALF SLOT, worked out in their low half (Lowering#slot_value): of slots at a
+  # Sums into a byte or half slot, worked out in their low half (Lowering#slot_value): of slots at a
   # written index and at a variable's, of variables and written numbers, a side that is a sum of its
   # own, a byte slot read into a half, and each operator. Each slot written is read back into a
   # variable of its own at once, so every answer is held to the interpreter's.
