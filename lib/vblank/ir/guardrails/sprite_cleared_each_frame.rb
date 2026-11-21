@@ -13,7 +13,7 @@ module VBlank
         # nothing to clear. A per-frame `clear_screen` (or a full-screen fill) erases
         # the field the sprite just restored and the sprite along with it, so the
         # sprite flickers or vanishes, and the tearing you used a sprite to avoid
-        # comes right back. The fix is to paint the field ONCE, before the loop.
+        # comes right back. The fix is to paint the field once, before the loop.
         #
         # A sprite is recognized structurally: its per-frame repaint uses save/
         # restore-region ops, which nothing but a sprite emits. Purely a pattern

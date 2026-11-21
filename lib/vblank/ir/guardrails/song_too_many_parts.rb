@@ -58,8 +58,8 @@ module VBlank
               "#{format(because, limit: limit)}. #{fix_hints(program, song, kind, counts)}"
           end
 
-          # WHERE THE PARTS THAT DO NOT FIT CAN GO, one voice with room per sentence. The point
-          # of naming them all is that the two the console plays itself cost NO mixer voice,
+          # Where the parts that do not fit can go, one voice with room per sentence. The point
+          # of naming them all is that the two the console plays itself cost no mixer voice,
           # which is the thing an author has no way to know and the reason to reach for them.
           def fix_hints(program, song, kind, counts)
             room = LIMITS.keys.reject { |other| other == kind }

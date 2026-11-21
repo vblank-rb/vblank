@@ -11,7 +11,7 @@ module VBlank
         # and the end, that repeat is silence: the music stops after its first time through, for
         # as long as the game plays it, and nothing in the program says why.
         #
-        # What counts is a note SOUNDING there, not an event. A note held across the loop point
+        # What counts is a note sounding there, not an event. A note held across the loop point
         # is sounded again at it every time round, or simply carries on when the song ends on
         # it, so a drone from the introduction is a repeat with something in it. The answer
         # comes from IR::Tunes, beside the rule both players follow, so this can never disagree
