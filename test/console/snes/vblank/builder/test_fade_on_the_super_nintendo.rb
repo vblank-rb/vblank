@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A FADE TO BLACK ON A SUPER NINTENDO IS THE DISPLAY'S BRIGHTNESS, sixteen levels of it, as the
+# A fade to black on a Super Nintendo is the display's brightness, sixteen levels of it, as the
 # console's own games do it: nothing in memory changes and nothing is sent, so it costs no time. A
 # channel shows level fifteenths of what it holds, to the nearest, so the lowest level is black.
 # Every run that plays games as the console plays this, so each is held to it frame by frame.

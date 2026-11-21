@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MUSIC VOLUME REACHING A RECORDED PART, on the Super Nintendo. A recording's loudness runs 0..512
+# The music volume reaching a recorded part, on the Super Nintendo. A recording's loudness runs 0..512
 # rather than 0..15, so volume 12 is 410 of those, and a new level moves it while the note plays.
 class TestMusicVolumeOnTheSuperNintendo < Minitest::Test
   private def recorded_game(&body)
