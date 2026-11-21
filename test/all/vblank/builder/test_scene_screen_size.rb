@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SCENE'S OWN SCREEN SIZE: `screen :bitmap, size: [240, 160]` on a scene's screen line, in a game
+# A scene's own screen size: `screen :bitmap, size: [240, 160]` on a scene's screen line, in a game
 # that asks for a bigger screen on its first. A computer's build shows that scene at its size, in the
 # middle of the game's window, and the scenes that ask none at the game's; each console keeps its own
 # screen for every scene. `screen_width` and `screen_height` answer the scene's size while its block is

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A `sprite` on a bitmap screen DECLARED INSIDE A SCENE: it is painted while its scene is the
+# A `sprite` on a bitmap screen declared inside a scene: it is painted while its scene is the
 # one running, leaves no trail as it moves, and comes off the picture when another scene
 # takes over — the promises a sprite declared above the game loop already keeps.
 #
@@ -25,7 +25,7 @@ module SceneSpriteGames
 
   FLOOR = Ractor.make_shareable([("#." * 15)] * 20)
 
-  # The same two scenes with the red sprite declared ABOVE the loop, so it belongs to every
+  # The same two scenes with the red sprite declared above the loop, so it belongs to every
   # scene. It is a painted-screen sprite all the same, and the tiled scene has no picture for
   # it to be painted into. The block runs at the end of every pass, handed the sprite.
   private def shared_sprite_program(shown: true, &each_pass)

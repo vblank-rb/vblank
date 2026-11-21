@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# THE COLOUR A SCREEN SHOWS WHEREVER NOTHING IS DRAWN — the backdrop: the cells a background leaves
+# The colour a screen shows wherever nothing is drawn — the backdrop: the cells a background leaves
 # empty, the see-through pixels of its tiles, a scene with no background, and the frames before a
 # screen's background is up. Black unless the game says another. A scene that says one of its own
 # is in test/console/gba/: the Color keeps one for the game.
@@ -49,7 +49,7 @@ class TestScreenBackdrop < Minitest::Test
     assert_equal RED, screen.pixel(6, 1), "a drawn pixel is as drawn"
   end
 
-  # BEFORE ANY BACKGROUND IS UP, the whole screen is nothing drawn.
+  # Before any background is up, the whole screen is nothing drawn.
   def test_the_frames_before_a_background_is_up_show_the_backdrop
     screen = game_player.run(corner_game(backdrop: :white, up_at: 6), frames: 3).screen
 
@@ -57,20 +57,20 @@ class TestScreenBackdrop < Minitest::Test
     assert_equal WHITE, screen.pixel(100, 100)
   end
 
-  # A SCENE'S OWN `screen` OF THE GAME'S KIND changes nothing about the display, so its scene shows
+  # A scene's own `screen` of the game's kind changes nothing about the display, so its scene shows
   # as it would without it.
   def test_a_scenes_own_screen_of_the_games_kind_shows_its_scene
     assert_backends_agree(ScreenBackdropGames.title_and_board(title_screen: {}), frames: [3, 12], name: "SAMEKIND")
   end
 
-  # ...AND ONE THAT SAYS THE GAME'S OWN BACKDROP AGAIN shows it, on the Color too.
+  # ...AND one that says the game's own backdrop again shows it, on the Color too.
   def test_a_scene_saying_the_games_backdrop_again_shows_it
     screen = game_player.run(ScreenBackdropGames.title_and_board(title_screen: { backdrop: :black }), frames: 3).screen
 
     assert_equal 0, screen.pixel(100, 100)
   end
 
-  # A GAME WITH NO BACKGROUND AT ALL shows nothing but its backdrop.
+  # A game with no background at all shows nothing but its backdrop.
   def test_a_game_with_no_background_shows_its_backdrop
     b = Builder.new
     b.instance_eval do
@@ -84,12 +84,12 @@ class TestScreenBackdrop < Minitest::Test
     assert_backends_agree(b.program, frames: 3, name: "NOBG")
   end
 
-  # THE CONSOLE SHOWS IT TOO, pixel for pixel: before the background is up, and after.
+  # The console shows it too, pixel for pixel: before the background is up, and after.
   def test_the_console_shows_the_backdrop_as_the_interpreter_does
     assert_backends_agree(corner_game(backdrop: :white, up_at: 3), frames: [2, 6], name: "BACKDROP")
   end
 
-  # A PAINTED SCREEN DRAWS EVERY PIXEL, so there is nowhere a backdrop shows.
+  # A painted screen draws every pixel, so there is nowhere a backdrop shows.
   def test_a_painted_screen_cannot_say_a_backdrop
     b = Builder.new
     error = assert_raises(ArgumentError) { b.instance_eval { screen :bitmap, backdrop: :white } }

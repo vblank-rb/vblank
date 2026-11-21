@@ -10,7 +10,7 @@ require "test_helper"
 module ScenesGames
   include SharedConstants # Builder, which the game below names from inside the module
 
-  # The same guarantee where it is hardest to keep: the scene that runs CHANGES the
+  # The same guarantee where it is hardest to keep: the scene that runs changes the
   # state, which is what a scene ordinarily does on its last line. Scenes are numbered
   # in the order a player meets them, so an ordinary transition goes FORWARD — to a
   # clause the dispatch has not reached yet. Each scene here hands on to the next, so a
