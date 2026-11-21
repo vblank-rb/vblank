@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A background held to a box (`show_only_inside`), on the Super Nintendo, costs nothing while the
+# A background held to a BOX (`show_only_inside`), on the Super Nintendo, costs nothing while the
 # screen is drawn: the display's windows hide the layer outside the box, and a copying channel writes
 # the window's edges a line at a time from a short table (Runtime::BackgroundBox, fullsnes "SNES PPU
 # Window"). What the processor spends is the box written at each frame boundary, and the table made

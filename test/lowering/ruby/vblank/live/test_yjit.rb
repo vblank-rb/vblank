@@ -26,7 +26,7 @@ class TestYJIT < Minitest::Test
     end
   RUBY
 
-  # +play+, Ruby run after port, in a Ruby started with YJIT off and +env+ set: whether YJIT was on
+  # +play+, Ruby run after PORT, in a Ruby started with YJIT off and +env+ set: whether YJIT was on
   # after it.
   private def yjit_after(play, env: {})
     Dir.mktmpdir do |folder|

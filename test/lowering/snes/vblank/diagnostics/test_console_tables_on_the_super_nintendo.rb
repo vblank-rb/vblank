@@ -27,7 +27,7 @@ class TestConsoleTablesOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  # The game read with its build record, and a probe over its bare file, both frames frames in.
+  # The game read with its build record, and a probe over its bare file, both FRAMES frames in.
   private def with_recorded_and_bare
     Dir.mktmpdir("cartridges") do |folder|
       built = boxed_game
