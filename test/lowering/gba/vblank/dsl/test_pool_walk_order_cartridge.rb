@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_pool_walk_order"
 
-# A POOL WALKED IN THE ORDER ITS THINGS WERE ADDED, on the Advance's cartridge: the same games
+# A pool walked in the order its things were added, on the Advance's cartridge: the same games
 # played in the emulator, their variables read back, and the same orders expected as every run
 # reads in test/all/vblank/dsl/test_pool_walk_order.rb.
 class TestPoolWalkOrderCartridge < Minitest::Test
