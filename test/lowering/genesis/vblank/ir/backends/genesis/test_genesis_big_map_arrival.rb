@@ -82,7 +82,7 @@ class TestGenesisBigMapArrival < Minitest::Test
     [psg[0], psg[2], psg[4], *[0, 256].flat_map { |half| (0xA0..0xA6).map { |register| fm[half + register] } }]
   end
 
-  # A scene a pass, each a map of 64 by 64 cells of its own: cells moved on by a cell each, and a
+  # A scene a pass, each a map of 64 by 64 cells of its own: CELLS moved on by a cell each, and a
   # view scrolled a row further down each, so the copies start on different rows.
   private def many_maps_game
     cells = CELLS

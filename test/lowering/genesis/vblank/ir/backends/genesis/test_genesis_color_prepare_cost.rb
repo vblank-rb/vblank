@@ -40,7 +40,7 @@ class TestGenesisColorPrepareCost < Minitest::Test
 
   private
 
-  # The share of each frame the colour routines took, over passes passes.
+  # The share of each frame the colour routines took, over PASSES passes.
   def colour_share(game)
     rom = game.build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
     result = rom.profile(out: StringIO.new, frames: PASSES)

@@ -89,7 +89,7 @@ class TestGBCSpritePalettes < Minitest::Test
     end
   end
 
-  # A pixel of each colour of a halves picture, and of a corner picture, from its top left.
+  # A pixel of each colour of a HALVES picture, and of a CORNER picture, from its top left.
   HALVES_PIXELS = [[1, 1], [6, 1]].freeze
   CORNER_PIXELS = [[0, 0], [6, 1]].freeze
 

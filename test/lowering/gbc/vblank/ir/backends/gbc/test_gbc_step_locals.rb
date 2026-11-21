@@ -10,11 +10,11 @@ class TestGBCStepLocals < Minitest::Test
   LINES = 200
 
   # Lists that leave a little more work memory than a few numbers need, and less than a number
-  # for each of lines lines.
+  # for each of LINES lines.
   ROOM_BYTES = 4000
   MORE_BYTES = 1900
 
-  # A game whose loop calls one of two routines lines times, each by a number it works out.
+  # A game whose loop calls one of two routines LINES times, each by a number it works out.
   private def many_calls_program
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do

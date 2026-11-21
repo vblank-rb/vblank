@@ -26,7 +26,7 @@ class TestGenesisProbe < Minitest::Test
     end
   end
 
-  # The game read with its build record, a probe over its bare file, both frames frames in, and
+  # The game read with its build record, a probe over its bare file, both FRAMES frames in, and
   # where the build put the count.
   private def with_recorded_and_bare
     Dir.mktmpdir("cartridges") do |folder|
