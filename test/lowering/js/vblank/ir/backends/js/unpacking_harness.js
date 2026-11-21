@@ -2,11 +2,11 @@
 /*
  * An unpacking played as a web shell's worker plays it (rg_shell_unpacking_worker), in node, timed:
  *
- *   node unpacking_harness.js FACTORY COPY BYTES_LIST OUT
+ *   node unpacking_harness.js factory copy BYTES_LIST OUT
  *
- * FACTORY is a file whose module.exports is the unpacking's createGame, COPY the copy it is handed,
+ * FACTORY is a file whose module.exports is the unpacking's createGame, copy the copy it is handed,
  * and BYTES_LIST the name of the list it writes the pack into. It plays uncapped, handed each frame
- * back by a message as the worker is, writes the pack's bytes to OUT, and prints how long the play
+ * back by a message as the worker is, writes the pack's bytes to out, and prints how long the play
  * took ("played MS") and how many frames it waited for ("frames N").
  */
 const fs = require("fs");

@@ -6,7 +6,7 @@ require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
 
-# COPIES OF A GAME BUILT AS JAVASCRIPT, PLAYED BY NODE, IN A MATCH (rg_lockstep.js, the same session as
+# Copies of a game built as JavaScript, played by Node, in a match (rg_lockstep.js, the same session as
 # Network::Lockstep): beside each other under every delay a test sets, and beside a Ruby build of the same game,
 # which they must agree with on the fingerprint and on the number for the game's state on every pass (a
 # checkpoint on every pass makes the machines compare it). The match is carried by test/node_copy.rb.
