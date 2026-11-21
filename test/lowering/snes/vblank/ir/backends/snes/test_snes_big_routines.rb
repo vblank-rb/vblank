@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A ROUTINE BIGGER THAN A BANK. The processor runs a routine inside one 32K bank of the cartridge —
+# A routine bigger than a bank. The processor runs a routine inside one 32K bank of the cartridge —
 # its program counter goes round to the start of the bank rather than on into the next — so a
 # routine of the game's that comes to more than that is cut into parts, each a routine of its own in
 # whatever bank it fits, called where its statements stood. The checked run holds every variable
@@ -49,7 +49,7 @@ class TestSNESBigRoutines < Minitest::Test
   end
 
   # A part that waits for the next frame: the game is held there, inside a part called from the
-  # routine, and goes on from it — the first frame ends with x at MANY, the second with it at twice.
+  # routine, and goes on from it — the first frame ends with x at many, the second with it at twice.
   def test_a_part_that_waits_for_the_next_frame_goes_on_from_there
     run = checked(Build.func(:big, *additions(:x, MANY), Build.wait_vblank, *additions(:x, MANY)), Build.call(:big),
                   frames: 3)

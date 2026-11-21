@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A STEP ALONG A MAP OF PACKED CELLS COSTS, read off the running cartridge. The answers are
+# What a step along a map of packed cells costs, read off the running cartridge. The answers are
 # test_bit_operations's and test_list's; these are about the time.
 class TestSNESBitSumsCost < Minitest::Test
   # A blast walking out along four arms of a map held in a list of halves, sixteen times a pass: a

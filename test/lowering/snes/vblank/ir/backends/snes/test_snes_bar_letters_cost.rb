@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A STATUS BAR'S LETTERS AT PLACES WRITTEN IN THE PROGRAM, on the Super Nintendo. A map word goes to
+# A status bar's letters at places written in the program, on the Super Nintendo. A map word goes to
 # video memory in the blank, its address then the word (fullsnes, "SNES PPU Video Memory", VMADD and
 # VMDATA), so a letter the game writes in a pass is two words put in the queue of cells the blank
 # sends. Where the column and row are written in the program the address is known as the cartridge
@@ -53,7 +53,7 @@ class TestSNESBarLettersCost < Minitest::Test
     1 - rom.profile(out: StringIO.new, frames: FRAMES).idle_share
   end
 
-  # THE BUDGET for a letter named in the program: the queued store in the pass, about forty of the
+  # The budget for a letter named in the program: the queued store in the pass, about forty of the
   # processor's cycles, and its address and word sent in the blank, about fifty more, of a frame's
   # 262 lines of 1364 clocks. Called through rt_set_cell, which works the address out from the
   # layer's state, a letter cost two and a half times this.
@@ -79,7 +79,7 @@ class TestSNESBarLettersCost < Minitest::Test
                     "a letter by number costs #{(by_number * 100).round(3)}% of a frame, by name #{(by_name * 100).round(3)}%"
   end
 
-  # A COLUMN KEPT IN A VARIABLE the build proves stays from nought to 31 is read as its low half, and
+  # A column kept in a variable the build proves stays from nought to 31 is read as its low half, and
   # the cell's address is the row's start, known now, plus that column: not the two numbers rt_set_cell
   # takes and works the address out from. Its letters cost little more than those at columns written
   # in the program: the column's own working out and keeping. As the Color's

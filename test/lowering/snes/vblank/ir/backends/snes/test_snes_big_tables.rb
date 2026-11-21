@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TABLE BIGGER THAN A BANK. The cartridge is seen in 32K banks, and the next bank's first byte is
+# A table bigger than a bank. The cartridge is seen in 32K banks, and the next bank's first byte is
 # not the byte after this bank's last, so a table that comes to more than a bank is cut into parts,
 # each in whatever bank it fits. The checked run holds every variable and list to the interpreter,
 # so an entry read from the wrong part, or the wrong place in its part, shows.

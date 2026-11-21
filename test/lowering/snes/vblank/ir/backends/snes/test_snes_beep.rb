@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BEEP ON A SUPER NINTENDO: the sound unit's S-DSP told, through the program the console sends it
+# A beep on a Super Nintendo: the sound unit's S-DSP told, through the program the console sends it
 # at power-on (Runtime::Sound), which looped square recording to play on the beep's voice, at what
 # pitch, how loud and how fast to fade. The checked run holds the cartridge's sound log to the
 # interpreter's, and the DSP's own registers, read from the emulator after every pass, to what that
@@ -66,7 +66,7 @@ class TestSNESBeep < Minitest::Test
     assert_equal 4 + 2, dsp.getbyte(voice + 4), "after the four long recordings, the short half-wide one"
   end
 
-  # HOW LONG A BEEP TAKES TO FADE, held to the Advance's rule rather than to the lowering's table:
+  # How long a beep takes to fade, held to the Advance's rule rather than to the lowering's table:
   # its volume fades a step every 1, 3 or 5 64ths of a second (fast, medium, slow), so volume v is
   # gone in v * step / 64 seconds, v * step * 60 / 64 frames. On the Super Nintendo the envelope is
   # read back from the DSP itself (ENVX, $x8: its top seven bits), and the note counts as gone once
