@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SMALL TILED GAMES FOR `screen ... backdrop:`, shared by test/all/vblank/builder/test_screen_backdrop.rb
+# Small tiled games for `screen ... backdrop:`, shared by test/all/vblank/builder/test_screen_backdrop.rb
 # and its twin for what only the Advance does, test/console/gba/vblank/builder/
 # test_screen_backdrop_on_the_advance.rb.
 module ScreenBackdropGames

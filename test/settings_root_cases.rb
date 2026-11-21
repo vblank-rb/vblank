@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# WHERE A PLAYER'S SETTINGS FOLDERS ARE, as a table both copies of the rule are held to: the Ruby
+# Where a player's settings folders are, as a table both copies of the rule are held to: the Ruby
 # one (Live::SettingsFile.root) and the C one (runtime/rg_settings_root.h). Each row is what the
 # rule is told and the folder it answers, nil for leaving it to the operating system's own place.
 module SettingsRootCases
