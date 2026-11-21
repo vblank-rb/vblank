@@ -4,8 +4,18 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # An `estimate:` written on a list, a pool, a `repeat` or a stretched shape.
+        # A warning about `estimate:` written on a list, a pool, a `repeat` or a stretched shape.
+        # One warning names every line that gives one:
         #
+        # > This game gives `estimate:` at <lines>. `estimate:` has no effect. The build measures
+        # > the game while the game runs, and does not read `estimate:`. The game plays the same with
+        # > or without it. Remove `estimate:` from this line.
+        #
+        # With more than one line, the message ends "Remove `estimate:` from these lines." The
+        # game plays the same either way, so nothing is wrong; remove the `estimate:` settings when
+        # it suits you, and the warning goes.
+        #
+        #--
         # Nothing reads one (why is at Builder#record_estimate_line), which is why this is a
         # warning and not an error: the game plays exactly the same, and the author can delete
         # the hints when it suits them.
@@ -13,6 +23,7 @@ module VBlank
         # Like DroppedFrameSync it reports from data rather than from the tree, since a hint
         # leaves no node behind. One warning names every line, rather than one a line:
         # the rule is the news, and a game written with hints has many of them.
+        #++
         class EstimateDoesNothing
           NAME = :estimate_does_nothing
           PLAIN_NAME = "a hint about cost that nothing reads"

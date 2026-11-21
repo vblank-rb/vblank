@@ -4,6 +4,29 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a number the game works out and then does nothing with, such as
+        # `flags | 4` or `hp + 1` on a line of its own:
+        #
+        # > You worked out a number and then did nothing with it. So the program is unchanged and
+        # > the work is thrown away. `flags | 4` gives you a NEW number and leaves `flags` as it
+        # > was. To change the variable, write `flags |= 4`, and `hp += 1` for `hp + 1`. If you
+        # > wrote that already, this line is in code that VBlank does not read as a game. To fix
+        # > this, move the line into your `VBlank.game` block. If the line is in a file of its
+        # > own, load that file with `VBlank.require_game_file`, not `require_relative`.
+        #
+        # A word that used to change a variable and now works out a new one (`d.abs` where
+        # `d.abs!` was meant) gets a message of its own:
+        #
+        # > `<word>` works out a new number and leaves the variable as it is. Nothing uses that
+        # > number here, so this line does nothing. A word that changes a variable ends in `!`. To
+        # > change the variable, write `<word>!`.
+        #
+        # The line does nothing at all, so the game quietly does not do what it reads as doing.
+        # Write the form that changes the variable (`+=`, `|=`, or the word ending in `!`). Inside
+        # the `VBlank.game` block `flags |= 4` changes the game's variable; outside it, Ruby moves
+        # the name and the variable stays as it was, so move the line into the block.
+        #
+        #--
         # The `|=` slip, and everything shaped like it. Setting a flag in C is written
         # `flags |= MASK`, and both ways a person carries that over are silent:
         #
@@ -39,6 +62,7 @@ module VBlank
         # It reports errors, not warnings. An expression built and dropped did nothing at
         # all, and there is no legitimate reason to write one — unlike a statement, it has
         # no effect to be had.
+        #++
         class OrphanedExpression
           NAME = :orphaned_expression
           PLAIN_NAME = "a number worked out and thrown away"
