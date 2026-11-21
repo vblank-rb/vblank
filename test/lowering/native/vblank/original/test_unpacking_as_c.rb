@@ -4,7 +4,7 @@ require "test_helper"
 require "made_up_original"
 require "pack_games"
 
-# AN ALL-IN-ONE BUILD PLAYS A PORT'S UNPACKING THE FASTEST WAY THE MACHINE HAS
+# An all-in-one build plays a port's unpacking the fastest way the machine has
 # (Original::Unpacking#write_pack_fastest, #run_fastest): as C where zig is installed, as Ruby where
 # it is not. Whichever plays it, the pack is the one the interpreter writes, byte for byte, and so
 # is the pack file a build writes. This run is the one sure to

@@ -3,7 +3,7 @@
 require "test_helper"
 require "sprite_count_cost_games"
 
-# WHAT A DRAW ORDER'S CODE COSTS ON THE PLAYSTATION. The sort is written out a place at a time and
+# What a draw order's code costs on the PlayStation. The sort is written out a place at a time and
 # run once a pass, so every byte of it is fetched from main RAM through the processor's 4 KB
 # instruction cache on every pass (psx-spx, "Memory Map"): its bytes are its time as well as its
 # room. A place is its number, its step of the sort, the test of whether it shows, and a call to the

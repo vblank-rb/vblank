@@ -5,7 +5,7 @@ require "tmpdir"
 require "vblank/live"
 require "shell_tests"
 
-# THE WHOLE GAME, THE SHELL'S AGAINST THE ALL-IN-ONE BUILD'S, AS C (Original::WholeGameCheck), on
+# The whole game, the shell's against the all-in-one build's, as C (Original::WholeGameCheck), on
 # the made-up port the shell tests share. The answer key is the all-in-one build: its pack, and its
 # play over the whole tape. On the native run alone: the check builds both as C whatever run it is
 # in.
