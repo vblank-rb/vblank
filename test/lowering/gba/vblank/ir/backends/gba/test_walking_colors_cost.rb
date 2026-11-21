@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT THE COLOURS OF A BACKGROUND THAT WALKS BETWEEN AREAS COST.
+# What the colours of a background that walks between areas cost.
 #
 # The gap between frames is the routine every frame runs, and the first thing kept in the
 # console's quick memory. Each group a borrowed list (`draw_with`) sits in is written by the

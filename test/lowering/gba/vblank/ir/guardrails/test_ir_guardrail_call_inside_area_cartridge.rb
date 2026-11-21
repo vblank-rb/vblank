@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/ir/guardrails/test_ir_guardrail_call_inside_area"
 
-# PROOF THAT THE FOOTGUN IS REAL, on the Advance's own cartridge: a routine called from inside an
+# Proof that the footgun is real, on the Advance's own cartridge: a routine called from inside an
 # area is not clipped by the console, which bakes the clip into the routine's own instructions
 # wherever it happens to be lowered. It lowers straight from the IR, bypassing the validation pass
 # that now refuses such a program, and reads the screen in the emulator. The check itself is in
