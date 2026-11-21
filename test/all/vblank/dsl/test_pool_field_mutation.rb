@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# Changing ONE field of ONE pool instance. `each` hands back a row whose fields are
+# Changing ONE field of one pool instance. `each` hands back a row whose fields are
 # mutable handles, so an instance moves by writing to its own slot in that field's
 # backing list — `b.y += b.vy` is really `y[i] = y[i] + vy[i]`, at an index the game
 # works out as it runs.
@@ -12,7 +12,7 @@ require "differential"
 # expression straight back into the slot. `approach!`/`abs!`/`negate_abs!`/`flip!`/`clamp!`
 # have no single expression, so they round-trip through a scratch variable: load the
 # slot, apply the ordinary mutator to that, store it back. Every test here reads the
-# field's VALUE rather than a picture, because a field can hold a negative number and a
+# field's value rather than a picture, because a field can hold a negative number and a
 # coordinate cannot — and the console lowering is pinned at the bottom, where positions
 # are what a marker's pixels reveal.
 class TestPoolFieldMutation < Minitest::Test
@@ -132,7 +132,7 @@ class TestPoolFieldMutation < Minitest::Test
     assert_equal [10, 20, 30], [i[:first], i[:second], i[:third]]
   end
 
-  # THE CONSOLE RUNS IT THE SAME WAY. A marker is drawn at each row's own field, so
+  # The console runs it the same way. A marker is drawn at each row's own field, so
   # where the pixels land is the number the console worked out. One row takes the
   # direct write (`-=`), the other the scratch round-trip (`abs!`) from a negative
   # start that no coordinate could hold.

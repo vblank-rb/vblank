@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A POOL WHOSE THINGS CHANGE WHICH LAYER THEY ARE IN while the game runs (Pool#put_in_layer), in a
+# A pool whose things change which layer they are in while the game runs (Pool#put_in_layer), in a
 # room of one background every console shows: a blue arch over the left half of the screen. Two
 # red guards stand across its edge, so each has a pixel under the arch and one over the backdrop.
 # Rooms of two backgrounds, and the cartridge read back, are in

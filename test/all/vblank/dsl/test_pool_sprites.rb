@@ -24,7 +24,7 @@ module PoolSpritesGames
     b.program
   end
 
-  # A POOL TAKES ITS DECLARED PLACE AMONG THE SPRITES, the same rule two sprites follow:
+  # A pool takes its declared place among the sprites, the same rule two sprites follow:
   # declared later is in front. A red pool and a green sprite overlap at (44, 44); whichever
   # was declared second is the colour there, on the interpreter and on the console.
   private def overlap_program(pool_first:)

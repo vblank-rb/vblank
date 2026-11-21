@@ -49,7 +49,7 @@ module PoolPosesGames
   end
 end
 
-# A POOLED THING FACES AND ANIMATES, each instance on its own.
+# A pooled thing faces and animates, each instance on its own.
 #
 # A pool given `image:` draws every live instance as a hardware sprite, which is one line for
 # a game with a cast. Every instance used to be stuck on the picture it was declared with, so
@@ -59,7 +59,7 @@ end
 #
 # So `facing:` and `frames:` mean on a pool what they already mean on a sprite, spelled the same
 # way, and `face` is the same verb on the row handle. What is new underneath is that the
-# direction and the place in the cycle are PER INSTANCE: a hidden slot beside the fields, the
+# direction and the place in the cycle are per instance: a hidden slot beside the fields, the
 # pool's own bookkeeping rather than something to declare. The same poses on the Advance's
 # cartridge are in test/lowering/gba/vblank/dsl/test_pool_poses_cartridge.rb.
 class TestPoolPoses < Minitest::Test

@@ -4,12 +4,12 @@ require "test_helper"
 require "differential"
 require "stringio"
 
-# A ROUTINE THAT WORKS ON ONE INSTANCE: `guards.func(:chase) { |g| ... }`.
+# A routine that works on one instance: `guards.func(:chase) { |g| ... }`.
 #
 # A pool's behaviour starts inside `each` and moves into routines as a game grows — because a
 # block written inline is emitted again at every place it is written, and because a game with
 # states wants one routine per state. A routine is built once, wherever it is called from, so
-# the one thing its own code cannot say is WHICH instance it is running for. The walk says it.
+# the one thing its own code cannot say is which instance it is running for. The walk says it.
 #
 # So these tests are about that thread: the routine reaches the instance it ran for, two walks
 # over one pool do not lose each other's place, a pool that declares no routines pays nothing
@@ -69,7 +69,7 @@ class TestPoolRoutines < Minitest::Test
     assert_equal 0, game_player.run(program)[:left]
   end
 
-  # TWO WALKS OVER ONE POOL, which is what a pairwise test is. The inner walk moves the pool's
+  # Two walks over one pool, which is what a pairwise test is. The inner walk moves the pool's
   # place all the way to its last instance; the outer one has to carry on with its own. Without
   # the walk putting the place back as it leaves, every outer guard after the first inner walk
   # would run its routine on the last instance instead of itself.
@@ -95,7 +95,7 @@ class TestPoolRoutines < Minitest::Test
                  "each outer guard ran on itself: 1 + 10, not the last one twice"
   end
 
-  # A ROUTINE THAT WALKS ITS OWN POOL, which is how things of one pool bump into each other:
+  # A routine that walks its own pool, which is how things of one pool bump into each other:
   # the routine steps one thing, then looks through the pool for another close by. Inside that
   # walk the routine's own thing is still itself, as it would be in plain Ruby, so `e.x` is
   # where the stepper stands and `other.x` where the one it is checked against stands.
@@ -227,7 +227,7 @@ class TestPoolRoutines < Minitest::Test
     assert_equal 444, played[:sum]
   end
 
-  # A WALK INSIDE THE ROUTINE'S WALK keeps the thing the outer walk is on. So a routine of the
+  # A walk inside the routine's walk keeps the thing the outer walk is on. So a routine of the
   # pool called inside the outer walk, after the inner one, runs for the outer walk's thing. The
   # first of 3 things counts the pairs, and `mark` adds the x of the thing it ran for to a sum
   # once for each thing the outer walk visits: 1 + 10 + 100, not the first thing's 1 three times.
@@ -277,7 +277,7 @@ class TestPoolRoutines < Minitest::Test
     assert_backends_agree(program, frames: 3)
   end
 
-  # A ROUTINE WITH NOTHING IN IT is a real routine: a kind of thing with nothing to do, in a
+  # A routine with nothing in it is a real routine: a kind of thing with nothing to do, in a
   # cast where every thing is told to do its part. It is called for each thing and changes
   # nothing either backend draws, and the routine called after it still runs for the right one.
   def test_a_routine_with_an_empty_body_changes_nothing_on_either_backend
