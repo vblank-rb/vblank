@@ -230,7 +230,7 @@ module VBlank
 
       # The adapter used when a caller doesn't name one.
       #
-      # ONE PER RACTOR, not one per process, and that is what makes importing art work when
+      # One per Ractor, not one per process, and that is what makes importing art work when
       # a game builds on several cores at once. The adapter remembers which image tool this
       # machine has, which costs a subprocess to find out, so it is worth keeping — but kept
       # on the module it is state a worker may neither write nor read, and the import stopped

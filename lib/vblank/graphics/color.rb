@@ -141,7 +141,7 @@ module VBlank
         end
       end
 
-      # +color+ as a walk from +far+ that WAITS FOR A FALLING COUNT shows it after +steps+ steps:
+      # +color+ as a walk from +far+ that waits for a falling count shows it after +steps+ steps:
       # the rule of a fade routine of the console's own games, where every channel of any height
       # arrives on the last step together (Builder#color_walk's count:). Each channel starts at
       # +far+'s. On step n the count is +count+ less +step+ n times, and never below 0. A channel
