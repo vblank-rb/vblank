@@ -41,7 +41,8 @@ module VBlank
 
       # A font a canvas draws letters of, as tables read while the game runs. Made once per
       # font however many canvases use it.
-      def canvas_font_tables(font)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def canvas_font_tables(font)  # :nodoc:
         @canvas_font_tables ||= {}
         @canvas_font_tables[font] ||= begin
           face = canvas_font(font)
@@ -60,10 +61,12 @@ module VBlank
       end
 
       # The font named +font+.
-      def canvas_font(font) = IR::FontTable.of(@program).get(font)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def canvas_font(font) = IR::FontTable.of(@program).get(font)  # :nodoc:
 
       # A declared picture's size, [width, height].
-      def image_size(image)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def image_size(image)  # :nodoc:
         @images.fetch(image) do
           raise ArgumentError, "there is no image named :#{image}. Define it first with `image :#{image}, ...`."
         end
@@ -73,7 +76,8 @@ module VBlank
       # A pixel in a colour read from the data pack as the game starts is the marker it is
       # (IR::StartFile), which the canvas's own list of such colours holds too: masked to fifteen
       # bits it would be a colour that is no colour of the list.
-      def image_pixels(image)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def image_pixels(image)  # :nodoc:
         image_size(image)
         node = @program.walk.find { |each| each.kind == :bitmap && each.name == image }
         picture = IR::Assets::Image.of(node)

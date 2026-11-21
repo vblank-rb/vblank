@@ -43,7 +43,8 @@ module VBlank
       end
 
       # The checks this game's own packs bring, for the build to run beside its own.
-      def game_pack_checks = game_packs.flat_map { |pack| Effects.pack_checks(pack) }
+      # Asked by a build of `uses`; documented there.
+      def game_pack_checks = game_packs.flat_map { |pack| Effects.pack_checks(pack) }  # :nodoc:
 
       private
 

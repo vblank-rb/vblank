@@ -115,7 +115,8 @@ module VBlank
       # The Members of the part or scene +name+, in the order declared, or nil when no part or scene
       # has that name. Asked by Saves when a save_data record keeps a whole part (`keep part: :play`),
       # once every routine is built and so every member known.
-      def members_of_part(name)
+      # Asked by a `save_data` record that keeps a part; documented on `keep part:` of `save_data`.
+      def members_of_part(name)  # :nodoc:
         return nil unless part_names.include?(name) || scene_names.include?(name)
 
         part_members.fetch(name, [])
@@ -123,7 +124,8 @@ module VBlank
 
       # The parts and scenes the game has, as a sentence for a refusal naming one it does not.
       # Asked by start_over's refusal and by Saves for `keep part:`.
-      def known_parts_sentence
+      # Asked by a `save_data` record that keeps a part; documented on `keep part:` of `save_data`.
+      def known_parts_sentence  # :nodoc:
         known = part_names.map { |part| "part :#{part}" } + scene_names.map { |scene| "scene :#{scene}" }
         known.empty? ? "The game has no parts or scenes." : "The game has #{known.join(', ')}."
       end

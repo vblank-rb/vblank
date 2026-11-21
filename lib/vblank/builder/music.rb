@@ -187,14 +187,16 @@ module VBlank
 
       # The hook behind SoundEffectList#play: record that effect number +which+ of the list starts
       # now — a number already checked against the list when it was written, or a Value.
-      def play_sound_effect(name, which, this_frame: false)
+      # Hook behind SoundEffectList#play, documented on `sound_effects`.
+      def play_sound_effect(name, which, this_frame: false)  # :nodoc:
         refuse_unknown_this_frame!(this_frame)
         record(Build.play_sound_effect(name, which: DSL::Value.node_for(which), this_frame: this_frame))
       end
 
       # The hook behind SongList#play: record that the tune playing now is number +which+ of
       # the list — a number already checked against the list when it was written, or a Value.
-      def play_from_list(name, which, this_frame: false)
+      # Hook behind SongList#play, documented on `songs`; a game writes `music.play track`.
+      def play_from_list(name, which, this_frame: false)  # :nodoc:
         refuse_unknown_this_frame!(this_frame)
         record(Build.play_from_list(name, which: DSL::Value.node_for(which), this_frame: this_frame))
       end

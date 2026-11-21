@@ -46,7 +46,8 @@ module VBlank
       #
       # Returns the names the caller needs: where to put the position it is asking about,
       # what to call, and where the answer lands.
-      def tile_collision_routine(cells, hit_x, hit_y, hit_w, hit_h)
+      # Hook a HardwareSprite told `blocked_by` calls for the shared routine that consults the background's grid of solid cells; documented on `blocked_by`.
+      def tile_collision_routine(cells, hit_x, hit_y, hit_w, hit_h)  # :nodoc:
         @tile_collisions ||= {}
         # By the table the walls are in, not the background's name: two scenes can each declare
         # a background by one name, with walls of their own (see Background#walls_table_name).
@@ -67,7 +68,8 @@ module VBlank
 
       # The kept walls of the background whose walls are +cells+ (a Background::SolidCells),
       # made the first time a cell of it is changed. +declaration+ is the background's node.
-      def keep_walls_changeable(cells, declaration)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def keep_walls_changeable(cells, declaration)  # :nodoc:
         @kept_walls ||= {}
         @kept_walls[cells.table.name] ||= begin
           tag = cells.table.name.to_s.delete_prefix("__solid_")
@@ -82,14 +84,17 @@ module VBlank
       end
 
       # The kept walls of +cells+, or nil for walls nobody changes.
-      def kept_walls_of(cells) = @kept_walls&.[](cells.table.name)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def kept_walls_of(cells) = @kept_walls&.[](cells.table.name)  # :nodoc:
 
       # Every background's kept walls (see KeptWalls).
-      def every_kept_walls = (@kept_walls || {}).values
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def every_kept_walls = (@kept_walls || {}).values  # :nodoc:
 
       # Change the wall of the cell at +col+, +row+ in +kept+ to +wall+, as set_tile changes the
       # cell: a cell off the map changes nothing.
-      def record_wall_change(kept, col, row, wall:)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def record_wall_change(kept, col, row, wall:)  # :nodoc:
         cells = kept.cells
         [WALL_COL, WALL_ROW].each { |var| ensure_var(var) }
         store!(WALL_COL, DSL::Value.node_for(col))
@@ -102,7 +107,8 @@ module VBlank
       end
 
       # Copy the walls of the map showing into +kept+, if they are not there yet.
-      def record_walls_brought_up(kept)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def record_walls_brought_up(kept)  # :nodoc:
         fresh = DSL::Value.new(self, Build.var_ref(kept.fresh), name: kept.fresh)
         if fresh == 0
           base = map_base_for(kept.cells)

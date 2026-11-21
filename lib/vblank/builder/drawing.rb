@@ -505,7 +505,8 @@ module VBlank
       # picture that is drawn and then left alone has to be painted (Packs::KeepShowing).
       # A Game Boy Color keeps one page even then (Console::Description's painted_pages),
       # and the second paint there only draws the same picture again.
-      def screen_pages = @tear_free ? 2 : 1
+      # Introspection behind `keep_showing`: how many pictures the chosen screen keeps. A game reads none of this.
+      def screen_pages = @tear_free ? 2 : 1  # :nodoc:
 
       # Everything the block draws stays inside this part of the screen. What falls outside is
       # CUT OFF rather than covered up: those pixels are never worked out, so the drawing costs
@@ -994,7 +995,8 @@ module VBlank
       # THE HOOK BEHIND Spotlight#shape: the block's statements become the ones the light runs
       # once a row, and what it gives back the row's two edges, held to the screen. The circle
       # the light had is put aside.
-      def record_light_shape(light, &block)
+      # Hook behind `shape` on the light, documented on `spotlight`.
+      def record_light_shape(light, &block)  # :nodoc:
         refuse_light_shape_with_no_block!(block)
         refuse_second_light_shape!
         shade = @spotlight_shade
@@ -1019,7 +1021,8 @@ module VBlank
 
       # THE HOOK BEHIND Spotlight#circle: the statements that work out the light's circle on
       # +row+, into a variable of the shape's own, which is handed back.
-      def light_circle(light, row)
+      # Hook behind `circle` on the light, documented on `spotlight`.
+      def light_circle(light, row)  # :nodoc:
         unless @shaping_light
           raise ArgumentError, "`light.circle` works out a row of the light's circle for a shape. " \
                                "To use it, call it inside `light.shape { |row| ... }`."
@@ -1031,7 +1034,8 @@ module VBlank
 
       # THE HOOK BEHIND Spotlight#show_now: the light worked out again here, for the picture
       # being drawn.
-      def show_light_now
+      # Hook behind `show_now` on the light, documented on `spotlight`.
+      def show_light_now  # :nodoc:
         record(Build.show_light_now)
       end
 

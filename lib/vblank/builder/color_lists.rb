@@ -254,14 +254,16 @@ module VBlank
       # Keep track of a sprite's or a pool's other colours, so the lists that change can
       # find who is drawn with them once the whole program is declared. Called by
       # {DSL::Recolors} as one is made.
-      def remember_sprite_recolors(recolors)
+      # Hook behind `recolor`: a sprite or a pool says which lists it draws with, so a list that changes can find it. Documented on `recolor`.
+      def remember_sprite_recolors(recolors)  # :nodoc:
         @sprite_recolors << recolors
       end
 
       # Keep track of a list a background is drawn with, so a background drawn with a list
       # that changes can be told to follow it. Called by {DSL::Background} as it takes the
       # list's colours.
-      def remember_background_draws_with(name, background)
+      # Hook behind `recolor`: a background says which lists it draws with, so a list that changes can find it. Documented on `recolor`.
+      def remember_background_draws_with(name, background)  # :nodoc:
         (@lists_backgrounds_draw_with[name] ||= []) << background unless @lists_backgrounds_draw_with[name]&.include?(background)
       end
 

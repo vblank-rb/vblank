@@ -31,7 +31,8 @@ module VBlank
       # frames the copy waits for the gap after this frame — see #finalize_tile_copies — and
       # the flag set here is what tells it to; where it is not, the copy stays where it was
       # asked for, since there is no gap to move it to.
-      def request_tile_copy(name)
+      # Hook behind `changed` on tiles painted from a list, documented on `tiles`.
+      def request_tile_copy(name)  # :nodoc:
         mask = tile_run_pending(name)
         record(Build.set(mask, Build.binop(:|, Build.var_ref(mask), Build.int(tile_run_bit(name)))))
         @inline_tile_copies << record(Build.copy_tiles(name))
@@ -39,7 +40,8 @@ module VBlank
 
       # `changed now: true`: the copy stays where the game asked for it, paced or not, and the
       # run is not owed another in the gap — the list is in video memory already.
-      def emit_tile_copy_in_place(name)
+      # Hook behind `changed now: true` on tiles painted from a list, documented on `tiles`.
+      def emit_tile_copy_in_place(name)  # :nodoc:
         record(Build.copy_tiles(name))
       end
 

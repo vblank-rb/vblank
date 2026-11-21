@@ -46,7 +46,8 @@ module VBlank
 
       # What the game gave for its shell's first screen (a DeclaredShellScreen), or nil: what a
       # shell build asks of the game (Original::Shell).
-      def declared_shell_screen = @shell_screen
+      # Asked by a shell build for the shell's first screen; documented on `shell_screen`.
+      def declared_shell_screen = @shell_screen  # :nodoc:
 
       private
 

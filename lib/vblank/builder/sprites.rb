@@ -283,7 +283,8 @@ module VBlank
       # wires it up (the operand is still the constant 0), later ones find a variable
       # already there and return. An object that never turns keeps the constant 0 and
       # pays nothing for rotation. Called by the HardwareSprite handle, so it's public.
-      def make_object_rotatable(object_node, angle_var)
+      # Hook a HardwareSprite handle calls to wire up its rotation (`face_angle`, `turn`), documented on `sprite`.
+      def make_object_rotatable(object_node, angle_var)  # :nodoc:
         return unless object_node.angle.kind == :int # already turning (a variable angle)
 
         refuse_poses_of_many_sizes!(object_node, "turn")
@@ -298,7 +299,8 @@ module VBlank
       # from its default constant to that variable. The same shape as
       # #make_object_rotatable, and for the same reason — a sprite that never resizes
       # keeps the constant and pays nothing. Called by the HardwareSprite handle.
-      def make_object_scalable(object_node, scale_var)
+      # Hook a HardwareSprite handle calls to wire up its size (`scale`), documented on `sprite`.
+      def make_object_scalable(object_node, scale_var)  # :nodoc:
         return unless object_node.scale.kind == :int # already resizing (a variable size)
 
         refuse_poses_of_many_sizes!(object_node, "change size")
@@ -313,7 +315,8 @@ module VBlank
       # Make a hardware sprite able to draw with other colours (see HardwareSprite#draw_with):
       # the same shape as #make_object_rotatable. Its choice starts at its own colours, and a
       # sprite never told otherwise keeps the constant and emits nothing for it.
-      def make_object_recolorable(object_node, colors_var)
+      # Hook behind `draw_with` on a sprite: gives it somewhere to keep its choice of colours. Documented on `colors` and `draw_with`.
+      def make_object_recolorable(object_node, colors_var)  # :nodoc:
         return unless object_node.recolor.kind == :int
 
         at_boot(Build.set(colors_var, Build.int(Build::NO_RECOLOR)))
@@ -324,7 +327,8 @@ module VBlank
       # Make a hardware sprite able to change layer (see HardwareSprite#put_in_layer): allocate
       # the variable that picks its layer, boot it to the layer it was declared in, and name it
       # on the object. Idempotent, and a sprite never moved names none and emits nothing for it.
-      def make_object_layer_choosable(object_node, layer_var)
+      # Hook behind `put_in_layer` on a sprite, documented under Layers.
+      def make_object_layer_choosable(object_node, layer_var)  # :nodoc:
         return if object_node.layer_pick # already names its variable
 
         at_boot(Build.set(layer_var, Build.int(Build::DECLARED_LAYER)))
@@ -336,7 +340,8 @@ module VBlank
       # sprite, or every sprite a pool's things are drawn as (Pool#put_in_layer), which share one
       # variable and so move together. +which+ is a layer name, or several picked by +showing+;
       # +subject+ names who was told, for the friendly errors.
-      def put_objects_in_layer(nodes, layer_var, which, showing:, subject:)
+      # Hook behind `put_in_layer` on a sprite and a pool, documented under Layers.
+      def put_objects_in_layer(nodes, layer_var, which, showing:, subject:)  # :nodoc:
         names = Array(which)
         refuse_unknown_layers!(names, subject)
         if showing.nil? && names.length > 1
@@ -362,7 +367,8 @@ module VBlank
       end
 
       # Refuse a layer a sprite was told to go in that the stack does not have, naming it.
-      def refuse_unknown_layers!(names, subject)
+      # Hook behind `put_in_layer` on a sprite and a pool, documented under Layers.
+      def refuse_unknown_layers!(names, subject)  # :nodoc:
         if @layer_stack.empty?
           raise ArgumentError,
                 "#{subject} was told to put_in_layer, and this game declares no layers. Declare the " \
@@ -387,7 +393,8 @@ module VBlank
       # other order is read out of a table built into the cartridge, one entry per name. A
       # number outside the list writes nothing, so the pose stays as it was — what a counter
       # that has run past its last step should look like.
-      def write_picked_pose(names, showing, subject:, row_of:)
+      # Hook behind `face ..., showing:` on a sprite and a pool instance, documented on `sprite`.
+      def write_picked_pose(names, showing, subject:, row_of:)  # :nodoc:
         rows = picked_pose_rows!(names, subject, row_of)
         fixed = DSL::Value.fixed_number(showing)
         if fixed
@@ -415,7 +422,8 @@ module VBlank
       # variable, or a pool's field) is set to +start+ plus +showing+, or to +outside+ when the
       # number names none of them. What a sprite's colours and its layer are both picked by.
       # +subject+ and +verb+ name what was told what, for the friendly errors.
-      def write_picked_choice(choice, count:, start:, showing:, outside:, subject:, verb:)
+      # Hook behind `face ..., showing:` and `put_in_layer`: writes the choice a sprite's list picks. Documented on `sprite`.
+      def write_picked_choice(choice, count:, start:, showing:, outside:, subject:, verb:)  # :nodoc:
         fixed = DSL::Value.fixed_number(showing)
         if fixed
           choice.store!(fixed.between?(0, count - 1) ? start + fixed : outside)

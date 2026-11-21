@@ -657,7 +657,8 @@ module VBlank
       #
       # `screen :bitmap` has no background layer at all, only pixels you draw, so there is
       # nothing there to turn.
-      def make_background_affine(name)
+      # Hook a background handle calls to make the layer turn; documented on `background`.
+      def make_background_affine(name)  # :nodoc:
         background = declared_background(name)
         return [background.angle, background.scale] if background.turns_each_frame?
 
@@ -683,7 +684,8 @@ module VBlank
       #
       # An internal hook, not a DSL verb — `background(...).scroll_each_row { }` is the
       # surface.
-      def record_row_bend(name, row_var, &block)
+      # Hook behind Background#scroll_each_row, documented on `background`.
+      def record_row_bend(name, row_var, &block)  # :nodoc:
         unless @screen_mode == :tiled
           raise ArgumentError,
                 "#{name}.scroll_each_row bends a tiled background row by row, so it needs a " \

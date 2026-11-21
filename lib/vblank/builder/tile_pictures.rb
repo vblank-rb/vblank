@@ -64,10 +64,12 @@ module VBlank
       end
 
       # The block's statements, run where +test+ holds, for a group's `show`.
-      def with_test(test, &block) = push_container(Build.if_(test), &block)
+      # Hook a tile-picture group's `show` calls; documented on `tiles`.
+      def with_test(test, &block) = push_container(Build.if_(test), &block)  # :nodoc:
 
       # Keep which picture a group shows.
-      def set_shown_tile_picture(shown, wanted) = record(Build.set(shown.name, wanted))
+      # Hook a tile-picture group calls to keep which picture it shows; documented on `tiles`.
+      def set_shown_tile_picture(shown, wanted) = record(Build.set(shown.name, wanted))  # :nodoc:
 
       private
 

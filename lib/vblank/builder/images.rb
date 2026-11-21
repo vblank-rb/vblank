@@ -312,7 +312,8 @@ module VBlank
       # The colours of the `colors` lists +names+, for a sprite showing +poses+ to be drawn
       # with — checked against the sprite, since a list is matched to its pictures by place.
       # Called by a sprite or a pool told `draw_with`; +subject+ is what the error calls it.
-      def colors_to_draw_with(names, poses:, subject:)
+      # Hook behind `draw_with` on a sprite and on a pool instance: checks the lists named against the sprite's own. Documented on `colors` and `draw_with`.
+      def colors_to_draw_with(names, poses:, subject:)  # :nodoc:
         own = shared_pose_colors!(poses, subject)
         refuse_draw_with_banked_pose!(subject) if own.length > PICTURE_COLORS
         names.map do |name|
@@ -335,7 +336,8 @@ module VBlank
       # The same, for a sprite or pool whose poses are drawn from several lists and which was told
       # to draw every one of them with the list +names+ holds (#list_for_every_pose_list!). Each
       # pose swaps place for place into it, so the list is checked against each pose's own list.
-      def colors_to_draw_across_lists(names, poses:, subject:)
+      # Called by a sprite and a pool when a `draw_with` hash draws every list with one other list; documented on `draw_with`.
+      def colors_to_draw_across_lists(names, poses:, subject:)  # :nodoc:
         groups = poses.group_by { |pose| colors_drawn_from(pose) }.values
         names.map do |name|
           groups.map { |group| colors_to_draw_with([name], poses: group, subject: subject).first }.first
@@ -344,7 +346,8 @@ module VBlank
 
       # Whether +lists+ (a hash `draw_with` was given) draws every list with one other list:
       # `{ warm: :white, cold: :white }`. A hash that draws each list with itself follows them.
-      def one_list_for_pose_lists?(lists)
+      # Asked by a sprite and a pool when a `draw_with` hash draws every list with one other list; documented on `draw_with`.
+      def one_list_for_pose_lists?(lists)  # :nodoc:
         lists.is_a?(Hash) && !lists.empty? && lists.values.uniq.one? && lists.any? { |own, with| own != with }
       end
 
@@ -358,7 +361,8 @@ module VBlank
       # that later gives the sprite a pose of a new list is told, rather than shown it unchanged.
       # A hash that draws the lists with different lists is refused: one number picks a sprite's
       # other colours, and poses of several lists would need a number each.
-      def list_for_every_pose_list!(lists, poses:, showing:, subject:)
+      # Called by a sprite and a pool when a `draw_with` hash draws every list with one other list; documented on `draw_with`.
+      def list_for_every_pose_list!(lists, poses:, showing:, subject:)  # :nodoc:
         unless showing.nil?
           raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. " \
                                "showing: picks one of several lists by a number, and a hash names one list. " \
@@ -414,7 +418,8 @@ module VBlank
       #
       # A sprite whose poses are all of one list has nothing to tell apart, and this hands back the
       # name of that list for an ordinary `draw_with` of it. nil otherwise.
-      def follow_pose_lists(node, lists, poses:, showing:, subject:)
+      # Called by a sprite's handle when `draw_with` is given a hash; documented on `draw_with`.
+      def follow_pose_lists(node, lists, poses:, showing:, subject:)  # :nodoc:
         unless showing.nil?
           raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. A sprite " \
                                "follows each list or leaves it as drawn, and nothing is picked by a number. To fix " \
@@ -457,7 +462,8 @@ module VBlank
       # are two lists whatever they hold. A tile given the colours themselves is drawn from the
       # list of the layer that holds them, where one does (IR::Nodes::Background#recolored_list_of);
       # where two named apart hold them, nothing names which, and the game is told.
-      def lists_drawn_from(poses, subject:)
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def lists_drawn_from(poses, subject:)  # :nodoc:
         refuse_swapping_unplaced_pixels!(poses, subject)
         unless poses.all? { |pose| colors_drawn_from(pose) }
           raise ArgumentError,
@@ -479,11 +485,13 @@ module VBlank
 
       # The colours one picture was drawn from, or nil where the framework worked them out. A
       # picture painted from a list is drawn from the one it was given.
-      def colors_drawn_from(pose) = @painted_colors[pose] || @pictures.fetch(pose).colors
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def colors_drawn_from(pose) = @painted_colors[pose] || @pictures.fetch(pose).colors  # :nodoc:
 
       # ...as the list it was drawn from: the name it was declared under, nil for colours given
       # themselves, and its colours (IR::Assets::Image#list_drawn_from).
-      def list_drawn_from(pose)
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def list_drawn_from(pose)  # :nodoc:
         return [@painted_colors_names[pose], @painted_colors[pose]] if @painted_colors.key?(pose)
 
         @pictures.fetch(pose).list_drawn_from
@@ -493,17 +501,20 @@ module VBlank
       # black as a colour, its picture's (Tiled#solid_black_image), since the copy of a picture of
       # colours in a list read as the game starts has no list name of its own. Public for
       # DSL::Background#refuse_unfollowed_changing_list!, which refuses alike both ways by it.
-      def list_name_drawn_from(pose) = list_drawn_from(solid_black_source(pose) || pose).first
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def list_name_drawn_from(pose) = list_drawn_from(solid_black_source(pose) || pose).first  # :nodoc:
 
       # A list declared with `colors`, as a picture given it by name holds it: see-through first.
       # nil for a name nothing declared.
-      def declared_colors(name)
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def declared_colors(name)  # :nodoc:
         list = @color_lists[name]
         list && [0x0000, *list.drop(1)]
       end
 
       # The name a picture's list was declared under, where it was one.
-      def name_of_colors(colors) = @color_lists.keys.find { |name| declared_colors(name) == colors }
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def name_of_colors(colors) = @color_lists.keys.find { |name| declared_colors(name) == colors }  # :nodoc:
 
       private
 

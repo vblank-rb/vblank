@@ -33,7 +33,8 @@ module VBlank
       end
 
       # True if debug_halt was called (used by VBlank.build to skip finalization steps).
-      def debug_halted?
+      # Asked by VBlank.build to skip finalization after `debug_halt`; not a verb.
+      def debug_halted?  # :nodoc:
         @debug_halted
       end
 

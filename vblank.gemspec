@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
                        Dir.glob("ruby-snes-emulator/lib/**/*.rb") +
                        Dir.glob("ruby-snes-emulator/ext/ruby_snes_emulator_ext/*.{c,h,rb}") +
                        Dir.glob("ruby-snes-emulator/core/*.{patch,md}") +
-                       %w[vblank.gemspec Rakefile LICENSE.md]
+                       %w[vblank.gemspec Rakefile LICENSE.md .rdoc_options]
   spec.bindir        = "bin"
   spec.executables   = ["vblank"]
   spec.require_paths = ["lib"]

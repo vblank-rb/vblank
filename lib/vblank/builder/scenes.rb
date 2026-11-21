@@ -40,7 +40,8 @@ module VBlank
       # The names of the routines declared so far, scenes' among them. Asked by the build of an
       # unpacking routine, to tell which routines each of its parts declared
       # (Original::PartPrograms).
-      def declared_function_names = @functions.keys
+      # Asked by the build of a data pack's unpacking, to tell which routines each part declared (Original::PartPrograms).
+      def declared_function_names = @functions.keys  # :nodoc:
 
       # Call a named subroutine. The target is resolved by name when the tree is
       # lowered, so it may be defined before or after this call.

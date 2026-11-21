@@ -69,7 +69,8 @@ module VBlank
 
         # The pictures declared so far, by name — so a double declaration is caught
         # and the guardrail can see what was asked for.
-        def keep_showing_pictures = @keep_showing_pictures ||= {}
+        # Introspection behind `keep_showing`: the pictures declared so far. A game reads none of this.
+        def keep_showing_pictures = @keep_showing_pictures ||= {}  # :nodoc:
 
         # One such picture: a routine that draws it, and a count of how many pages
         # still want it.

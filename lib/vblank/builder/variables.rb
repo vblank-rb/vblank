@@ -18,7 +18,8 @@ module VBlank
       # @param name [Symbol] variable name
       # @param value [Integer] value to store
       # @return [Value] a handle to the variable
-      def store!(name, value)
+      # Called by a variable's own handle (`Value#store!`), not written in a game.
+      def store!(name, value)  # :nodoc:
         record(Build.set(name, stored_node(name, value)))
         ensure_var(name)
         mirror_save(name)
@@ -117,11 +118,13 @@ module VBlank
 
       # A variable started with `true` or `false` holds a yes or no, kept as 1 or 0. It is the one
       # kind a game can test on its own, `if alive`, as a Ruby value can be.
-      def remember_boolean_variable(name)
+      # Called by a variable's own handle, not written in a game.
+      def remember_boolean_variable(name)  # :nodoc:
         @boolean_variables[name] = true
       end
 
-      def boolean_variable?(name) = @boolean_variables.key?(name)
+      # Called by a variable's own handle, not written in a game.
+      def boolean_variable?(name) = @boolean_variables.key?(name)  # :nodoc:
 
       # Declare a variable whose value survives the console being turned off — a high
       # score, an unlock, a setting. It works exactly like {#var}: you get the same
@@ -161,7 +164,8 @@ module VBlank
       #
       # @param name [Symbol] variable name
       # @param operand [Integer, Symbol] value to add
-      def increase!(name, operand)
+      # Called by a variable's own handle, not written in a game.
+      def increase!(name, operand)  # :nodoc:
         record(Build.add(name, DSL::Value.node_for(operand)))
         ensure_var(name)
         ensure_var(operand)
@@ -173,7 +177,8 @@ module VBlank
       #
       # @param name [Symbol] variable name
       # @param operand [Integer, Symbol] value to subtract
-      def decrease!(name, operand)
+      # Called by a variable's own handle, not written in a game.
+      def decrease!(name, operand)  # :nodoc:
         record(Build.sub(name, DSL::Value.node_for(operand)))
         ensure_var(name)
         ensure_var(operand)
@@ -193,7 +198,8 @@ module VBlank
       #
       # @param dest [Symbol] destination variable
       # @param src [Symbol] source variable
-      def copy_variable!(dest, src)
+      # Called by a variable's own handle, not written in a game.
+      def copy_variable!(dest, src)  # :nodoc:
         record(Build.copy(dest, src))
         ensure_var(dest)
         ensure_var(src)
@@ -305,7 +311,8 @@ module VBlank
       # Where each is kept is the lowering's to decide (a built cartridge's
       # var_addresses gives it).
       # @return [Array<Symbol>]
-      def variables
+      # Introspection for the build, not a verb: a game names its variables itself.
+      def variables  # :nodoc:
         @variables.to_a
       end
 

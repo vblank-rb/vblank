@@ -48,7 +48,8 @@ module VBlank
 
       # The set +name+'s tiles from +to+ on take +count+ tiles of +source+ from its tile +at+ on,
       # in the picture of this pass (DSL::SpriteTileSet#copy_from).
-      def load_sprite_tiles(name, source, at:, count:, to:)
+      # Hook behind `copy_from` on a set of sprite tiles, documented on `sprite_tiles`.
+      def load_sprite_tiles(name, source, at:, count:, to:)  # :nodoc:
         set = @sprite_tile_sets.fetch(name)
         unless count.is_a?(Integer) && count.between?(1, set[:count])
           raise ArgumentError, "sprite_tiles :#{name} was told to copy #{count.inspect} tiles. Give count: a whole " \

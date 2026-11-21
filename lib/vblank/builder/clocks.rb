@@ -19,7 +19,8 @@ module VBlank
       # that sets the clock. How far the time set is from the clock's own is kept in two saved
       # numbers (see IR::Clock::OFFSET_DAYS), saved like any `save_var` the moment they change,
       # so they are there at the next power-on.
-      def record_clock_set(node)
+      # Hook behind `set_to` on the clock, documented on `clock`.
+      def record_clock_set(node)  # :nodoc:
         IR::Clock::OFFSETS.each { |name| save_var(name, 0) }
         record(node)
         IR::Clock::OFFSETS.each { |name| mirror_save(name) }

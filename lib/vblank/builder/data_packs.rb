@@ -230,13 +230,15 @@ module VBlank
 
       # The game's data pack (DSL::DataPack), or nil for a game with none: what a shell is built
       # around (Original::Shell).
-      def declared_data_pack = @data_pack
+      # Asked by a shell build of the game (Original::Shell); documented on `data_pack`.
+      def declared_data_pack = @data_pack  # :nodoc:
 
       # The data pack file this build made from the copy, its bytes, or nil for a build that made
       # none (a game with no data pack, or a build that leaves its pack out): its slots, and the
       # record of each frame the game has named by now (PackPoses#pack_frame_section), so it is the
       # whole file once the game is declared. The same game built with its pack left out reads this file.
-      def made_data_pack_file
+      # What Cartridge::Game#data_pack_file calls; documented on `data_pack`.
+      def made_data_pack_file  # :nodoc:
         return nil unless @data_pack_contents
 
         frames = pack_frame_section
@@ -1036,7 +1038,8 @@ module VBlank
       # How many tiles this build has read from its pack's slots of tiles, each counted once
       # however many lines draw it. Asked by the test that holds a build's cost to the tiles it
       # draws (test_pack_pose_build_cost.rb).
-      def pack_tiles_read = (@pack_slot_tiles || {}).values.sum(&:tiles_read)
+      # A count the build-cost test reads (test_pack_pose_build_cost.rb), not something a game calls.
+      def pack_tiles_read = (@pack_slot_tiles || {}).values.sum(&:tiles_read)  # :nodoc:
 
       private
 

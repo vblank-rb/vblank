@@ -256,7 +256,8 @@ module VBlank
 
       # Whether +name+ is the stand-in for the list a pose's frame picks as the game starts
       # (#pose_list_stand_in). Asked by a sprite told to `draw_with` it, which then follows it.
-      def list_chosen_at_start?(name) = !@lists_chosen_at_start.nil? && @lists_chosen_at_start.key?(name)
+      # Asked for a pose whose list its frame picks in a build that reads its pack as the game starts; documented with the pose.
+      def list_chosen_at_start?(name) = !@lists_chosen_at_start.nil? && @lists_chosen_at_start.key?(name)  # :nodoc:
 
       # A SPRITE TOLD TO FOLLOW ITS POSES' LISTS WHERE A POSE'S LIST IS PICKED BY ITS FRAME AS THE
       # GAME STARTS (Images#follow_pose_lists, with the pack left out). Each name of +lists+ is a
@@ -268,7 +269,8 @@ module VBlank
       #
       # A frame whose pieces name two banks is drawn, and followed, in its front piece's: the
       # file is the player's, so nothing in it stops the game (#frame_bank_colors_read_at_start).
-      def follow_lists_chosen_at_start(node, lists, poses:, subject:)
+      # Called for a pose whose list its frame picks in a build that reads its pack as the game starts; documented with the pose.
+      def follow_lists_chosen_at_start(node, lists, poses:, subject:)  # :nodoc:
         drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
         followed = lists.flat_map do |own, with|
           chosen = @lists_chosen_at_start[own]

@@ -124,7 +124,8 @@ module VBlank
       # Declare +name+ as a routine of +pool+, working on one instance at a time. Its body is
       # built at the end like any routine's, and is handed the instance the pool is walking
       # when it runs — a routine is emitted once, so that is the only instance it can mean.
-      def declare_instance_routine(pool, name, &block)
+      # Seam between a Pool and the build, behind `pool.func`: declares one of its routines. Documented on `pool.func`.
+      def declare_instance_routine(pool, name, &block)  # :nodoc:
         pool.instance_routines << name
         instance_routines[name] = pool
         declare_func(name, wrote: "#{pool.name}.func :#{name}") do
@@ -136,12 +137,14 @@ module VBlank
       # A walk of +pool+ wrote down which instance it is on. Kept so the writes can be taken
       # out again if no routine of that pool ever reads them, and so the calls inside the walk
       # can be told from the calls outside it.
-      def record_walk_instance_writes(pool, *nodes)
+      # Seam between a Pool and the build, behind `pool.func`: remembers where a walk is. Documented on `pool.func`.
+      def record_walk_instance_writes(pool, *nodes)  # :nodoc:
         (@pool_walks ||= []) << [pool, nodes]
       end
 
       # A fresh variable for one walk to keep the instance the walk around it was on.
-      def pool_walk_scratch_var
+      # Seam between a Pool and the build, behind `pool.func`: tells a routine which instance it ran for. Documented on `pool.func`.
+      def pool_walk_scratch_var  # :nodoc:
         @pool_walk_seq = @pool_walk_seq.to_i + 1
         :"__pool_walk_#{@pool_walk_seq}"
       end
@@ -149,7 +152,8 @@ module VBlank
       # Give +pool+ a hidden slot per instance holding which other list of colours it is drawn
       # with, the first time one is told to draw with one (see Pool#draw_with). Every slot
       # starts in its own colours.
-      def make_pool_recolorable(pool)
+      # Hook behind `draw_with` on a pool: gives it somewhere to keep its choice of colours. Documented on `colors` and `draw_with`.
+      def make_pool_recolorable(pool)  # :nodoc:
         at_boot(Build.list_new(pool.colors_list, pool.capacity, width: :byte, fast: pool.fast,
                                                                 full_of: Build::NO_RECOLOR))
         # ...and each of the pool's sprites reads the colours copied for its place in the
@@ -757,7 +761,8 @@ module VBlank
       # of it emptied and filled again the way #setup_pool_storage fills it, and its counters
       # back at nought. A save_data record's `reset` runs this for a pool it keeps, since
       # emptying a pool's lists the way a kept list is emptied would leave it with no slots.
-      def pool_refill_nodes(pool)
+      # Hook behind a `save_data` record's `reset` of a kept pool, documented on `save_data`.
+      def pool_refill_nodes(pool)  # :nodoc:
         lists, vars = pool.saved_lists_and_vars
         index = pool.part_name(:refill)
         ensure_var(index)
