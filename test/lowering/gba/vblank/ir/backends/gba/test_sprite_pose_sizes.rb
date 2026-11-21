@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A SPRITE'S POSES ARE STORED AT THEIR OWN SIZE, not at the biggest one's.
+# A sprite's poses are stored at their own size, not at the biggest one's.
 #
 # Poses are drawn on one canvas, big enough for the widest frame — a sword swing, a
 # jump — and most frames use a fraction of it. Stored at the canvas's size the rest is
@@ -91,7 +91,7 @@ class TestSpritePoseSizes < Minitest::Test
                     "six poses of 24x32 art on a 64x64 canvas should cost well under half"
   end
 
-  # A CYCLE THAT DID NOT FIT NOW DOES, which is the whole reason this was wanted: twenty
+  # A cycle that did not fit now does, which is the whole reason this was wanted: twenty
   # poses on a 64x64 canvas want 40K of the console's 32K and the build refuses them.
   def test_a_long_cycle_that_did_not_fit_now_builds
     twenty = Array.new(20) { |k| [24, 32, 8 + (k % 3), 8] }
@@ -100,22 +100,22 @@ class TestSpritePoseSizes < Minitest::Test
                     "twenty poses must fit the console's sprite memory"
   end
 
-  # THE PICTURE IS UNCHANGED, which is the whole bargain. The interpreter draws from the
+  # The picture is unchanged, which is the whole bargain. The interpreter draws from the
   # untrimmed image and knows nothing about any of this, so the console matching it over
   # a played cycle is the proof that trimming moved nothing.
   def test_a_cycle_of_alike_poses_draws_the_same_on_both_backends
     assert_backends_agree(program(ALIKE), frames: 24)
   end
 
-  # ...and the same for poses that trimmed to DIFFERENT sizes, where the size, the tiles
+  # ...and the same for poses that trimmed to different sizes, where the size, the tiles
   # and the offset all change with the pose and are read from the table.
   def test_a_cycle_of_differently_sized_poses_draws_the_same_on_both_backends
     assert_backends_agree(program(VARIED), frames: 24)
   end
 
-  # THE TWO PATHS ARE REALLY TWO PATHS, pinned by what they cost rather than by reading
+  # The two paths are really two paths, pinned by what they cost rather than by reading
   # the build's own bookkeeping. Poses of different sizes cannot all be the biggest one's
-  # size, so the varied cycle must come out SMALLER than six copies of its largest pose —
+  # size, so the varied cycle must come out smaller than six copies of its largest pose —
   # which is only true if each was stored at its own size.
   #
   # Without this, a change that quietly sent everything down the uniform path would
@@ -132,9 +132,9 @@ class TestSpritePoseSizes < Minitest::Test
     assert_backends_agree(program(blank), frames: 12)
   end
 
-  # A SPRITE STORED THE BIG WAY POINTS AT THE RIGHT POSE. A picture drawn from more than
+  # A sprite stored the big way points at the right pose. A picture drawn from more than
   # fifteen colours keeps a whole byte a pixel, so one of its 8x8 tiles is 64 bytes —
-  # while a tile NUMBER counts in 32s whichever way the picture is stored. So the step
+  # while a tile number counts in 32s whichever way the picture is stored. So the step
   # from one pose to the next is two per tile there and one in every other sprite in the
   # suite, and counting tiles instead of those units silently draws the wrong pose.
   INKS = (0...20).map { |i| VBlank::Graphics::Color.rgb(i + 5, 31 - i, 3) }

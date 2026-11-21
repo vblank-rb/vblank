@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHERE A SEE-THROUGH LAYER'S WORKED-OUT AMOUNTS ARE TURNED INTO WHAT THE DISPLAY IS TOLD.
+# Where a see-through layer's worked-out amounts are turned into what the display is told.
 #
 # The display is told the two amounts in the gap after each frame, so the whole of the next
 # picture is mixed at one pair. Turning a pair of percentages into the display's sixteenths
@@ -75,7 +75,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
 
   private def frame_size(amounts) = placement_of(title_and_play(amounts)).sizes[FRAME]
 
-  # THE ONE THAT MATTERS. However the title works its amounts out, the game loop's body is
+  # The one that matters. However the title works its amounts out, the game loop's body is
   # the same size: the working out is code of its own.
   def test_how_the_title_works_out_its_amounts_does_not_grow_the_game_loop
     assert_equal frame_size(SIMPLE), frame_size(INVOLVED)
@@ -154,7 +154,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
     assert_empty short, "came out bigger than charged: #{short}"
   end
 
-  # WHILE PLAY IS UP, THE TITLE'S AMOUNTS ARE NOT WORKED OUT AT ALL. Nothing play draws is
+  # While play is up, the title's amounts are not worked out at all. Nothing play draws is
   # mixed by them, so working them out every play frame would be the title's arithmetic paid
   # for by play, from the cartridge. Here the game loop moves the step on every frame
   # whatever is up, so a routine still at work in play would keep changing what the display
@@ -209,7 +209,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
     assert_equal 1, in_play.uniq.size, "in play nothing works the title's pair out"
   end
 
-  # ...NOR IS THE ROUTINE THAT WOULD WORK THEM OUT EVEN CALLED: on play's frames the gap before
+  # ...NOR is the routine that would work them out even called: on play's frames the gap before
   # each frame asks which screen is up and goes past the call — from the first frame, since a
   # scene says which screen it is before the gap after its first pass. Measured on the game that
   # never walks back to the title by itself.
@@ -228,7 +228,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
     assert_operator time_in_rays(:title), :>, 0
   end
 
-  # THE PICTURE DOES NOT CHANGE, frame by frame: the step moves every frame on the title, so
+  # The picture does not change, frame by frame: the step moves every frame on the title, so
   # any frame of lag in the pair would show, and the title comes back after play.
   def test_the_console_mixes_each_frame_at_that_frames_pair
     [2, 3, 4, 5, 8, 13, 14, 15].each { |f| assert_backends_agree(title_and_play(INVOLVED), frames: f) }
