@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE CONSOLE LENDS ITS GROUPS OF SPRITE COLOURS to the lists things on screen are wearing.
+# The console lends its groups of sprite colours to the lists things on screen are wearing.
 # A game whose things between them wear more lists than the console has groups still fits,
 # so long as no more are worn at once than the groups left over: a list is given a group the
 # frame something on screen first wears it, and the group goes back once nothing does. Only
@@ -131,7 +131,7 @@ class TestSpriteBorrowedColors < Minitest::Test
     [5, 9, 16, 23].each { |frames| assert_backends_agree(switching, frames: frames) }
   end
 
-  # EIGHT SPRITES EACH STEPPING THROUGH LISTS OF THEIR OWN, a list a frame, the way a fade done with
+  # Eight sprites each stepping through lists of their own, a list a frame, the way a fade done with
   # lists steps: every group is worn on every frame, and each sprite takes the group it wore the
   # frame before, so each wears its own colours on every frame.
   def test_eight_sprites_stepping_their_own_lists_every_frame_wear_their_own

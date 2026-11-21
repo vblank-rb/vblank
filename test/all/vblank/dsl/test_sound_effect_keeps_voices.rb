@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SOUND EFFECT THAT KEEPS ITS VOICES TO ITS END. A silent note or a rest gives a voice back at once,
+# A sound effect that keeps its voices to its end. A silent note or a rest gives a voice back at once,
 # which is right for a game written here. A cartridge's own sound engine can keep the voice until
 # the effect itself ends, so a song note falling in that silence is lost, and `keeps_voices: true`
 # on the effect's Score says so.
