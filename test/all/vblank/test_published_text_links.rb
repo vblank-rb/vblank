@@ -44,6 +44,12 @@ class TestPublishedTextLinks < Minitest::Test
     assert_empty found, "These verb and group comments point at the notes folder:\n  #{found.join("\n  ")}"
   end
 
+  def test_no_handle_comment_names_the_notes_folder
+    found = handle_comments.flat_map { |where, lines| lines_naming_notes_folder(where, lines) }
+
+    assert_empty found, "These handle comments point at the notes folder:\n  #{found.join("\n  ")}"
+  end
+
   private def lines_naming_notes_folder(where, lines)
     author_lines(lines).map(&:first).select { |line| line.match?(NOTES_FOLDER) }.map { |line| "#{where}): #{line[0, 70]}" }
   end
