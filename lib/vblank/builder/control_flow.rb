@@ -90,16 +90,16 @@ module VBlank
       # call and why moving one is just changing its position — see {Sprite} and
       # Builder#sprite.
       #
-      # The repaint is two passes over ALL sprites: erase every one from where it was,
+      # The repaint is two passes over all sprites: erase every one from where it was,
       # THEN draw every one where it is now. If instead each sprite erased-and-drew
       # before the next, a sprite drawn first would capture the one behind it that
       # hadn't been erased yet — and smear a copy of it across the screen when it
       # later moved. Erasing everyone first means each captures clean background, so
       # sprites can overlap (a hero touching a coin) without leaving trails.
       #
-      # THE TWO PASSES RUN IN OPPOSITE ORDERS, and that is not a detail. A sprite
-      # remembers what was under it when it drew, so where two overlap the FRONT one's
-      # memory holds the BACK one's pixels. Putting them back has to undo the drawing
+      # The two passes run in opposite orders, and that is not a detail. A sprite
+      # remembers what was under it when it drew, so where two overlap the front one's
+      # memory holds the back one's pixels. Putting them back has to undo the drawing
       # exactly, front first — otherwise the front one's restore paints those borrowed
       # pixels over background the back one has already cleaned, and nothing repaints
       # them. The stale copy then sits there for the rest of the game.
@@ -108,7 +108,7 @@ module VBlank
         # The two passes go straight after the wait, and are put there at finalize (see
         # Sprites#finalize_sprite_repaints): a sprite declared inside a scene is not known
         # yet, since a scene's body is built after this loop, and it has to take its place
-        # in both passes among the ones that are. What IS settled here is which of the
+        # in both passes among the ones that are. What is settled here is which of the
         # sprites declared above the loop this boundary repaints — the ones declared by now.
         @sprite_repaints << [wait_node, @sprites.dup]
         # Hardware sprites need no erase pass — the console recomposites the whole
@@ -147,7 +147,7 @@ module VBlank
       # ```ruby
       # game_loop do
       #   x += 1 if held(:right)
-      #   draw_text "HELLO", x, 80, :white
+      #   draw_text "hello", x, 80, :white
       # end
       # ```
       #
@@ -200,7 +200,7 @@ module VBlank
         ensure_var(count)
         i = DSL::Value.new(self, Build.var_ref(index), name: index)
         # A Condition carries its own node; anything else is an ordinary value, where not-zero
-        # means stop. Handing one here USES it, the same as branching on it with `if` — the
+        # means stop. Handing one here uses it, the same as branching on it with `if` — the
         # guardrail that catches a comparison nobody acted on must not call this one an orphan.
         leave =
           if stop_when.is_a?(DSL::Condition)
@@ -321,7 +321,7 @@ module VBlank
       #--
       # A very slow pass is capped, so a game can never be asked to catch up half a second inside
       # one already-late frame. These bodies run in the gap between frames, which on a screen the
-      # display reads directly is also the only safe moment to DRAW. A body that only moves things
+      # display reads directly is also the only safe moment to draw. A body that only moves things
       # is fine there however long it takes; the risk belongs to drawing, and drawing too much for
       # that gap is already what the frame budget warns about wherever it is written. A game on the
       # tear-free screen has no deadline at all: it is writing to the page nobody is looking at.
@@ -482,12 +482,12 @@ module VBlank
         [Build.add(anim[:tick], Build.int(1)), step]
       end
 
-      # STEP EVERY FLIPBOOK ALONG ITS BEAT, straight after each frame's sprites are drawn, so
+      # Step every flipbook along its beat, straight after each frame's sprites are drawn, so
       # the next frame shows the next picture: every animated sprite, and every posed pool —
       # which keeps one counter for the whole set and a frame per instance, so a frame that
       # is not a step costs one compare and a step walks the slots.
       #
-      # IT HAS TO BE NOW rather than where the frame boundary was written. A scene declares
+      # It has to be now rather than where the frame boundary was written. A scene declares
       # its own sprites and pools inside its body, and a scene's body is built after the game
       # loop that runs it — so stepped as the boundary was recorded, a flipbook declared in a
       # scene was not known yet and stood on its first picture for ever, with nothing to say

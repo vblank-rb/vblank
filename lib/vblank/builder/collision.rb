@@ -31,7 +31,7 @@ module VBlank
         DSL::Box.new(self, x, y, w, h)
       end
 
-      # TILE COLLISION: the routine that asks a background's grid whether a box is clear of
+      # Tile collision: the routine that asks a background's grid whether a box is clear of
       # its solid tiles, built once for each background-and-box-size that needs one. An
       # internal hook a {HardwareSprite} calls when it is `blocked_by` a background — never
       # written by an author, who writes `blocked_by` and nothing else.
@@ -47,7 +47,7 @@ module VBlank
       # point of it. A mover moves on two axes, so eight movers wrote this out sixteen
       # times; emitted once, eight movers cost eight calls.
       #
-      # WHICH CELLS IT LOOKS AT. A box covers a bounded number of cells whatever the room
+      # Which cells it looks at. A box covers a bounded number of cells whatever the room
       # is made of — a 16x16 box on 8x8 tiles touches at most three columns and three rows
       # — so the samples are its own edges plus every tile boundary in between, worked out
       # here while the program is built. That is why the cost does not grow with the room:
@@ -65,7 +65,7 @@ module VBlank
           build_tile_collision(cells, hit_x, hit_y, hit_w, hit_h, @tile_collisions.size)
       end
 
-      # A BACKGROUND'S WALLS KEPT WHERE THE GAME CAN CHANGE THEM, for one whose cells the game
+      # A background's walls kept where the game can change them, for one whose cells the game
       # changes with set_tile (see Background#record_wall_change): +list+ holds one wall byte a
       # cell of the map showing, and +fresh+ marks whether it holds that map's walls yet. 0 means
       # not yet, and is what the variable holds wherever the background goes up as declared —
@@ -159,7 +159,7 @@ module VBlank
           # alone; every other background's from its walls as declared.
           kept = kept_walls_of(cells)
           record_walls_brought_up(kept) if kept
-          # WHICH ROOM'S WALLS, worked out once for the whole check rather than once per
+          # Which room's walls, worked out once for the whole check rather than once per
           # cell: every sample a mover takes is in the map it is standing in, so the offset
           # to that map's grid is the same for all nine. That is what keeps a background
           # with two hundred rooms the same nine reads as a background with one.

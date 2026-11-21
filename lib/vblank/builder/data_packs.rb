@@ -11,7 +11,7 @@ module VBlank
     # while it is built.
     #
     # ```ruby
-    # pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+    # pack = data_pack from: original, version: "1.0" do |slots|
     #   slots.colors  :palette, at: 0x1000, count: 16
     #   slots.tiles   :walls,   at: 0x1020, count: 2
     #   slots.numbers :speeds,  at: 0x2000, count: 8, width: :byte, signed: false
@@ -30,12 +30,12 @@ module VBlank
     # reads it there. A slot's shape and size are the game's own words in either build, never
     # worked out from the bytes, so nothing the game's code does depends on what the copy holds.
     #
-    # THE GAME HOLDS HANDLES, NEVER BYTES. `pack[:palette]` is a DSL::PackSlot, which gives the slot's
+    # The game holds handles, never bytes. `pack[:palette]` is a DSL::PackSlot, which gives the slot's
     # shape and size and nothing it holds; `image` and `table` take the handle and read the slot
     # themselves (#pack_slot_values). So a game cannot branch on the original's bytes while it is
     # built, and a build that leaves the bytes out changes only what those verbs do with a handle.
     #
-    # TWO WAYS TO BUILD WITH THE PACK.
+    # Two ways to build with the pack.
     #
     # ALL-IN-ONE, the way every build goes unless told otherwise: the pack is made from the copy
     # here, written as its file would be and read back from those bytes, so the game reads exactly
@@ -45,7 +45,7 @@ module VBlank
     # A cartridge is always built this way: a console's cartridge holds its data, and nothing hands
     # a cartridge a file as it starts.
     #
-    # WITH THE PACK LEFT OUT, for a build for a computer told `pack_at_start: true`
+    # With the pack left out, for a build for a computer told `pack_at_start: true`
     # (Cartridge::Options): no copy is read, so the game builds on a machine that has none, and the
     # program holds none of the original's bytes. It reads its pack from a file it is handed as it
     # starts (IR::StartFile). The pack's layout follows from the slots' shapes and sizes alone
@@ -61,9 +61,9 @@ module VBlank
     # see-through pixels in it (a game that wants a tighter box gives `hitbox:`). What a game cannot do
     # with a slot this way yet is refused in plain words, naming the line.
     #
-    # A SLOT THE ORIGINAL KEEPS PACKED has no `at:`, and the game's own unpacking routine fills it:
+    # A slot the original keeps packed has no `at:`, and the game's own unpacking routine fills it:
     #
-    #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+    #   pack = data_pack from: original, version: "1.0" do |slots|
     #     slots.colors :palette, at: 0x1000, count: 16
     #     slots.tiles  :walls, count: 40
     #     slots.fill_from_copy do |copy, pack|
@@ -88,7 +88,7 @@ module VBlank
       # with no copy stops here and says what to set, unless the build leaves the pack out.
       #
       # ```ruby
-      # pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+      # pack = data_pack from: original, version: "1.0" do |slots|
       #   slots.colors :palette, at: 0x1000, count: 16
       # end
       # ```
@@ -179,7 +179,7 @@ module VBlank
 
       private
 
-      # HOW THE COPY IS READ: the original's platform, and the packed formats its copy offers, the
+      # How the copy is read: the original's platform, and the packed formats its copy offers, the
       # platform's (Original::Packing.formats_for) and then the port's own.
       CopyReading = Data.define(:platform, :formats)  # :nodoc:
 
@@ -206,7 +206,7 @@ module VBlank
                              "needs a name of its own. Give the port's format another name in `unpacks`."
       end
 
-      # THE PACK LEFT OUT (see the top of this file): the slots named, the copy never read, and the
+      # The pack left out (see the top of this file): the slots named, the copy never read, and the
       # program told the file it is handed as it starts, a pack of these slots for +version+.
       def declare_pack_read_at_start(from, version, reading)
         refuse_pack_left_out_of_cartridge!
@@ -372,7 +372,7 @@ module VBlank
       end
 
       # `image :walls, width: 64, height: 64, colors: [...], places: pack[:walls], see_through: 255`:
-      # A PICTURE OF UP TO 256 COLOURS, its places one byte a pixel from a slot of pixels, row by
+      # a picture of up to 256 COLOURS, its places one byte a pixel from a slot of pixels, row by
       # row, and its colours the game's own list (or a slot of colours). Unlike a picture of up to
       # sixteen colours, place 0 is a colour like any other, and the place +see_through+ names, if
       # any, is not drawn. Built all-in-one it is a picture of colours, as one given `data:` is, so
@@ -534,7 +534,7 @@ module VBlank
       # Whether the picture +name+ is read from the file the program is handed as it starts.
       def picture_from_start_file?(name) = @pictures_from_start_file&.key?(name) || false
 
-      # A PIECE OF A PICTURE READ FROM THE FILE, a picture of its own: +piece+ is +width+ pixels of
+      # A piece of a picture read from the file, a picture of its own: +piece+ is +width+ pixels of
       # every row of +source+ from +left+ on, as a font cut from a strip of pictures cuts each
       # letter (PictureFonts#declare_strip_piece). The build holds none of the source's pixels, so
       # nothing is cut here: the piece reads the file as the source does, from its own part of it.
@@ -593,7 +593,7 @@ module VBlank
                              "tiles of #{side}x#{side} pixels. Make the picture #{places.across * side}x#{places.down * side}."
       end
 
-      # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy
+      # The unpacking program (Original::Unpacking says why it is a program of its own): the copy
       # read from the file the program is handed as it starts, the pack's bytes as one list, each of
       # +slots+ copied as it is or filled by +routines+, the game's `slots.fill_from_copy` blocks
       # (DSL::PackSlots::Routine) run one after another as game code on a builder of its own. A
@@ -615,7 +615,7 @@ module VBlank
       # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
       #
-      # A PART IN PIECES (Original::PiecedUnpacking) has its block built once, handed the piece's
+      # A part in pieces (Original::PiecedUnpacking) has its block built once, handed the piece's
       # number as a game value: the whole routine plays it in a loop over its pieces, each in turn,
       # so its code is in the program once, as a part that loops over them itself is. +piece+ (a
       # PartPieces) builds the program of one part's pieces instead, which plays the one piece its
@@ -707,7 +707,7 @@ module VBlank
         end
       end
 
-      # A PART'S PIECES' PROGRAM, to build (#unpacking_program's +piece+): the +count+ pieces of the
+      # A part's pieces' program, to build (#unpacking_program's +piece+): the +count+ pieces of the
       # part, which writes the slots in pieces named +slot_names+.
       PartPieces = Data.define(:slot_names, :count) do  # :nodoc:
         # The slots the program holds playing piece +number+, of +slots+ (the pack's): that piece of
@@ -774,7 +774,7 @@ module VBlank
                              "cannot read a slot in pieces. To fix this, keep the frames in a slot that is not in pieces."
       end
 
-      # THE ROUTINE SPLIT FOR SEVERAL WORKERS (Original::PiecedUnpacking), or nil where no part of
+      # The routine split for several workers (Original::PiecedUnpacking), or nil where no part of
       # +routines+ is in pieces: the parts not in pieces as one program, with the frames, and the
       # pieces of each part in pieces as a program that plays any one of them. Built as
       # #unpacking_program builds the whole routine, from the same +bytes+ or +release+.
@@ -818,7 +818,7 @@ module VBlank
         Cartridge::Options.new(console: @build_options.console, variant: @build_options.variant, for_computer: true)
       end
 
-      # HOW FAR THE BAR IS, BY BYTES: the bytes written so far (+done+, the routine's count) of all
+      # How far the bar is, by bytes: the bytes written so far (+done+, the routine's count) of all
       # the +slots+ hold, for a pack whose slots name no cost. Both are shifted down before the count
       # is multiplied by the bar's width, by as little as keeps the product inside 32 bits, so a
       # pack of many megabytes works the same way and a small one is exact to the pixel.
@@ -832,7 +832,7 @@ module VBlank
         end
       end
 
-      # HOW FAR THE BAR IS, BY WORK: each slot holds a share of the bar as its bytes times its cost
+      # How far the bar is, by work: each slot holds a share of the bar as its bytes times its cost
       # are of the whole pack's (Original::Slot#cost), and fills its share as its own bytes are
       # written (+slot_bytes_done+, the routine's list of them by slot). So a slot a routine renders
       # slowly moves the bar slowly and a quick copy quickly, and the bar keeps one pace. A slot's
@@ -895,7 +895,7 @@ module VBlank
         kept.pack_of_routine(whole, sha1: sha1, build_version: build_version, &play)
       end
 
-      # THE ROUTINE'S PARTS (Original::UnpackingParts), for the pack cache: each part of
+      # The routine's parts (Original::UnpackingParts), for the pack cache: each part of
       # +routines+ built alone after the slots copied as they are, to record which slots it reads
       # and writes, which names it holds and which of those the build made unique, and a way to
       # build the program of any of the parts.
@@ -1020,7 +1020,7 @@ module VBlank
         handle.bank? ? values.slice(handle.first_color, handle.color_count) : values
       end
 
-      # THE TILES OF A SLOT OF TILES, from the tile +tiles+ (a DSL::PackSlot) starts at on, each a
+      # The tiles of a slot of tiles, from the tile +tiles+ (a DSL::PackSlot) starts at on, each a
       # list of its 64 places row by row, for a verb that draws the original's own tiles by number
       # (PackBackgrounds, PackPoses): an Original::SlotTiles, which reads a tile when it is first
       # asked for. +subject+ names the line for the error.
@@ -1030,7 +1030,7 @@ module VBlank
         pack_slot_tiles(tiles.layout).from(tiles.tile_index || 0)
       end
 
-      # READING A SLOT ONCE A BUILD. Every verb given a handle reads its slot here, and a game names
+      # Reading a slot once a build. Every verb given a handle reads its slot here, and a game names
       # one slot in many lines: a pose for each frame of a sprite, an image for each tile, a bank of
       # colours for each list. So a slot is read once and kept for the rest of the build, rather
       # than read again for each line, which made a build's cost lines times slot size.
@@ -1110,7 +1110,7 @@ module VBlank
         pack_colors_read_at_start(slot)
       end
 
-      # THE COLOURS OF A LIST DECLARED FROM THE PACK (`colors :name, pack[:palette].bank(2)`): what
+      # The colours of a list declared from the pack (`colors :name, pack[:palette].bank(2)`): what
       # +slot+ (a DSL::PackSlot on a slot of colours, or on one bank of it) holds, in the slot's
       # order, for `colors` to keep as it keeps colours written in the game.
       #
@@ -1128,7 +1128,7 @@ module VBlank
         pack_slot_values(slot, :colors, where)
       end
 
-      # THE SAME LIST WITH THE PACK LEFT OUT: the build holds none of the original's colours, so
+      # The same list with the pack left out: the build holds none of the original's colours, so
       # the list holds a marker for each (IR::StartFile, "MARKERS"), which names where the colour
       # is in the file the program is handed as it starts. Everything that takes a list's name
       # takes this one, since a marker goes wherever a colour goes: into a picture drawn in the
@@ -1159,7 +1159,7 @@ module VBlank
       # A colour a list holds, as the build keeps it: its fifteen bits, or the marker it is.
       def list_color(color) = IR::StartFile.marker?(color) ? color : Graphics::Color.resolve(color)
 
-      # ONCE THE WHOLE PROGRAM IS DECLARED: tell the program every colour it reads from the file as
+      # Once the whole program is declared: tell the program every colour it reads from the file as
       # it starts, in the order the markers count them.
       def finalize_start_file_colors
         return unless @start_file_colors
@@ -1187,7 +1187,7 @@ module VBlank
                              "one bank of the slot, like `pack[:#{slot.layout.name}].bank(0, size: #{most})`."
       end
 
-      # THE COLOUR OF A BACKDROP TAKEN FROM THE PACK (`screen :tiled, backdrop: pack[:palette]`): the
+      # The colour of a backdrop taken from the pack (`screen :tiled, backdrop: pack[:palette]`): the
       # colour at +place+ of +slot+ (a DSL::PackSlot on a slot of colours, or on one bank of it),
       # the first when +place+ is nil, as a `screen` keeps a backdrop's colour.
       #
@@ -1202,7 +1202,7 @@ module VBlank
         Graphics::Color.resolve(pack_slot_values(slot, :colors, PACK_BACKDROP_LINE).fetch(place)) & 0x7FFF
       end
 
-      # THE SAME BACKDROP WITH THE PACK LEFT OUT: where the colour is in the file the program is
+      # The same backdrop with the pack left out: where the colour is in the file the program is
       # handed as it starts (an IR::StartFile::Color), which a `screen` keeps in place of the
       # colour. The build holds none of the original's colours, and each backend that plays such a
       # program reads this one as it starts. The slot's size is the game's own word, so a place

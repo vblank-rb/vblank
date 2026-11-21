@@ -26,7 +26,7 @@ module VBlank
       # :recycle_oldest reuses the longest-lived instance so a new one always appears.
       POOL_FULL_POLICIES = %i[drop recycle_oldest].freeze  # :nodoc:
 
-      # THE MOST OF THE QUICK MEMORY ONE POOL MAY TAKE. The console has 32KB of it, and it is
+      # The most of the quick memory one pool may take. The console has 32KB of it, and it is
       # also where the code a frame spends its time in is kept, so a pool that took most of
       # it would push that code out to the cartridge and slow the whole game, with nothing
       # in the program to say why. A pool bigger than this is kept in the console's other
@@ -104,7 +104,7 @@ module VBlank
       # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
       #   line that still gives one.
       #--
-      # WHICH OF THE CONSOLE'S TWO WORK MEMORIES A POOL IS KEPT IN is the build's to decide, as it is
+      # Which of the console's two work memories a pool is kept in is the build's to decide, as it is
       # for a list: the quick one for what a frame touches while there is room, the roomier one for
       # the rest. A pool bigger than POOL_MAX_QUICK_BYTES cannot share the quick memory, so it is
       # kept in the roomier one whatever a frame does with it, and `fast: true` on such a pool is a
@@ -195,7 +195,7 @@ module VBlank
       # Every pool the game declared, in the order it declared them.
       def declared_pools = @declared_pools ||= []
 
-      # A SLOT OF TWO BYTES READ BACK WITH NO SIGN, 0 to 65535: `width: :unsigned_half`, for a
+      # A slot of two bytes read back with no sign, 0 to 65535: `width: :unsigned_half`, for a
       # place kept in 256ths of a pixel, which reaches past the 32767 a `:half` holds and never
       # goes below nought. Nothing in a backend knows this width. The list is a list of whole words,
       # and once the game is written every number put into it is ANDed with 65535 first
@@ -285,7 +285,7 @@ module VBlank
       # Which pool each instance routine belongs to.
       def instance_routines = @instance_routines ||= {}
 
-      # A WALK THAT NOBODY ASKED TO BE TOLD ABOUT COSTS NOTHING. Writing down which instance a
+      # A walk that nobody asked to be told about costs nothing. Writing down which instance a
       # walk is on is only worth anything to a routine that reads it, so a pool with no routine
       # of its own has those writes taken out again here — a pool of sixty bullets drawn inline
       # is left exactly as it was before any of this.
@@ -355,7 +355,7 @@ module VBlank
           "routine of `pool :#{pool.name}`."
       end
 
-      # WHAT A POOL'S INSTANCES LOOK LIKE, worked out once for the whole pool: the
+      # What a pool's instances look like, worked out once for the whole pool: the
       # pictures they can show, how a slot's own number picks one of them, and the
       # collision box they all share. Nil for a pure-data pool.
       #
@@ -490,7 +490,7 @@ module VBlank
         refuse_field_named_like_instance_method!(name, fields)
       end
 
-      # HOW MUCH MEMORY A POOL TAKES, counted AS IT IS BUILT: every list it is made from, each
+      # How much memory a pool takes, counted as it is built: every list it is made from, each
       # exactly `capacity` slots long and as wide as it was declared. Those are the lists
       # #pool_lists and #pool_stacking_lists hand to the build, read here rather than added up
       # a second way — a count kept on its own had drifted until it refused a pool a third the
@@ -505,7 +505,7 @@ module VBlank
         pool.capacity * lists.sum { |_, width| Build::ELEMENT_BYTES.fetch(width) }
       end
 
-      # A POOL BIGGER THAN THE ROOMIEST MEMORY FITS NOWHERE. A pool is kept whole in one
+      # A pool bigger than the roomiest memory fits nowhere. A pool is kept whole in one
       # memory (on the Advance, one over the quick memory's ceiling goes in the roomier one),
       # so this is the most one pool can be, whatever else the game declares. It is refused
       # here, at the line that wrote it and by its own name: the whole-program check asks only
@@ -522,7 +522,7 @@ module VBlank
               "fields. Or give fields a smaller width, like `widths: { hp: :byte }`."
       end
 
-      # A POOL THAT INSISTS ON THE QUICK MEMORY AND IS TOO BIG TO SHARE IT. `fast: true` is
+      # A pool that insists on the quick memory and is too big to share it. `fast: true` is
       # the game declaring it knows better than the build where the pool goes, so the build does
       # not quietly put it somewhere else: it says why not, and what gives the pool room.
       def refuse_oversized_fast_pool!(pool, field_count, bytes)
@@ -536,12 +536,12 @@ module VBlank
               "Or use fewer fields. Or give fields a smaller width, like `widths: { hp: :byte }`."
       end
 
-      # EVERY LIST A POOL KEEPS ITS INSTANCES IN, and how wide a slot of each is, in the
+      # Every list a pool keeps its instances in, and how wide a slot of each is, in the
       # order they are made: list => width.
       #
       # A field is as wide as the game declared, a whole word unless `widths:` narrowed it.
       #
-      # THE POOL'S OWN BOOKKEEPING IS NARROWED WITHOUT BEING ASKED, because unlike a field
+      # The pool's own bookkeeping is narrowed without being asked, because unlike a field
       # the framework knows exactly what these hold. The active column is a yes or a no, so
       # it is a byte whatever the pool is; the free stack holds slot numbers, so it is as
       # wide as the largest slot number needs and no wider. Together they are two of a
@@ -563,7 +563,7 @@ module VBlank
         lists
       end
 
-      # WHAT EACH OF A POOL'S LISTS HOLDS AT POWER-ON, for the ones made full of one value: a
+      # What each of a pool's lists holds at power-on, for the ones made full of one value: a
       # nought in every field, the active column and the poses, and "no slot" in both links of
       # the chain. The free stack is full of the slot numbers, a different one each, so it is
       # filled a slot at a time (see #build_pool_fill); the removals not yet taken out of the
@@ -577,7 +577,7 @@ module VBlank
         starts
       end
 
-      # THE LISTS A DRAWN POOL'S THINGS ARE COPIED INTO EACH FRAME, in the order they are
+      # The lists a drawn pool's things are copied into each frame, in the order they are
       # drawn, as list => width: where each is, at the width its x and y fields have, and
       # which picture when there is a choice.
       def pool_stacking_lists(pool, widths)
@@ -610,7 +610,7 @@ module VBlank
               "Use a different name for the field."
       end
 
-      # `pool` HAS WORDS OF ITS OWN — facing:, rate:, fast: and the rest — and a field is written
+      # `pool` has words of its own — facing:, rate:, fast: and the rest — and a field is written
       # the same way, so a field spelled like one of them is taken for the pool's word. Most of
       # them say so where they are checked. These three did not: a number for facing: stopped
       # the build inside the framework, and a rate: with no pictures to step, or a fast: that is
@@ -657,13 +657,13 @@ module VBlank
       end
 
       # Declare one hardware-sprite object for each thing that can be live at once. Each
-      # shows a PLACE IN THE ORDER the things were spawned in, not a slot (see
+      # shows a place in the order the things were spawned in, not a slot (see
       # Pool#stacked_list): it reads the position and picture copied for its place, so
       # present_objects draws the live things oldest in front and hides the sprites left
       # over. The active flag is scene-gated, so a pool declared in a scene only shows while
       # that scene is live.
       #
-      # WHICH PICTURE a thing shows comes out of the pool's own hidden slots the same way
+      # Which picture a thing shows comes out of the pool's own hidden slots the same way
       # its position does: the direction it faces and where it is in its cycle are
       # per-instance, so ten guards face ten ways and do not march in step.
       def setup_pool_art(pool, capacity, art, widths = {}, fast = nil)
@@ -696,7 +696,7 @@ module VBlank
         at_boot(Build.set(pool.stacked_var, Build.int(0)))
       end
 
-      # COPY EACH DRAWING POOL INTO ITS DRAWING ORDER IN THE GAP BEFORE EVERY FRAME, last of
+      # Copy each drawing pool into its drawing order in the gap before every frame, last of
       # everything that runs there and just before the sprites are drawn — so a thing a
       # `once_a_frame` body spawned, moved or removed in that same gap is drawn as it now is.
       #
@@ -733,7 +733,7 @@ module VBlank
       # drawn in, so a scene's first frame is put in order and drawn alike.
       def call_stacking_while_shown(pool) = while_scene_up(pool.scene_gate, Build.call(pool.stacking_routine))
 
-      # THE POOL'S RHYTHM IS SHARED AND ITS PLACE IN THE CYCLE IS NOT, which is what makes
+      # The pool's rhythm is shared and its place in the cycle is not, which is what makes
       # this cheap enough to put on every frame. One counter for the whole pool decides
       # WHEN a step happens; each instance keeps its own frame, so an instance spawned
       # later is at a different point in the same cycle and the pool does not pulse as one.
@@ -782,7 +782,7 @@ module VBlank
 
       public
 
-      # THE POOL AS POWER-ON LEAVES IT, as statements run where they are recorded: every list
+      # The pool as power-on leaves it, as statements run where they are recorded: every list
       # of it emptied and filled again the way #setup_pool_storage fills it, and its counters
       # back at nought. A save_data record's `reset` runs this for a pool it keeps, since
       # emptying a pool's lists the way a kept list is emptied would leave it with no slots.
@@ -807,7 +807,7 @@ module VBlank
 
       private
 
-      # How wide a slot NUMBER has to be for a pool of this size — the free stack and the
+      # How wide a slot number has to be for a pool of this size — the free stack and the
       # chain hold one per entry, and the largest is one less than the capacity. A narrow
       # slot reads back below nothing past half its range (a byte holds -128 to 127), and the
       # chain also holds -1 for "no slot", so a byte serves a pool of up to 128.

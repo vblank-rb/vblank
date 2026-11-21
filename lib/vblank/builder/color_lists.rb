@@ -219,18 +219,18 @@ module VBlank
         start_file_color_marker(made)
       end
 
-      # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
+      # The list the game's backdrop follows: its name, the place of it the backdrop shows, the
       # colour at that place as declared (what the backdrop is at power-on), and the `screen`
       # that named it.
       BackdropList = Data.define(:name, :place, :color, :screen)  # :nodoc:
 
-      # A BACKDROP THAT FADES WITH THE PICTURE. `screen :tiled, backdrop: :screen_colors` names a
+      # A backdrop that fades with the picture. `screen :tiled, backdrop: :screen_colors` names a
       # `colors` list where a colour would go, the way `image ..., colors: :sea` and `draw_with :hurt`
       # name one, and the backdrop is then the list's colour at one place, whatever the list holds:
       # `recolor` it and the backdrop changes on the same frame as every sprite and background
       # drawn with it, through the same tint.
       #
-      # WHY THE FIRST PLACE BY DEFAULT. A list's first place is the one a picture drawn from it does
+      # Why the first place by default. A list's first place is the one a picture drawn from it does
       # not draw — its see-through place — and what shows through a see-through pixel is the
       # backdrop. So a list made for a screen's colours already has a natural home for the colour
       # behind them, and the console games that fade their backdrop keep it just there (a Genesis
@@ -284,7 +284,7 @@ module VBlank
 
       private
 
-      # A BACKGROUND DRAWN WITH A LIST THE GAME CHANGES SHOWS WHAT THE LIST HOLDS, as a sprite
+      # A background drawn with a list the game changes shows what the list holds, as a sprite
       # drawn with it does. The background is told the sets the list can hold, counted as the
       # list counts them, and reads the list's own number for which one it shows (see
       # DSL::Background#follow_changing_list!). So the console writes the background's colours
@@ -298,7 +298,7 @@ module VBlank
       # A background with tiles drawn from a changing list that was never told to draw with it
       # would show the list's power-on colours whatever it holds, so it is refused, naming the list.
       #
-      # A BACKGROUND DRAWN WITH SEVERAL CHANGING LISTS is told all of them at once and keeps no sets:
+      # A background drawn with several changing lists is told all of them at once and keeps no sets:
       # each list's own write changes its tiles (DSL::Background#follow_changing_lists!).
       def link_backgrounds_to_changing_lists
         followers = @changing_color_lists.keys.to_h { |name| [name, @lists_backgrounds_draw_with.fetch(name, [])] }
@@ -327,7 +327,7 @@ module VBlank
         end
       end
 
-      # ONCE THE WHOLE PROGRAM IS DECLARED: tell the list the backdrop follows that it does, so each
+      # Once the whole program is declared: tell the list the backdrop follows that it does, so each
       # backend shows its colour at that place wherever the list is told to hold another set. That
       # write is the list's own, in the gap between frames on the frame the answer changed, so the
       # backdrop changes with the sprites and backgrounds drawn with the list and never apart from
@@ -485,7 +485,7 @@ module VBlank
         end
       end
 
-      # ONCE THE WHOLE PROGRAM IS DECLARED: tell every sprite drawn with a changing list to
+      # Once the whole program is declared: tell every sprite drawn with a changing list to
       # hold the list's name rather than its colours, declare each such list to the
       # backends, and move the writes to the gap between frames.
       #
@@ -515,7 +515,7 @@ module VBlank
         write_changed_colors_between_frames(@changing_color_lists.merge(shared))
       end
 
-      # THE LISTS A SPRITE OF SEVERAL LISTS FOLLOWS (Images#follow_pose_lists), kept on each such
+      # The lists a sprite of several lists follows (Images#follow_pose_lists), kept on each such
       # object only where the game changes the list: a list never told `recolor` holds the colours it
       # was declared with for good, which are the colours its poses were drawn in, so following it
       # is drawing them as drawn and the object names nothing. Those it names apart
@@ -530,7 +530,7 @@ module VBlank
         end.uniq
       end
 
-      # THE LISTS THAT LISTS NEVER IN USE TOGETHER TAKE TURNS IN, from +places+ (see
+      # The lists that lists never in use together take turns in, from +places+ (see
       # #places_for_lists_in_use): shared name -> a ChangingList whose sets are, set by set,
       # the list it holds while that set is in use. Empty for a game that never calls
       # `colors_in_use`.
@@ -572,7 +572,7 @@ module VBlank
         colors + ([0x0000] * (Images::PICTURE_COLORS - colors.length))
       end
 
-      # WHICH SHARED LIST EACH LIST IN A SET IS DRAWN THROUGH: list name -> the shared list's
+      # Which shared list each list in a set is drawn through: list name -> the shared list's
       # name. Empty for a game that never calls `colors_in_use`.
       #
       # The lists are placed scene by scene: the lists only one scene's sprites draw with take
@@ -679,7 +679,7 @@ module VBlank
         end
       end
 
-      # COPY A LIST'S COLOURS IN THE GAP BETWEEN FRAMES, and only on a frame where the answer
+      # Copy a list's colours in the gap between frames, and only on a frame where the answer
       # changed — the same bargain, held in the same two variables, as a background's (see
       # Builder#finalize_background_colors). The gap is what makes the colours change on the
       # frame the sprites' positions and poses do: both are written there.
