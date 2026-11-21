@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT `show` ON A SET OF PICTURE GROUPS REFUSES. It takes the numbers of the groups up from now
+# What `show` on a set of picture groups refuses. It takes the numbers of the groups up from now
 # on, and the build stops at a call that cannot mean anything: more groups than up_together: lets
 # be up at once, none at all, or a number with a fraction, which names some other group.
 class TestPictureGroupsShow < Minitest::Test

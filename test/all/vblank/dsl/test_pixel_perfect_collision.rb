@@ -3,7 +3,7 @@
 require "test_helper"
 
 # Sprite collision is per-pixel by default: `hero.overlaps?(coin)` is true only when
-# their DRAWN pixels actually meet, whatever their shape and whichever animation frame
+# their drawn pixels actually meet, whatever their shape and whichever animation frame
 # is showing. A cheap box test gates it, and `hitbox:` opts out to a plain rectangle.
 # These assert the observable difference through the DSL surface — the case a plain
 # bounding box gets wrong. The same case on the Advance's cartridge, read in the emulator, is in
@@ -55,7 +55,7 @@ class TestPixelPerfectCollision < Minitest::Test
     refute collided?([100, 20], [103, 23]), "the boxes overlap, but the drawn pixels never meet"
   end
 
-  # The same pair, opted out to whole-image boxes, DOES collide — proving the default
+  # The same pair, opted out to whole-image boxes, does collide — proving the default
   # really was looking at the pixels, not the box.
   def test_hitbox_full_falls_back_to_the_box
     assert collided?([100, 20], [103, 23], hitbox: :full),

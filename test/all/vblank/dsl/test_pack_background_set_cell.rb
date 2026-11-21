@@ -6,7 +6,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "differential"
 
-# MADE-UP ORIGINALS WHOSE SCREEN HAS A FONT BESIDE ITS PICTURE, in the layout of the console each
+# Made-up originals whose screen has a font beside its picture, in the layout of the console each
 # is for, and the games that write the font's cells onto the screen with `set_cell`. Each game is
 # handed back with the pack file its build made (nil for a build that leaves its pack out), so the
 # same games are played with the pack left out (test/pack_background_set_cell_at_start_tests.rb).
@@ -39,7 +39,7 @@ module PackBackgroundSetCellGames
   GENESIS_CELL = ->(tile, bank: 0, mirrored: false, upside_down: false) do
     tile | (mirrored ? 1 << 11 : 0) | (upside_down ? 1 << 12 : 0) | (bank << 13) | (1 << 15)
   end
-  # The Genesis keeps its colours in nine bits, high byte first; BANKS are levels it shows exactly.
+  # The Genesis keeps its colours in nine bits, high byte first; banks are levels it shows exactly.
   GENESIS_COLORS = lambda do |levels|
     levels.map { |red, green, blue| (red << 1) | (green << 5) | (blue << 9) }.pack("n*")
   end
@@ -64,7 +64,7 @@ module PackBackgroundSetCellGames
     video[19] = FONT_A
   end.freeze
 
-  # A MADE-UP ORIGINAL KEEPING ITS SCREEN AS THE GAME BOY COLOR DOES, two maps of a byte a cell: the
+  # A made-up original keeping its screen as the Game Boy Color does, two maps of a byte a cell: the
   # tile in its bank of video memory, and the attributes, written here from the Color's hardware
   # (the bank of four colours in bits 0 to 2, the bank of video memory in bit 3). Video bank 0
   # holds the picture's tiles and bank 1 the font, so a font tile is a tile past 255 of the slot.
@@ -133,7 +133,7 @@ module PackBackgroundSetCellGames
     [b.program, b.made_data_pack_file]
   end
 
-  # THE GAME OF THE TESTS on the Color-layout original, its cells in the record's terms: the font's
+  # The game of the tests on the Color-layout original, its cells in the record's terms: the font's
   # three cells told as a range of record numbers, or with +records+ as a list of
   # Original::MapCell::Cell, the cells written in the game given as Cells too, a worked-out
   # letter's Cell holding the tile the game works out.
@@ -146,7 +146,7 @@ module PackBackgroundSetCellGames
     end
   end
 
-  # THE GAME OF THE TESTS TOLD ITS CELLS BY A SLOT OF THE PACK (`set_cells: pack[:changes]`), as a
+  # The game of the tests told its cells by a slot of the pack (`set_cells: pack[:changes]`), as a
   # port whose unpacking works out every cell its screen changes to: `set_cell` names a told cell
   # by its place in the slot, 0 first, so the font's letter is 0, its second letter 1 and its
   # space 2, and a place worked out past the slot's +changes+ (9) leaves the cell alone.
@@ -201,7 +201,7 @@ module PackBackgroundSetCellGames
 
   private def pack_game(...) = pack_game_and_file(...).first
 
-  # THE GAME OF THE TESTS: on its second pass it writes the font's first letter over the picture at
+  # The game of the tests: on its second pass it writes the font's first letter over the picture at
   # (1, 1), written in the game, and its second into the empty cell at (2, 1), worked out from a
   # table and a base as the original works its text out. On pass +blank_at+ it writes the font's
   # space into both. The cell at (0, 0) is written a number the background was not told.
@@ -353,7 +353,7 @@ module PackBackgroundSetCellGames
   end
 end
 
-# A CELL OF A BACKGROUND FROM THE DATA PACK WRITTEN AS THE ORIGINAL'S OWN CELL NUMBER
+# A cell of a background from the data pack written as the original's own cell number
 # (DSL::Background#set_cell), on a made-up original in the layout of the console it is for.
 #
 # A retail game puts words on a screen by storing font cells in the map its picture is in. The
@@ -519,7 +519,7 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
-  # A MAP OF MAP CELLS (Original::MapCell), which a port of a Color game or a computer game writes
+  # A map of map cells (Original::MapCell), which a port of a Color game or a computer game writes
   # from its original's maps, is written in the record's terms: the same text on the same picture
   # shows cell for cell as the Advance original's, whose cells are its console's own numbers.
   def test_text_written_on_a_map_of_map_cells_of_a_color_original_shows_as_the_advances
@@ -546,7 +546,7 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
-  # CELLS TOLD BY A SLOT OF THE PACK, written by their place in it, written in the game and worked
+  # Cells told by a slot of the pack, written by their place in it, written in the game and worked
   # out as it runs: the same text as the Advance original's, and blanked again with the space.
   def test_cells_told_by_a_slot_and_written_by_place_show_as_the_advances
     Dir.mktmpdir do |folder|
@@ -581,7 +581,7 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
-  # MANY LINES WRITING A CELL BY A PLACE THE GAME WORKS OUT, as a port whose one wrapper of
+  # Many lines writing a cell by a place the game works out, as a port whose one wrapper of
   # `set_cell` is written out at every caller: each line keeps its place while it picks the tile,
   # and no longer, so the lines of one routine share where they keep it. Three hundred lines in the
   # game loop and three hundred in a routine it calls draw what their last write to each cell draws,
@@ -596,7 +596,7 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
-  # A PASS THAT WRITES MANY CELLS shows them on the frame the interpreter does: 120 writes in one
+  # A pass that writes many cells shows them on the frame the interpreter does: 120 writes in one
   # pass, 60 in the game loop and 60 in a routine it calls, every frame held to the interpreter's.
   def test_a_pass_writing_many_cells_shows_them_on_the_interpreters_frame
     Dir.mktmpdir do |folder|

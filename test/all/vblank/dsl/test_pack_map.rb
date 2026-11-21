@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A MAP OF THE PACK THAT CARRIES ITS OWN SIZE (`pack[:hall_map].as_map(across: 30)`): the slot, and
+# A map of the pack that carries its own size (`pack[:hall_map].as_map(across: 30)`): the slot, and
 # how many cells a row of it holds, so a background is given the map alone.
 class TestPackMap < Minitest::Test
   private def map_slot(count: 12) = VBlank::DSL::PackSlot.new(layout: VBlank::Original::Slot.map_cells(:hall_map, count: count))
