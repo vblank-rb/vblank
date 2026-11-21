@@ -5,16 +5,16 @@ require "stringio"
 
 # The layer guardrails, as a set.
 #
-# They come in two kinds, and the split is about WHEN the mistake is knowable.
+# They come in two kinds, and the split is about when the mistake is knowable.
 #
 # An argument mistake is wrong the moment it is typed — a layer that is not in the
-# stack, a `layer` block inside another one — so it RAISES where it was written and
+# stack, a `layer` block inside another one — so it raises where it was written and
 # the message names that line. Waiting until the end to mention it would be worse
 # advice at a worse time.
 #
 # A whole-program mistake needs the finished tree. A layer holds nothing only once
 # every declaration in every scene has run, and whether the screen honors the stack
-# depends on the screen mode the program settled on. Those are WARNINGS from the
+# depends on the screen mode the program settled on. Those are warnings from the
 # guardrail pass, and they are advisory: the game builds and runs, and the picture is
 # simply not the one the stack describes.
 #
@@ -174,7 +174,7 @@ class TestLayerGuardrails < Minitest::Test
   # --- routines: the layer cannot reach the body ---
   #
   # A routine's body is built after the `layer` block has closed, so a declaration in it
-  # would quietly get no depth. What is refused is that DECLARATION, not the routine —
+  # would quietly get no depth. What is refused is that declaration, not the routine —
   # see the tests further down for why the difference is the whole design.
 
   def test_a_sprite_declared_in_a_func_in_a_layer_is_refused_and_says_which_way_round_works
@@ -234,7 +234,7 @@ class TestLayerGuardrails < Minitest::Test
     assert_match(/A background declared inside `once_a_frame`/, error.message)
   end
 
-  # A scene is refused where it is WRITTEN, whatever it turns out to declare, and the
+  # A scene is refused where it is written, whatever it turns out to declare, and the
   # reason is different in kind: not that the layer cannot reach the body, but that a
   # state of the game holds things at many depths and a layer is one.
   def test_a_scene_inside_a_layer_is_refused_for_holding_many_depths
@@ -250,10 +250,10 @@ class TestLayerGuardrails < Minitest::Test
 
   # --- routines that must go on working, which is why the rule is on the hazard ---
   #
-  # `pulse`, `camera_follows`, `fade_out` and `shake_screen` are all built on the PUBLIC
+  # `pulse`, `camera_follows`, `fade_out` and `shake_screen` are all built on the public
   # `once_a_frame`, so a rule that refused the verb could not tell a pack from an author
   # and would refuse `pulse coin` on the line after the coin — exactly where a game
-  # writes it. Asking instead what the body DECLARED lets every one of them through,
+  # writes it. Asking instead what the body declared lets every one of them through,
   # because a per-frame body is behavior and puts nothing in the picture.
 
   # Written as the source of the call rather than as a block that makes it. A block carries
@@ -352,7 +352,7 @@ class TestLayerGuardrails < Minitest::Test
   end
 
   # Text is the one verb whose nature changes with the screen, so its error has to say
-  # which of the two the author is in — the same verb IS layerable on a tiled screen.
+  # which of the two the author is in — the same verb is layerable on a tiled screen.
   def test_bitmap_text_inside_a_layer_is_refused_and_names_the_screen_kind
     error = assert_raises(ArgumentError) do
       built do
@@ -455,7 +455,7 @@ class TestLayerGuardrails < Minitest::Test
     assert_match(/:ui holds nothing/, finding.message)
   end
 
-  # A layer a sprite is only ever MOVED into — the stairs behind every background — holds
+  # A layer a sprite is only ever moved into — the stairs behind every background — holds
   # it while it is there, so it is not empty.
   def test_a_layer_a_sprite_can_be_put_in_is_not_empty
     found = findings(Checks::LayerHoldsNothing) do
@@ -506,7 +506,7 @@ class TestLayerGuardrails < Minitest::Test
     }
   end
 
-  # A layer can earn its place by being the LINE an effect sits at: `fade under: :cut`
+  # A layer can earn its place by being the line an effect sits at: `fade under: :cut`
   # keeps everything from :cut forward, so :cut decides what the fade reaches without
   # holding anything itself.
   def test_a_layer_used_only_as_the_line_for_a_fade_is_in_use
@@ -542,7 +542,7 @@ class TestLayerGuardrails < Minitest::Test
 
   # --- a stack the screen does not honor ---
 
-  # SPRITES ARE NOT WARNED ABOUT ANY MORE, because the picture is now right: the frame
+  # Sprites are not warned about any more, because the picture is now right: the frame
   # boundary repaints them in stack order. Warning here would be a false alarm, so the
   # test that used to demand one now demands silence — and test_layers.rb asserts the
   # pixel that proves it.
@@ -582,7 +582,7 @@ class TestLayerGuardrails < Minitest::Test
   end
 
   # A background paints once, where it is declared, and every sprite is painted over it
-  # every frame after that. So no layer can put a background in FRONT of a sprite here,
+  # every frame after that. So no layer can put a background in front of a sprite here,
   # and this is the case the sprite fix does not reach.
   def test_a_bitmap_background_put_in_front_of_a_sprite_is_warned_about
     finding = only_finding(Checks::StackNotHonored) do
@@ -598,7 +598,7 @@ class TestLayerGuardrails < Minitest::Test
     assert_match(/:bg/, finding.message)
   end
 
-  # The finding three tests share. `built` runs its block with the BUILDER as `self`, so
+  # The finding three tests share. `built` runs its block with the builder as `self`, so
   # the setup has to be handed the builder rather than called bare — a bare call would
   # look for a DSL verb of that name.
   private def reversed_background_finding
@@ -671,7 +671,7 @@ class TestLayerGuardrails < Minitest::Test
   end
 
   # ==========================================================================
-  # THE SET IS REGISTERED
+  # The set is registered
   # ==========================================================================
 
   # Both warnings report from the build rather than the tree, so they are appended per
@@ -707,7 +707,7 @@ class TestLayerGuardrails < Minitest::Test
     assert_match(/stack asks for a background order that screen does not give/, err.string)
   end
 
-  # ...and the same build with SPRITES in a reversed stack says nothing at all, because
+  # ...and the same build with sprites in a reversed stack says nothing at all, because
   # that picture is now the one the stack asked for.
   def test_a_real_build_says_nothing_about_a_reversed_sprite_stack
     err = StringIO.new

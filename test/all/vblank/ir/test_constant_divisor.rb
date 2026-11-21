@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# DIVIDING BY A NUMBER WRITTEN IN THE GAME (IR::ConstantDivisor): a lowering may multiply by a
+# Dividing by a number written in the game (IR::ConstantDivisor): a lowering may multiply by a
 # reciprocal worked out when the game is built rather than divide, and a shift does for a power of
 # two. Either way the answer is Int32.div's and Int32.mod's, for every numerator, the most negative
 # included, and for every divisor's sign.
@@ -83,7 +83,7 @@ class TestConstantDivisor < Minitest::Test
   private
 
   # Each answer to `v op d` the game got wrong, said for a person: the game takes the next numerator
-  # each pass and works out the sum for every one of DIVISORS.
+  # each pass and works out the sum for every one of divisors.
   def wrong_answers(op)
     names = DIVISORS.each_index.map { |k| :"answer#{k}" }
     game = program(

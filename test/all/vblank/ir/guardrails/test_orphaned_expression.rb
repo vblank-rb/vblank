@@ -10,7 +10,7 @@ require "test_helper"
 # points the Ruby name at a new expression and leaves the game's variable alone.
 #
 # The other half of these tests is the half that decides whether the check is usable at
-# all: ordinary code that must NOT be flagged. Pushing onto a list, mutating a pool
+# all: ordinary code that must not be flagged. Pushing onto a list, mutating a pool
 # field, naming a handle — each of those used to look exactly like the mistake, because
 # the framework built a throwaway expression of its own to borrow the scale rules.
 class TestOrphanedExpression < Minitest::Test
@@ -194,7 +194,7 @@ class TestOrphanedExpression < Minitest::Test
 
   # --- what the framework hands a block is not the author's to have thrown away ---
 
-  # A ROUTINE OF A POOL IS HANDED THE INSTANCE THE WALK IS ON, and it is the framework that
+  # A routine of a pool is handed the instance the walk is on, and it is the framework that
   # builds that instance's place for it. A routine with nothing to say about its instance —
   # a kind of thing with no picture, in a cast that each run a routine to draw — left that
   # unused, and the game was told it had worked out a number and thrown it away.
@@ -309,7 +309,7 @@ class TestOrphanedExpression < Minitest::Test
     assert rom, "correct code must still build"
   end
 
-  # A finding has to be able to say WHERE, or it sends the reader nowhere.
+  # A finding has to be able to say where, or it sends the reader nowhere.
   def test_a_finding_names_the_line_the_author_wrote
     findings = findings_for do
       screen :bitmap
@@ -350,7 +350,7 @@ class TestOrphanedExpression < Minitest::Test
     Checks::OrphanedExpression.new(builder.expressions).detect(program)
   end
 
-  # Assert nothing was reported, saying WHERE rather than dumping the whole finding —
+  # Assert nothing was reported, saying where rather than dumping the whole finding —
   # a finding holds a Value, which holds the builder, which inspects to several pages.
   def assert_nothing_reported(&block)
     reported = findings_for(&block).map(&:source)
