@@ -6,7 +6,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "all/vblank/builder/test_pack_poses_sharing_tiles"
 
-# MANY POSES OVER ONE BIG SHEET OF TILES, as an original keeps every tile of a sprite type in one
+# Many poses over one big sheet of tiles, as an original keeps every tile of a sprite type in one
 # slot of thousands. Each pose reads four tiles from a tile of its own on, so declaring them all
 # reads what they draw and nothing more: what a build costs follows the tiles its poses draw,
 # however big the sheet. The made-up original is the Genesis one of
@@ -73,7 +73,7 @@ class TestPackPoseBuildCost < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # A pose for each start in the sheet, all over the one frame, and a sprite for each pose SHOWN.
+  # A pose for each start in the sheet, all over the one frame, and a sprite for each pose shown.
   def pose_sheet_builder(folder)
     from = pose_sheet_original(folder)
     b = VBlank::Builder.new

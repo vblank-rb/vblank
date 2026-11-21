@@ -41,7 +41,7 @@ module PackColorListGames
   # The four banks written in the game.
   private def banks_written_out = ->(_builder) { BANKS }
 
-  # THE GAME: a ship drawn in bank 0's list and with that list alone, which is told to hold bank
+  # The game: a ship drawn in bank 0's list and with that list alone, which is told to hold bank
   # 1, 2 and 3 on passes 1, 2 and 3 (the ship's column counts the passes) and its own colours
   # after. The backdrop is the first colour of bank 3's list.
   private def recoloring_game(banks, options: VBlank::Cartridge::Options.new) = recoloring_game_and_file(banks, options: options).first
@@ -65,7 +65,7 @@ module PackColorListGames
     [builder.program, builder.made_data_pack_file]
   end
 
-  # A GAME WHOSE SPRITE DRAWS WITH A WHOLE SLOT: a ship drawn in a list of the game's own and
+  # A game whose sprite draws with a whole slot: a ship drawn in a list of the game's own and
   # with the list that is the slot's first +count+ colours. The program and the pack file.
   private def whole_slot_game_and_file(from, options: VBlank::Cartridge::Options.new)
     test = self
@@ -84,7 +84,7 @@ module PackColorListGames
     [builder.program, builder.made_data_pack_file]
   end
 
-  # A GAME THAT WALKS A LIST FROM THE PACK UP FROM WHITE: a ship drawn in a list of the game's own
+  # A game that walks a list from the pack up from white: a ship drawn in a list of the game's own
   # and with a list that holds each step of the walk in turn, a pass a step. The steps are made
   # from the list's colours, which a build that leaves its pack out learns as the game starts.
   WALK_STEPS = 6
@@ -140,7 +140,7 @@ module PackColorListGames
   def palette_pack_of(builder, from, count: 16) = palette_pack(builder, from, count: count)
 end
 
-# A LIST OF COLOURS WHOSE COLOURS COME FROM A SLOT OF THE DATA PACK (`colors :name, pack[:slot]`,
+# A list of colours whose colours come from a slot of the data pack (`colors :name, pack[:slot]`,
 # or one bank of the slot). A retail game repaints a sprite by writing other colours over its
 # palette, and the colours it writes are data of the player's copy, so a port names each set as a
 # list from the pack and tells one list to hold them in turn.

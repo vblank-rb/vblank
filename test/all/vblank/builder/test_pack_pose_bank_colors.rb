@@ -5,7 +5,7 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A POSE THAT TAKES ITS COLOURS FROM ITS FRAME (Builder::PackPoses): each piece of a frame names a
+# A pose that takes its colours from its frame (Builder::PackPoses): each piece of a frame names a
 # bank of the original's colours in its tile word, and the pose is drawn from that bank's list,
 # `:<slot>_<bank>`. The made-up original keeps a frame as a Genesis game does (a word that counts
 # the pieces, then eight bytes a piece), and its tile word holds the bank in bits 13 and 14, the
@@ -57,7 +57,7 @@ module PackPoseBankColorGames
   OVERLAPPING = FRAME_BYTES * 3
   FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3) + frame_of(1, 3, right_x: -4)).freeze
 
-  # A PIECE WHOSE BANK IS COUNTED FROM THE THING'S. Some originals keep a piece's bank as a number
+  # A piece whose bank is counted from the thing's. Some originals keep a piece's bank as a number
   # added to the bank of the object the frame belongs to, wrapping at the console's sixteen banks
   # (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits 12-15), unless a bit of the piece says it
   # keeps the bank it names. That rule is the original's own, so the port writes it as a reader, and
@@ -172,7 +172,7 @@ module PackPoseBankColorGames
   # The pose each actor of #recolored_actors_builder faces: two share :first.
   ACTOR_POSES = %i[first second first].freeze
 
-  # ACTORS SHARING POSES OF THE ORIGINAL'S FRAMES, as a title's actors are: a sprite for each of
+  # Actors sharing poses of the original's frames, as a title's actors are: a sprite for each of
   # ACTOR_POSES, each following the list its pose's frame picks, while the lists of banks 1 and 2
   # are recoloured through two sets of their own as the game plays. +size+ is every pose's size, so
   # a test can make the poses bigger and see what that costs a build. Gives back the builder, its
@@ -281,7 +281,7 @@ class TestPackPoseBankColors < Minitest::Test
     end
   end
 
-  # ONE SPRITE IS DRAWN FROM ONE LIST where the console's build keeps one for a whole sprite
+  # One sprite is drawn from one list where the console's build keeps one for a whole sprite
   # (Guardrails::Checks::PosesWithDifferentColors), as the Advance's does. So a sprite whose poses
   # are frames of different banks is refused there, naming each pose's list, which the game did not
   # write down, and the way round it: a sprite for each list. No run's player plays a refused game,
@@ -362,7 +362,7 @@ class TestPackPoseBankColors < Minitest::Test
     end
   end
 
-  # A POSE TOLD THE BANKS ITS FRAME USES (`banks:`) keeps each piece in its own bank's colours, as a
+  # A pose told the banks its frame uses (`banks:`) keeps each piece in its own bank's colours, as a
   # console's sprite entry names its piece's bank, and one sprite shows and moves the whole frame.
   def test_a_pose_told_its_banks_draws_each_piece_in_its_own_banks_colors
     Dir.mktmpdir do |folder|
@@ -378,7 +378,7 @@ class TestPackPoseBankColors < Minitest::Test
     end
   end
 
-  # A PIECE'S BANK COUNTED FROM THE THING'S (RELATIVE_BANK_PIECE): the original's rule is the port's
+  # A piece's bank counted from the thing's (RELATIVE_BANK_PIECE): the original's rule is the port's
   # reader, the thing's bank comes in by `with:`, and `banks:` draws each piece in the bank that
   # comes out: 4 + 0, 4 + 14 wrapped to 2, and a piece that keeps its own bank 2.
   def test_a_pose_whose_pieces_add_their_bank_to_the_things_draws_each_in_the_bank_that_comes_out
@@ -467,7 +467,7 @@ class TestPackPoseBankColors < Minitest::Test
     end
   end
 
-  # ONE BANK NAMED is a pose of that bank's list, as `bank:` makes one, so every console draws it as
+  # One bank named is a pose of that bank's list, as `bank:` makes one, so every console draws it as
   # any pose of one list, and `colors_name_of` names the list.
   def test_a_pose_told_one_bank_is_drawn_in_that_banks_list_on_every_console
     Dir.mktmpdir do |folder|
@@ -665,7 +665,7 @@ class TestPackPoseBankColors < Minitest::Test
     assert_includes error.message, "bank_bit:"
   end
 
-  # THE BANK IS IN THE PLAYER'S COPY, which a build that reads its pack as the game starts does not
+  # The bank is in the player's copy, which a build that reads its pack as the game starts does not
   # hold. Such a build draws the pose in that bank's colours all the same, and a sprite told to draw
   # with its list follows the list the file picks: PackGames::PosesInBankColors (test/pack_games.rb)
   # holds those games to this build, and PackPoseBankColorsAtStartTests

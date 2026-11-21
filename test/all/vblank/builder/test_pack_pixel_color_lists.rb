@@ -23,7 +23,7 @@ module PackPixelColorListGames
   # The columns of the ship read: its left edge, then a column of each stripe of the first picture.
   COLUMNS = [0, 1, 4, 7].freeze
 
-  # THE GAME: one sprite showing the two pictures, each from the slot of pixels and given the list
+  # The game: one sprite showing the two pictures, each from the slot of pixels and given the list
   # :drawn by name, a bank of the pack's colours. Pass 1 shows the first picture, pass 2 the second,
   # and from pass 3 the sprite is drawn with :other, another bank. The program and the pack file.
   private def pixel_pictures_drawn_with_game_and_file(from, options: VBlank::Cartridge::Options.new)
@@ -54,7 +54,7 @@ module PackPixelColorListGames
   end
 end
 
-# A PICTURE FROM A SLOT OF PIXELS GIVEN A LIST OF COLOURS BY NAME (`image ..., colors: :drawn, places:
+# A picture from a slot of pixels given a list of colours by name (`image ..., colors: :drawn, places:
 # pack[:art].pixels(...)`), so a sprite showing such pictures can be drawn with another list, as one
 # showing pictures given their places can. A port's unpacking often writes its pictures a byte a
 # pixel, and the original drew them in a bank of its colours it swapped for another.
