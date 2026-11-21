@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require VBlank.root.join("examples/hero").to_s
 
-# A PLAYTHROUGH: a game driven with nobody at the controls, from a script that says what to
+# A playthrough: a game driven with nobody at the controls, from a script that says what to
 # press. The script is a list of steps — tap, hold, wait, name a moment — and playing it on a
 # cartridge gives back how many frames went by and the frame each named moment fell on.
 #
@@ -50,7 +50,7 @@ class TestPlaythrough < Minitest::Test
     assert_equal 40, played.game.var(:x)
   end
 
-  # THE FRAMES A SCRIPT COUNTS ARE FRAMES THE CONSOLE PLAYED, and the game is the witness: it
+  # The frames a script counts are frames the console played, and the game is the witness: it
   # ticks once a frame, so between two moments it has ticked once for every frame the script
   # says went by — and through a wait nothing else about it has moved.
   def test_a_wait_plays_that_many_frames_with_nothing_pressed
@@ -78,7 +78,7 @@ class TestPlaythrough < Minitest::Test
     assert_equal 10, walk.play(counting_game).game.var(:x)
   end
 
-  # A PRESS BEFORE THE GAME HAS STARTED IS NOT SEEN, on a console as here: a cartridge spends
+  # A press before the game has started is not seen, on a console as here: a cartridge spends
   # its first frame or more setting itself up, and what was pressed then is deliberately
   # forgotten so that a button held through power-on is not taken as a press. A script that
   # opens with a tap opens with a wait first.
@@ -97,7 +97,7 @@ class TestPlaythrough < Minitest::Test
     assert_equal 1, after_a_wait.play(counting_game).game.var(:taps)
   end
 
-  # A TAP IS ONE PRESS. The game counts the press and not the hold, so a button left down
+  # A tap is one press. The game counts the press and not the hold, so a button left down
   # would count once however long it stayed there. A tap lets go again, which is what makes
   # the next tap a press of its own: three taps are three.
   def test_each_tap_is_a_press_of_its_own
@@ -126,7 +126,7 @@ class TestPlaythrough < Minitest::Test
     assert_equal 12, both.play(counting_game).game.var(:both)
   end
 
-  # FRAMES ARE COUNTED FROM 1: the first frame played is frame 1, and a moment is the frame
+  # Frames are counted from 1: the first frame played is frame 1, and a moment is the frame
   # that had just been played when the script named it.
   def test_a_moment_is_the_frame_just_played_counted_from_one
     marked = VBlank.playthrough "marks" do
@@ -234,7 +234,7 @@ class TestPlaythrough < Minitest::Test
     assert_equal screen[:standing], screen[:walked]
   end
 
-  # AT A MOMENT THE GAME CAN BE ASKED ANYTHING a test of a running cartridge asks: here the
+  # At a moment the game can be asked anything a test of a running cartridge asks: here the
   # sprite the console is drawing and a pixel of the picture. The file screen hides the hero
   # behind a flat backdrop; out in the world he is drawn and the corner shows scenery.
   def test_a_sprite_and_a_pixel_can_be_read_at_a_moment

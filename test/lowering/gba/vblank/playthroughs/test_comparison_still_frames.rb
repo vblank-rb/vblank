@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "comparison_games"
 
-# EACH CARTRIDGE'S OWN STILL FRAMES SKIPPED (`skipping_still_frames_of:`). An original holds its
+# Each cartridge's own still frames skipped (`skipping_still_frames_of:`). An original holds its
 # picture still while it loads a room, for as many frames as that room takes; a port holds it for
 # another number, or not at all. Frame by frame the two are out of step from the first load on.
 # With the still frames of a side skipped, each frame whose picture changes is lined up with the

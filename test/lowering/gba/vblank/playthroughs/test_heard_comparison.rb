@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A COMPARISON OF TWO CARTRIDGES' HEARD SOUND MEASURES, held on lists of loudest samples written
+# What a comparison of two cartridges' heard sound measures, held on lists of loudest samples written
 # out here, so each measure is seen by itself: the cartridges in the emulator are
 # test/heard_alike_tests.rb's. A note here is 1000 for as many frames as it is held.
 class TestHeardComparison < Minitest::Test

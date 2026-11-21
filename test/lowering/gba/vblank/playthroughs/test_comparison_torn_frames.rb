@@ -4,15 +4,15 @@ require "test_helper"
 require "stringio"
 require "comparison_games"
 
-# THE STRICT RULE FOR TORN FRAMES (`forgiving_torn_frames_of:`). An original that copies a change
+# The strict rule for torn frames (`forgiving_torn_frames_of:`). An original that copies a change
 # in while the screen is drawn shows it torn for a frame: part old, part new, unlike the frame
 # before it and the frame after. The rule forgives that frame only where the other cartridge
 # already shows what the torn one settles on, which `frames_in_a_row:` cannot tell from a fault of
 # a frame in the other cartridge.
 #
-# The cartridges are a blue screen that turns red on tick TURNS, built here. The "original" shows
-# tick TURNS torn, its top half red and its bottom half still blue, and is all red from the tick
-# after. Ours turns all red on tick TURNS (what the original settles on), or one tick late.
+# The cartridges are a blue screen that turns red on tick turns, built here. The "original" shows
+# tick turns torn, its top half red and its bottom half still blue, and is all red from the tick
+# after. Ours turns all red on tick turns (what the original settles on), or one tick late.
 class TestComparisonTornFrames < Minitest::Test
   include ComparisonGames
   include VBlank::Testing::PlaysAlike
@@ -22,7 +22,7 @@ class TestComparisonTornFrames < Minitest::Test
   # Each frame is drawn whole on a page of its own and shown when done, so the only torn frame is
   # the one drawn torn on purpose.
   #
-  # +torn_frames+ 2 is an original whose change tears over two frames: on tick TURNS the top third
+  # +torn_frames+ 2 is an original whose change tears over two frames: on tick turns the top third
   # is red, on the tick after the top two thirds, and the tick after that all of it, as a copy that
   # takes longer than a frame does.
   private def turning(torn: false, late: 0, torn_frames: 1)
@@ -83,7 +83,7 @@ class TestComparisonTornFrames < Minitest::Test
     assert_equal torn_on, watch.compare(late, original, forgiving_torn_frames_of: :second).drift.frame
   end
 
-  # A TEAR OVER TWO FRAMES: each of the two is unlike the frame before and the frame after, and the
+  # A tear over two frames: each of the two is unlike the frame before and the frame after, and the
   # picture settles on the third. Ours shows the settled picture on both, which is forgiven.
   def test_a_tear_over_two_frames_is_forgiven_where_ours_shows_what_it_settles_on
     assert_raises(Minitest::Assertion) { assert_plays_alike turning, turning(torn: true, torn_frames: 2), watch }

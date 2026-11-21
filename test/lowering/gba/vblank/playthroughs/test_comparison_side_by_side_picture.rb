@@ -7,7 +7,7 @@ require "comparison_games"
 require "png_reading"
 require VBlank.root.join("examples/hero").to_s
 
-# ONE PICTURE OF ONE FRAME ON TWO CARTRIDGES: the first cartridge's screen, the second's, and
+# One picture of one frame on two cartridges: the first cartridge's screen, the second's, and
 # where the two differ, left to right in one file at twice the console's size. It is what a
 # person looks at to see what a comparison found, so it is asked for by itself, for any frame.
 #
@@ -47,7 +47,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     Dir.mktmpdir("side-by-side") { |somewhere| yield File.join(somewhere, "picture.png") }
   end
 
-  # ONE PANEL OF A WRITTEN PICTURE, BACK AT THE CONSOLE'S SIZE: a screenful of pixels, a row
+  # One panel of a written picture, back at the console's size: a screenful of pixels, a row
   # at a time. +which+ counts the panels from 0 at the left. Each of the console's pixels is
   # four in the file, and all four have to be the one colour.
   private def panel(png, which)
@@ -64,7 +64,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # GIVEN A TAPE, TWO CARTRIDGES AND A FRAME, ONE PICTURE IS WRITTEN: the first screen, the
+  # Given a tape, two cartridges and a frame, one picture is written: the first screen, the
   # second and the difference, left to right, each at twice the console's size. The
   # difference marks every pixel that differs — here the whole ground, and none of the box,
   # which is white on both — and is grey everywhere else.
@@ -91,7 +91,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # ASKED TO LEAVE THE DIFFERENCE OUT, the picture is the two screens and nothing else.
+  # Asked to leave the difference out, the picture is the two screens and nothing else.
   def test_the_difference_can_be_left_out
     first = plain
     second = turning
@@ -108,7 +108,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # TWO CARTRIDGES THAT SHOW THE SAME SCREEN ON THE FRAME give a third panel with no mark
+  # Two cartridges that show the same screen on the frame give a third panel with no mark
   # in it: the first screen in grey. This frame is before the second one's ground turns.
   def test_two_screens_that_match_leave_the_difference_unmarked
     first = plain
@@ -127,7 +127,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # THE FRAME CAN BE SAID BY THE NAME OF A MOMENT, which is the frame that moment names.
+  # The frame can be said by the name of a moment, which is the frame that moment names.
   # The box has walked for twenty frames by then, so the picture is not the one before it.
   def test_the_frame_can_be_named_by_a_moment
     first = plain
@@ -144,7 +144,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # A SCRIPT WRITES THE SAME PICTURE ITS TAPE DOES. The script is played on the first
+  # A script writes the same picture its tape does. The script is played on the first
   # cartridge to learn the presses, as it is for a comparison, and both are played on those.
   def test_a_script_writes_the_picture_its_tape_writes
     first = plain
@@ -161,7 +161,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # A PART OF THE SCREEN THAT IS LEFT OUT IS NEVER MARKED, as in a drift report: the whole
+  # A part of the screen that is left out is never marked, as in a drift report: the whole
   # ground differs, and only the half that was looked at is marked.
   def test_a_part_of_the_screen_left_out_is_not_marked
     first = plain
@@ -177,7 +177,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # TWO CARTRIDGES OUT OF STEP FROM POWER-ON ARE LED IN, each by its own lead-in, as they are
+  # Two cartridges out of step from power-on are LED in, each by its own lead-in, as they are
   # for a comparison: frame 30 is then the same frame of the game on both, and nothing is
   # marked. Without the lead-ins one is still on its logo.
   def test_each_cartridge_can_be_led_in_first
@@ -208,7 +208,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # BOTH CARTRIDGES CAN START FROM A SAVE, as they can for a comparison. The game is the hero
+  # Both cartridges can start from a save, as they can for a comparison. The game is the hero
   # example, whose file screen shows how far the walk in each file went: from the save both
   # panels are the file screen a playthrough started from that save shows, and from
   # power-on they are not. A tape recorded from a save asks for one.
@@ -236,7 +236,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # FILE 1, NEW GAME, RIGHT for twenty frames and START to save, then a wait for the save
+  # FILE 1, new game, right for twenty frames and START to save, then a wait for the save
   # to be written, which the hero example does a piece at a time as it goes round its loop.
   private def walk_and_save
     VBlank.playthrough "hero: walk and save" do
@@ -257,7 +257,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
 
   private def a_tape = walk_right.play(plain).tape
 
-  # A FRAME THE TAPE DOES NOT REACH is refused, saying how many frames the tape plays.
+  # A frame the tape does not reach is refused, saying how many frames the tape plays.
   def test_a_frame_past_the_end_of_the_tape_is_refused
     tape = a_tape
 
@@ -271,7 +271,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # A MOMENT THE TAPE DOES NOT NAME is refused, naming the ones it does.
+  # A moment the tape does not name is refused, naming the ones it does.
   def test_a_moment_that_was_not_named_is_refused
     tape = a_tape
 
@@ -309,7 +309,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # A PLACE THE PICTURE COULD NEVER BE WRITTEN is refused: something that is not a path, a
+  # A place the picture could never be written is refused: something that is not a path, a
   # folder where the file was meant, a file already there that cannot be written over, and
   # a file inside a folder that cannot be written to or inside something that is itself a
   # file.
@@ -332,7 +332,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # A SCRIPT SAYS ITS MOMENTS WHERE IT IS DECLARED, so a moment it does not name is refused
+  # A script says its moments where it is declared, so a moment it does not name is refused
   # before it is played. How long it plays is not known until it has been, so a frame past
   # its end is refused once the script has been played on the first cartridge.
   def test_a_script_refuses_a_moment_it_does_not_name_and_a_frame_past_its_end
@@ -383,7 +383,7 @@ class TestComparisonSideBySidePicture < Minitest::Test
     end
   end
 
-  # A FOLDER THAT IS NOT THERE YET IS MADE, as a comparison makes the folder of its reports,
+  # A folder that is not there yet is made, as a comparison makes the folder of its reports,
   # and a file already there under the picture's name is written over.
   def test_a_folder_that_is_not_there_is_made_and_a_file_is_written_over
     cartridge = plain
