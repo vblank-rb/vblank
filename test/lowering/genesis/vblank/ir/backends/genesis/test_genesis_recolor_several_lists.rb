@@ -18,7 +18,7 @@ class TestGenesisRecolorSeveralLists < Minitest::Test
     Genesis::CheckedRun.new.run(genesis_program, frames: LAST_PASS + 4)
   end
 
-  # FOUR LISTS IN FOUR PALETTES: three the background and a sprite each follow, and the plain one.
+  # Four lists in four palettes: three the background and a sprite each follow, and the plain one.
   # A palette kept for the background's own colours beside any of them would be a fifth, and the
   # game would not fit. Read in the emulator, before any list is told to hold a set and after.
   def test_the_colour_memory_holds_each_list_once_and_what_it_holds_now

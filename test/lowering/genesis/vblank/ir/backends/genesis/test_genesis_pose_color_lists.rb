@@ -3,7 +3,7 @@
 require "test_helper"
 require "pose_color_list_tests"
 
-# ONE SPRITE WHOSE POSES ARE DRAWN FROM DIFFERENT LISTS OF COLOURS, in the Genesis's own memory. The
+# One sprite whose poses are drawn from different lists of colours, in the Genesis's own memory. The
 # video chip keeps four palettes of sixteen colours, and each entry of its sprite table names one of
 # them in two bits of the word that names its tile. A retail game writes that word every frame, so
 # its sprite changes palette with its frame for nothing. These read the sprite table and the colour
@@ -47,7 +47,7 @@ class TestGenesisPoseColorLists < Minitest::Test
     assert_equal palette_line_at(before, AT), palette_line_at(after, AT), "the palette the entry names"
   end
 
-  # EVERY LIST A SPRITE'S POSES USE IS COUNTED: four lists of fifteen colours fill the console's four
+  # Every list a sprite's poses use is counted: four lists of fifteen colours fill the console's four
   # palettes, and a fifth is refused in words, though one sprite shows them all.
   def test_a_sprite_of_four_lists_takes_the_four_palettes_and_a_fifth_list_is_refused
     memory = played(built(many_lists_game(4)), frames: 30)
@@ -78,7 +78,7 @@ class TestGenesisPoseColorLists < Minitest::Test
     assert_includes error.message, "draw_with({ warm: :warm })"
   end
 
-  # A LIST THE GAME NEVER CHANGES, FOLLOWED BY A SPRITE AND A BACKGROUND, IS ONE PALETTE: the sprite's
+  # A list the game never changes, followed by a sprite and a background, is one palette: the sprite's
   # pose of it is cut in the list's order, as the background's tiles are, so the two share it, and
   # the changed list keeps one more. Cut in the order its own pixels use the colours, the pose would
   # want a palette of its own, and a screen of four lists would need a fifth.
@@ -89,7 +89,7 @@ class TestGenesisPoseColorLists < Minitest::Test
     assert_equal 2, filled, "palettes holding colours: one for :warm, one for :cold"
   end
 
-  # MANY SPRITES FACING THE SAME POSES COST WHAT ONE DOES, but for the few instructions that place
+  # Many sprites facing the same poses cost what one does, but for the few instructions that place
   # each: the poses' tiles are in video memory once, and the table of the poses is in the cartridge
   # once, whoever reads it.
   def test_many_sprites_facing_the_same_poses_share_their_tiles_and_their_table
@@ -117,7 +117,7 @@ class TestGenesisPoseColorLists < Minitest::Test
     end
   end
 
-  # The console's memory on the first frame its sprite table has an entry at AT, which is the
+  # The console's memory on the first frame its sprite table has an entry at at, which is the
   # game's first pass shown, and again each of +later+ frames after that one. A cartridge shows
   # some frames before its first pass, so a frame is found by what the console holds and never
   # by a count from power-on.
@@ -184,7 +184,7 @@ class TestGenesisPoseColorLists < Minitest::Test
     genesis(builder.program)
   end
 
-  # +sprites+ sprites that each face the same POSES poses, of four lists in turn, each showing one.
+  # +sprites+ sprites that each face the same poses poses, of four lists in turn, each showing one.
   def shared_poses_game(sprites)
     poses = POSES
     builder = Builder.new

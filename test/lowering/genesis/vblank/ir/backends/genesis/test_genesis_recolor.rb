@@ -152,7 +152,7 @@ class TestGenesisRecolor < Minitest::Test
     end
   end
 
-  # FOUR LISTS IN FOUR: :machine_colors is drawn by a background told `draw_with` it and by a sprite,
+  # Four lists in four: :machine_colors is drawn by a background told `draw_with` it and by a sprite,
   # and since the list never changes, the two are drawn from one palette. :screen_colors, which the
   # backdrop follows, is drawn by the sky background and the moon sprite and recoloured, and two more
   # lists are beside: the game needs every one of the four. The checked run holds every frame to the
@@ -165,7 +165,7 @@ class TestGenesisRecolor < Minitest::Test
                  [run.screen.pixel(1, 1), run.screen.pixel(61, 41), run.screen.pixel(100, 100)], "the sky, the moon, the backdrop"
   end
 
-  # THE COLOUR MEMORY HOLDS EACH LIST ONCE, read in the emulator: before the recolour and after it.
+  # The colour memory holds each list once, read in the emulator: before the recolour and after it.
   # Colour 0 is the backdrop, the place 0 of what :screen_colors holds.
   def test_the_colour_memory_holds_each_of_four_lists_once
     early, late = colour_memory_first_and_after(genesis_program(four_lists_game(sky: true)), later: 30)
