@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # MULTIPLYING BY A NUMBER WRITTEN IN THE GAME, written where the sum is rather than as a call of
+          # Multiplying by a number written in the game, written where the sum is rather than as a call of
           # the runtime's multiply. Mixed into Lowering.
           #
           # The 68000 has no multiply of two long words. The runtime's (rt_mul32) makes one of three of its
@@ -26,7 +26,7 @@ module VBlank
           # (an index times how many numbers a record has), a sprite's picture from the way it faces (the
           # way times how many frames each has), a row of a map (a row times how many cells across).
           #
-          # A PRODUCT BY A COMPARISON is the other side while the comparison holds and nought while it
+          # A product by a comparison is the other side while the comparison holds and nought while it
           # does not, since a comparison is 1 or 0: a shown flag times "this scene is up", a digit times
           # "this place is reached". The comparison jumps on its own flags (#emit_product_by_comparison).
           module Products

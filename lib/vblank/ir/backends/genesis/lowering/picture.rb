@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # THE PICTURE OF A TILED SCREEN, lowered for a Genesis: the statements that draw, as calls
+          # The picture of a tiled screen, lowered for a Genesis: the statements that draw, as calls
           # into Runtime::Picture, and the game's pictures made into tiles, palettes and maps (Genesis::Art)
           # while the program is built. Mixed into Lowering.
           #
-          # A TILED SCREEN. Each background the game declares is given one of the console's two planes, the
+          # A tiled screen. Each background the game declares is given one of the console's two planes, the
           # one declared last in front (plane A), as the interpreter paints the one declared last over the
           # rest. Each map it can show is made into a grid of cells, kept whole in the cartridge and
           # copied onto its plane when it is put up. Each sprite is made of the console's 8×8 sprite
@@ -146,7 +146,7 @@ module VBlank
               end
             end
 
-            # WHICH OF THE TWO PLANES EACH BACKGROUND IS ON. A scene's own scenery is in front of the scenery every
+            # Which of the two planes each background is on. A scene's own scenery is in front of the scenery every
             # screen shows, as the interpreter paints it over what is up already, and within each the one drawn
             # last is in front (IR::Stacking, which IR::SceneHandover hands the scenery over in the order of): so
             # the scenes' own take the front planes, A first, as many as the scene with the most has, and the
@@ -240,7 +240,7 @@ module VBlank
               end
             end
 
-            # THE COLOURS EVERY SCREEN KEEPS, in a game whose scenes each keep their own colours (Art's
+            # The colours every screen keeps, in a game whose scenes each keep their own colours (Art's
             # +scene_colors+): allotted before any scene takes its copy of the palettes. First the palette of
             # every list the game changes, which is written over whichever scene is up, and the lists the
             # sprites are drawn with; then the colours of the sprite pictures and the backgrounds every screen
@@ -278,7 +278,7 @@ module VBlank
               list_palette_of(bg, image)
             end
 
-            # THE SCENE WHOSE OWN COLOURS +bg+ IS DRAWN IN, in a game of +scene_colors+: the scene it is declared
+            # The scene whose own colours +bg+ is drawn in, in a game of +scene_colors+: the scene it is declared
             # in, which puts it up as it takes over; nil for scenery every screen shows.
             def colors_scene_of(bg) = @scene_colors ? scene_owning_background(bg) : nil
 
@@ -290,7 +290,7 @@ module VBlank
             def lists_take_turns? = %i[lists list_order].include?(@scene_colors)
             def pictures_in_list_order? = @scene_colors == :list_order
 
-            # THE LIST A PICTURE IS DRAWN IN ITS ORDER FROM, built with :list_order: the list of colours the
+            # The list a picture is drawn in its order from, built with :list_order: the list of colours the
             # picture was declared with (`colors:`, or the bank of a data pack's colours its frame names),
             # where that list fits a palette. A console game draws each piece from the palette line its frame
             # names, a line holding one bank of colours in the bank's order. Packed by their colours, pictures
@@ -304,7 +304,7 @@ module VBlank
               list if own_colors(@cache.image(picture_named(name))).length <= Art::OWN_COLORS
             end
 
-            # THE +scene_colors+ TO BUILD WITH after a build with +tried+ ran out of palettes (Genesis#build),
+            # The +scene_colors+ to build with after a build with +tried+ ran out of palettes (Genesis#build),
             # or nil when nothing is left to try: :backgrounds, each scene's own backgrounds in palettes of its
             # own while it is up, every sprite picture's colours kept for the whole game; then :sprites, a
             # scene's own sprite pictures' colours taking turns too; then :lists, a list the game changes that
@@ -326,7 +326,7 @@ module VBlank
             # see-through left out), those scenes, and what a refusal calls it (ListPalette's +name+).
             SceneHeldList = Data.define(:colors, :scenes, :name)
 
-            # EVERY LIST THE GAME CHANGES THAT ONLY SOME SCENES DRAW WITH, by the key its palette is kept under
+            # Every list the game changes that only some scenes draw with, by the key its palette is kept under
             # (Art#reserve_held_palette): the lists every sprite picture, sprite and background drawing with it
             # belongs to a scene of, with those scenes. A scene that draws nothing with such a list needs nothing
             # of its palette, so built with :lists every other scene has that palette for its own pictures
@@ -381,12 +381,12 @@ module VBlank
               changing_lists_of(obj).any? { |entry, _| scene_held.key?([:sprites, entry]) }
             end
 
-            # THE ART OF A GAME WHOSE SCENES EACH KEEP THEIR OWN TILES (Art's +scene_tiles+): what every
+            # The art of a game whose scenes each keep their own tiles (Art's +scene_tiles+): what every
             # screen shows made first, so its tiles are numbered before any scene takes its copy, then each
             # scene's own. A tile a `set_tile` can put on a background is made here too, though no map shows
             # it, so it is numbered with its background's tiles rather than after a scene's.
             #
-            # WHERE THE SPRITE PICTURES GO. Built with :backgrounds, every sprite picture is one every
+            # Where the sprite pictures go. Built with :backgrounds, every sprite picture is one every
             # screen shows, a scene's own included, and stays in video memory for the whole game. The
             # frame a scene takes over on can want a sprite of the scene that went beside the map of the
             # one that came: a dispatch inside an `if` places the pass's sprites for the scene up as the
@@ -407,7 +407,7 @@ module VBlank
               @objects.each_value { |obj| recolor_palettes(obj) }
             end
 
-            # A SCENE PICKED INSIDE A TEST, after the game changed the variable that picks it in the same
+            # A scene picked inside a test, after the game changed the variable that picks it in the same
             # pass: the frame of that pass shows the scene that was up as the pass started, with its
             # sprites (IR::Frames.loop_in_console_order), while the scene picked has put its own tiles
             # where those sprites' tiles were. A scene picked at the top of the loop is shown with the
@@ -418,12 +418,12 @@ module VBlank
             # (+scene_colors+ of :sprites): the leaving scene's sprites would be drawn in the arriving
             # scene's palettes. +shared+ names what the scenes take turns with, a key of TAKING_TURNS.
             #
-            # A TIMER moves on at each wait for the screen (Reference#accrue_timer, Runtime::Frame's
+            # A timer moves on at each wait for the screen (Reference#accrue_timer, Runtime::Frame's
             # rt_wait_vblank). The loop's own wait ends the pass, after the frame's sprites are placed, so
             # a timer's change there is noted with the next pass. A wait the pass reaches before the pick,
             # in a routine it calls, lets the timer change the variable after it was noted.
             #
-            # A PICK AFTER THE LOOP'S OWN WAIT, written partway down the loop, comes after the end of the
+            # A pick after the loop's own wait, written partway down the loop, comes after the end of the
             # pass that places the frame's sprites, so the first frame places the first scene's sprites
             # before that scene has put its tiles in; refused wherever it is in the loop.
             def refuse_hand_over_inside_test!(shared)
@@ -560,7 +560,7 @@ module VBlank
               end
             end
 
-            # THE SCENE WHOSE OWN TILES +bg+ IS DRAWN FROM, in a game of +scene_tiles+: the scene it is
+            # The scene whose own tiles +bg+ is drawn from, in a game of +scene_tiles+: the scene it is
             # declared in, which puts it up as it takes over; nil for scenery every screen shows.
             def tiles_scene_of(bg) = @scene_tiles ? scene_owning_background(bg) : nil
 
@@ -575,7 +575,7 @@ module VBlank
               scene if @scenes.key?(scene)
             end
 
-            # WHETHER SOME ART BELONGS TO ONE SCENE, so that bringing each scene's tiles in as it takes over
+            # Whether some art belongs to one scene, so that bringing each scene's tiles in as it takes over
             # can leave room (Genesis#build). Only in a game of one dispatch: a second variable picking
             # scenes can have one of its scenes up beside one of the first's, and the two would want their
             # own tiles in the same room at once.
@@ -588,7 +588,7 @@ module VBlank
               one_dispatch? && @objects.values.flat_map(&:poses).any? { |name| scene_owning_picture(name) }
             end
 
-            # THE +scene_tiles+ TO BUILD WITH after a build with +tried+ ran out of tiles (Genesis#build),
+            # The +scene_tiles+ to build with after a build with +tried+ ran out of tiles (Genesis#build),
             # or nil when nothing is left to try: :backgrounds, then :sprites.
             public def scene_tiles_after(tried)
               case tried
@@ -597,7 +597,7 @@ module VBlank
               end
             end
 
-            # A TRY SURE TO RUN OUT OF TILES STOPS before its code is made. Every picture's tiles are
+            # A try sure to run out of tiles stops before its code is made. Every picture's tiles are
             # in video memory's list by then but those a `set_tile` names in a game whose scenes share
             # their tiles, made as its code is, and those only add to the count. So a count past the
             # room now is past it at the end. Only where a later try can help: a game nothing can help
@@ -610,7 +610,7 @@ module VBlank
 
             def one_dispatch? = tiled? && @program.walk.count { |node| node.kind == :case } == 1
 
-            # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
+            # The colours a sprite can be drawn with (`draw_with`): every list it names, a palette each whose
             # places are the list's (Art#ordered_palette), and the picture cut into places of its own list, so
             # the sprite is drawn in a list by writing that list's palette's number over the palette its pieces
             # name (Runtime::Tiles, rt_sprite_place). A list the game changes as it runs
@@ -618,7 +618,7 @@ module VBlank
             # never changed shares a palette with any other list of the same colours.
             def recolored?(name) = @objects.values.any? { |obj| obj.poses.include?(name) && !obj.recolors.empty? }
 
-            # A POSE A SPRITE FOLLOWS TO A LIST THE GAME NEVER CHANGES (Object#follows_unchanging) shows the
+            # A pose a sprite follows to a list the game never changes (Object#follows_unchanging) shows the
             # colours it was drawn in, and it is cut in its list's order all the same, as a pose of a sprite
             # told `draw_with` that one list is. A background drawing the list draws it from the palette of
             # the list in that order (#recolored_palette), so the two share one of the four. Cut in the order
@@ -628,13 +628,13 @@ module VBlank
               @objects.values.any? { |obj| obj.poses.include?(name) && obj.follows_unchanging&.include?(drawn_from) }
             end
 
-            # THE CHANGING LIST A PICTURE IS ALWAYS DRAWN WITH, or nil. A picture every sprite showing it draws
+            # The changing list a picture is always drawn with, or nil. A picture every sprite showing it draws
             # with one list the game changes, for good and from power-on (Object#follows), is drawn in that list
             # whatever the list holds, and its own colours are the list's as declared. So it is cut against the
             # list's palette, and keeps no palette for its own colours: a title's sprite and its picture, both
             # drawn with the list, then take one of the four between them.
             #
-            # A SPRITE WHOSE POSES ARE DRAWN FROM SEVERAL LISTS (Object#follows_each) follows, for each pose,
+            # A sprite whose poses are drawn from several lists (Object#follows_each) follows, for each pose,
             # the list that pose is drawn from. The video chip reads a piece's palette from the piece's own
             # entry in the sprite table, two bits beside its tile, and the cartridge writes that entry from
             # the pose's pieces every frame. So each pose's picture is cut against its own list's palette,
@@ -727,7 +727,7 @@ module VBlank
               @asm.label(not_up)
             end
 
-            # A SCENE TAKING OVER that keeps the palette of a list the game changes (Art#reserve_scene_held_palette):
+            # A scene taking over that keeps the palette of a list the game changes (Art#reserve_scene_held_palette):
             # the scene's own colours (#emit_scene_colors) wrote the colours the list starts with over it, so the
             # set the game last told the list to hold, noted as it was told, is written again. The note of the set
             # each palette holds (Runtime::Tint's SETS) is cleared first: another scene's own colours have been
@@ -763,7 +763,7 @@ module VBlank
               held_colors_label(key, bg.palettes.fetch(index), bg.recolors.map { |step| step.fetch(index) })
             end
 
-            # A BACKDROP THAT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place). The video chip's register 7
+            # A backdrop that follows a list (IR::Nodes::ColorList#backdrop_place). The video chip's register 7
             # sets which colour of its memory shows wherever nothing is drawn, any of the sixty-four, so where
             # the list keeps a palette of its own and the backdrop is one of the colours in that palette's
             # places, the register points at it there: the list's write changes the backdrop with everything
@@ -975,22 +975,22 @@ module VBlank
               end
             end
 
-            # THE PALETTE A TILE OF A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS IS DRAWN FROM: one for each list
+            # The palette a tile of a background the game draws with other colours is drawn from: one for each list
             # its tiles were drawn from, written over with the colours of the list the game's number names for it
             # (Reference#background_swap). The tile is made of the places of its own list.
             #
-            # A BACKGROUND THAT FOLLOWS A LIST THE GAME CHANGES (`recolor`) draws the tiles drawn from that list
+            # A background that follows a list the game changes (`recolor`) draws the tiles drawn from that list
             # from the list's palette, the one its sprites are drawn from; a cell's palette is its own, so tiles of
             # its other lists beside them keep palettes of their own at no cost. A Genesis keeps one table of colours for its backgrounds and its
             # sprites together, four palettes of sixteen, so a title whose picture and sprites step through any
             # number of sets of colours costs one palette, written over in the blank, and leaves three for the rest.
             #
-            # A BACKGROUND THAT FOLLOWS SEVERAL SUCH LISTS (Background#follows_each) is the same thing for each of
+            # A background that follows several such lists (Background#follows_each) is the same thing for each of
             # them: its tiles of each list are drawn from that list's palette, and each list's own write changes
             # them. So a screen whose palettes all walk to black fades whole, as a Genesis game's does, and the
             # background has no table of sets and no write of its own.
             #
-            # A LIST THAT HOLDS THE SAME COLOURS WHATEVER THE GAME SETS needs no writing over: a background told
+            # A list that holds the same colours whatever the game sets needs no writing over: a background told
             # `draw_with :machine` and drawn in :machine's own colours shows those colours at every step. So its
             # palette is the list's in the list's order (Art#ordered_palette), which a sprite drawn with the
             # same list shares, rather than one kept to itself. Only place 0 may differ between the sets, since
@@ -1065,7 +1065,7 @@ module VBlank
               end
             end
 
-            # A BLOCK OF CELLS IS NOTED AS ONE COMMAND FOR THE BLANK (Runtime::Tiles#emit_block_noted),
+            # A block of cells is noted as one command for the blank (Runtime::Tiles#emit_block_noted),
             # as a console's own game queues a box for its interrupt to lay: the block's place and size
             # and the one cell's word, or where the map's own cells are in the cartridge. The blank
             # writes its cells a row at a time, the chip moving on by itself from cell to cell, so a
@@ -1073,7 +1073,7 @@ module VBlank
             # cells written one by one, are what the interpreter plays (Reference#exec_set_tile_block);
             # the checked run holds this to them.
             #
-            # THIS IS THE ONE LOWERING THAT DOES NOT PLAY THE CHILDREN, and the measurement is why: a
+            # This is the one lowering that does not play the children, and the measurement is why: a
             # speech box of 189 cells written one by one took the pass nearly a whole frame, each
             # cell a test of its place and a call to note it, and written as five blocks it takes a
             # small part of one, the blank writing a word a cell
@@ -1155,7 +1155,7 @@ module VBlank
               emit_cell_noted(bg, node) { |_outside| @asm.move(:w, @asm.imm(word), @asm.d(3)) }
             end
 
-            # THE CELL AT +node+'s COLUMN AND ROW OF +bg+ NOTED TO CHANGE IN THE BLANK (Runtime::Tiles's
+            # The cell at +node+'s column and row of +bg+ noted to change in the blank (Runtime::Tiles's
             # rt_note_cell), to the word the block leaves in D3; the block is handed the label to jump
             # to when the cell is to be left alone, and may use D0 and A0.
             #
@@ -1233,7 +1233,7 @@ module VBlank
             # an entry of a table of cells holds for a number that stands for no tile.
             NO_CELL = 0xFFFF
 
-            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A WORD READ FROM A TABLE, as
+            # A tile picked as the game runs (Nodes::SetTile#picked_by) is a word read from a table, as
             # a console's own game writes its text: the number, less the one the list starts at, is a
             # place in a table of the words those tiles' cells hold, kept in the cartridge. One
             # comparison holds the number to the table, since read with no sign a number below the
@@ -1316,7 +1316,7 @@ module VBlank
               @asm.label(first)
             end
 
-            # A SCENE TAKING OVER, in a game of +scene_tiles+: its own tiles go into video memory over the last
+            # A scene taking over, in a game of +scene_tiles+: its own tiles go into video memory over the last
             # scene's, in the blank at the end of this pass (Runtime::Tiles' rt_scene_tiles). The pass is its
             # own with `loads_first:`, and shared with the scene's first pass of game without.
             def emit_scene_tiles(scene)
@@ -1325,7 +1325,7 @@ module VBlank
               runtime_call("rt_scene_tiles", [LabelAddress.new(scene_tiles_table_label(scene))])
             end
 
-            # A SCENE TAKING OVER, in a game of +scene_colors+: the palettes its own pictures are drawn from are
+            # A scene taking over, in a game of +scene_colors+: the palettes its own pictures are drawn from are
             # written into the game's colours (Runtime::Tint's rt_scene_colors), and the colour memory is worked
             # out from them as this pass ends, through the fade or tint in force, as any change of colour is.
             # So a scene that comes in under a screen faded to black shows black, and its own colours as the
@@ -1410,12 +1410,12 @@ module VBlank
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
 
-            # ONE SPRITE PLACED, if it is showing: its numbers into the registers the runtime reads
+            # One sprite placed, if it is showing: its numbers into the registers the runtime reads
             # them from (Runtime::Tiles#emit_sprites) and a call. +returns+ for a placing that is
             # itself called (#emit_ordered_run): it goes to the runtime with a jump, whose return is
             # then the placing's own.
             #
-            # THE WALK'S REGISTERS ARE THE RUNTIME'S from rt_sprites_begin to rt_sprites_end, so
+            # The walk's registers are the runtime's from rt_sprites_begin to rt_sprites_end, so
             # nothing written between two sprites may change them. A sprite's numbers are nearly
             # always variables, or sums of them the lowering writes in place with D0, D1, D2 and A0
             # alone (Lowering#value_keeps_counters?). One that calls the runtime could change
@@ -1519,7 +1519,7 @@ module VBlank
 
             def recolor_table_label(lines) = "art recolors #{@recolor_tables.index(lines)}"
 
-            # A RUN THE GAME PUTS IN ORDER AS IT RUNS (Reference#names_in_draw_order): its list holds the
+            # A run the game puts in order as it runs (Reference#names_in_draw_order): its list holds the
             # run's sprites back to front, each by its place in the run, so each entry in turn places
             # the sprite it names. Each sprite's placing is written out once, here, ending in a return,
             # so the entries share it.
@@ -1537,7 +1537,7 @@ module VBlank
             # list — one written by hand, or one something takes items from the front of, whose slots
             # move round — is walked as the interpreter reads it (DrawOrderWalk), through the same table.
             #
-            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), so the walk starts past
+            # A sorted run keeps its entries not showing at its front (ShownSort), so the walk starts past
             # them, and every entry it reaches was found showing by the sort on this pass: a place the
             # sort asked is placed without being asked again.
             def emit_ordered_run(run)

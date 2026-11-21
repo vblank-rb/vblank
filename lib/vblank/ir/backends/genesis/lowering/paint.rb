@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # A PAINTED SCREEN, lowered for a Genesis: each drawing statement a call into Runtime::Paint,
+          # A painted screen, lowered for a Genesis: each drawing statement a call into Runtime::Paint,
           # and what it paints — its colours, its pictures, its text — made into Genesis::PaintedArt
           # while the program is built. Mixed into Lowering.
           #
