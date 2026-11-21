@@ -2,11 +2,11 @@
 
 module VBlank
   module Network
-    # TEXT, A LINE AT A TIME, OVER AN OPEN SOCKET (TCP, or a pair of UNIX sockets in a test): one message is
+    # Text, a line at a time, over an open socket (TCP, or a pair of UNIX sockets in a test): one message is
     # one line. It answers what a RelayTransport asks of any line, as a WebSocket does for the relay:
     # send_text, receive_text, wait_for_text, close and closed?.
     #
-    # NOTHING HERE WAITS FOR LONGER THAN IT IS ASKED. Reading never blocks (a message is what is there
+    # Nothing here waits for longer than it is asked. Reading never blocks (a message is what is there
     # so far), and #wait_for_text sleeps only inside IO.select, which wakes the moment a byte arrives or the
     # other end goes away. A peer that went away, however it did (a closed window, a killed process, a
     # reset connection), is the same thing here: the line is closed once everything it sent has been

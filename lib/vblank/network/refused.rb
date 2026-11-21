@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # A MACHINE THAT CANNOT JOIN THE MATCH, and the plain words it is told. The host decides, from
+    # A machine that cannot join the match, and the plain words it is told. The host decides, from
     # the game and the console each side is running, and sends the reason; the words are made here,
     # on the machine that was refused, so each lowering can say them in its own place.
     class Refused < StandardError
@@ -11,7 +11,7 @@ module VBlank
       attr_reader :reason
 
       # Why +mine+, the fingerprint of this machine's game, was not let into a match that is
-      # +theirs+. +reason+ is one of REASONS.
+      # +theirs+. +reason+ is one of reasons.
       def self.because(reason, mine:, theirs:)
         new(reason, words(reason, mine, theirs))
       end

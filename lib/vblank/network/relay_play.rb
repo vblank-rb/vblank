@@ -2,11 +2,11 @@
 
 module VBlank
   module Network
-    # PLAYING THROUGH A RELAY, which is what `vblank run --relay --host` and `--relay --join CODE` do: each
+    # Playing through a relay, which is what `vblank run --relay --host` and `--relay --join CODE` do: each
     # machine connects out to the relay over a WebSocket, so nobody has to open a port or know another's
     # address. One machine makes a room and is told its code, and gives the code to the others, who join it.
     #
-    # THE RELAY'S ADDRESS IS ONE SETTING (RELAY_URL_VARIABLE, or the address given to --relay). There is no
+    # The relay's address is one setting (RELAY_URL_VARIABLE, or the address given to --relay). There is no
     # default: the real relay has no address yet. Anything else reads it from here.
     module RelayPlay
       # The environment variable that holds the relay's address when none is given.

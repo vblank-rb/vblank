@@ -2,19 +2,19 @@
 
 module VBlank
   module Network
-    # WHAT MACHINES SAY TO EACH OTHER IN A MATCH, one small value for each thing. A machine sends a
+    # What machines say to each other in a match, one small value for each thing. A machine sends a
     # message to the room it is in, and the room hands it to every other machine in it; what the
     # receiver is told is an Envelope: who sent it (the sender's number in the room, which is also the
     # sender's player number) and the message.
     #
-    # THE ROOM IS EITHER A RELAY OR THE HOST. With a relay each machine is one connection to the relay,
+    # The room is either a relay or the host. With a relay each machine is one connection to the relay,
     # which forwards. With a direct connection the host is the room: it takes each message from the
     # machine that sent it, and sends it on to the others. A machine cannot tell the two apart, so one
     # set of messages serves both.
     #
     # The room never plays the game and never reads the buttons in these messages.
     #
-    # EACH MESSAGE KNOWS ITS NAME AND FIELDS ON THE WIRE (Wirable), so Wire needs no list of fields of
+    # Each message knows its name and fields on the wire (Wirable), so Wire needs no list of fields of
     # its own: a new message is a new class here and a line in Wire::MESSAGES.
     module Wirable
       def self.included(base) = base.extend(ClassMethods)
@@ -162,7 +162,7 @@ module VBlank
 
     # --- between a machine and a relay (never handed on to the room) ---
 
-    # A ROOM A MACHINE WANTS LISTED: the game it plays (its fingerprint), a name for the room that tells nobody who
+    # A room a machine wants listed: the game it plays (its fingerprint), a name for the room that tells nobody who
     # made it, and how many players the match holds. The relay lists it to machines that play the same game while
     # it has a place free.
     PublicListing = Data.define(:fingerprint, :name, :seats)
