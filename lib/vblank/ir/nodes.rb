@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # ONE CLASS PER KIND OF NODE. Each declares what it is and what operands it carries, and
+    # One class per kind of Node. Each declares what it is and what operands it carries, and
     # gets a real reader for each of them — so asking a pixel for its width is a
     # NoMethodError at the line that asked, not a nil that travels.
     #
@@ -45,7 +45,7 @@ module VBlank
       # +scene+ is the game state this belongs to, where it was declared inside one, and
       # nil for scenery every screen shows. It carries the same fact an Object's +scene+
       # does and for the same reason: a target with a finite number of places to put a
-      # layer needs to know which layers are wanted AT THE SAME TIME, and two scenes that
+      # layer needs to know which layers are wanted at the same time, and two scenes that
       # take turns never are. See IR::Stacking#screenfuls.
       #
       # +palettes+ is every list of colours this background's tiles were drawn from, each once,
@@ -74,7 +74,7 @@ module VBlank
         include Node
         kind :background
         category :draw
-        # +bar_top+ makes it a STATUS BAR: fixed to the screen from that row down to the bottom,
+        # +bar_top+ makes it a status bar: fixed to the screen from that row down to the bottom,
         # in front of every other background and behind every sprite, never scrolled (see
         # PlaceBar for how it moves). Absent on every other background.
         #
@@ -99,7 +99,7 @@ module VBlank
         # sprites read one table of colours can draw it from the list's own place in that table.
         # Absent on every other background.
         #
-        # +follows_each+, on a background drawn with SEVERAL lists the game changes, names for each
+        # +follows_each+, on a background drawn with several lists the game changes, names for each
         # of +palettes+, at the same place, the ColorList its tiles show the colours of, nil where
         # they stay as drawn. Such a background has no +recolors+ and no number of its own: a tile
         # drawn from a followed list shows what that list holds now, each list counted by its own
@@ -112,7 +112,7 @@ module VBlank
                  above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_backgrounds,
                  in_front: :list
 
-        # +in_front+, on a background some of whose cells are drawn IN FRONT OF THE SPRITES (a
+        # +in_front+, on a background some of whose cells are drawn in front of the sprites (a
         # background from the data pack told `cells_in_front: true`), lists the numbers of its
         # +tiles+ drawn so: a cell showing one of them hides every sprite under its drawn pixels,
         # and the other cells of every background too, as a console that keeps a priority bit in
@@ -281,7 +281,7 @@ module VBlank
         def self.box_vars(name) = %i[x y w h held].map { |part| :"__bg_#{name}_box_#{part}" }
       end
 
-      # A BACKGROUND SHOWN ONLY INSIDE A BOX on the screen, +x+ and +y+ its top-left corner and
+      # A background shown only inside a box on the screen, +x+ and +y+ its top-left corner and
       # +width+ and +height+ its size, in pixels; each may be worked out as the program runs.
       # Outside the box the background is not drawn at all, and what is behind it shows. Sprites
       # are not held to it. A box past the screen's edges is the part of it on the screen, and a
@@ -311,7 +311,7 @@ module VBlank
         def shows_everywhere? = held.kind == :int && held.value.zero?
       end
 
-      # WHERE A STATUS BAR'S TOP IS, in screen rows: the bar covers the screen from there to the
+      # Where a status bar's top is, in screen rows: the bar covers the screen from there to the
       # bottom. A row past the bottom puts the whole bar out of view, and one above the top is
       # the top. Written in the gap between frames, as a scroll is, so the picture shows it from
       # the frame after; until a bar is first placed after it is put up, it shows at the row it
@@ -351,7 +351,7 @@ module VBlank
         operands name: :name, which: :value
       end
 
-      # EVERY CELL CHANGE HELD SINCE THE LAST ONE OF THESE, SHOWN NOW, together and in the order
+      # Every cell change held since the last one of these, shown now, together and in the order
       # they were made (see SetTile's +held+). The builder puts one at each frame boundary of a
       # game with a background declared `held: true`, among the boundary's other writes, so a
       # pass's changes all appear on one frame.
@@ -373,14 +373,14 @@ module VBlank
         MOST_CELLS = 1024
       end
 
-      # A RUN OF TILES WHOSE PIXELS COME FROM A LIST THE GAME OWNS, rather than from a
+      # A run of tiles whose pixels come from a list the game owns, rather than from a
       # picture fixed while the program is built. +tiles+ names them in order — a background's
       # map names them like any other tile — and +list+ is where their pixels are kept: tile k
       # is the 32 bytes from k × 32, each byte two pixels, the left one in the low four bits,
       # each of those a place in +colors+ (place 0 is see-through). The tiles start
       # see-through and show what the list holds only after a CopyTiles.
       #
-      # A run can instead be ONE PICTURE a sprite shows: +picture+ names it, +width+ and
+      # A run can instead be one picture a sprite shows: +picture+ names it, +width+ and
       # +height+ are its size in pixels, and its tiles are the list's 32-byte runs taken left
       # to right and then top to bottom — the order a sprite's tiles are kept in. +tiles+ is
       # empty for one of those, and +picture+ nil for a run a background shows.
@@ -428,7 +428,7 @@ module VBlank
         RUNS_PER_MASK = 30
       end
 
-      # A SET OF SPRITE TILES THE GAME REWRITES AS IT RUNS: +count+ tiles of 8×8, drawn from
+      # A set of sprite tiles the game rewrites as it runs: +count+ tiles of 8×8, drawn from
       # +colors+ by place (place 0 see-through), each see-through until the game first loads it.
       # No sprite shows the set itself. Its poses (TilePose) each draw some of its tiles, so a
       # tile loaded again changes every pose that draws it, and a pose costs no tiles of its own.
@@ -444,7 +444,7 @@ module VBlank
         def list_drawn_from = [colors_name, colors]
       end
 
-      # A PICTURE A SPRITE SHOWS, MADE OF TILES OF A SpriteTiles SET: +pieces+ are each
+      # A picture a sprite shows, made of tiles of a SpriteTiles SET: +pieces+ are each
       # [dx, dy, tile], the set's tile +tile+ with its top left at (dx, dy) in the picture, on
       # the picture's 8-pixel grid. Places no piece covers are see-through. The picture is
       # +width+ by +height+, as far as its pieces reach. It shows what the set's tiles hold
@@ -479,7 +479,7 @@ module VBlank
         # Bytes a tile of the table takes.
         TILE_BYTES = 32
 
-        # THE MOST LOADS ONE PASS CAN MAKE, on every build. A console whose picture memory cannot be
+        # The most loads one pass can make, on every build. A console whose picture memory cannot be
         # written while it draws copies a pass's loads in the short gap after it, which holds this
         # many; a pass that loads more stops the game, saying so (IR::Faults.too_many_sprite_tile_loads).
         MOST_IN_A_PASS = 8
@@ -522,7 +522,7 @@ module VBlank
       # +held+ keeps the change for the next ShowHeldTiles instead, for a background declared
       # `held: true`: its cell shows on the frame every other change of the pass shows on.
       #
-      # A TILE PICKED AS THE PROGRAM RUNS is +picked_by+, a number it works out, and +picks+, the
+      # A tile picked as the program runs is +picked_by+, a number it works out, and +picks+, the
       # tiles that number can stand for: entry 0 is the tile for the number +picks_from+, entry 1
       # for the one after, and so on, each one of the background's own tiles as +tile+ is. A
       # number before the first entry or past the last, or one whose entry is nil, stands for no
@@ -547,12 +547,12 @@ module VBlank
         def tiles_named = picked? ? picks.compact.uniq : [tile]
       end
 
-      # A BLOCK OF CELLS OF A DECLARED BACKGROUND CHANGED AT ONCE: +across+ by +down+ cells from
+      # A block of cells of a declared background changed at once: +across+ by +down+ cells from
       # +col+ and +row+ each take the one tile SetTile's +tile+ or +picked_by+ names, or with
       # +restore+ go back to the tile the background's map was declared with there. A speech box
       # opening is a few of these, and closing it one. Each operand is a variable, read once.
       #
-      # ITS CHILDREN ARE THE SAME CHANGE WRITTEN A CELL AT A TIME: two counted loops of SetTile,
+      # Its children are the same change written a cell at a time: two counted loops of SetTile,
       # the place's cells in rows, any cell off the map left alone as SetTile leaves it, and the
       # loops' own variables set back to nought at the end. That is what the block means, and what
       # a backend with no way of its own plays. A console whose games write a block of cells into
@@ -760,7 +760,7 @@ module VBlank
         operands color: :color
       end
 
-      # A NAMED LIST OF COLOURS THAT CAN BE TOLD TO HOLD OTHER COLOURS as the program runs.
+      # A named list of colours that can be told to hold other colours as the program runs.
       # An Object names one in its +recolors+ where a plain list of colours would go, and is
       # then drawn in whatever the list holds at that moment — so one list dresses many
       # different things in turn.
@@ -822,7 +822,7 @@ module VBlank
         operands name: :name, which: :value
       end
 
-      # A SCENE'S SPRITE PICTURES IN GROUPS, only some of which are up at a time — a room's
+      # A scene's sprite pictures in groups, only some of which are up at a time — a room's
       # things, where a scene is many rooms. +groups+ is each group's picture names, by its
       # number (nil for a number naming none); +together+ is each set of group numbers that can
       # be up at once, a group always being able to be up alone. A picture in no group is up the
@@ -931,7 +931,7 @@ module VBlank
       # One column of a picture, stretched to a height the program works out. The whole of a
       # first-person view is this, done once per strip across the screen.
       #
-      # +width+ is how many pixels ACROSS the strip is. A view whose strips are wider than a
+      # +width+ is how many pixels across the strip is. A view whose strips are wider than a
       # pixel shows the same picture column at the same height in each of them, so the width
       # belongs here rather than in a loop the caller writes: one walk down the screen fills
       # the whole strip. It is a number settled while building, because a strip's width is a
@@ -943,7 +943,7 @@ module VBlank
         operands name: :name, slice: :value, x: :value, top: :value, height: :value, width: :int
       end
 
-      # A PLACE MADE OF FLAT FACES, DRAWN AS A VIEWER SEES IT. The place is data the program
+      # A place made of flat faces, drawn as a viewer sees it. The place is data the program
       # declared (its points and faces, kept as tables) and the viewer is variables the game
       # changes, so drawing it is one statement here, and the work of drawing it is the
       # statements under it: they hand the viewer and the edges of the view to a routine the
@@ -975,7 +975,7 @@ module VBlank
                  both_sides: :flag, faces: :name, window: :list
       end
 
-      # ONE FACE ALREADY ON THE SCREEN, filled with a picture. Its corners are the first +count+
+      # One face already on the screen, filled with a picture. Its corners are the first +count+
       # fours of list +corners+ (3 to 8 of them, in order round the face): where each lands on the
       # screen (x, y, in sixteenths of a pixel) and where it falls on the picture (u across, v
       # down, in picture pixels with sixteen fraction bits). The picture is number +picture+ of
@@ -998,7 +998,7 @@ module VBlank
 
         # How many numbers a corner is in the list: x, y, u, v, one over its distance (w, with
         # 26 bits of fraction), which only a picture in perspective reads, and its light (0 for
-        # dark to LIGHTEST, with sixteen bits of fraction), which only a fill with +shading+ reads.
+        # dark to lightest, with sixteen bits of fraction), which only a fill with +shading+ reads.
         CORNER_NUMBERS = 6
 
         # The most light a corner can have: a hair under one whole, so the brightest level of a
@@ -1019,7 +1019,7 @@ module VBlank
         def edges = [left, top, right, bottom]
       end
 
-      # A GAME'S SHADING: what each colour becomes at each level of light, from the darkest level
+      # A game's shading: what each colour becomes at each level of light, from the darkest level
       # to the brightest, as the game's own tables give. +colors+ are the game's colours (15-bit,
       # its palette), and each of +levels+ gives, for each of those colours by its place, the place
       # of the colour it becomes at that level. A colour not among +colors+ stays as it is.
@@ -1052,7 +1052,7 @@ module VBlank
 
       # Words at a fixed place. +picked+ is a second colour and +showing+ the test that picks
       # it — the words are drawn in +picked+ while the test holds and in +color+ when it does
-      # not. The words are ONE set however many colours they can be, so a backend paints them
+      # not. The words are one set however many colours they can be, so a backend paints them
       # once with the colour worked out first. Without +picked+, +showing+ is never read.
       class DrawText
         include Node
@@ -1102,7 +1102,7 @@ module VBlank
         category :draw
       end
 
-      # THE PLAYER'S HANDS SHAKEN: a motor run for +frames+ frames, on or off on each by +pattern+'s
+      # The player's hands shaken: a motor run for +frames+ frames, on or off on each by +pattern+'s
       # eight bits from the top, round again after the eighth. A rumble asked for while one runs takes its
       # place, and nought frames stops it. Felt only on a console whose cartridge has a motor
       # (Console::Description#rumbles).
@@ -1156,7 +1156,7 @@ module VBlank
         category :control
       end
 
-      # HOW MANY PLAYERS ARE CONNECTED NOW, at least 1: a player counts from the first time one of
+      # How many players are connected now, at least 1: a player counts from the first time one of
       # their buttons is down (IR::Buttons.masks). A console that reads one controller answers 1.
       class PlayersConnected
         include Node
@@ -1164,7 +1164,7 @@ module VBlank
         category :value
       end
 
-      # WHICH PLAYER THIS MACHINE'S PERSON IS, from 1: the one number that is different on each machine
+      # Which player this machine's person is, from 1: the one number that is different on each machine
       # of a match by design. The build lets it reach nothing but what is drawn
       # (Builder#drawing_for_local_player), so it can never make two machines play different games.
       # A machine that plays alone, and every console, answers 1.
@@ -1316,7 +1316,7 @@ module VBlank
         operands name: :name, table: :name, at: :value, count: :int
       end
 
-      # EVERY ITEM OF A LIST WRITTEN INTO A LIST OF BYTES, lowest byte first: item i's bytes go
+      # Every item of a list written into a list of bytes, lowest byte first: item i's bytes go
       # in +into+ from slot +at+ + i × the item's size on, as a list_set of each byte would write
       # them (+into+ keeps the low bits of each, Reference::ListValue#wrap_to_width). +width+ is
       # the list's own slot width, which says how many bytes an item is. A slot of +into+ the run
@@ -1406,7 +1406,7 @@ module VBlank
         category :draw
         # +scene+ is the game state this thing belongs to, where it was declared inside
         # one. It is on screen only while that state is active, which the +active+
-        # operand already carries — what the NAME adds is that a target with somewhere
+        # operand already carries — what the name adds is that a target with somewhere
         # finite to keep pictures knows which of them are needed at the same time.
         #
         # +recolors+ is every other list of colours it can be drawn with, and +recolor+ holds
@@ -1416,7 +1416,7 @@ module VBlank
         # colours themselves, or the name of a ColorList, whose colours can change as the
         # program runs.
         # +name+ is this thing's own identity, handed out as the program is built, and
-        # +declared+ is what the AUTHOR called it. They differ because one author's name can
+        # +declared+ is what the author called it. They differ because one author's name can
         # stand for many of these — every slot of a pool is one — and because some are drawn
         # for things the author named no sprite for at all, a letter of text among them, which
         # have no +declared+ to give. Keeping it is what lets a target report on what it drew
@@ -1542,7 +1542,7 @@ module VBlank
       # The whole program. +console+ names the console it was built for (see Console::Kit), whose
       # screen the game was laid out on and checked against. Every build names one.
       #
-      # AN UNBOUND PROGRAM names none: a tree a test makes by hand, or with a Builder that was not
+      # An unbound program names none: a tree a test makes by hand, or with a Builder that was not
       # told a console. It is a test's, and each test run plays it as the console that run is for
       # (Testing#program_played). Until then it is laid out and checked on the Advance's screen,
       # the one the hand-built trees were written against.
@@ -1737,7 +1737,7 @@ module VBlank
           console_description.with_screen_size(size).with_pixel_size(pixel_size).with_shown_rows(shown_rows)
         end
 
-        # THE SCREEN SHOWN NOW, in a game whose scenes have sizes of their own: a variable the framework
+        # The screen shown now, in a game whose scenes have sizes of their own: a variable the framework
         # keeps, set by every screen line of a computer's build of a game that asks a size, to the
         # size that line shows (Builder::Drawing#record_shown_screen), as the width times 65536 plus
         # the height, in the game's pixels. A variable, so every build keeps it in a saved state and
@@ -1772,7 +1772,7 @@ module VBlank
         # The size of piece the game named for +console+'s sprites, or nil where it named none.
         def sprite_piece_size_on(console) = (sprite_piece_sizes || []).to_h[console]
 
-        # THE SPRITE PIECES +console+'S BUILD MADE OF EACH PICTURE (Backends::SpriteLines.pieces_built),
+        # The sprite pieces +console+'S build made of each picture (Backends::SpriteLines.pieces_built),
         # worked out by the block the first time it is asked and kept, or as the build recorded them
         # (#record_sprite_pieces_built). Asked again while the block runs (the build it starts asks
         # too), the answer is nil. A frozen program keeps nothing and works it out each time.
@@ -1795,7 +1795,7 @@ module VBlank
         end
       end
 
-      # A FONT THE PROGRAM DECLARED, the same way a declared picture is a node: it draws
+      # A font the program declared, the same way a declared picture is a node: it draws
       # nothing itself, it is there to be named by something that draws. `font :heavy do
       # ... end` puts one of these in the tree and `draw_text ..., font: :heavy` names it.
       #
@@ -1885,10 +1885,10 @@ module VBlank
         operands vars: :save, magic: :int
       end
 
-      # THE THREE WAYS INTO SAVE MEMORY that save data is built from (see Builder::SaveData):
+      # The three ways into save memory that save data is built from (see Builder::SaveData):
       # read a byte, a half or a word at a place in it, write one, and total a run of bytes
       # into a checksum. A place is a count of bytes from the start of save memory, and what
-      # save memory IS — a chip, a file, a Ruby hash — is each backend's business.
+      # save memory is — a chip, a file, a Ruby hash — is each backend's business.
       #
       # A read is unsigned for a byte and a half and a whole signed word for a word, so a
       # narrow list slot comes back the way the list itself reads a number too big for it.
@@ -1916,7 +1916,7 @@ module VBlank
         operands at: :value, length: :value
       end
 
-      # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND THE GAME IN ONE STEP. A record that keeps a list
+      # A whole list moved between save memory and the game in one step. A record that keeps a list
       # reads and writes every slot of it, and written as a read or a write for each item that
       # is a call apiece, with the place worked out afresh each time: on a small console the
       # calls cost far more than the bytes. One statement lets a backend move the run as a block,
@@ -1947,7 +1947,7 @@ module VBlank
         operands name: :name, at: :value, width: :option, index: :name
       end
 
-      # HOW MUCH SAVE MEMORY THE PROGRAM HAS, in kilobytes (see IR::SaveLayout::MEMORIES), and
+      # How much save memory the program has, in kilobytes (see IR::SaveLayout::MEMORIES), and
       # so which kind: the smallest takes any byte at any time, where the bigger ones have to be
       # wiped a block at a time before a block is written again (IR::SaveLayout::Memory says
       # which). A program that names none has the smallest. +chip+ is the kind (:battery, :flash,
@@ -2102,7 +2102,7 @@ module VBlank
         # song can last.
       end
 
-      # A named list of songs that each play ONCE, over the tune playing now, when the program
+      # A named list of songs that each play once, over the tune playing now, when the program
       # asks for one (see PlaySoundEffect). A definition: it names what can be played and sounds
       # nothing.
       class SoundEffectList
@@ -2277,7 +2277,7 @@ module VBlank
 
       def self.of_role(role) = BY_ROLE.fetch(role, [])
 
-      # Build a node of the named kind. The one place a kind SYMBOL becomes a class, for
+      # Build a node of the named kind. The one place a kind symbol becomes a class, for
       # callers that have the name rather than the type.
       def self.build(kind, children: [], source: nil, **operands)
         by_kind.fetch(kind) { raise ArgumentError, "no IR node kind #{kind.inspect}" }

@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # A TILE PICKED AS THE PROGRAM RUNS (Nodes::SetTile#picked_by), AS THE TESTS IT STANDS FOR.
+    # A tile picked as the program runs (Nodes::SetTile#picked_by), as the tests it stands for.
     #
     # A backend that keeps a table of its console's cells indexes it with the number (the
     # Genesis's, the Super Nintendo's and the Color's lowerings). One that does not writes this
@@ -30,7 +30,7 @@ module VBlank
         which
       end
 
-      # THE STEP WITH ITS TILE WRITTEN IN, for a number known as the cartridge is built: a game
+      # The step with its tile written in, for a number known as the cartridge is built: a game
       # whose data pack is read with it knows every number the pack holds, so a letter read from
       # the pack at a place written in the program is one tile, written as a tile named in the
       # program is. A SetTile of that tile, or nil where +number+ stands for no tile and the cell is

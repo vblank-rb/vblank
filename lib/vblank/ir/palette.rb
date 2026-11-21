@@ -95,7 +95,7 @@ module VBlank
         [bytes.pack("C*"), marker]
       end
 
-      # TWO PLACES OF ONE COLOUR THAT DARKEN APART. A shading finds a pixel's darkening by its
+      # Two places of one colour that darken apart. A shading finds a pixel's darkening by its
       # number on this screen, and two places of a shading that hold one colour have one number
       # unless something gives them two. A picture given as numbers into the shading's colours
       # (Nodes::Bitmap#places_in_shading) gives which place each pixel is, so every place that
@@ -227,7 +227,7 @@ module VBlank
       # which the derived path reserves at slot 0 and this path leaves entirely to the
       # program (an unpainted screen reads as whatever the program put first).
       #
-      # A duplicate color keeps its FIRST slot for drawing, and both slots stay in the
+      # A duplicate color keeps its first slot for drawing, and both slots stay in the
       # table: a real imported palette repeats colors, and dropping the later one would
       # shift every slot after it and break every picture.
       def use_given_palette!(given, roots, apart)
@@ -294,7 +294,7 @@ module VBlank
       # Every distinct color the given subtrees draw, in first-seen order. Two
       # sources: the draw verbs (which carry an unresolved color spec) and bitmap
       # definitions (whose pixels are already packed 15-bit values). Walks each
-      # subtree WHOLE, not just its statement children, so a color used only in an
+      # subtree whole, not just its statement children, so a color used only in an
       # else-branch (held in an attr, not a child) still gets a slot.
       #
       # A picture declared outside those subtrees counts where one of them draws it. Its colors

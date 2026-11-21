@@ -7,17 +7,17 @@ module VBlank
     # Most numbers a game works out are unknowable until it runs — but not all of
     # them. A game that lays its world out on a grid writes `cell * 8`, and however
     # the game works `cell` out, eight times anything is even. Proving that lets a
-    # backend emit ONE shape of code where it would otherwise emit both and pick at
+    # backend emit one shape of code where it would otherwise emit both and pick at
     # run time, and lets the cost model price the shape that will actually run
     # instead of the dearer of the two.
     #
-    # This lives in the IR because it is a fact about the PROGRAM, not about a
+    # This lives in the IR because it is a fact about the program, not about a
     # machine: the same proof holds whoever runs the tree. It survives a machine's
     # wrap-around too — a whole-number machine wraps at an even width, and adding,
     # subtracting or multiplying inside that width cannot change whether a number is
     # even.
     #
-    # THE ONE RULE THAT MATTERS: an answer of nil means "either, as far as this can
+    # The one rule that matters: an answer of nil means "either, as far as this can
     # tell", and every kind and operator not named below falls through to it. Saying
     # "even" about a number that can be odd is the mistake with real consequences —
     # a backend would emit the wrong code and the estimate would be under what the
@@ -66,7 +66,7 @@ module VBlank
       end
 
       # Multiplying is the useful one, and the only rule here that can answer while
-      # half the expression stays a mystery: an even number times ANYTHING is even,
+      # half the expression stays a mystery: an even number times anything is even,
       # because the two is still in there whatever it is multiplied by. That is what
       # proves `cell * 8` even without knowing a thing about `cell`.
       def self.product_parity(lhs, rhs)
