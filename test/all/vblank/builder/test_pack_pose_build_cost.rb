@@ -73,7 +73,7 @@ class TestPackPoseBuildCost < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # A pose for each start in the sheet, all over the one frame, and a sprite for each pose shown.
+  # A pose for each start in the sheet, all over the one frame, and a sprite for each pose SHOWN.
   def pose_sheet_builder(folder)
     from = pose_sheet_original(folder)
     b = VBlank::Builder.new

@@ -33,7 +33,7 @@ module PackTilePoseGames
   ORIGIN = [8, 16].freeze
   SIZE = [16, 16].freeze
   # The same frames wholly below and right of the object's place, which is then outside the
-  # picture, at [-8, -1]: each piece lands where SPIN's land from origin.
+  # picture, at [-8, -1]: each piece lands where SPIN's land from ORIGIN.
   SPIN_BELOW = [[PIECE.(8, 1, 0x40), PIECE.(16, 1, 0x42)], [PIECE.(8, 1, 0x42), PIECE.(16, 1, 0x40)]].freeze
   ORIGIN_ABOVE_LEFT = [-8, -1].freeze
 
@@ -118,7 +118,7 @@ end
 class TestPackTilePoses < Minitest::Test
   include PackTilePoseGames
 
-  # The game of +frames+ (each a list of PIECE's bytes) in place of spin.
+  # The game of +frames+ (each a list of PIECE's bytes) in place of SPIN.
   private def game_of_frames(folder, frames) = ball_game_builder(original(folder, frames: frames), frames: frames)
 
   private def screens(program, passes) = (1..passes).map { |pass| game_player.run(program, frames: pass).screen.to_a }

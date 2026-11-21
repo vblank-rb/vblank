@@ -116,11 +116,11 @@ module PackBackgroundAreaGames
   end
 
   # Cells told by a slot (`set_cells: pack[:changes]`) on the two areas, each map a slot of map
-  # cells the unpacking writes from areas, and the changes slot holding TOLD_PLACES, a cell each
+  # cells the unpacking writes from AREAS, and the changes slot holding TOLD_PLACES, a cell each
   # place. With +by_area+ each area is told by a slot of its own, the same cells; without, one slot
   # tells every area, and each draws the cell from its own tiles and colours. The loop is
   # #emit_written_places, or the block given, run on the builder and handed the background.
-  # +across+ is across or a width by area. Hands back the program and the pack file the build made.
+  # +across+ is ACROSS or a width by area. Hands back the program and the pack file the build made.
   private def told_slot_areas_game_and_file(from, options: VBlank::Cartridge::Options.new, by_area: false, across: ACROSS, &loop_body)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
@@ -923,7 +923,7 @@ class TestPackBackgroundAreas < Minitest::Test
     end
   end
 
-  # +changed+ is [place, cell] by area: areas with that cell of the area's map changed.
+  # +changed+ is [place, cell] by area: AREAS with that cell of the area's map changed.
   private def areas_with_cell(changed)
     AREAS.to_h do |name, area|
       at, cell = changed[name]

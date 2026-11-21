@@ -50,7 +50,7 @@ class TestPackScores < Minitest::Test
   # A game playing one song of two square parts: from the pack when +from+ is given, by hand otherwise.
   # +views+ keeps both parts' records as one slot of bytes, and reads each through a view of notes
   # (DSL::PackSlot#as_notes), the second to the slot's end.
-  # +timed+ reads the song's length and loop from the pack (timing), where the game by hand writes
+  # +timed+ reads the song's length and loop from the pack (TIMING), where the game by hand writes
   # the same length and `plays_once: true`, or with +comes_round+ the same length coming round to
   # its start.
   private def song_game(from = nil, views: false, timed: false, comes_round: false)

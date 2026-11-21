@@ -10,7 +10,7 @@ module PackTilePictureGames
 
   # The pictures the slot :belt holds, one tile each.
   BELT = [PLACES[3], PLACES[1], PLACES[2]].freeze
-  # Cell 0 a still tile; the others name tile 2, which takes turns through belt, plain, mirrored,
+  # Cell 0 a still tile; the others name tile 2, which takes turns through BELT, plain, mirrored,
   # and upside down in bank 1.
   WORDS = [ADVANCE_CELL.(1), ADVANCE_CELL.(2), ADVANCE_CELL.(2, mirrored: true), ADVANCE_CELL.(2, bank: 1, upside_down: true)].freeze
   GENESIS_WORDS = [GENESIS_CELL.(1), GENESIS_CELL.(2), GENESIS_CELL.(2, mirrored: true),
