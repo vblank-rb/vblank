@@ -14,7 +14,7 @@ class TestSettings < Minitest::Test
             41 => "Escape", 42 => "Backspace", 43 => "Tab", 44 => "Space", 54 => ",", 58 => "F1", 60 => "F3",
             68 => "F11", 79 => "Right", 80 => "Left", 81 => "Down", 82 => "Up", 229 => "Right Shift" }.freeze
 
-  # Names keys as NAMES does, and finds a key by its name in any case.
+  # Names keys as names does, and finds a key by its name in any case.
   class Names
     def name(key) = NAMES[key]
     def key(name) = NAMES.find { |_, named| named.casecmp?(name) }&.first

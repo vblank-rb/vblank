@@ -5,7 +5,7 @@ require "tmpdir"
 require "vblank/live"
 require "shell_tests"
 
-# WRITING A SHELL'S PROGRAMS AS RUBY (Live::Shell.from). How the shell plays is tested where the Ruby
+# Writing a shell's programs as Ruby (Live::Shell.from). How the shell plays is tested where the Ruby
 # lowering's run plays it, test/lowering/ruby/vblank/live/test_shell.rb.
 class TestLiveShell < Minitest::Test
   include ShellTests

@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "vblank/live"
 
-# GAMES vblank run WROTE OUT, KEPT WHILE CURRENT (Live::WrittenGames), and the record of what each
+# GAMES vblank run wrote out, kept while current (Live::WrittenGames), and the record of what each
 # build read that says whether they are (Live::BuildInputs). test_cli.rb plays the launches; this
 # holds what a launch cannot show: a change to VBlank itself, each kind of read, and that a kept
 # game is its owner's alone.
@@ -176,7 +176,7 @@ class TestWrittenGames < Minitest::Test
     Gem.loaded_specs.each_value { |spec| assert_includes key.gems, "#{spec.name} #{spec.version}" }
   end
 
-  # PICTURES ARE READ BY ANOTHER PROGRAM (ImageMagick), which no Ruby read sees, so VBlank says
+  # Pictures are read by another program (ImageMagick), which no Ruby read sees, so VBlank says
   # it hands the file over (BuildInputs.note_read). A picture named by its full path, and the
   # picture behind an Aseprite export, are recorded, and an edit to either is seen.
   def test_a_picture_another_program_reads_is_recorded
