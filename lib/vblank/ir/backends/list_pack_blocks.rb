@@ -35,7 +35,11 @@ module VBlank
             "GBC" => "The runtime keeps a slot lowest byte first (Runtime::Lists, rt_list_write), " \
                      "so the slots are the stage's bytes already, and the runtime's " \
                      "rt_list_pack copies them with LD A,(DE) and LD (HL+),A, a few machine cycles a byte, where " \
-                     "the loop is two runtime calls a byte, each taking its numbers and finding the slot again."
+                     "the loop is two runtime calls a byte, each taking its numbers and finding the slot again.",
+            "SNES" => "The 65816 stores a 16-bit number lowest byte first, so a slot keeps its bytes in the stage's order " \
+                      "(Runtime::Saving#emit_list_moves copies slots as save memory's bytes for the same reason), and " \
+                      "SNES::Lowering#emit_list_pack_block moves each run with one MVN, seven cycles a byte " \
+                      "(fullsnes, \"65XX Block Move\"), where the loop is two runtime calls a byte."
           }
         )
 

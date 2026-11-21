@@ -37,7 +37,7 @@ module VBlank
           end
 
           include ControlFlow
-          include ListPacking::Loops
+          include ListPackBlocks
           include DrawOrderWalk
           include SceneryWrites
           include MeasuredOnCopies
@@ -395,7 +395,29 @@ module VBlank
           # routines that do it as a block (Runtime::Saving#emit_list_moves).
           def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
 
+          # Whether the game copies a list's items into a list of bytes as one run, so its runtime
+          # carries the routine that finds the runs (Runtime::Lists#emit_pack), once #sections has
+          # placed the lists.
+          def packs_lists? = @reachable.any? { |node| node.kind == :list_pack && list_pack_block?(node) }
+
           private
+
+          # Whether the slots of a list_pack's two lists are a copy's (ListPackBlocks): the list read
+          # kept at the width it declares and the one written into in bytes, each one run of slots
+          # from just after its header, and the one written into never taken from its front, so its
+          # slot nought is the first after its header. A list of halves read back with no sign is a
+          # list of words to the step, kept in two bytes, so the width alone sends it to the loop.
+          def list_pack_block?(node)
+            slots_contiguous?(node.name, ListPacking::WIDTH_BYTES.fetch(node.width)) && slots_contiguous?(node.into, 1) &&
+              !front_dropped_lists.include?(node.into)
+          end
+
+          # Whether list +name+ keeps +bytes+ a slot, its slots one run from just after its header.
+          def slots_contiguous?(name, bytes)
+            place, _capacity, width, = @lists.fetch(name)
+            slots = @list_slots.fetch(name)
+            width == bytes && slots.base == place + Runtime::Lists::HEADER && slots.stride == width && slots.scale == 1
+          end
 
           # The assembler a run of statements is measured in (MeasuredOnCopies#bytes_of).
           def measuring_assembler = W65816.new("measuring", holds: ROUTINES)
@@ -1519,6 +1541,29 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
+
+          # A list_pack's run copied by the console's block move (ListPackBlocks). The runtime finds
+          # the runs (Runtime::Lists#emit_pack): the list's items go round its slots like a ring, so
+          # they are at most two. Each is one MVN, which moves A+1 bytes from X in one bank to Y in
+          # another, seven cycles a byte (fullsnes, "65XX Block Move"); the two banks are the lists',
+          # known here, so the instruction is written here rather than in the runtime. MVN leaves the
+          # data bank at the one it wrote to, and it is put back.
+          def emit_list_pack_block(node)
+            into = @lists.fetch(node.into).first
+            from = list_place(node)
+            list_call("rt_list_pack", node, Build.int(into), node.at)
+            @asm.phb
+            [[Runtime::Lists::R3, nil], [Runtime::Lists::R4, Runtime::Lists::R5]].each do |count, source|
+              none = fresh_label("list_pack_none")
+              @asm.lda(@asm.direct(count))
+              @asm.beq(none)
+              @asm.ldx(@asm.direct(source)) if source
+              @asm.dec # MVN moves one more than A
+              @asm.mvn(into >> 16, from >> 16)
+              place_label(none)
+            end
+            @asm.plb
+          end
 
           # How many a list holds is a word of its header, read where it is: three instructions, where
           # the runtime's call takes the list's place handed over, the jump there and back, and the

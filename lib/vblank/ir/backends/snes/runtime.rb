@@ -105,6 +105,7 @@ module VBlank
             Blank.emit(asm, memory, s.blank)
             lists = s.lists
             Lists.emit(asm, memory, lists)
+            Lists.emit_pack(asm, lists) if lowering.packs_lists?
             run_count = c.tile_runs.length
             Picture.emit(asm, memory, work: s.picture, painted: c.painted, bar: c.bar?, bent: lowered[:bent], banded: lowered[:banded],
                                       tile_runs: run_count, straight_tile_runs: c.straight_tile_runs, held_runs: c.held_runs,
