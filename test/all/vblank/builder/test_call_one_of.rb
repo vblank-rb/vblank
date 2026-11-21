@@ -178,7 +178,111 @@ class TestCallOneOf < Minitest::Test
     assert_match(/:missing is called but never defined/, err.message)
   end
 
+  # --- a Hash of numbers to routines ---
+
+  # A Hash built while the cartridge is made picks the same way, by its keys. A key it leaves
+  # out, and a number past its last key or below its first, names no routine and calls nothing.
+  def test_a_hash_picks_the_routine_its_key_names
+    assert_equal [11, 0, 33, 0, 0], [0, 1, 2, 3, -1].map { |which| run_picking_from_hash(which)[:n] }
+  end
+
+  # Keys below 0 are numbers like any other.
+  def test_a_hash_with_keys_below_nought_picks_by_them
+    program = program_with do
+      screen :bitmap
+      n = var :n, 0
+      picked = var :picked, -2
+      b = self
+      b.func(:low) { n = 11 }
+      b.func(:high) { n = 22 }
+      game_loop { b.call({ -2 => :low, 1 => :high }, number: picked) }
+    end
+
+    assert_equal 11, game_player.run(program)[:n]
+  end
+
+  def test_a_written_number_picks_from_a_hash_while_building
+    program = program_with do
+      screen :bitmap
+      n = var :n, 0
+      b = self
+      b.func(:first) { n = 11 }
+      b.func(:third) { n = 33 }
+      game_loop { b.call({ 0 => :first, 2 => :third }, number: 2) }
+    end
+
+    refute_includes program.walk.map(&:kind), :call_one_of
+    assert_equal 33, game_player.run(program)[:n]
+  end
+
+  def test_an_empty_hash_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({}, number: 0) } }
+
+    assert_match(/empty Hash/, err.message)
+  end
+
+  def test_a_hash_with_no_number_says_to_give_one
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => :a }) } }
+
+    assert_match(/no number to pick one/, err.message)
+  end
+
+  def test_a_hash_key_that_is_not_a_whole_number_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ title: :a }, number: 0) } }
+
+    assert_match(/:title/, err.message)
+    assert_match(/whole number/, err.message)
+  end
+
+  def test_a_hash_value_that_is_not_a_routine_name_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => "a" }, number: 0) } }
+
+    assert_match(/name of a routine/, err.message)
+  end
+
+  def test_a_hash_routine_nobody_defined_is_refused
+    err = assert_raises(ArgumentError) do
+      program_with do
+        which = var :which, 0
+        b = self
+        b.func(:defined) { b.halt }
+        game_loop { b.call({ 0 => :defined, 1 => :missing }, number: which) }
+      end
+    end
+
+    assert_match(/:missing is called but never defined/, err.message)
+  end
+
+  def test_a_written_number_no_key_names_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => :a, 2 => :b }, number: 1) } }
+
+    assert_match(/no routine for 1/, err.message)
+  end
+
+  # The table a Hash is laid out as has a slot for every number from its first key to its last.
+  def test_a_hash_whose_keys_are_far_apart_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => :a, 5000 => :b }, number: 0) } }
+
+    assert_match(/0 to 5000/, err.message)
+  end
+
   private
+
+  # Two routines in a Hash at 0 and 2, each setting :n to its own number, and +which+ picking.
+  def run_picking_from_hash(which)
+    program = program_with do
+      screen :bitmap
+      n = var :n, 0
+      picked = var :picked, which
+      b = self
+      b.func(:first) { n = 11 }
+      b.func(:third) { n = 33 }
+      routines = { 0 => :first }
+      routines[2] = :third
+      game_loop { b.call routines, number: picked }
+    end
+    game_player.run(program)
+  end
 
   # Three routines, each setting :n to its own number, and the number +which+ picking between
   # them. :n stays 0 when the number names none of them.

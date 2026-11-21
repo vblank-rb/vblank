@@ -40,9 +40,10 @@ module ScenesGames
   OVER = 2 # The state the last of #three_screens is up for
 
   # Three screens picked by a number, each handing on to the next on a pass the loop counts, the
-  # last named by a constant. +plain_case+ picks with a plain Ruby `case`, and
-  # otherwise with `case_var`. The title has a sprite of its own, shown only while it is up.
-  private def three_screens(plain_case:)
+  # last named by a constant. +pick+ is how the scene is picked: `:case_var`, a plain Ruby
+  # `case` (`:plain_case`), or `call` with a Hash built while the cartridge is made (`:hash`),
+  # with an `if` and a loop. The title has a sprite of its own, shown only while it is up.
+  private def three_screens(pick:)
     builder = Builder.new
     builder.instance_eval do
       screen :tiled
@@ -65,7 +66,16 @@ module ScenesGames
         ran_over += 1
         state = 0 if step == 8
       end
-      if plain_case
+      case pick
+      when :hash
+        screens = { 0 => :title }
+        [[1, :play], [OVER, :over]].each { |number, name| screens[number] = name }
+        screens[OVER + 1] = :play if pick == :never
+        game_loop do
+          call screens, number: state
+          step += 1
+        end
+      when :plain_case
         game_loop do
           case state
           when 0 then call :title
@@ -74,7 +84,7 @@ module ScenesGames
           end
           step += 1
         end
-      else
+      when :case_var
         game_loop do
           case_var :state do
             when_val 0, :title
@@ -165,22 +175,109 @@ class TestScenes < Minitest::Test
 
   def test_scenes_picked_by_a_plain_case_play_as_with_case_var
     counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
-    by_case_var = game_player.run(three_screens(plain_case: false), frames: 12)
-    by_plain_case = game_player.run(three_screens(plain_case: true), frames: 12)
+    by_case_var = game_player.run(three_screens(pick: :case_var), frames: 12)
+    by_plain_case = game_player.run(three_screens(pick: :plain_case), frames: 12)
 
     assert_equal [6, 3, 3, 0], counts.call(by_case_var)
     assert_equal counts.call(by_case_var), counts.call(by_plain_case)
   end
 
   def test_a_scenes_sprite_shows_only_while_a_plain_case_has_it_up
-    shown = lambda do |plain_case, frames|
+    shown = lambda do |pick, frames|
       player = game_player
-      player.run(three_screens(plain_case: plain_case), frames: frames)
+      player.run(three_screens(pick: pick), frames: frames)
       player.screen.pixel(44, 44)
     end
 
-    refute_equal shown.call(false, 2), shown.call(false, 6), "the title's sprite goes when play takes over"
-    assert_equal [shown.call(false, 2), shown.call(false, 6)], [shown.call(true, 2), shown.call(true, 6)]
+    refute_equal shown.call(:case_var, 2), shown.call(:case_var, 6), "the title's sprite goes when play takes over"
+    assert_equal [shown.call(:case_var, 2), shown.call(:case_var, 6)],
+                 [shown.call(:plain_case, 2), shown.call(:plain_case, 6)]
+  end
+
+  # ========================================================================
+  # call with a Hash of numbers to scenes
+  # ========================================================================
+
+  def test_scenes_picked_from_a_hash_play_as_with_case_var
+    counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
+    by_case_var = game_player.run(three_screens(pick: :case_var), frames: 12)
+    by_hash = game_player.run(three_screens(pick: :hash), frames: 12)
+
+    assert_equal counts.call(by_case_var), counts.call(by_hash)
+  end
+
+  def test_a_scenes_sprite_shows_only_while_a_hash_has_it_up
+    shown = lambda do |pick, frames|
+      player = game_player
+      player.run(three_screens(pick: pick), frames: frames)
+      player.screen.pixel(44, 44)
+    end
+
+    assert_equal [shown.call(:case_var, 2), shown.call(:case_var, 6)], [shown.call(:hash, 2), shown.call(:hash, 6)]
+  end
+
+  def test_a_hash_that_picks_one_scene_with_two_numbers_is_a_friendly_error
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        state = 0
+        scene(:title) { state = 1 }
+        game_loop { call({ 0 => :title, 1 => :title }, number: state) }
+      end
+    end
+
+    assert_match(/:title with more than one number/, error.message)
+  end
+
+  # A scene is picked by a game variable, which everything that asks which scene is up reads.
+  def test_a_hash_of_scenes_picked_by_a_working_out_is_a_friendly_error
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        state = 0
+        scene(:title) { state = 1 }
+        game_loop { call({ 1 => :title }, number: state + 1) }
+      end
+    end
+
+    assert_match(/game variable/, error.message)
+  end
+
+  def test_a_hash_of_scenes_and_funcs_together_is_a_friendly_error
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        state = 0
+        scene(:title) { state = 1 }
+        func(:reset) { state = 0 }
+        game_loop { call({ 0 => :title, 1 => :reset }, number: state) }
+      end
+    end
+
+    assert_match(/scenes and funcs together/, error.message)
+  end
+
+  # The Hash is made the dispatch as its line runs, so a scene declared below it is not one yet.
+  def test_a_hash_naming_a_scene_declared_below_it_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      game_loop { call({ 0 => :title }, number: state) }
+      scene(:title) { state = 0 }
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/:title is a scene declared below/, error.message)
+  end
+
+  def test_a_func_declared_after_a_hash_with_a_scenes_name_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      scene(:title) { state = 0 }
+      game_loop { call({ 0 => :title }, number: state) }
+      func(:title) { state = 0 }
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/both a scene and a func/, error.message)
   end
 
   # A `case` whose arms call funcs is the chain of tests it always was: one arm a pass, though

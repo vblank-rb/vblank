@@ -70,6 +70,12 @@ module VBlank
       #   Use it where a number already decides what happens next, such as a script's
       #   instructions or the move an enemy picked. It goes straight to the routine, so a list of
       #   a hundred costs what a list of two does. A number below 0 or past the end calls nothing.
+      # * A Hash of numbers to names with `number:`, which runs the one whose key is that number.
+      #   Build it in Ruby while the cartridge is made, where some routines are only in some
+      #   builds or are made in a loop. A number that is no key calls nothing. Where every name
+      #   is a scene, it picks the scene as a plain `case` on the number does. The number must
+      #   then be a game variable, and each scene must be declared above the `call` line and
+      #   picked by one key.
       #
       # ```ruby
       # mode = var :mode, :title        # a variable that holds one of a set of names
@@ -78,10 +84,15 @@ module VBlank
       #
       # HANDLERS = %i[op_end op_wait op_walk op_say]
       # scripts.each { |s| call HANDLERS, number: s.opcode }
+      #
+      # screens = { TITLE => :title, PLAY => :playing }
+      # screens[LOGOS] = :logos if with_logos
+      # game_loop { call screens, number: state }
       # ```
       #
-      # * `name` - a routine's name, a list of names, or a variable that holds a name.
-      # * `number:` - which of the list to call. Give it only with a list.
+      # * `name` - a routine's name, a list of names, a Hash of numbers to names, or a variable
+      #   that holds a name.
+      # * `number:` - which of the list or Hash to call. Give it only with a list or a Hash.
       #--
       # The target is resolved by name when the tree is lowered. Which names a variable can hold
       # is known only once the whole program is built, so that list is gathered at the end
@@ -90,6 +101,7 @@ module VBlank
       def call(name, number: nil)
         return call_by_name(name, number) if name.is_a?(DSL::Value)
         return call_one_of(name, number) if name.is_a?(Array)
+        return call_from_hash(name, number) if name.is_a?(Hash)
 
         unless number.nil?
           raise ArgumentError,
@@ -263,31 +275,40 @@ module VBlank
       end
 
       # Records the dispatch for a `case` that #scene_case? said picks scenes. A value two arms
-      # share runs the first, as in Ruby.
-      def emit_scene_case(subject, arms)
+      # share runs the first, as in Ruby. +picker+ is what the author wrote, for a message.
+      def emit_scene_case(subject, arms, picker: ScenePicker::CASE)
         clauses = arms.flat_map { |values, name| values.map { |value| [value, name] } }.uniq(&:first)
-        refuse_scene_picked_twice!(clauses)
+        refuse_scene_picked_twice!(clauses, picker)
         variable = subject.node.name
         ensure_var(variable)
         node = Build.case_(variable, clauses.map { |value, name| [value, :"_scene_#{name}"] })
-        (@scene_case_sources ||= {}.compare_by_identity)[node] = Messages::AuthorSource.author_source
+        (@scene_case_sources ||= {}.compare_by_identity)[node] = [Messages::AuthorSource.author_source, picker]
         record(node)
         nil
       end
 
+      # What picked the scenes of a dispatch, as an author's message names it: `the` for the
+      # start of a sentence, `one_number` for what gives a scene one number.
+      ScenePicker = Data.define(:the, :one_number)
+      class ScenePicker
+        CASE = new(the: "The `case`", one_number: "one `when`")
+        HASH = new(the: "The Hash given to `call`", one_number: "one key")
+      end
+
       #--
-      # A plain `case` is made a scene dispatch when its line runs, if every name it calls is a
-      # scene with no func of that name then (#scene_case?). A func of one of those names declared
-      # later would have been what `call` ran, so it is refused here, once every routine is declared.
+      # A plain `case` or a Hash given to `call` is made a scene dispatch when its line runs, if
+      # every name it calls is a scene with no func of that name then (#scene_case?). A func of
+      # one of those names declared later would have been what `call` ran, so it is refused here,
+      # once every routine is declared.
       #++
       def refuse_func_named_like_case_scene!
-        (@scene_case_sources || {}).each do |node, source|
+        (@scene_case_sources || {}).each do |node, (source, picker)|
           name = node.clauses.map { |_, target| target.to_s.delete_prefix("_scene_").to_sym }.find { |each| @functions.key?(each) }
           next unless name
 
           where = source ? " at #{source}" : ""
-          raise ArgumentError, "The `case`#{where} calls :#{name}, and :#{name} is both a scene and a func. " \
-                               "The `case` runs the scene, because the func is declared after it. To fix this, " \
+          raise ArgumentError, "#{picker.the}#{where} calls :#{name}, and :#{name} is both a scene and a func. " \
+                               "It runs the scene, because the func is declared after it. To fix this, " \
                                "rename the func or the scene."
         end
       end
@@ -296,14 +317,14 @@ module VBlank
       # What a scene shows is held to the one value that picks it (Builder#scan_scene_gates), so a
       # scene picked by a second value would run with its sprites and scenery hidden.
       #++
-      def refuse_scene_picked_twice!(clauses)
+      def refuse_scene_picked_twice!(clauses, picker)
         name, = clauses.group_by(&:last).find { |_, picked| picked.size > 1 }
         return unless name
 
         values = clauses.select { |_, each| each == name }.map(&:first)
-        raise ArgumentError, "This `case` picks the scene :#{name} with more than one number: " \
+        raise ArgumentError, "#{picker.the} picks the scene :#{name} with more than one number: " \
                              "#{values.join(', ')}. A scene can be picked by one number only. To fix this, " \
-                             "give :#{name} one `when`, and keep the state at that number while the scene is up."
+                             "give :#{name} #{picker.one_number}, and keep the state at that number while the scene is up."
       end
 
       # Call the routine whose name +value+ holds. The routines are that value's own names, and
@@ -344,6 +365,138 @@ module VBlank
 
         record(Build.call_one_of(names, which: DSL::Value.node_for(number)))
         ensure_var(number)
+      end
+
+      # The most numbers a Hash given to `call` can span, first key to last: its table has a
+      # slot for each, a word of the cartridge apiece on the Advance.
+      MOST_HASH_SLOTS = 256
+
+      # Call whichever of +routines+ (a Hash of whole numbers to names) the +number+ picks.
+      # Where every name is a scene, it is the dispatch a plain `case` on the number records;
+      # otherwise it is the call by number a list makes.
+      #--
+      # The list is laid out as a table from the first key to the last, the gaps filled with a
+      # routine that does nothing (#call_nothing_routine). Asked of the Advance, that dispatch is
+      # the same few instructions however many keys there are (a load, a compare and a branch, a
+      # load of the table and of its word, a call through it: Functions#emit_call_one_of), one
+      # more to take the first key off where it is below 0, and a gap costs a word of the table.
+      # Tests per key cost a load, a compare and a branch for each key on every call, and must
+      # each be skipped once one has called, so a game picking among a dozen screens would ask a
+      # dozen questions a pass. Keys from 0 up are read straight, so a Hash from 0 is the list.
+      #++
+      def call_from_hash(routines, number)
+        refuse_bad_routine_hash!(routines, number)
+        return emit_scene_hash(routines, number) if routines.values.any? { |name| declared_scene?(name) }
+
+        refuse_hash_number_past_keys!(routines, number)
+        refuse_hash_spread_out!(routines)
+        fixed = DSL::Value.fixed_number(number)
+        return record(Build.call(routines.fetch(fixed))) if fixed
+
+        first = hash_table_start(routines)
+        names = (first..routines.keys.max).map { |key| routines.fetch(key) { call_nothing_routine } }
+        which = DSL::Value.node_for(number)
+        which = Build.binop(:-, which, first) unless first.zero?
+        node = Build.call_one_of(names, which: which)
+        (@hash_dispatch_sources ||= {}.compare_by_identity)[node] = Messages::AuthorSource.author_source
+        record(node)
+        ensure_var(number)
+      end
+
+      # A scene declared by now, with no func of its name.
+      def declared_scene?(name) = @functions.key?(:"_scene_#{name}") && !@functions.key?(name)
+
+      # A Hash whose names are scenes picks them as the dispatch a plain `case` records, so it
+      # needs what that one does (#scene_case?): every name a scene, the number a game variable.
+      def emit_scene_hash(routines, number)
+        unless routines.values.all? { |name| declared_scene?(name) }
+          funcs = routines.values.reject { |name| declared_scene?(name) }
+          raise ArgumentError, "The Hash given to `call` names scenes and funcs together. :#{funcs.first} is " \
+                               "not a scene declared above this line. A Hash picks scenes only, or routines " \
+                               "only. To fix this, give the funcs a Hash of their own, or declare the scene " \
+                               "above the `call` line."
+        end
+        arms = routines.map { |key, name| [[key], name] }
+        unless scene_case?(number, arms)
+          raise ArgumentError, "The Hash given to `call` picks scenes, so `number:` must be a game variable, " \
+                               "like `number: state`. A working-out, a written number and a pool's field cannot " \
+                               "pick a scene. To fix this, keep the number in a game variable and give that."
+        end
+        emit_scene_case(number, arms, picker: ScenePicker::HASH)
+      end
+
+      def refuse_bad_routine_hash!(routines, number)
+        raise ArgumentError, "`call` was given an empty Hash of routines. Name at least one routine." if routines.empty?
+
+        if number.nil?
+          raise ArgumentError,
+                "`call` was given a Hash of #{routines.size} routines and no number to pick one. To fix " \
+                "this, add `number:`, like `call screens, number: state`."
+        end
+        key = routines.keys.find { |each| !each.is_a?(Integer) }
+        unless key.nil?
+          raise ArgumentError,
+                "`call` was given a Hash with the key #{key.inspect}. Each key must be a whole number, " \
+                "the number that picks its routine."
+        end
+        name = routines.values.find { |each| !each.is_a?(Symbol) }
+        unless name.nil?
+          raise ArgumentError,
+                "`call` was given #{name.inspect} in its Hash of routines. Each value in the Hash must be " \
+                "the name of a routine, like `:#{routines.values.grep(Symbol).first || 'title'}`."
+        end
+        refuse_bad_routine_list!(routines.values, number)
+      end
+
+      # The number a Hash's table starts at: 0, so the number is read as it is, unless a key is
+      # below 0 or the table would then be too long, when it starts at the first key.
+      def hash_table_start(routines)
+        first, last = routines.keys.minmax
+        first.negative? || last >= MOST_HASH_SLOTS ? first : 0
+      end
+
+      def refuse_hash_spread_out!(routines)
+        first, last = routines.keys.minmax
+        return if last - first < MOST_HASH_SLOTS
+
+        raise ArgumentError,
+              "The Hash given to `call` has keys from #{first} to #{last}. It is kept as a table with a slot " \
+              "for each number between, and #{MOST_HASH_SLOTS} is the most. To fix this, number the routines " \
+              "closer together."
+      end
+
+      def refuse_hash_number_past_keys!(routines, number)
+        fixed = DSL::Value.fixed_number(number)
+        return if fixed.nil? || routines.key?(fixed)
+
+        raise ArgumentError,
+              "`call` was given `number: #{fixed}`, and the Hash has no routine for #{fixed}. Its keys are " \
+              "#{routines.keys.sort.join(', ')}. To fix this, give one of those numbers."
+      end
+
+      # A routine that does nothing, for the numbers between a Hash's keys.
+      def call_nothing_routine
+        declare_func(CALL_NOTHING) {} unless @functions.key?(CALL_NOTHING)
+        CALL_NOTHING
+      end
+
+      CALL_NOTHING = :_call_nothing # A routine that does nothing
+
+      #--
+      # A Hash whose names were not scenes when its line ran is a call by number, and a scene of
+      # one of those names declared later would not be picked as a scene, so it is refused here,
+      # once every routine is declared.
+      #++
+      def refuse_scene_declared_after_hash!
+        (@hash_dispatch_sources || {}).each do |node, source|
+          name = node.targets.find { |each| !@functions.key?(each) && @functions.key?(:"_scene_#{each}") }
+          next unless name
+
+          where = source ? " at #{source}" : ""
+          raise ArgumentError, "The Hash given to `call`#{where} names :#{name}, and :#{name} is a scene declared " \
+                               "below it. A Hash picks a scene only when the scene is declared first. To fix " \
+                               "this, move the `scene :#{name}` line above the `call` line."
+        end
       end
 
       def refuse_bad_routine_list!(names, number)

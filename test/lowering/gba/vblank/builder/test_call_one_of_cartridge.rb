@@ -42,6 +42,26 @@ class TestCallOneOfCartridge < Minitest::Test
     assert_operator v.var(:left), :>, 0, "...and so was the one left in the cartridge"
   end
 
+  # A Hash is laid out as a table from its first key to its last, a key below 0 taken off the
+  # number first and a gap held by a routine that does nothing. Each number lands on its own
+  # routine, and a gap, a number past the last key and one below the first call nothing.
+  def test_a_hash_with_a_gap_and_a_key_below_nought_reaches_each_routine
+    rom = VBlank.build("PICKHASH", console: :gba, maker: "01", out: StringIO.new, err: StringIO.new) do
+      screen :bitmap
+      low = 0
+      high = 0
+      picks = %i[pick_low pick_gap pick_high pick_past pick_below].zip([-1, 0, 1, 2, -2]).map { |name, n| var name, n }
+      b = self
+      b.func(:on_low) { low += 1 }
+      b.func(:on_high) { high += 10 }
+      game_loop { picks.each { |pick| b.call({ -1 => :on_low, 1 => :on_high }, number: pick) } }
+    end
+    v = assert_emulator_loads_rom(rom, frames: 8, vars: rom.var_addresses)
+
+    assert_operator v.var(:low), :>, 0
+    assert_equal v.var(:low) * 10, v.var(:high), "each pass called each routine once, and nothing else"
+  end
+
   # A list too long for its length to ride inside an instruction. The console can carry a
   # number up to 255 in the compare that holds the call back, and a longer list has to put its
   # length in a register first. 257 is the first length that needs it.

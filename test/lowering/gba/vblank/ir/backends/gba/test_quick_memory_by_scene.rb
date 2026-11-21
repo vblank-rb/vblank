@@ -139,6 +139,31 @@ class TestQuickMemoryByScene < Minitest::Test
     builder.program
   end
 
+  # The same game as #two_screens, whose screen is picked by `call` from a Hash built in a loop.
+  private def two_screens_by_hash(adds:)
+    builder = Builder.new
+    builder.instance_eval do
+      a = 0
+      b = 0
+      t = 0
+      where = 0
+      func(:title_work) { adds.times { a += 1 } }
+      func(:play_work) { adds.times { b += 1 } }
+      scene(:title) { call :title_work }
+      scene(:play) { call :play_work }
+      screens = {}
+      %i[title play].each_with_index { |name, number| screens[number] = name }
+      game_loop do
+        t += 1
+        where = 1 if t == 6
+        where = 0 if t == 12
+        call screens, number: where
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # A game whose play screen insists on a routine of about +adds+ additions in the quick memory,
   # and whose file screen saves a record that insists on its save routines there too.
   # With +logos+, the game opens on a screen of logos that has no routines of its own, as a
@@ -434,6 +459,16 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_includes report.scenes.fetch(:play), :play_work
     assert_equal assemble_rom(two_screens(adds: BIG), name: "PLAINCASE").buffer,
                  assemble_rom(plain, name: "PLAINCASE").buffer
+  end
+
+  # Scenes picked by `call` from a Hash are the same dispatch again, byte for byte.
+  def test_screens_picked_from_a_hash_build_the_cartridge_case_var_builds
+    by_hash = two_screens_by_hash(adds: BIG)
+    report = placement_of(by_hash)
+
+    assert_includes report.scenes.fetch(:play), :play_work
+    assert_equal assemble_rom(two_screens(adds: BIG), name: "HASHCASE").buffer,
+                 assemble_rom(by_hash, name: "HASHCASE").buffer
   end
 
   # Each scene's room goes to what a frame of that scene spends the most in. A routine both
