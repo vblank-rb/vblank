@@ -33,7 +33,7 @@ module VBlank
       # everything settled but its pitch, which is what the caller is about to supply.
       DEFAULTS = Effect.new(frequency: nil, duty: :half, decay: :fast, volume: 15)
 
-      # HOW MANY RECORDED SOUNDS PLAY AT ONCE, and it lives here because it is a promise the
+      # How many recorded sounds play at once, and it lives here because it is a promise the
       # backends make to each other rather than a fact about either one. Past this a new play
       # is dropped — safe and quiet — instead of cutting off one already sounding.
       #
@@ -43,7 +43,7 @@ module VBlank
       # sound the interpreter still played, which shows up only on the one sound too many and
       # would be read as a mixing bug rather than as two numbers drifting apart.
       #
-      # SIXTEEN IS THE FRAMEWORK'S NUMBER, NOT THE CONSOLE'S. The console has no count of
+      # Sixteen is the framework's number, not the console's. The console has no count of
       # recordings at all: the CPU adds them together and the sound hardware plays the one
       # stream. What a voice costs is the mixing, and only while it sounds — an idle slot is a
       # check a frame — so the number is room, and sixteen is what the music being asked of the
@@ -52,19 +52,19 @@ module VBlank
       # whichever console it plays a game as.
       MIXER_VOICES = Console::ADVANCE.recordings_at_once
 
-      # THE NUMBERS THE MIX ADDS RECORDINGS TOGETHER WITH, kept here for the same reason: the
+      # The numbers the mix adds recordings together with, kept here for the same reason: the
       # cartridge's mixer and the interpreter's work out the same bytes of sound, and a number
       # written in each would drift.
       #
       # A play's loudness, out of 512, by the name it was asked at. The mix multiplies by 256ths
       # (VOL_SHIFT divides by them), and a loudness keeps LOUDNESS_FRACTION bit under that: half
       # a 256th. That is the scale a cartridge's own sound engine keeps a voice at. It holds the
-      # voice's right and left volumes and mixes by their SUM, so 17 + 16 is 33 512ths, and a
+      # voice's right and left volumes and mixes by their sum, so 17 + 16 is 33 512ths, and a
       # note handed over as 17 256ths would be louder than the engine's by the half it dropped.
       # Music decoded off one is given its notes' loudness as that engine had them: its
       # quietest notes are still heard, and its loudest, about half the recording, is that loud
       # here too.
-      # A STEP, how far a voice reads through its recording for each sample of the mix, is
+      # A step, how far a voice reads through its recording for each sample of the mix, is
       # counted in 65536ths, so STEP_SHIFT bits of it are the part of a sample. What the mix
       # multiplies by is a voice's GAIN, its loudness in 256ths with GAIN_FRACTION bits of
       # fraction under it, which a note with a shape slides: sixteen is as many as fit, since a
@@ -81,7 +81,7 @@ module VBlank
       LOUDNESS_TO_GAIN = GAIN_FRACTION - LOUDNESS_FRACTION # A loudness shifted up this far is its gain
       RAMP_SPLIT = 8
 
-      # THE MAIN VOLUME a game names for all its sound (`enable_sound main_volume:`) is counted in
+      # The main volume a game names for all its sound (`enable_sound main_volume:`) is counted in
       # 127ths of the loudest, the Super Nintendo sound chip's own steps; each console's build takes
       # that to its chip's own range, and a computer's build scales its whole mix by it.
       MAIN_VOLUME_LOUDEST = 127
@@ -146,7 +146,7 @@ module VBlank
       # ...and how loud one step can be. Four bits, so 0 is silence and 15 is the top.
       WAVE_STEP_MAX = 15
 
-      # A WAVEFORM AS THE GAME BOY'S WAVE MEMORY KEEPS IT: sixteen bytes, two steps a byte, the
+      # A waveform as the Game Boy's wave memory keeps it: sixteen bytes, two steps a byte, the
       # earlier step in the high four bits. A sound driver's wave patterns are kept this way, so a
       # port reads them from its original as these bytes.
       WAVE_BYTES = WAVE_SAMPLES / 2
@@ -154,12 +154,12 @@ module VBlank
       # The 32 steps of +bytes+ (WAVE_BYTES numbers, 0 to 255) kept that way.
       def self.wave_steps_of_bytes(bytes) = bytes.flat_map { |byte| [byte >> 4, byte & 0xF] }
 
-      # WHAT THE TWO KINDS OF VOICE CAN ACTUALLY DO. These are limits, not encodings, which is
+      # What the two kinds of voice can actually do. These are limits, not encodings, which is
       # why they sit out here with the musical half rather than inside a lowering: a backend that
       # never writes a register still has to honour them, or the two backends disagree about
       # what a game sounds like.
       #
-      # The wave voice has FIVE loudnesses and not a range — off, and four steps — so a part
+      # The wave voice has five loudnesses and not a range — off, and four steps — so a part
       # written at volume 6 of 15 plays at the nearest of them. Every backend rounds the same
       # way, and one that rounded 6 down to silence while another rounded it up would differ on
       # whether a note is heard at all.
@@ -170,12 +170,12 @@ module VBlank
         WAVE_LEVEL_STEPS[((volume.clamp(0, 15) * (WAVE_LEVEL_STEPS.size - 1)) / 15.0).round]
       end
 
-      # WHAT A SQUARE VOICE SOUNDS LIKE, for a backend that has to make the sound itself rather
+      # What a square voice sounds like, for a backend that has to make the sound itself rather
       # than tell a chip to: the pitch it really plays, how thin its tone is, and how fast it
       # fades. A cartridge writes these to the sound chip as bit patterns (Backends::GameBoySound); a
       # desktop build has no chip and builds the wave from the same three facts.
       #
-      # THE PITCH IS A WHOLE NUMBER OF TICKS, not any frequency at all. The voice counts a clock
+      # The pitch is a whole number of ticks, not any frequency at all. The voice counts a clock
       # of 131,072 ticks a second and one wave lasts a whole number of them, 1 to 2048 — so 440 Hz
       # is played as 298 ticks a wave, a hair under 440. Every backend has to round the same way
       # or two voices in tune on one are a beat apart on the other. 2048 ticks is the bottom, 64 Hz,
@@ -206,13 +206,13 @@ module VBlank
         FADE_STEP_SIXTY_FOURTHS.fetch(speed) { raise ArgumentError, "unknown fade speed #{speed.inspect}" }
       end
 
-      # WHAT THE WAVE VOICE SOUNDS LIKE, for the same backend: the pitch it really plays, and how
+      # What the wave voice sounds like, for the same backend: the pitch it really plays, and how
       # tall each step of its waveform comes out at each of its loudnesses.
       #
-      # ITS PITCH IS A WHOLE NUMBER OF TICKS TOO, of a clock half as fast as the square voices':
+      # Its pitch is a whole number of ticks too, of a clock half as fast as the square voices':
       # 65,536 ticks a second, and one whole wave — all 32 steps of it — lasts 1 to 2048 of them.
       # A longer wave is a lower note, so this voice bottoms out at 32 Hz where a square voice
-      # stops at 64, and a note below that is played AT 32 Hz.
+      # stops at 64, and a note below that is played at 32 Hz.
       WAVE_CLOCK_HZ = 65_536
       WAVE_LONGEST_WAVE = 2048
 
@@ -221,7 +221,7 @@ module VBlank
         WAVE_LONGEST_WAVE - (WAVE_LONGEST_WAVE - (WAVE_CLOCK_HZ.to_f / hz)).round.clamp(0, WAVE_LONGEST_WAVE - 1)
       end
 
-      # ITS LOUDNESS CUTS EACH STEP DOWN, and what does not divide is dropped: the voice makes its
+      # Its loudness cuts each step down, and what does not divide is dropped: the voice makes its
       # four loudnesses by taking so many quarters of a step, in whole numbers. So a step of 15
       # at half is 7 and not seven and a half, and a quiet waveform has fewer different heights
       # in it than a loud one — a quarter-loud triangle is a staircase of four treads.
@@ -234,14 +234,14 @@ module VBlank
         WAVE_LEVEL_STEPS.index(level) or raise ArgumentError, "unknown wave volume #{level.inspect}"
       end
 
-      # WHAT THE NOISE VOICE SOUNDS LIKE, for the same backend.
+      # What the noise voice sounds like, for the same backend.
       #
-      # THE HISS IS A ROW OF BITS SHUFFLED ALONG ONE PLACE AT A TIME. Each step the voice is high
+      # The hiss is a row of bits shuffled along one place at a time. Each step the voice is high
       # or low by the bit that falls off the end, and the bits left behind are stirred so the
       # pattern takes a long time to come round. How fast it steps is the pitch: fast is a thin
       # high hiss, slow a rumble.
       #
-      # A STEP IS A WHOLE NUMBER OF TICKS of a clock of 524,288 a second. The voice has no free
+      # A step is a whole number of ticks of a clock of 524,288 a second. The voice has no free
       # choice of that number. It picks a divider (0 to 7, where 0 stands for a half) and how
       # many times to halve what the divider leaves (0 to 13), so a step lasts twice the divider,
       # doubled once for each halving — a ladder of rungs rather than a range.
@@ -280,18 +280,18 @@ module VBlank
         noise_step_ticks(0, halvings)
       end
 
-      # HOW MANY BITS ARE IN THE ROW: fifteen for a plain hiss, whose pattern is 32,767 steps
+      # How many bits are in the row: fifteen for a plain hiss, whose pattern is 32,767 steps
       # long and never heard to repeat, and seven for a metallic one, which comes round every
       # 127 steps — often enough to be heard as a pitch of its own, the rattle of a snare or a
       # hat.
       def self.noise_register_bits(metallic) = metallic ? 7 : 15
 
-      # WHAT THE WAVE VOICE PLAYS, which is one of two things a game can give.
+      # What the wave voice plays, which is one of two things a game can give.
       #
-      # A NAME is the usual answer — `wave :triangle, :C4`, `plays: :sine` — and the samples are
+      # A name is the usual answer — `wave :triangle, :C4`, `plays: :sine` — and the samples are
       # the framework's job. Four names cover the timbres most games reach for.
       #
-      # THE STEPS THEMSELVES are the other, and they are here because the named shapes are a
+      # The steps themselves are the other, and they are here because the named shapes are a
       # convenience rather than the truth: the console's wave voice is not a set of timbres, it is
       # 32 steps of four bits that a game writes. A game whose music came from somewhere else —
       # decoded out of another cartridge, drawn in a tracker — arrives holding those 32 numbers,
@@ -324,7 +324,7 @@ module VBlank
         end
       end
 
-      # A WAVEFORM GIVEN AS ITS STEPS, checked and handed back. The two rules are the hardware's:
+      # A waveform given as its steps, checked and handed back. The two rules are the hardware's:
       # the voice loops exactly 32 steps, and each one is four bits. Both are said at the line
       # that wrote the waveform, because a list of numbers is the one thing here a person cannot
       # check by looking at it.

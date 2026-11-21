@@ -2,12 +2,12 @@
 
 module VBlank
   module Audio
-    # A NOTE'S SHAPE AS THE SUPER NINTENDO'S SOUND CHIP KEEPS IT: the three bytes of a voice's
+    # A note's shape as the Super Nintendo's sound chip keeps it: the three bytes of a voice's
     # envelope registers, for an instrument whose settings came out of a Super Nintendo game.
     #
     #   instrument :horn, from: "horn.wav", envelope: VBlank::Audio::SNESEnvelope.new(adsr1: 0x8E, adsr2: 0xE0)
     #
-    # WHAT THE CHIP DOES WITH THEM. The sound chip (the S-DSP) moves each voice's loudness by
+    # What the chip does with them. The sound chip (the S-DSP) moves each voice's loudness by
     # itself, 32,000 times a second, and a game only sets how:
     #
     #   adsr1   its top bit chooses: set, the note is shaped by these two bytes; clear, by +gain+.
@@ -23,7 +23,7 @@ module VBlank
     # exactly as in the game they came from. Audio::Envelope cannot hold them: its four numbers
     # are another sound engine's, and nothing in it means "up in steps that shorten".
     #
-    # EVERY OTHER BUILD PLAYS THE NEAREST ORDINARY ENVELOPE (#closest_envelope), worked out once
+    # Every other build plays the nearest ordinary envelope (#closest_envelope), worked out once
     # as the game is built, by playing the chip's own arithmetic forward and fitting an
     # Audio::Envelope to the levels it reaches. So the game sounds much the same everywhere, and
     # what it can tell of a note (how long its voice is held) is the same on every build, the
@@ -69,7 +69,7 @@ module VBlank
         super
       end
 
-      # WHAT AN AUTHOR WROTE AS AN `envelope:`, WHERE IT MAY BE THE CHIP'S BYTES, read two ways. The
+      # What an author wrote as an `envelope:`, WHERE IT MAY BE THE CHIP'S BYTES, read two ways. The
       # shape every build but the Super Nintendo's plays: the nearest Envelope for an SNESEnvelope,
       # and for anything else what Envelope.of makes of it (+where+ names what it was written on,
       # for a message). And the bytes themselves, for the Super Nintendo's build: +said+ when it
@@ -80,7 +80,7 @@ module VBlank
       # Whether the two ADSR bytes shape the note. When not, GAIN does.
       def adsr? = adsr1.anybits?(ADSR_ON)
 
-      # THE ORDINARY ENVELOPE NEAREST WHAT THE CHIP DOES, for every build but the Super Nintendo's.
+      # The ordinary envelope nearest what the chip does, for every build but the Super Nintendo's.
       #
       # An Audio::Envelope climbs in even steps to full, falls by a multiply to a level, and holds.
       # So the chip's levels are cut at their highest: the climb to it gives the attack, the level
@@ -103,7 +103,7 @@ module VBlank
                      decay: closest_decay(levels.by_frame.drop(climb), floor), sustain: floor, release: 0)
       end
 
-      # THE CHIP'S LEVEL, FRAME BY FRAME FROM KEY-ON, as far as it moves or MOST_FRAMES. The chip
+      # The chip's level, frame by frame from key-on, as far as it moves or MOST_FRAMES. The chip
       # works a step out on every sample and takes it only when its rate's wait is up, so this
       # goes from step to step, not sample to sample. Which sample a wait ends on depends on a
       # counter the whole chip shares; here it counts from the key-on, which is at most one wait out.

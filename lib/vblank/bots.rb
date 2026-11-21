@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A PLAYER WITH NO WINDOW AND NO PERSON: a Ruby script that joins a match like any machine, reads its own copy
+# A player with no window and no person: a Ruby script that joins a match like any machine, reads its own copy
 # of the game, and chooses its buttons each pass. Every machine of a match runs the whole game, so a bot has
 # the whole game to look at (the positions of every player, the score, whatever the game keeps), and the only
 # thing it can do about it is press buttons.
