@@ -10,7 +10,7 @@ module VBlank
         # how often it overflows — that's the rate the DSL asks for.
         #
         # A timer's raw counter races along too fast to read meaningfully, so to answer
-        # "how many times has it overflowed?" we chain a second timer in CASCADE mode: a
+        # "how many times has it overflowed?" we chain a second timer in cascade mode: a
         # cascade timer ticks once each time the timer below it overflows. So a logical
         # timer whose overflow count is read reserves a PAIR — the rate timer, plus the
         # cascade timer immediately after it that counts its overflows — and reading the
@@ -58,9 +58,9 @@ module VBlank
 
           NUM_HW_TIMERS = 4
 
-          # THE CYCLES IN ONE DISPLAYED FRAME: 228 scanlines of 308 dots, four cycles a dot.
+          # The cycles in one displayed frame: 228 scanlines of 308 dots, four cycles a dot.
           #
-          # The console does NOT run at 60 frames a second. It runs at CPU_CLOCK_HZ divided
+          # The console does not run at 60 frames a second. It runs at CPU_CLOCK_HZ divided
           # by this, which is 59.7275, and the difference is small enough to look like a
           # rounding detail and much too big to treat as one — see Console::SampleClock.
           FRAME_CYCLES = Console::ADVANCE.cycles_a_frame
@@ -105,7 +105,7 @@ module VBlank
             end
           end
 
-          # +hz+ is the rate the program ASKED for, kept because a profile holds the ticks that
+          # +hz+ is the rate the program asked for, kept because a profile holds the ticks that
           # really arrived against it. A timer restarted at a different rate keeps the first,
           # the same way the registry keeps the first of everything else about it.
           def register_timer(name, counted, handler, hz = nil)

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHERE THE SCENERY'S PICTURES AND MAPS GO, and why they cannot land on each other.
+        # Where the scenery's pictures and maps go, and why they cannot land on each other.
         #
         # A tiled background is two separate things in video memory. The TILES are the
         # little pictures the scenery is built from — a brick, a patch of grass — stored
@@ -16,7 +16,7 @@ module VBlank
         #
         # So this hands both out, and it is the only thing that does.
         #
-        # THEY GROW TOWARD EACH OTHER. Tiles are packed from the bottom, maps from the top
+        # They grow toward each other. Tiles are packed from the bottom, maps from the top
         # in units of 2K, and the build stops with an explanation when they would meet.
         # That is what lets a game with one enormous tileset and a game with four small
         # maps each use what they need, without the framework deciding in advance which
@@ -24,16 +24,16 @@ module VBlank
         # maps at fixed places just above — which gave a whole game 256 tiles however few
         # maps it had.
         #
-        # WHAT LIMITS A TILESET, now that the fixed cap is gone, is how far a map can
-        # POINT. A map cell holds a tile number in ten bits, counted in units of that
+        # What limits a tileset, now that the fixed cap is gone, is how far a map can
+        # point. A map cell holds a tile number in ten bits, counted in units of that
         # layer's own tile size — so a layer whose tiles are stored small (32 bytes each)
         # can name a run of 32K, and one stored the big way (64 bytes) a run of 64K. Both
         # are far past what the old rule gave.
         #
-        # AND EACH LAYER COUNTS FROM ITS OWN STARTING POINT. That ten-bit number is an
+        # And each layer counts from its own starting point. That ten-bit number is an
         # offset from wherever the layer is told its pictures begin, and the console lets
         # each layer be told separately — one of four places 16K apart. So the reach is
-        # per LAYER, not per game: one layer counting from the bottom can name the first
+        # per layer, not per game: one layer counting from the bottom can name the first
         # 32K while another counting from halfway names the last 32K, and between them
         # they use all of it. That is what lets a game with two big scrolling layers have
         # more distinct tiles than either one of them could name alone.

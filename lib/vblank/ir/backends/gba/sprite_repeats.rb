@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # SEVERAL SPRITES THAT ONE WRITE SERVES (see SpriteRepeats, which finds them).
+        # Several sprites that one write serves (see SpriteRepeats, which finds them).
         #
         # +sprite+ is the write they share: the first one's record, reading the variable
         # SpriteRepeats::INDEX where its own entry number was. +first_index+ and +index_step+
@@ -15,31 +15,31 @@ module VBlank
           def index_after = first_index + (index_step * names.length)
         end
 
-        # WHICH SPRITES ARE ONE SPRITE WRITTEN OUT SEVERAL TIMES, and so can be written by
+        # Which sprites are one sprite written out several times, and so can be written by
         # going round one write instead of by a copy of it each.
         #
         # A pool that draws declares a sprite for every thing it can hold. They show the same
         # pictures from the same place in sprite memory, in the same colours, at the same
         # depth; each reads where it stands and what it shows out of the same lists, and all
-        # that tells one from the next is WHICH entry of those lists it reads and which row
+        # that tells one from the next is which entry of those lists it reads and which row
         # of the console's table it writes. Written a copy apiece, that is a few hundred
         # bytes of code for every thing a room can hold, in the routine a frame spends its
         # time in — and a room of forty-five had forty-five ways of saying one thing.
         #
-        # HOW THEY ARE FOUND: by looking, never by being told. Two neighbouring sprites are
+        # How they are found: by looking, never by being told. Two neighbouring sprites are
         # laid side by side. Everything settled while building has to be the same, and the
         # numbers each works out as the game runs have to be the same sums, differing only
         # in one whole number written into them — the entry read. That number becomes a
         # variable, and the repeat is extended for as long as the next sprite is the same
         # write with the next number, a fixed step further along the table.
         #
-        # WHY THAT IS SAFE, and not a guess about what a pool declares: the write with the
+        # Why that is safe, and not a guess about what a pool declares: the write with the
         # variable in it is checked against every sprite it is to serve, by putting that
         # sprite's own number back and comparing it with what the sprite was declared with. A
         # sprite it does not reproduce exactly is written on its own, as it always was. So a
         # repeat can be missed, and can never draw anything a copy apiece would not have.
         #
-        # WHAT IS STILL A COPY APIECE: a sprite somebody declared by hand. Each of those keeps
+        # What is still a copy apiece: a sprite somebody declared by hand. Each of those keeps
         # where it stands and whether it is shown in variables of its own, so two of them are
         # not one sum with another number in it — they are two sums. Going round them would
         # take a table of where each one's variables are and a write that reads everything
@@ -91,7 +91,7 @@ module VBlank
                              index_step: pattern.index_step, first_row: first_row, row_step: pattern.row_step)
           end
 
-          # WHAT TWO NEIGHBOURING SPRITES HAVE IN COMMON, worked out from the pair and then
+          # What two neighbouring sprites have in common, worked out from the pair and then
           # held up against every sprite after them.
           #
           # +first+ is the first sprite's record. +sites+ gives, for each number it works out,
@@ -121,7 +121,7 @@ module VBlank
             # number, the second's]; nil when they are not the same sum part for part. A
             # difference that is not a whole number is left for #fits? to refuse.
             #
-            # A SUM THAT IS NOTHING BUT THE NUMBER IS REFUSED TOO. A number standing on its
+            # A sum that is nothing but the number is refused too. A number standing on its
             # own is settled while building, and the write is free to treat a settled number
             # another way than one it has to read — a picture number past the last picture is
             # held to the first when it is written down, and read as it stands when it is

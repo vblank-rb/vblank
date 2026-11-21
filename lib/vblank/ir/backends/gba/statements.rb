@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHICH OF THE THREE SHAPES A LOOP GOT, which decides what a pass of it costs.
+        # Which of the three shapes a loop got, which decides what a pass of it costs.
         #
         # +shape+ is :registers (the count stays in two registers the whole way), :spilled (it
         # stays there, and the pair is saved around the few statements that would land in
@@ -12,7 +12,7 @@ module VBlank
         # pass). +spills+ is how many statements a spilled loop brackets. +blocked_by+ is what
         # in the body made it more than the plain fast shape, in words a person can read.
         #
-        # Whether the count is in registers is DERIVED: a spilled loop keeps it there too, and
+        # Whether the count is in registers is derived: a spilled loop keeps it there too, and
         # storing that separately is how the two answers drift apart.
         #
         # It lives here because this is where it is decided — which registers are free is a
@@ -170,7 +170,7 @@ module VBlank
           # thing worth keeping in the console's quick memory. When it has been chosen for
           # that (see {Placement}) the loop becomes a call into it and the body is emitted
           # with the other moved routines; otherwise it stays inline, exactly as it was.
-          # EVERYTHING INSIDE STAYS INSIDE THESE EDGES. There is nothing to emit for the area
+          # Everything inside stays inside these edges. There is nothing to emit for the area
           # itself: it is not a thing the console knows about, it is the edges every shape below
           # is cut against — so it is remembered while the children are emitted and each of them
           # works its own clipping out against these instead of against the whole screen.
@@ -207,7 +207,7 @@ module VBlank
           # Where those two numbers are kept is the whole difference between the two shapes
           # below, and it is decided by the body and nothing else — see LoopForm.
           #
-          # The answer is REMEMBERED as it is made, so the build record holds which shape really
+          # The answer is remembered as it is made, so the build record holds which shape really
           # runs without anyone working it out again: which registers are free is this file's
           # business. #loop_shapes hands it over the way #var_addresses hands over where a
           # variable landed.
@@ -226,7 +226,7 @@ module VBlank
             record_loop_shape(node, :memory) { emit_repeat_in_memory(node) }
           end
 
-          # A COUNTED WHILE (Backends::LoopForm#counted_while): a game's `while i < n` ending `i += 1`,
+          # A counted while (Backends::LoopForm#counted_while): a game's `while i < n` ending `i += 1`,
           # where nothing else in the loop writes `i` or `n`. Written as it reads, a turn counts the
           # loop's hidden index in memory, loads `i` and compares it to ask whether to stop, and loads,
           # adds to and stores `i` again at the end. Here `i` is the loop's count: held in the fast
@@ -296,7 +296,7 @@ module VBlank
             @expressions.emit_branch_when(below, holds: true, to: top)
           end
 
-          # A WALK OF A POOL STEPPED AS AN ARM GAME STEPS ONE. The tree's walk keeps the thing it goes
+          # A walk of a pool stepped as an ARM game steps one. The tree's walk keeps the thing it goes
           # to next and the last it visits in variables, tests and copies them each turn, and reads
           # the link out of a list at an index bounded and scaled each time; and every field the body
           # reads or writes bounds and scales the index again. The ARM's way to reach the fields of
@@ -406,7 +406,7 @@ module VBlank
             yield
           end
 
-          # THE SAFE SHAPE: the counter and the limit live in the console's quick memory, so
+          # The safe shape: the counter and the limit live in the console's quick memory, so
           # anything at all may happen in the body — a call, a nested loop, a divide that
           # reaches the console's own routine — and the loop still counts right.
           #
@@ -484,7 +484,7 @@ module VBlank
 
           def counts_down?(node) = @unread_indexes.include?(node.index)
 
-          # THE FAST SHAPE: the counter and the limit stay in two registers for the whole loop,
+          # The fast shape: the counter and the limit stay in two registers for the whole loop,
           # so a pass ends in an add, a compare and a branch back — where the safe shape loads
           # and stores its two numbers besides.
           #
@@ -499,14 +499,14 @@ module VBlank
             end
           end
 
-          # THE THIRD SHAPE: the counter and the limit stay in registers, and the few statements
+          # The third shape: the counter and the limit stay in registers, and the few statements
           # that would land in those registers are bracketed — the pair saved before and put
           # back after.
           #
           # This is what lets a loop keep the fast shape while its body does the thing the
           # framework asks for: behaviour in a func, called once per instance. A routine may
           # use any register it likes, which is why a call gives up the registers for the whole
-          # body otherwise — but it can only do that WHILE IT RUNS, so saving the pair across
+          # body otherwise — but it can only do that while it runs, so saving the pair across
           # it is enough.
           #
           # A bracket is the count written out to its variable, so a body that reads the loop's
