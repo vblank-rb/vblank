@@ -2,8 +2,32 @@
 
 module VBlank
   module DSL
-    # Numbers that carry a fraction, and the rules for doing arithmetic on them.
+    # Numbers with a fraction
     #
+    # A number written with a decimal point holds a fraction: a speed of 1.5, an angle, a
+    # position between two tiles. A variable started with one keeps a fraction from then on,
+    # and so does a list declared `holds: 0.0` or a pool field declared `dy: 0.0`.
+    #
+    # ```ruby
+    # px = 3.5            # this variable holds a fraction
+    # px += speed         # speed holds one too: plain addition
+    # column = px.to_i    # a whole number again, for a pixel or a list item's number
+    # ```
+    #
+    # Arithmetic on them follows these rules:
+    #
+    # * Two numbers holding a fraction add, subtract, multiply, divide and compare as they
+    #   are, with no overflow on the way.
+    # * A whole number written in the game is read as that many whole steps: `speed + 1` is
+    #   one faster.
+    # * A number holding a fraction and a whole number the game works out cannot be added or
+    #   compared, since nothing can tell what the whole number counts. The build stops and
+    #   says to write `to_f` on the whole number or `to_i` on the other.
+    # * Bit operations (`&`, `|`, `<<` and the rest) take whole numbers only.
+    #
+    # A fraction is kept to 16 bits, about four decimal places, with room left for positions
+    # across a large world.
+    #--
     # The problem. A variable on this console holds whole numbers. A game that needs
     # halves and quarters — a speed, an angle, a position between two tiles — keeps its
     # numbers multiplied up by a fixed amount and divides back at the end. That works,
@@ -59,10 +83,8 @@ module VBlank
     # which of their multiplies is the dangerous one, which is the whole point.
     #
     # Dividing a fraction by a plain count is ordinary division. Dividing a fraction by
-    # a fraction is a build error: doing it correctly needs the numerator shifted up
-    # first, which does not fit in a variable, and there is no 64-bit divide to lean on.
-    # The friendly error says to use a `table` of the answers instead, which is what a
-    # raycaster does for exactly this reason.
+    # a fraction needs the numerator shifted up first, which does not fit in a variable,
+    # so it becomes div_fix, which widens the numerator (see Value#/).
     #
     # Why the scale lives in Ruby and not in the IR. A Value is a build-time handle, so
     # the scale is known while the program is being built and can be checked there. The
@@ -71,24 +93,25 @@ module VBlank
     # So a backend has nothing to learn, the two backends cannot disagree about scales
     # because neither of them sees one, and a fraction costs nothing at run time that
     # the hand-written version did not also cost.
+    #++
     module Fraction
       # How many bits of fraction a Float gets when the program does not ask for another.
       # 16 leaves about four decimal places and room for positions across a large world;
       # it is the scale most GBA games use for anything that moves.
-      DEFAULT_BITS = 16
+      DEFAULT_BITS = 16 # :nodoc:
 
       module_function
 
       # A Float as a whole number carrying +bits+ fraction bits: 1.5 with 16 bits is
       # 1.5 * 65536. Rounded, because the nearest representable number is the one the
       # author meant.
-      def scale(number, bits)
+      def scale(number, bits) # :nodoc:
         (number * (1 << bits)).round
       end
 
       # The number of fraction bits an operand carries, or nil if it is a plain whole
       # number. A Float carries the default scale — writing one is how you ask for it.
-      def bits_of(operand)
+      def bits_of(operand) # :nodoc:
         case operand
         when Value then operand.fraction_bits
         when Float then DEFAULT_BITS
@@ -98,7 +121,7 @@ module VBlank
       # Whether +operand+ is a number written into the program (as opposed to something
       # the game works out as it runs). Only these can be converted to another scale for
       # free, because the conversion happens while building.
-      def literal?(operand)
+      def literal?(operand) # :nodoc:
         operand.is_a?(Numeric)
       end
     end

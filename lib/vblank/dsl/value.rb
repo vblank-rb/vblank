@@ -2,13 +2,29 @@
 
 module VBlank
   module DSL
-    # A handle to a value in a build block: a variable, a literal, or an arithmetic
-    # expression over them. `var :name, init` hands one back, and ordinary Ruby
-    # operators build more of them:
+    # Numbers the game keeps and works out
     #
-    #   center = cpu_y + PADDLE_H / 2   # a Value (an expression, no variable of its own)
-    #   if ball_y > center ...          # a comparison makes a Condition
+    # A number the game keeps as it plays is a variable: `hp = 10` in a game block, or
+    # `var :hp, 10`, makes one. Reading a pool's field, a list's item or a table's entry gives
+    # a number too, and so does arithmetic on any of these. Each works like a Ruby number:
+    # add, multiply and compare it, and change a variable with `=`, `+=` and `-=`.
     #
+    # ```ruby
+    # center = paddle_y + PADDLE_HEIGHT / 2   # a new number, worked out each pass
+    # if ball_y > center                      # a test, answered as the game plays
+    #   paddle_y += 2
+    # end
+    # ```
+    #
+    # A number written with a decimal point (`speed = 1.5`) keeps a fraction. Whole numbers and
+    # fractions mix where the meaning is plain: `speed + 1` is one faster. Where it is not, the
+    # build stops and says which side to change with `to_i` or `to_f`.
+    #
+    # The methods ending in `!` (`clamp!`, `approach!`, `flip!`, `abs!`, `negate_abs!`,
+    # `bounce!`) change the variable they are called on. The same words without the `!` give a
+    # new number and leave the variable alone. A new number that is worked out and never used
+    # is a friendly error, because the work it stands for does nothing.
+    #--
     # A Value that names a variable can be mutated — set / add / sub / clamp /
     # approach — which records the matching statement into the program. An
     # expression Value has no variable behind it, so mutating one is a friendly
@@ -23,6 +39,7 @@ module VBlank
     # comparison operators return a Condition (a runtime test), not a Ruby boolean.
     # Comparable would also redefine < > == to derive from `<=>` and hand back
     # plain booleans, and a game's `if x > 5` would be decided while building, once, for good.
+    #++
     class Value
       Build = IR::Build
 
@@ -33,7 +50,7 @@ module VBlank
       # can't be a value raises a plain-language error). Every collision point — the
       # operators below and the builder's verbs — funnels through here, so a Value
       # and its `:symbol` are interchangeable everywhere a value is expected.
-      def self.node_for(operand)
+      def self.node_for(operand) # :nodoc:
         operand.is_a?(Value) ? operand.node : Build.to_value_node(operand)
       end
 
@@ -51,8 +68,8 @@ module VBlank
       # A fraction's bits are not checked, because no handle a game holds is a fraction over a
       # literal: the one place that makes one is #coerce, whose handle is used up by the operator
       # it was made for. A verb that ever hands one back must check them here.
-      def self.fixed_number(operand)
-        node = operand.is_a?(Value) ? operand.node : operand
+      def self.fixed_number(operand) # :nodoc:
+        node = operand.is_a?(Value) ? operand.node : operand # :nodoc:
         return node if node.is_a?(Integer)
 
         node.value if node.is_a?(IR::Node) && node.kind == :int
@@ -97,68 +114,68 @@ module VBlank
       #
       # Not a handle: it names no place the author may write to, and nothing here pretends
       # it does.
-      def self.handed_to_block(builder, node) = new(builder, node, tracked: false)
+      def self.handed_to_block(builder, node) = new(builder, node, tracked: false) # :nodoc:
 
       # The IR value node behind this handle (a var_ref, an int, or a binop).
       attr_reader :node
 
       # Where the author built this expression ("hero.rb:42"), for the diagnostic that
       # reports one nobody kept. nil for a handle, which is never reported.
-      attr_reader :source
+      attr_reader :source # :nodoc:
 
       # A hidden variable for a name nothing had set yet (see PlainRuby::Steps.promote).
-      attr_accessor :unwritten
+      attr_accessor :unwritten # :nodoc:
 
-      def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name)
+      def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name) # :nodoc:
 
       # Was this variable made by normal Ruby with no `var` line: a name given a number (`hp = 10`,
       # `@seed = 5` named by `game_variables`)?
-      def made_with_no_var_line? = @builder.variable_with_no_var_line?(@name)
+      def made_with_no_var_line? = @builder.variable_with_no_var_line?(@name) # :nodoc:
 
       # Is this variable a number in Ruby's eyes, which a local given it copies
       # (PlainRuby::Steps.kept_answer)? One made with no `var` line is, and so is a hidden one
       # the build made for a number. One a `var` line or a verb made is a handle the game holds.
-      def number_in_ruby? = made_with_no_var_line? || hidden?
+      def number_in_ruby? = made_with_no_var_line? || hidden? # :nodoc:
 
       # Is this a hidden variable, one the build made for a number the author never named
       # (Builder#hidden_variable)?
-      def hidden? = @name.to_s.start_with?(Build::KEPT_VARIABLE_PREFIX)
+      def hidden? = @name.to_s.start_with?(Build::KEPT_VARIABLE_PREFIX) # :nodoc:
 
       # The kinds of node whose number no line of the game can change: a number written out, a
       # cartridge table's item, and arithmetic on them.
-      FIXED_KINDS = %i[int table_get binop neg absolute clamped].freeze
+      FIXED_KINDS = %i[int table_get binop neg absolute clamped].freeze # :nodoc:
 
       # Can the number this stands for change as the game plays? Only a working-out of fixed
       # numbers cannot, and a local given one needs no copy.
-      def changes_as_game_plays? = @node.walk.any? { |each_node| !FIXED_KINDS.include?(each_node.kind) }
+      def changes_as_game_plays? = @node.walk.any? { |each_node| !FIXED_KINDS.include?(each_node.kind) } # :nodoc:
 
       # Mark this variable as scratch no save keeps (`game_variables ..., saved: false`).
-      def note_unsaved = @builder.note_unsaved_variable(@name)
+      def note_unsaved = @builder.note_unsaved_variable(@name) # :nodoc:
 
       # The place this variable was made for (PlainRuby::Writes.keep_as_own): the object and the
       # label of an instance variable, a Hash or an Array and its key for a slot, or no object for
       # a place in VBlank's own files. An instance variable handed a slot's variable only holds it,
       # and a write there must not change the slot (PlainRuby::Writes.handed_only?).
-      Holder = Data.define(:object, :label) do
+      Holder = Data.define(:object, :label) do # :nodoc:
         # Is this a slot of a Hash or an Array (PlainRuby::Writes.claim_unheld)?
         def slot? = object.is_a?(Hash) || object.is_a?(Array)
       end
 
       # The object of a Holder that is a local a `var` line made (PlainRuby::Writes.keep_as_local).
-      LOCAL_HOLDER = Ractor.make_shareable(Object.new)
+      LOCAL_HOLDER = Ractor.make_shareable(Object.new) # :nodoc:
 
-      attr_reader :holder
+      attr_reader :holder # :nodoc:
 
-      def note_holder(object, label) = @holder = Holder.new(object, label)
+      def note_holder(object, label) = @holder = Holder.new(object, label) # :nodoc:
 
       # The instance variables of parts this variable was handed to whole, as an argument, which
       # each own it too (PlainRuby::Writes.share_argument).
-      def note_sharer(object, label) = (@sharers ||= []) << Holder.new(object, label)
+      def note_sharer(object, label) = (@sharers ||= []) << Holder.new(object, label) # :nodoc:
 
       # Was this variable made for +label+ of +object+, or handed to it to change? A place in
       # VBlank's own files names no object, and takes any variable made for a place but a local
       # as its own.
-      def held_by?(object, label)
+      def held_by?(object, label) # :nodoc:
         return !@holder.nil? && !@holder.object.equal?(LOCAL_HOLDER) if object.nil?
 
         [@holder, *@sharers].any? { |place| place && place.object.equal?(object) && place.label == label }
@@ -166,33 +183,33 @@ module VBlank
 
       # The plain name this hidden variable was made for, by PlainRuby::Writes.promote or
       # PlainRuby::Steps.kept_answer, or nil. The build's note of a hidden one names it too.
-      attr_reader :owner_name
+      attr_reader :owner_name # :nodoc:
 
-      def owner_name=(name)
+      def owner_name=(name) # :nodoc:
         @builder.record_hidden_variable_local(@name, name) if name && hidden?
         @owner_name = name
       end
 
       # This copy keeps a button read while setting up, for game code to read
       # (PlainRuby::Steps.kept_answer): noted for Guardrails::Checks::PressKeptFromSettingUp.
-      def record_kept_button = @builder.record_kept_button(@owner_name)
+      def record_kept_button = @builder.record_kept_button(@owner_name) # :nodoc:
 
       # A game has no nil, and a number variable has no false. A name that can hold those as well
       # as a number keeps which it holds in a hidden variable beside it: NIL_HELD, FALSE_HELD or
       # TRUTHY_HELD. The number is read as it stands, so a nil reads as 0.
-      NIL_HELD = 0
-      FALSE_HELD = 1
-      TRUTHY_HELD = 2
+      NIL_HELD = 0 # :nodoc:
+      FALSE_HELD = 1 # :nodoc:
+      TRUTHY_HELD = 2 # :nodoc:
 
-      attr_reader :truth
+      attr_reader :truth # :nodoc:
 
-      def keep_truth! = @truth = @builder.hidden_variable(:truth)
+      def keep_truth! = @truth = @builder.hidden_variable(:truth) # :nodoc:
 
       # A name given nothing yet starts as nil, and that start is one statement. If what it is
       # given turns out to be something made while building, no number is kept and it goes.
       # +zero_number+ sets the number to 0 as well, for a line that runs after the number may have
       # changed; at power-on it is 0 already.
-      def start_truth_as_nil!(zero_number: false)
+      def start_truth_as_nil!(zero_number: false) # :nodoc:
         keep_truth!
         @truth_start_places = []
         if zero_number
@@ -203,7 +220,7 @@ module VBlank
         @truth_start_places << @builder.last_statement_place
       end
 
-      def forget_truth!
+      def forget_truth! # :nodoc:
         @truth_start_places&.each { |place| @builder.take_back_statement(*place) }
         @builder.forget_hidden_variable(@truth.name) if @truth
         @builder.forget_hidden_variable(@name)
@@ -211,7 +228,7 @@ module VBlank
       end
 
       # The number and what it counts as, as they are now, on a hidden pair.
-      def hidden_copy_with_truth(why)
+      def hidden_copy_with_truth(why) # :nodoc:
         kept = @builder.hidden_variable(why, like: self)
         kept.keep_truth!
         kept.store!(self)
@@ -221,7 +238,7 @@ module VBlank
 
       # The variable this handle names, or nil for an expression and for a place that has no
       # name of its own (a pool field, a list slot). For a message that wants to say which.
-      attr_reader :name
+      attr_reader :name # :nodoc:
 
       # Whether this stands for a place that keeps a number, rather than being a working-out
       # of one. A handle names somewhere — a variable here, a pool field in {FieldRef} — so
@@ -229,12 +246,12 @@ module VBlank
       # line is pointless but harmless. An EXPRESSION is a number worked out and handed
       # back, so building one and dropping it means the work was thrown away. That is the
       # difference the orphaned-expression guardrail turns on.
-      def handle?
+      def handle? # :nodoc:
         !@name.nil?
       end
 
       # A hidden variable holding this number as it is now, whatever changes it later.
-      def hidden_copy(why = :copy)
+      def hidden_copy(why = :copy) # :nodoc:
         return hidden_copy_with_truth(why) if truth
 
         kept = @builder.hidden_variable(why, like: self)
@@ -247,28 +264,28 @@ module VBlank
       # ends, shared with every such step of +why+ in the routine (Builder#step_variable). A number
       # that carries a truth, a fraction or a yes or no keeps a variable of its own (#hidden_copy),
       # since the shared one would take on what it carries for every step.
-      def step_copy(why)
+      def step_copy(why) # :nodoc:
         return hidden_copy(why) if truth || fraction? || boolean?
 
         @builder.step_variable(why).tap { |kept| kept.store!(self) }
       end
 
       # This number is used for nothing: Ruby took it as truthy (see PlainRuby::Steps.branch_test).
-      def discard! = @builder.forget_expression(self)
+      def discard! = @builder.forget_expression(self) # :nodoc:
 
       # Is this a variable the game keeps as a yes or no? See Builder#var.
-      def boolean? = handle? && @builder.boolean_variable?(@name)
+      def boolean? = handle? && @builder.boolean_variable?(@name) # :nodoc:
 
       # This variable holds a yes or no from now on.
-      def mark_boolean! = @builder.remember_boolean_variable(@name)
+      def mark_boolean! = @builder.remember_boolean_variable(@name) # :nodoc:
 
       # How many fraction bits this value carries, or nil if it is a plain whole number.
-      def fraction_bits
+      def fraction_bits # :nodoc:
         @scale.bits
       end
 
       # Whether this value carries a fraction rather than being a plain whole number.
-      def fraction?
+      def fraction? # :nodoc:
         @scale.fraction?
       end
 
@@ -276,34 +293,57 @@ module VBlank
       # with a name — `var :mode, :title` — keeps one of a set of them, and what is stored is
       # the number each name was given (see {NameSet}). Read by `call`, which turns "the name
       # this variable holds" into the routine of that name.
-      def names = @scale.names
+      def names = @scale.names # :nodoc:
 
       # The node for +other+ brought to this value's scale, or a friendly error saying why
       # it cannot be.
-      def node_matching(other, verb)
+      def node_matching(other, verb) # :nodoc:
         @scale.node_matching(other, verb)
       end
 
       # --- arithmetic: build a bigger expression Value ---
 
+      # The sum of this number and another: a number, a variable or a sum of them.
+      #
+      # A whole number added to a number holding a fraction is read as that many whole
+      # steps: `speed + 1` is one faster.
+      #
+      # ```ruby
+      # right = x + width
+      # ```
       def +(other)
         same_scale_binop(:+, other)
       end
 
+      # This number less another: a number, a variable or a sum of them.
+      #
+      # ```ruby
+      # gap = target_x - x
+      # ```
       def -(other)
         same_scale_binop(:-, other)
       end
 
-      # The same value the other way round: `-speed` is as far backwards as `speed` is
-      # forwards. It keeps a fraction, since flipping a sign changes nothing about scale.
+      # The same number the other way round: `-speed` is as far backwards as `speed` is
+      # forwards. A number holding a fraction keeps it.
       def -@
         scaled(Build.neg(@node), @scale.bits)
       end
 
-      # Multiply. A fraction times a plain count is ordinary multiplication and keeps the
-      # fraction — twice as fast is twice as fast. A fraction times another fraction is
-      # the one that overflows on the way, so it becomes the full-width multiply
-      # automatically; see {Fraction} for why that is the point of the whole thing.
+      # This number times another.
+      #
+      # A number holding a fraction times a whole number keeps the fraction: twice as fast is
+      # twice as fast. Two numbers holding a fraction multiply correctly as well, with no
+      # overflow on the way.
+      #
+      # ```ruby
+      # step = speed * 2
+      # ```
+      #--
+      # A fraction times another fraction is the one that overflows on the way, so it becomes
+      # the full-width multiply automatically; see Fraction for why that is the point of the
+      # whole thing.
+      #++
       def *(other)
         bits = Fraction.bits_of(other)
         if fraction? && bits
@@ -314,16 +354,24 @@ module VBlank
         scaled(Build.binop(:*, @node, node_at_scale(other, bits)), @scale.bits || bits)
       end
 
-      # Division, truncated toward zero (so -7 / 2 is -3).
+      # This number divided by another, with whole numbers cut toward zero (so -7 / 2 is -3).
       #
-      # Dividing by a plain count is ordinary division and keeps the fraction — half the
-      # speed is half the speed. Dividing by another fraction is the one that needs care,
-      # for the mirror of the reason `*` does: two numbers multiplied up by the same amount
-      # divide that amount straight back out, so the answer would come back a whole number.
-      # The framework widens the numerator first to stop that, which is what {Build.div_fix}
-      # is; see {Fraction}. An answer with no room left is held at the end of the range
-      # rather than wrapped, so dividing by something very close to zero gives the biggest
-      # number there is instead of a negative one.
+      # A number holding a fraction divided by a whole number keeps the fraction: half the
+      # speed is half the speed. Dividing by a number that holds a fraction gives an answer
+      # holding one. An answer too big to keep is held at the biggest number there is, so
+      # dividing by a number very close to zero does not wrap round to a negative one.
+      #
+      # Dividing by a 0 written in the game is a friendly error, since it has no answer.
+      #
+      # ```ruby
+      # height = 160 / distance
+      # ```
+      #--
+      # Dividing by another fraction is the one that needs care, for the mirror of the reason
+      # `*` does: two numbers multiplied up by the same amount divide that amount straight back
+      # out, so the answer would come back a whole number. The framework widens the numerator
+      # first to stop that, which is what Build.div_fix is; see Fraction.
+      #++
       def /(other)
         refuse_zero_divisor!(:/, other)
         bits = Fraction.bits_of(other)
@@ -340,16 +388,21 @@ module VBlank
       # fraction — 160 over 2.5 is 64, and over 2.4 it is not a whole number at all — so
       # the numerator is widened twice over: once to give the answer its fraction, and once
       # to cancel the divisor's.
-      def whole_over_fraction(other, bits)
+      def whole_over_fraction(other, bits) # :nodoc:
         Value.new(@builder, Build.div_fix(@node, node_of(other), bits * 2), fraction_bits: bits)
       end
 
-      # What is left over after dividing — Ruby's meaning, so `-1 % 64` is 63.
+      # What is left over after dividing this number by another, as Ruby means it, so
+      # `-1 % 64` is 63.
       #
-      # This is how you wrap a value onto a range: an angle that stepped below zero comes
-      # back near a full turn, a map coordinate off the left edge comes back against the
-      # right one. Wrapping onto a range that is a power of two (64, 256, 512) costs one
+      # This is how a number wraps onto a range: an angle that stepped below zero comes back
+      # near a full turn, and a map position off the left edge comes back against the right
+      # one. Wrapping onto a range that is a power of two (64, 256, 512) costs one
       # instruction; any other range is a real division.
+      #
+      # ```ruby
+      # angle = (angle + turn) % 256
+      # ```
       def %(other)
         refuse_zero_divisor!(:%, other)
         scaled(Build.binop(:%, @node, node_at_scale(other, Fraction.bits_of(other))), @scale.bits)
@@ -374,34 +427,74 @@ module VBlank
       # a plain number to the right of one — and #to_int is what says so in plain words
       # when somebody writes `0x8000 >> col`.
 
+      # The bits set in both this number and the other: how a part of a packed number is read.
+      #
+      # A number written in the game may stand on either side. Bit operations work on whole
+      # numbers, so a number holding a fraction is refused until `to_i` drops it.
+      #
+      # ```ruby
+      # door_open = (flags & DOOR) != 0
+      # flags = flags & ~DOOR                 # clears the flag
+      # ```
       def &(other)
         bitwise(:&, other)
       end
 
+      # The bits set in either this number or the other: how a flag is set.
+      #
+      # ```ruby
+      # flags |= DOOR
+      # ```
       def |(other)
         bitwise(:|, other)
       end
 
+      # The bits set in exactly one of this number and the other: how a flag is turned over.
+      #
+      # ```ruby
+      # flags ^= LIGHT
+      # ```
       def ^(other)
         bitwise(:^, other)
       end
 
-      # Slide the bits up, filling in with zeros. Going off the top end empties the
-      # number; see IR::Int32 for what a count past the end of a number does.
+      # This number's bits slid up by `places`, filling in with zeros. Each place up doubles
+      # the number.
+      #
+      # The number of places must be from 0 to 31 where the game writes it. A number written in
+      # the game cannot stand on the left of `<<`, so put the game's number there:
+      # `(row >> bit) & 1`, not `1 << bit`.
+      #
+      # ```ruby
+      # mask = bits << 4
+      # ```
+      #--
+      # Going off the top end empties the number; see IR::Int32 for what a count past the end of
+      # a number does.
+      #++
       def <<(places)
         refuse_shift_past_width!(:<<, places)
         bitwise(:<<, places)
       end
 
-      # Slide the bits down, filling in with the sign — so a negative number stays
-      # negative, which is what both the chip and Ruby do. Pair it with a mask to pull a
-      # field out of the middle of a packed number: `(cell >> 12) & 15`.
+      # This number's bits slid down by `places`, filling in with the sign, so a negative
+      # number stays negative, as in Ruby.
+      #
+      # With a mask after it, it reads a part out of the middle of a packed number.
+      #
+      # ```ruby
+      # bank = (cell >> 12) & 15
+      # ```
       def >>(places)
         refuse_shift_past_width!(:>>, places)
         bitwise(:>>, places)
       end
 
-      # Every bit the other way round.
+      # This number with every bit turned the other way. With `&` it clears a flag.
+      #
+      # ```ruby
+      # flags &= ~DOOR
+      # ```
       def ~
         whole_numbers_only!(:~, nil)
         Value.new(@builder, Build.bit_not(@node))
@@ -410,7 +503,7 @@ module VBlank
       # `.then` on a number, which Ruby will happily answer and a game must not. Every Ruby
       # object has `then`, so `(flags & DOOR).then { open_it }` would run the block while the
       # game is built and record `open_it` with no test around it: the door opens every frame.
-      def then(*)
+      def then(*) # :nodoc:
         raise ArgumentError,
               "`.then` does not branch on a number. A number is not a yes or a no. To fix this, " \
               "compare it and write `if`: `if (flags & 4) != 0 ... end`.#{at_dsl_line}"
@@ -424,7 +517,7 @@ module VBlank
       # to do instead. The place it actually happens is a shift with the number on the
       # left: Ruby routes `& | ^` through #coerce and pointedly does not route `<<` and
       # `>>` that way, so the message names that case.
-      def to_int
+      def to_int # :nodoc:
         raise ArgumentError,
               "Ruby needs a plain whole number here, and this one is worked out as the " \
               "game runs. This usually happens on the right of `<<` or `>>`, so " \
@@ -437,7 +530,7 @@ module VBlank
       # person writes a wall height, and Ruby asks the value on the right how to make sense
       # of that. A number written here takes this value's own kind, so dividing by
       # something holding a fraction gives an answer holding one.
-      def coerce(other)
+      def coerce(other) # :nodoc:
         bits = other.is_a?(Float) ? (@scale.bits || Fraction::DEFAULT_BITS) : nil
         literal = bits ? Fraction.scale(other, bits) : other
         [Value.new(@builder, Build.int(literal), fraction_bits: bits), self]
@@ -445,18 +538,30 @@ module VBlank
 
       # --- moving between a fraction and a whole number ---
 
-      # This value as a whole number, dropping the fraction — rounding down, so -0.5
-      # becomes -1. This is what a pixel coordinate or a table index wants. It costs one
-      # instruction (see IR::Int32.shift_right), not the divide it replaces. A value that
-      # is already a whole number is handed back unchanged.
+      # This number as a whole number, with its fraction dropped. It rounds down, so -0.5
+      # becomes -1.
+      #
+      # This is what a position on the screen or an item's number wants. It costs one
+      # instruction, not a divide. A whole number comes back as it is.
+      #
+      # ```ruby
+      # column = px.to_i / 8
+      # ```
+      #--
+      # See IR::Int32.shift_right.
+      #++
       def to_i
         return self unless fraction?
 
         Value.new(@builder, Build.shift_right(@node, @scale.bits))
       end
 
-      # This whole number as one that can hold a fraction, so it can be added to or
-      # compared with one. A value that already holds a fraction is handed back unchanged.
+      # This whole number as one that holds a fraction, so it can be added to one or compared
+      # with one. A number that already holds a fraction comes back as it is.
+      #
+      # ```ruby
+      # px = hero_x.to_f + drift
+      # ```
       def to_f
         return self if fraction?
 
@@ -464,9 +569,21 @@ module VBlank
         scaled(Build.binop(:*, @node, Build.int(1 << bits)), bits)
       end
 
-      # Multiply two numbers that both hold a fraction, and get back a number holding
-      # a fraction — where plain `*` would overflow and give a wrong answer.
+      # The product of two whole numbers that each stand for a fraction multiplied up by
+      # `2 ** fraction_bits`, kept the same way, with no overflow on the way.
       #
+      # This is for numbers a game keeps multiplied up by hand. A number written with a
+      # decimal point keeps its fraction for itself, and plain `*` multiplies two of those
+      # correctly, so most games never need this.
+      #
+      # ```ruby
+      # speed = var :speed, (3 * 65536) / 2                       # 1.5, with 16 fraction bits
+      # step  = speed.times_fraction(speed, fraction_bits: 16)    # 2.25, kept the same way
+      # ```
+      #
+      # * `fraction_bits:` - how many of the low bits hold the fraction, on both sides and in
+      #   the answer.
+      #--
       # A variable holds whole numbers only, so a program that needs halves and
       # quarters keeps its numbers multiplied up by a fixed amount and remembers to
       # divide back at the end. `fraction_bits: 16` means "multiplied up by 2**16", so
@@ -491,51 +608,74 @@ module VBlank
       # where a fraction meets a pixel coordinate). It is worth designing from real
       # call sites that turned out annoying, not from first principles, and there are
       # none yet — this is the first thing that can even express the arithmetic.
+      #++
       def times_fraction(other, fraction_bits:)
         Value.new(@builder, Build.mul_fix(@node, node_of(other), fraction_bits))
       end
 
       # --- comparisons: build a Condition ---
 
+      # A test that holds while this number is more than the other.
+      #
+      # A test is answered as the game plays, so it goes after `if`, `unless`, `while` or
+      # `until` (see Condition).
+      #
+      # ```ruby
+      # x = 0 if x > 239
+      # ```
       def >(other)
         compare(:>, other)
       end
 
+      # A test that holds while this number is less than the other.
+      #
+      # ```ruby
+      # lives -= 1 if hp < 1
+      # ```
       def <(other)
         compare(:<, other)
       end
 
+      # A test that holds while this number is the other or more.
       def >=(other)
         compare(:>=, other)
       end
 
+      # A test that holds while this number is the other or less.
       def <=(other)
         compare(:<=, other)
       end
 
+      # A test that holds while this number is the same as the other. A variable that keeps a
+      # name compares with the name: `mode == :title`.
       def ==(other)
         compare(:==, other)
       end
 
+      # A test that holds while this number is not the same as the other.
       def !=(other)
         compare(:!=, other)
       end
 
-      # Ruby's own questions about a number, as a game writes them: `if lives.zero?`. Each is the
-      # comparison with nought, so it costs what `lives == 0` costs.
+      # A test that holds while this number is 0, as Ruby asks it: `if lives.zero?`. It costs
+      # what `lives == 0` costs.
       def zero? = compare(:==, 0)
+
+      # A test that holds while this number is more than 0. It costs what `n > 0` costs.
       def positive? = compare(:>, 0)
+
+      # A test that holds while this number is less than 0. It costs what `n < 0` costs.
       def negative? = compare(:<, 0)
 
       # The number questions Ruby has that a game's numbers do not answer here. Asking one is
       # refused in plain words with the comparison to write, rather than with Ruby's own
       # "undefined method", which names a class of the library's and nothing a game wrote.
-      NUMBER_QUESTIONS_INSTEAD = {
+      NUMBER_QUESTIONS_INSTEAD = { # :nodoc:
         nonzero?: "!= 0", even?: "% 2 == 0", odd?: "% 2 != 0", finite?: nil, infinite?: nil,
         integer?: nil
       }.freeze
 
-      def method_missing(name, *args, &)
+      def method_missing(name, *args, &) # :nodoc:
         return super unless NUMBER_QUESTIONS_INSTEAD.key?(name) || (name.end_with?("?") && 0.respond_to?(name))
 
         instead = NUMBER_QUESTIONS_INSTEAD[name]
@@ -546,7 +686,7 @@ module VBlank
               "`negative?`, and the comparisons `==`, `!=`, `<`, `<=`, `>` and `>=`.#{fix}#{at_dsl_line}"
       end
 
-      def respond_to_missing?(name, include_private = false)
+      def respond_to_missing?(name, include_private = false) # :nodoc:
         return false if NUMBER_QUESTIONS_INSTEAD.key?(name) || (name.end_with?("?") && 0.respond_to?(name))
 
         super
@@ -557,48 +697,74 @@ module VBlank
       # A number worked out on the spot is not somewhere a value can be kept, so neither a
       # changing word nor its `!` form has anything to change.
       NOT_A_VARIABLE = "only a variable can be changed (one from `var :name`), not an " \
-                       "expression — assign the expression to a variable first"
+                       "expression — assign the expression to a variable first" # :nodoc:
 
       # Assign a new value: a number, another variable, or an expression Value. A variable
       # that holds a fraction takes one, and a number written here is converted to match.
-      def store!(value)
+      def store!(value) # :nodoc:
         mutate { @builder.store!(@name, align!(value, "assign")) }
       end
 
       # Add to the variable (a number or another Value).
-      def increase!(amount)
+      def increase!(amount) # :nodoc:
         mutate { @builder.increase!(@name, align!(amount, "add")) }
       end
 
       # Subtract from the variable (a number or another Value).
-      def decrease!(amount)
+      def decrease!(amount) # :nodoc:
         mutate { @builder.decrease!(@name, align!(amount, "subtract")) }
       end
 
-      # Keep the variable within [lo, hi].
+      # Holds the variable from `lo` to `hi`: below `lo` it becomes `lo`, above `hi` it
+      # becomes `hi`.
+      #
+      # Both ends may be numbers written in the game or numbers it works out as it plays. A
+      # `lo` worked out to more than `hi` gives `hi`.
+      #
+      # ```ruby
+      # x.clamp!(0, 232)
+      # speed.clamp!(0, top_speed)
+      # ```
       def clamp!(lo, hi)
         mutate { @builder.clamp_variable!(@name, operand_matching(lo, "compare"), operand_matching(hi, "compare")) }
       end
 
-      # Move the variable toward +target+ by at most +step+ each call, never
-      # overshooting — the chase-at-a-top-speed move (see Builder#approach_variable!).
+      # Moves the variable toward `target` by at most `step`, and never past it: a chase at a
+      # top speed, or an ease toward a resting place.
+      #
+      # A step written in the game must be more than 0. A step the game works out is read as a
+      # distance, so a negative one still moves toward the target and 0 holds still.
+      #
+      # ```ruby
+      # camera_x.approach!(hero_x - 120, 4)
+      # ```
+      #--
+      # See Builder#approach_variable!.
+      #++
       def approach!(target, step)
         mutate { @builder.approach_variable!(@name, operand_matching(target, "compare"), operand_matching(step, "add")) }
       end
 
-      # Turn +velocity+ round when this number is at either end of +range+: at or below the low
-      # end the velocity is made positive, at or above the high end negative. That is a ball
-      # coming back off a wall:
+      # Turns `velocity` round when this number is at either end of `range`: a ball coming back
+      # off a wall.
       #
-      #   x.bounce!(dx, 0..right) { beep :click }
-      #
-      # Only the velocity changes. This number is left where it is, so a ball that has gone a
+      # At or below the low end the velocity is made positive, and at or above the high end it
+      # is made negative. Only the velocity changes. This number stays where it is, so a ball a
       # little past the wall is still there next pass, and still turned the right way: the
-      # velocity is SET to point away from the wall rather than flipped, so a second pass on
-      # the wall cannot send it back in. The block, if there is one, runs at each turn, once
-      # for whichever end was hit. The range's ends may be numbers or the game's own numbers.
+      # velocity is set to point away from the wall rather than flipped, so a second pass on
+      # the wall cannot send it back in. Hold the number with #clamp! first if that matters.
       #
-      # It is the two tests a game would write itself, and so it costs what they cost.
+      # The block, if there is one, runs at each turn, once for the end that was hit. It is the
+      # two tests a game would write itself, and so it costs what they cost.
+      #
+      # ```ruby
+      # x.bounce!(dx, 0..right) { beep :click }
+      # ball.x.bounce!(ball.dx, 0..232)
+      # ```
+      #
+      # * `velocity` - the variable or pool field that holds the speed.
+      # * `range` - the two walls, written with two dots so the high end is in it. Either end
+      #   may be a number the game works out.
       def bounce!(velocity, range, &on_turn)
         refuse_bounce_velocity!(velocity)
         refuse_bounce_range!(range)
@@ -614,17 +780,29 @@ module VBlank
         self
       end
 
-      # Replace the variable with its absolute value.
+      # Makes the variable its distance from 0: a negative number turns positive.
+      #
+      # ```ruby
+      # dy.abs! if y <= 0     # off the ceiling, heading down
+      # ```
       def abs!
         mutate { @builder.absolute_variable!(@name) }
       end
 
-      # Force the variable negative: it becomes -|value|.
+      # Makes the variable negative, or 0: it becomes minus its distance from 0.
+      #
+      # ```ruby
+      # dy.negate_abs! if y >= FLOOR   # off the floor, heading up
+      # ```
       def negate_abs!
         mutate { @builder.negate_absolute_variable!(@name) }
       end
 
-      # Flip the variable's sign.
+      # Turns the variable the other way round: 3 becomes -3 and -3 becomes 3.
+      #
+      # ```ruby
+      # dx.flip! if x > 232
+      # ```
       def flip!
         mutate { @builder.negate_variable!(@name) }
       end
@@ -633,17 +811,30 @@ module VBlank
       #
       # Each is the number its `!` form would store.
 
-      # How far this is from nought.
+      # This number's distance from 0, as a new number: `d.abs <= 5` asks whether `d` is
+      # within 5 either way.
+      #
+      # ```ruby
+      # close = (enemy_x - hero_x).abs < 16
+      # ```
       def abs = new_number(Build.absolute(@node), "abs!")
 
-      # This held within [lo, hi].
+      # This number held from `lo` to `hi`, as a new number to compare or keep. #clamp! tells
+      # the rules.
+      #
+      # ```ruby
+      # column = (x / 8).clamp(0, 29)
+      # ```
       def clamp(lo, hi)
         new_number(Build.clamped(@node, operand_matching(lo, "compare"), operand_matching(hi, "compare")), "clamp!")
       end
 
-      # This moved toward +target+ by at most +step+: how far there is to go, held within a
-      # step either way, added on — the same working-out `approach!` stores. A step written
-      # into the program must be positive; one the game works out is read as a distance.
+      # Where this number would be one step toward `target`, as a new number: moved by at most
+      # `step`, and never past it. #approach! tells the rules for the step.
+      #
+      # ```ruby
+      # next_x = x.approach(goal_x, 2)
+      # ```
       def approach(target, step)
         step = operand_matching(step, "add")
         fixed = Value.fixed_number(step)
@@ -655,16 +846,16 @@ module VBlank
         new_number(Build.binop(:+, @node, Build.clamped(gap, low, distance)), "approach!")
       end
 
-      # This, the other way round — the same number as `-x`.
+      # This number the other way round, as a new number: the same as `-x`.
       def flip = new_number(Build.neg(@node), "flip!")
 
-      # This made negative: -|x|.
+      # Minus this number's distance from 0, as a new number: never more than 0.
       def negate_abs = new_number(Build.neg(Build.absolute(@node)), "negate_abs!")
 
       # How to change the thing this names instead of making a new number, for the message
       # about a new number nobody kept — "d.abs!" for a variable. Nil for a new number that
       # was not made by one of the five words above straight from a variable or a pool field.
-      attr_reader :bang_spelling
+      attr_reader :bang_spelling # :nodoc:
 
       private
 
