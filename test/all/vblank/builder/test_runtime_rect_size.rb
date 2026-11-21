@@ -4,7 +4,7 @@ require "test_helper"
 
 require "differential"
 
-# A rectangle whose SIZE the game works out as it runs — the shape a bar or a column
+# A rectangle whose size the game works out as it runs — the shape a bar or a column
 # needs (a health meter that empties, a wall column in a first-person view, a tower that
 # grows). `draw_rect_at` used to take a build-time size, so the only way to say it was a
 # loop drawing one row-tall rectangle per row.

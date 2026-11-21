@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE EACH `save_data` RECORD GOES AT POWER-ON, asked one rule at a time.
+# Where each `save_data` RECORD GOES AT POWER-ON, asked one rule at a time.
 #
 # Each test starts a game from a table of places it wrote itself — the save memory an
 # earlier build of the game would have left — powers it on, and reads back where every

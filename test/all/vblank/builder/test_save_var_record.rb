@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A `save_var` ON 64K OR 128K OF SAVE MEMORY, which is flash: the save_vars are kept in a
+# A `save_var` ON 64K OR 128K of save memory, which is flash: the save_vars are kept in a
 # record of their own that saves itself a pass after one of them changes, rather than written
 # in place as they are on 32K. The record on the Advance's cartridge, saved and read back in the
 # emulator, is in test/lowering/gba/vblank/builder/test_save_var_record_cartridge.rb.
