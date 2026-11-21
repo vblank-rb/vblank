@@ -90,7 +90,7 @@ module VBlank
         # table of worked-out offsets when one is latched ahead of the frame
         # (@row_bend_table), which copying engine feeds that table (@row_bend_engine), and
         # whether a copier is doing the feeding at all (@copies_row_bends) — and the light
-        # (@light), whose table and engine sit in the same two maps under light. `backgrounds:`
+        # (@light), whose table and engine sit in the same two maps under LIGHT. `backgrounds:`
         # is a live reference to the backend's own name -> layer map — it is filled after
         # this object is built (tiled backgrounds are prepared first), so only bg_number,
         # called at emission time, ever actually reads it.

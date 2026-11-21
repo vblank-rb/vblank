@@ -956,7 +956,7 @@ module VBlank
           # keep its counter in registers can touch.
           THING = LoopForm::COUNTER
 
-          # The walk whose thing thing holds while +block+ runs (IR::WalkShape).
+          # The walk whose thing THING holds while +block+ runs (IR::WalkShape).
           def with_held_walk(walk)
             outer = @held_walk
             @held_walk = walk
@@ -965,7 +965,7 @@ module VBlank
             @held_walk = outer
           end
 
-          # Whether a walk is holding thing on a thing now.
+          # Whether a walk is holding THING on a thing now.
           def held_walk? = !@held_walk.nil?
 
           # r0 = the link +links+ of the held thing, as kept: the next thing's distance into the
@@ -1005,7 +1005,7 @@ module VBlank
           end
 
           # [the register, the distance] a load or store of +width+ bytes reaches a field +distance+
-          # from thing through: thing itself where the instruction's distance reaches, else r1 made
+          # from THING through: THING itself where the instruction's distance reaches, else r1 made
           # THING plus the distance.
           def held_field_operand(distance, width)
             return [THING, distance] if distance <= (width == 4 ? 0xFFF : 0xFF)

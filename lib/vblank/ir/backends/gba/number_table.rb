@@ -56,7 +56,7 @@ module VBlank
         # stops the build.
         class NumberTable
           # How far ahead a read may be asked to name a word, in bytes. The chip allows a
-          # little more (see furthest); what is left over is margin and nothing else.
+          # little more (see FURTHEST); what is left over is margin and nothing else.
           REACH = 4000
 
           # The furthest the chip itself can name, counted the way it counts: from two

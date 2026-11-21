@@ -15,7 +15,7 @@ module VBlank
             # What went wrong, by the number every console's runtime keeps it by.
             include CartridgeFaults
 
-            # How the game stands, in state.
+            # How the game stands, in STATE.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2

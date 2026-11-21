@@ -305,7 +305,7 @@ module VBlank
             end
           end
 
-          # Read the byte at +at+ until it is the byte in +want+, or the chip has been asked asks
+          # Read the byte at +at+ until it is the byte in +want+, or the chip has been asked ASKS
           # times. Spends r0 and r12.
           def emit_wait_until_read_is(at, want)
             again = @emitter.gensym
@@ -700,7 +700,7 @@ module VBlank
             @emitter.emit(ASM.load_immediate(0, 0))
             @emitter.emit(ASM.store_halfword(0, 1))                    # the request's last bit
             emit_copy(from: :bits, to: :chip, count: WRITE_REQUEST)
-            # Ask the chip until it has settled, or it has been asked asks times.
+            # Ask the chip until it has settled, or it has been asked ASKS times.
             @emitter.emit(ASM.load_immediate(1, EEPROM_AT))
             @emitter.emit(ASM.load_immediate(3, ASKS))
             @emitter.place_label(asked)
