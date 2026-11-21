@@ -239,7 +239,7 @@ module VBlank
       #
       # WALK = [:walk_r1, :walk_r2, :walk_r3]
       # sprite :hero, at: [100, 60], rate: 6,
-      #        facing: { right: walk, left: mirror(WALK) }
+      #        facing: { right: WALK, left: mirror(WALK) }
       # ```
       #
       # On `screen :tiled` a mirrored picture costs no sprite memory, because the console can draw

@@ -80,7 +80,7 @@ module VBlank
                              "square part has a duty. To fix this, remove `duty:` from the notes of this part."
       end
 
-      # The eight bits a note keeps it in: each frame's shape's number (numbers), the first frame's
+      # The eight bits a note keeps it in: each frame's shape's number (NUMBERS), the first frame's
       # lowest.
       def bits = shapes.each_with_index.sum { |shape, frame| NUMBERS.fetch(shape) << (2 * frame) }
 

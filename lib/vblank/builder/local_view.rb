@@ -12,7 +12,7 @@ module VBlank
     #
     # ```ruby
     # drawing_for_local_player do |me|
-    #   draw_text "you", hero.x, hero.y - 8, :white if me == 1
+    #   draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
     # end
     # ```
     #
@@ -38,7 +38,7 @@ module VBlank
       #
       # ```ruby
       # drawing_for_local_player do |me|
-      #   draw_text "you", hero.x, hero.y - 8, :white if me == 1
+      #   draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
       # end
       # ```
       def drawing_for_local_player

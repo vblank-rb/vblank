@@ -28,7 +28,7 @@ module VBlank
     # is. Both are read by one reader
     # (Console::MapWordFormat), the record being a layout like any console's.
     #
-    # A map of one byte a cell over tiles of a byte a pixel is the other way a console keeps a
+    # A map of one byte a cell over tiles of a BYTE a pixel is the other way a console keeps a
     # background: the layer it turns and resizes (the Advance's turning layer, the Super
     # Nintendo's Mode 7). The console reads such a layer a pixel at a time, working back from the
     # screen through the turn, so a cell is a tile's number and nothing else (Console::

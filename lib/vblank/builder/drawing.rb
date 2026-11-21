@@ -309,7 +309,7 @@ module VBlank
                              "the scene has a size of its own."
       end
 
-      # On a computer's build of a game that asks a size, what +node+ (a screen line) shows: the size
+      # ON a computer's build of a game that asks a size, what +node+ (a screen line) shows: the size
       # the builder now lays out on (the scene's own, or the game's), on the node for the runtime to
       # show, and in a variable the framework keeps (Program::SHOWN_SCREEN_VARIABLE) for every reader
       # of the running game to read and the checked runs to hold to the interpreter.
