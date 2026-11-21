@@ -2,37 +2,53 @@
 
 module VBlank
   class Builder
-    # The subroutine and scene verbs: define named routines (func) and call them,
-    # organize a game into scenes with a state machine (scene, case_var), and
-    # request a disassembly dump (dump_func). A concern of {Builder}, mixed in so
-    # these stay flat DSL verbs.
+    # Routines and scenes
     #
+    # A `func` is a named routine, and `call` runs it. A `scene` is a routine for one state of the
+    # game, such as the title screen, the play and the game over, and `call` runs it too. Names
+    # are resolved when the game is built, so a routine can be called before the line that
+    # defines it.
+    #
+    # ```ruby
+    # func(:reset_ball) { ball_x = 120; ball_y = 80 }
+    # scene(:title) { draw_text "PRESS START", :center, 80, :white }
+    # mode = var :mode, :title
+    # game_loop do
+    #   call mode
+    #   call :reset_ball if pressed(:select)
+    # end
+    # ```
+    #--
     # Deferred func bodies are emitted, and their call/case targets verified, by the
-    # builder's finalize step (finalize_program) — that orchestration crosses
-    # concerns, so it stays in the core; these are the verbs that feed it.
+    # builder's finalize step (finalize_program). That orchestration crosses concerns, so it
+    # stays in the core; these are the verbs that feed it. A concern of Builder, mixed in so
+    # these stay flat DSL verbs.
+    #++
     module Scenes
-      # Define a named subroutine. The block is stored and evaluated after the main
-      # block (so func/call order in the DSL doesn't matter).
+      # Defines a named routine that the game can call.
       #
-      # `fast:` sets where the routine should be kept. The console has a small amount of
-      # very quick memory and a much larger, slower cartridge, and code runs about two
-      # and a half times faster from the quick one. The framework works out on its own
-      # which routines are worth keeping there — the ones a frame spends the most time in
-      # — so you can leave this alone. Set `fast: true` to insist on one it did not pick,
-      # or `fast: false` to keep one out. `rom.profile` says what it chose and how much
-      # room is left. (See VBlank.build's `fast_code:` to turn the choosing off
-      # altogether.)
+      # The block is stored and built after the main block, so the order of `func` and `call`
+      # lines does not matter.
       #
-      # `on_chip: true` is for a Super Nintendo cartridge with a Super FX (`variants: { snes:
-      # :superfx }`): the routine runs on that chip, several times quicker, while the console
-      # waits for it. It can do sums, fractions, `if`, loops, tables, a list's items by index and
-      # calls of other `on_chip` routines. Anything else in it, a drawing or a scene change for
-      # example, stops the build and says so. On every other
-      # cartridge, and on every other console, the word changes nothing.
+      # ```ruby
+      # func(:add_score) { score += 10 }
+      # call :add_score
+      # ```
       #
-      # @param name [Symbol] function name
-      # @param fast [Boolean, nil] keep it in the quick memory (nil = let the framework decide)
-      # @param on_chip [Boolean, nil] run it on the cartridge's chip, where there is one
+      # * `name` - the routine's name, as a symbol.
+      # * `fast:` - where the routine is kept. The console has a small amount of very quick memory
+      #   and a much larger, slower cartridge, and code runs about two and a half times faster
+      #   from the quick one. The framework picks the routines a frame spends the most time in,
+      #   so you can leave this alone. Write `fast: true` to insist on a routine it did not pick,
+      #   or `fast: false` to keep one out. `rom.profile` says what it chose.
+      # * `on_chip:` - for a Super Nintendo cartridge with a Super FX (`variants: { snes:
+      #   :superfx }`): `true` runs the routine on that chip, several times quicker, while the
+      #   console waits for it. It can do sums, fractions, `if`, loops, tables, a list's items by
+      #   index and calls of other `on_chip` routines. Anything else in it, such as a drawing or
+      #   a scene change, stops the build and says so. On every other cartridge it changes nothing.
+      #--
+      # See VBlank.build's `fast_code:` to turn the choosing off altogether.
+      #++
       def func(name, fast: nil, on_chip: nil, &block)
         declare_func(name, fast: fast, on_chip: on_chip, wrote: "func :#{name}", &block)
       end
@@ -43,35 +59,34 @@ module VBlank
       # Asked by the build of a data pack's unpacking, to tell which routines each part declared (Original::PartPrograms).
       def declared_function_names = @functions.keys  # :nodoc:
 
-      # Call a named subroutine. The target is resolved by name when the tree is
-      # lowered, so it may be defined before or after this call.
+      # Runs a named routine, a `func` or a `scene`.
       #
-      # ONE OF SEVERAL, picked by a number the game works out: give it the routines, in
-      # order, and the number that picks which, counting from 0.
+      # The routine can be defined before or after this line. There are three ways to name it:
       #
-      #   HANDLERS = %i[op_end op_wait op_walk op_say]
-      #   scripts.each { |s| call HANDLERS, number: s.opcode }
+      # * A name: `call :reset_ball`.
+      # * A variable that holds a name, which runs the routine that name picks. The routines are
+      #   the names that variable can hold.
+      # * A list of names with `number:`, which runs the one that number picks, counting from 0.
+      #   Use it where a number already decides what happens next, such as a script's
+      #   instructions or the move an enemy picked. It goes straight to the routine, so a list of
+      #   a hundred costs what a list of two does. A number below 0 or past the end calls nothing.
       #
-      # A script's instructions, a character's current state, the move an enemy picked:
-      # anything where a number already decides what happens next. It goes straight to the
-      # routine that number names, so a list of a hundred and more costs what a list of two
-      # does — where testing the number against each one in turn costs a test per routine. A
-      # number below 0 or past the end of the list calls nothing.
+      # ```ruby
+      # mode = var :mode, :title        # a variable that holds one of a set of names
+      # game_loop { call mode }         # runs :title, :playing or :over
+      # mode = :playing if pressed(:start)
       #
-      # THE ROUTINE A VARIABLE NAMES, which is the same thing with no number in sight:
+      # HANDLERS = %i[op_end op_wait op_walk op_say]
+      # scripts.each { |s| call HANDLERS, number: s.opcode }
+      # ```
       #
-      #   mode = var :mode, :title        # a variable that holds one of a set of names
-      #   game_loop { call mode }         # runs :title, :playing or :over
-      #   mode = :playing if pressed(:start)
-      #
-      # The routines are the names that variable can hold, and the framework numbers them for
-      # you — so this is the line above with the numbering taken off your hands. Which names
-      # those are is known only once the whole program is built, so the list is gathered at the
-      # end rather than where this was written.
-      #
-      # @param name [Symbol, Array<Symbol>, Value] function name, a list of them to pick from,
-      #   or a value holding the name of one
-      # @param number [Integer, Symbol, Value, nil] which of the list to call
+      # * `name` - a routine's name, a list of names, or a variable that holds a name.
+      # * `number:` - which of the list to call. Give it only with a list.
+      #--
+      # The target is resolved by name when the tree is lowered. Which names a variable can hold
+      # is known only once the whole program is built, so that list is gathered at the end
+      # rather than where `call` was written.
+      #++
       def call(name, number: nil)
         return call_by_name(name, number) if name.is_a?(DSL::Value)
         return call_one_of(name, number) if name.is_a?(Array)
@@ -84,44 +99,49 @@ module VBlank
         record(Build.call(name))
       end
 
-      # Request a disassembly dump of a function after the ROM is built.
-      # Place this anywhere in the build block — output is printed after
-      # all functions are emitted. Works for both func and scene names.
+      # Asks for a listing of the machine code of a routine, printed after the game is built.
       #
-      # @param name [Symbol] function or scene name
+      # Write it anywhere in the game. It works for both `func` and `scene` names, and is for
+      # finding out what a routine costs or why it misbehaves.
       #
-      # @example
-      #   func :update_cpu do
-      #     copy :_cpu_center, :cpu_y
-      #     add :_cpu_center, PADDLE_H / 2
-      #   end
-      #   dump_func :update_cpu
+      # ```ruby
+      # func(:update_cpu) { cpu_center = cpu_y + PADDLE_H / 2 }
+      # dump_func :update_cpu
+      # ```
+      #
+      # * `name` - the routine's or scene's name, as a symbol.
       def dump_func(name)
         @dump_requests << name
       end
 
-      # Define a scene (named subroutine for a game state).
-      # Internally prefixed with `_scene_` to avoid clashing with func names.
+      # Defines a scene: a named routine for one state of the game, such as the title, the play or
+      # the game over.
       #
-      # +fast:+ is `func`'s word, and it carries the routine the build makes to write the
-      # scene's moving sprites with it: `fast: false` keeps both in the cartridge, `fast: true`
-      # insists on both. A menu shown for seconds is measured for as long as the scene the game
-      # is played in, so without it a busy menu can take the quick memory ahead of the game.
+      # Run a scene with `call`. A scene has its own sprites, text and pictures, which are hidden
+      # while it is not the one running.
       #
-      # +loads_first: true+ gives the scene the pass it takes over on to put its pictures up —
-      # its scenery and its sprites, a copy into video memory as big as they are — and starts
-      # its own work on the pass after. A scene with a lot of art otherwise copies it on the
-      # same pass as its first pass of game, and the two can run past the end of the frame.
-      # It is always exactly one pass, so a game counting passes from a hand-over can count it.
+      # ```ruby
+      # scene :title do
+      #   draw_text "PRESS START", :center, 80, :white
+      # end
+      # ```
       #
-      # +measure_holding:+ sets what a build that measures the game presses while it measures
-      # this scene, to choose what goes in the console's quick memory: buttons held down the whole
-      # time (`%i[up b]`), or a tape (`Playthroughs::Tape.read("fight.tape")`) whose presses are
-      # played round and round. Measured with nothing pressed, a scene stands still, and a
-      # routine only a press runs — a fight, a shot — measures at nothing and is left in the
-      # cartridge however much a real game runs it. Nothing the scene does changes.
-      #
-      # @param name [Symbol] scene name
+      # * `name` - the scene's name, as a symbol.
+      # * `fast:` - the same as for `func`. It also covers the routine the build makes to write
+      #   the scene's moving sprites: `false` keeps both in the cartridge, `true` insists on both.
+      # * `loads_first:` - `true` gives the scene the pass it takes over on to put its pictures
+      #   up, which is its scenery and its sprites, and starts its own work on the pass after. A
+      #   scene with a lot of art otherwise copies it on the same pass as its first pass of game,
+      #   and the two can run past the end of the frame. It is always exactly one pass.
+      # * `measure_holding:` - what a build that measures the game presses while it measures this
+      #   scene, to choose what goes in the console's quick memory: buttons held down the whole
+      #   time (`%i[up b]`), or a tape (`Playthroughs::Tape.read("fight.tape")`) whose presses are
+      #   played round and round. Measured with nothing pressed, a scene stands still, and a
+      #   routine that only a press runs, such as a fight or a shot, is left in the cartridge
+      #   however much a real game runs it. Nothing the scene does changes.
+      #--
+      # Internally the routine is prefixed with `_scene_` to avoid clashing with func names.
+      #++
       def scene(name, fast: nil, loads_first: false, measure_holding: nil, &block)
         refuse_scene_in_layer!
         unless [true, false].include?(loads_first)
@@ -170,18 +190,23 @@ module VBlank
         tape.presses_within(1..tape.frames).flat_map { |stretch| Array.new(stretch.frames.size, stretch.buttons) }
       end
 
-      # Dispatch to a scene based on a variable's value.
-      # Evaluates the block in a CaseContext to collect when_val clauses,
-      # then records one case node dispatching on the variable — its targets are
-      # the scene subroutines (each scene is a func named _scene_<name>).
+      # Runs the scene that matches the value of a variable.
       #
-      # @param var_name [Symbol] variable holding the state value
+      # The block lists the matches with `when_val`, each a value and the name of a scene.
       #
-      # @example
-      #   case_var :state do
-      #     when_val 0, :title
-      #     when_val 1, :playing
-      #   end
+      # ```ruby
+      # case_var :state do
+      #   when_val 0, :title
+      #   when_val 1, :playing
+      # end
+      # ```
+      #
+      # * `var_name` - the variable that holds the state, as a symbol.
+      #--
+      # Evaluates the block in a CaseContext to collect the when_val clauses, then records one
+      # case node dispatching on the variable. Its targets are the scene routines (each scene is
+      # a func named _scene_<name>).
+      #++
       def case_var(var_name, &block)
         ctx = CaseContext.new
         ctx.instance_eval(&block)

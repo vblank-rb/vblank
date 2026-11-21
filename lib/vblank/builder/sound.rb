@@ -2,31 +2,56 @@
 
 module VBlank
   class Builder
-    # The sound-effect verbs: turn the audio hardware on, name reusable presets,
-    # and fire one-off beeps on the square-wave channel. Music (songs) is its own
-    # concern; these share only the @sound_enabled flag the builder sets up.
+    # Sound effects
     #
-    # A concern of {Builder}, mixed in so enable_sound/define_sound/beep are flat
-    # DSL verbs.
+    # `enable_sound` turns the sound on, and then `beep`, `noise` and `wave` make a sound. A
+    # `beep` is a short, plain tone such as a paddle hit or a pickup. A `noise` is a drum or a
+    # crash, made from hiss instead of a pitched tone. A `wave` is a held tone with a richer
+    # sound. `define_sound` names a beep you want to use again.
+    #
+    # ```ruby
+    # enable_sound
+    # define_sound :paddle_hit, frequency: 880, duty: :quarter, decay: :fast
+    # beep :paddle_hit if ball.overlaps?(paddle)
+    # noise :explosion
+    # ```
+    #
+    # Without `enable_sound` every sound is silent, and calling one is an error. Songs are in
+    # their own verbs, `song` and `play_song`.
+    #--
+    # The sound-effect verbs: turn the audio hardware on, name reusable presets, and fire one-off
+    # beeps on the square-wave channel. Music (songs) is its own concern; these share only the
+    # @sound_enabled flag the builder sets up. A concern of Builder, mixed in so
+    # enable_sound/define_sound/beep are flat DSL verbs.
+    #++
     module Sound
       # The rates `enable_sound mix_rate:` takes, in samples a second.
       MIX_RATES_HZ = (1000..65_536)
 
-      # Enable the GBA sound hardware. Call once at the top of your build block.
-      # Without this, all beep calls are silent.
+      # Turns the sound on. Write it once, at the top of the game.
       #
-      # +mix_rate+ is how many samples a second the recordings are mixed at, where the game wants
-      # to name it: a port whose recordings' rates come from its data pack names the rate its
-      # original mixed at (most Advance games set one in their sound driver), since a build that
-      # reads the pack as the game starts cannot work one out from rates it does not know. Left
-      # out, the mix runs at the rate most recordings were made at. Either way it runs at the
-      # nearest rate the console's clock keeps (IR::Mixing.requested_rate).
+      # Without it every sound is silent, and calling one is an error. A game that hands over its
+      # sounds as data, such as recordings, turns the sound on by itself.
       #
-      # +main_volume+ is how loud everything the game plays is, songs and effects alike: a whole
-      # number from 0 to MAIN_VOLUME_LOUDEST, or a share of it from 0.0 to 1.0. A sound chip with a
-      # main volume scales its whole mix by it, after each voice's own volume, as a port's original
-      # sound driver sets it once. Left out, the chip plays at its loudest.
-      # The program keeps it as the whole number (IR::Nodes::Program#main_volume).
+      # ```ruby
+      # enable_sound
+      # enable_sound main_volume: 0.5
+      # ```
+      #
+      # * `mix_rate:` - how many samples a second the recordings are mixed at, from 1000 to
+      #   65536. A game that names it gets that rate, or the nearest one the console keeps. Left
+      #   out, the mix runs at the rate most recordings were made at.
+      # * `main_volume:` - how loud everything the game plays is, songs and effects alike: a whole
+      #   number from 0 to `MAIN_VOLUME_LOUDEST`, or a share of it from 0.0 to 1.0. Left out, the
+      #   chip plays at its loudest. A console whose sound chip has no main volume ignores it.
+      #--
+      # A port whose recordings' rates come from its data pack names the rate its original mixed
+      # at (most Advance games set one in their sound driver), since a build that reads the pack
+      # as the game starts cannot work one out from rates it does not know. See
+      # IR::Mixing.requested_rate. A sound chip with a main volume scales its whole mix by it,
+      # after each voice's own volume, as a port's original sound driver sets it once. The program
+      # keeps it as the whole number (IR::Nodes::Program#main_volume).
+      #++
       def enable_sound(mix_rate: nil, main_volume: nil)
         raise ArgumentError, "enable_sound is already on. Call enable_sound one time only." if @sound_enabled && !@sound_on_by_itself
         unless mix_rate.nil? || (mix_rate.is_a?(Integer) && mix_rate.between?(MIX_RATES_HZ.first, MIX_RATES_HZ.last))
@@ -69,76 +94,88 @@ module VBlank
         at_boot(Build.enable_sound)
       end
 
-      # Define a named sound preset for use with beep.
+      # Gives a name to a beep, so that `beep` can play it by name.
       #
-      # @param name [Symbol] preset name
-      # @param frequency [Integer] tone frequency in Hz (64-2048 useful range)
-      # @param duty [Symbol] wave shape (:eighth, :quarter, :half, :three_quarter)
-      # @param decay [Symbol] fade speed (:fast, :medium, :slow, :none)
-      # @param volume [Integer] initial volume (0-15)
+      # ```ruby
+      # define_sound :paddle_hit, frequency: 880, duty: :quarter, decay: :fast
+      # define_sound :wall_bounce, frequency: 440
+      # beep :wall_bounce
+      # ```
       #
-      # @example
-      #   define_sound :paddle_hit, frequency: 880, duty: :quarter, decay: :fast
-      #   define_sound :wall_bounce, frequency: 440
+      # * `name` - the sound's name, as a symbol.
+      # * `frequency:` - the pitch in hertz. 64 to 2048 is the useful range.
+      # * `duty:` - the tone's shape: `:eighth`, `:quarter`, `:half` or `:three_quarter`.
+      # * `decay:` - how fast it fades: `:fast`, `:medium`, `:slow` or `:none`.
+      # * `volume:` - how loud it starts, from 0 to 15.
       def define_sound(name, frequency:, duty: :half, decay: :fast, volume: 15)
         record(Build.define_sound(name, frequency: frequency, duty: duty, decay: decay, volume: volume))
       end
 
-      # Trigger a beep on sound channel 2 (square wave, no sweep).
+      # Plays a short tone, such as a paddle hit or a pickup.
       #
-      # @param tone [Symbol, Integer] a preset name or frequency in Hz
-      # @param duty [Symbol] wave shape (default: :half)
-      # @param decay [Symbol] fade speed (default: :fast)
-      # @param volume [Integer] initial volume 0-15 (default: 15)
+      # Name a sound made with `define_sound`, or give a pitch in hertz.
       #
-      # @example Preset
-      #   beep :high
-      #   beep :paddle_hit     # custom preset from define_sound
+      # ```ruby
+      # beep :high
+      # beep :paddle_hit     # a sound from define_sound
+      # beep 880
+      # beep 440, duty: :quarter, decay: :slow
+      # ```
       #
-      # @example Frequency
-      #   beep 880
-      #   beep 440, duty: :quarter, decay: :slow
+      # * `tone` - a sound's name, or its pitch in hertz.
+      # * `duty:` - the tone's shape: `:eighth`, `:quarter`, `:half` (the default) or `:three_quarter`.
+      # * `decay:` - how fast it fades: `:fast` (the default), `:medium`, `:slow` or `:none`.
+      # * `volume:` - how loud it starts, from 0 to 15. The default is 15.
+      #--
+      # A beep plays on sound channel 2 (square wave, no sweep).
+      #++
       def beep(tone, duty: nil, decay: nil, volume: nil)
         raise ArgumentError, "Sound is off. Call enable_sound before beep." unless @sound_enabled
 
         record(Build.beep(tone, duty: duty, decay: decay, volume: volume))
       end
 
-      # Play a percussion or explosion hit on the noise voice (channel 4) — the
-      # console's drum/crash sound, made from filtered randomness rather than a
-      # pitched tone.
+      # Plays a drum or an explosion: a hit made from hiss instead of a pitched tone.
       #
-      # @param preset [Symbol, nil] a built-in noise sound (:hit, :kick, :snare,
-      #   :hat, :explosion, :zap); omit for a plain hit
-      # @param pitch [Symbol] how high the hiss sits (:low, :mid, :high)
-      # @param decay [Symbol] fade speed (:fast, :medium, :slow, :none)
-      # @param volume [Integer] initial volume 0-15
-      # @param metallic [Boolean] a tighter, more tonal rattle (snare/hat)
+      # ```ruby
+      # noise :explosion
+      # noise :hat
+      # noise pitch: :low, decay: :slow, volume: 15
+      # ```
       #
-      # @example
-      #   noise :explosion
-      #   noise :hat
-      #   noise pitch: :low, decay: :slow, volume: 15
+      # * `preset` - a built-in sound: `:hit`, `:kick`, `:snare`, `:hat`, `:explosion` or `:zap`.
+      #   Leave it out for a plain hit.
+      # * `pitch:` - how high the hiss sits: `:low`, `:mid` or `:high`.
+      # * `decay:` - how fast it fades: `:fast`, `:medium`, `:slow` or `:none`.
+      # * `volume:` - how loud it starts, from 0 to 15.
+      # * `metallic:` - `true` for a tighter, more tonal rattle, as in a snare or a hat.
+      #--
+      # Plays on the noise voice (channel 4).
+      #++
       def noise(preset = nil, pitch: nil, decay: nil, volume: nil, metallic: nil)
         raise ArgumentError, "Sound is off. Call enable_sound before noise." unless @sound_enabled
 
         record(Build.noise(preset, pitch: pitch, decay: decay, volume: volume, metallic: metallic))
       end
 
-      # Play a sustained tone on the wave voice (channel 3) with a chosen timbre —
-      # a richer, non-square sound than a beep. The tone holds until you call it
-      # again or `stop_wave`; the wave voice has no fade.
+      # Plays a held tone with a chosen sound quality, richer than a beep.
       #
-      # @param shape [Symbol, Array] the timbre — :sine, :triangle, :sawtooth, :square — or a
-      #   waveform of your own, as 32 steps of 0 to 15
-      # @param pitch [Symbol, Integer] a note name (:C4, :Fs4) or frequency in Hz
-      # @param volume [Symbol] :full, :three_quarter, :half, :quarter, :mute
+      # The tone holds until you call `wave` again or `stop_wave`. It does not fade.
       #
-      # @example
-      #   wave :triangle, :C4
-      #   wave :sine, 440, volume: :half
-      #   PULSE_50 = [15] * 16 + [0] * 16
-      #   wave PULSE_50, :C4
+      # ```ruby
+      # wave :triangle, :C4
+      # wave :sine, 440, volume: :half
+      # PULSE_50 = [15] * 16 + [0] * 16
+      # wave PULSE_50, :C4
+      # ```
+      #
+      # * `shape` - the sound quality: `:sine`, `:triangle`, `:sawtooth` or `:square`, or a
+      #   waveform of your own as 32 steps from 0 to 15.
+      # * `pitch` - a note name such as `:C4` or `:Fs4`, or a pitch in hertz.
+      # * `volume:` - `:full` (the default), `:three_quarter`, `:half`, `:quarter` or `:mute`.
+      #--
+      # Plays on the wave voice (channel 3).
+      #++
       def wave(shape, pitch, volume: :full)
         raise ArgumentError, "Sound is off. Call enable_sound before wave." unless @sound_enabled
 
@@ -148,7 +185,7 @@ module VBlank
         record(Build.wave(shape: shape, frequency: note_frequency(pitch), volume: volume))
       end
 
-      # Silence the wave voice (channel 3).
+      # Stops the tone that `wave` is holding.
       def stop_wave
         record(Build.stop_wave)
       end

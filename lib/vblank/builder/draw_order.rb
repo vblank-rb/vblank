@@ -2,24 +2,18 @@
 
 module VBlank
   class Builder
-    # SPRITES DRAWN IN AN ORDER THE GAME WORKS OUT.
+    # Sprites drawn in an order the game works out
     #
-    # Everywhere else, which sprite is in front of which is settled when the cartridge is
-    # built: the one declared later is in front, unless a layer orders otherwise. A top-down
-    # game cannot live with that. It draws whichever character stands LOWER on the screen
-    # in front — walk round below something and you are drawn over it, walk round above it
-    # and it is drawn over you — and the answer changes every time two things pass each
-    # other.
+    # Usually which sprite is in front of which is settled when the game is built: the one declared
+    # later is in front, unless a layer orders otherwise. A top-down game cannot live with that. It
+    # draws whichever character stands lower on the screen in front. Walk round below something and
+    # you are drawn over it, walk round above it and it is drawn over you, and the answer changes
+    # every time two things pass each other. `draw_in_order` does this.
     #
-    #   draw_in_order hero, guard, guards        # whoever stands lower is in front
-    #
-    # The number each thing is put in order by is the bottom of its box unless the block
-    # gives another, and the block is how a game asks for something else: a puff of smoke that
-    # starts a step nearer the front and drops back once it is grown, a thing in the air
-    # that is drawn over whatever it flies across.
-    #
-    #   draw_in_order(hero, puffs) { |thing| thing.bottom + thing.lift }
-    #
+    # ```ruby
+    # draw_in_order hero, guard, guards        # whoever stands lower is in front
+    # ```
+    #--
     # HOW IT WORKS, which is the same on every backend because it is written in the program
     # itself. Before each frame is drawn a routine works out every thing's number and puts
     # the things in order in a list the program keeps — one sort, which each console writes in
@@ -42,6 +36,7 @@ module VBlank
     # one of them (#declare_turn_table). Sorting a run that turns round every frame would move
     # every thing past every other each time, which for a few dozen things is more than a
     # frame on some consoles; the copy is a step for each thing.
+    #++
     module DrawOrder
       FRONTS = %i[highest lowest].freeze
 
@@ -59,26 +54,39 @@ module VBlank
         def turn_var = part(:turn)
       end
 
-      # Draw +things+ — sprites, and the things of a pool — in an order worked out every
-      # frame: the one whose number is +front+ (:highest or :lowest) is in front. The number
-      # is the block's answer for each thing, handed the sprite, or one of the pool's things
-      # the way `each` hands it; with no block it is the bottom of the thing's box, so
-      # whoever stands lower is in front.
+      # Draws sprites, and the things of a pool, in an order worked out every frame.
       #
-      # The order is among the things named: each takes the place of the backmost of them,
-      # and anything else keeps its own place in front of or behind the whole run. So the
-      # things of one order are declared in one layer, and a sprite is in one order at most.
-      # One told `put_in_layer` is drawn in the layer it is in now: the order holds inside each.
+      # Each thing is given a number, and the one with the highest number is in front. By default
+      # the number is the bottom of the thing's box, so whoever stands lower is in front. A block
+      # gives another number for each thing, for a puff of smoke that starts a step nearer the
+      # front and drops back once it is grown, or a thing in the air that is drawn over whatever
+      # it flies across.
       #
-      # With +take_turns+ there is no number to work out: the things take turns in front, the
-      # list as named on one frame and turned round on the next, a pool's things one by one.
-      # +true+ or :first puts the first one named in front on the first frame shown, :last the
-      # last one named.
+      # ```ruby
+      # draw_in_order hero, guard, guards
+      # draw_in_order(hero, puffs) { |thing| thing.bottom + thing.lift }
+      # ```
       #
-      # @param things [Array<HardwareSprite, Pool>] what is put in order
-      # @param front [Symbol] :highest (the default) or :lowest — which number is in front
-      # @param take_turns [Boolean, Symbol] false, or true, :first or :last
-      # @return [nil]
+      # The order is among the things named: each takes the place of the backmost of them, and
+      # anything else keeps its own place in front of or behind the whole run. So the things of
+      # one order are declared in one layer, and a sprite is in one order at most. One told
+      # `put_in_layer` is drawn in the layer it is in now, and the order holds inside each.
+      #
+      # Many console games draw their sprites in one order on one frame and the other way round on
+      # the next, so that where two overlap each shows half the time and neither hides the other
+      # for good, such as a falling piece over the pile. `take_turns:` does that. Then there is no
+      # number to work out: the things take turns in front, the list as named on one frame and
+      # turned round on the next, a pool's things one by one.
+      #
+      # ```ruby
+      # draw_in_order a, b, c, take_turns: true     # a in front on the first frame, c on the next
+      # draw_in_order a, b, c, take_turns: :last    # c in front on the first frame, a on the next
+      # ```
+      #
+      # * `things` - the sprites and pools to put in order.
+      # * `front:` - `:highest` (the default) or `:lowest`: which number is in front.
+      # * `take_turns:` - `false` (the default), or `true` or `:first` to put the first one named in
+      #   front on the first frame shown, or `:last` for the last one named.
       def draw_in_order(*things, front: nil, take_turns: false, &key)
         things = things.flatten
         turns = turn_start!(take_turns, front, key)
