@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A BACKGROUND THAT WALKS BETWEEN AREAS BESIDE ONE THAT STAYS, ON THE ADVANCE'S CARTRIDGE, in both
+# A background that walks between areas beside one that stays, on the Advance's cartridge, in both
 # orders of declaration. The build keeps two tiles of the same pixels once, so a walking background
 # declared after one that stays can find every tile of every area in video memory already, and
 # then its areas hold no tiles of their own to bring in: walking is the map and the colours alone.

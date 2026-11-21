@@ -23,7 +23,7 @@ class TestAnalyzer < Minitest::Test
     end
   end
 
-  # A FRAME THAT IS THE SAME EVERY TIME HAS ONE ANSWER, so both readings give it. This is the
+  # A frame that is the same every time has one answer, so both readings give it. This is the
   # baseline the next test is read against.
   def test_a_uniform_frame_costs_its_typical_frame
     result = measure do
@@ -36,7 +36,7 @@ class TestAnalyzer < Minitest::Test
                     "nothing about this frame varies, so the worst is the usual"
   end
 
-  # ...AND A FRAME WITH RARE WORK IN IT HAS TWO, far apart. `every 10` fires three times in a
+  # ...AND a frame with rare work in it has two, far apart. `every 10` fires three times in a
   # thirty-frame window, so the worst frame carries the whole board and twenty-seven do not.
   #
   # Both are worth measuring because the model prices both: what every frame pays, and what the
@@ -100,7 +100,7 @@ class TestAnalyzer < Minitest::Test
     assert_equal({ title: 0, play: 1 }, dispatch[:scenes])
   end
 
-  # Boot-into overrides the LAST boot set of the selector, so a game that sets its state
+  # Boot-into overrides the last boot set of the selector, so a game that sets its state
   # more than once at start still ends up in the chosen scene.
   def test_boot_into_overrides_the_last_selector_set
     b = Builder.new
@@ -143,11 +143,11 @@ class TestAnalyzer < Minitest::Test
   # The probe has two clocks and each is blind to something. The wall-clock one counts the
   # stall while a DMA engine copies, which the CPU-executing count cannot see; but it is
   # measured by summing the CPU's sleeps, so a program the hardware wakes over and over
-  # comes out BELOW the cycles it demonstrably executed. A background bending row by row is
+  # comes out below the cycles it demonstrably executed. A background bending row by row is
   # woken 228 times a frame, which is that case — so a reading must never be less than the
   # CPU it can be shown to burn.
   #
-  # FOUR LAYERS BEND, which is what puts the answering on the interrupt: three is as many
+  # Four layers bend, which is what puts the answering on the interrupt: three is as many
   # copying engines as there are to lend out, and an engine feeds the display without ever
   # waking the CPU — a fine thing for a game and no use as a probe of this.
   def test_a_reading_is_never_less_than_the_cpu_the_frame_burns
@@ -192,12 +192,12 @@ class TestAnalyzer < Minitest::Test
   # ---- what a game costs once it is too big for its frame ----
   #
   # A video frame holds 228 scanlines and no more, so once a pass spreads across two of them the
-  # per-frame reading stops at the ceiling and stays there. The counted frame RATE is what the
+  # per-frame reading stops at the ceiling and stays there. The counted frame rate is what the
   # report fell back to, and it is a blunt instrument: a pass takes a whole number of frames, so
   # the rate is the reciprocal of a ceiling and a change that does not cross one moves it barely
-  # at all. What one PASS cost has no ceiling and no step in it.
+  # at all. What one pass cost has no ceiling and no step in it.
 
-  # IT TRACKS THE WORK, which is the property that makes it worth having: twice the drawing
+  # It tracks the work, which is the property that makes it worth having: twice the drawing
   # reads as about twice the cost. That is what lets one build be compared against another,
   # which is the whole reason to measure a game nobody can make fit yet.
   def test_the_per_pass_cost_is_proportional_to_the_work
@@ -220,7 +220,7 @@ class TestAnalyzer < Minitest::Test
                     "and no more than the frames it actually took"
   end
 
-  # A game that FITS is measured per frame as it always was — a pass is a frame there, so there
+  # A game that fits is measured per frame as it always was — a pass is a frame there, so there
   # is nothing new to say and no second emulator run to pay for.
   def test_a_game_that_fits_reports_no_per_pass_cost
     b = Builder.new

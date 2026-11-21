@@ -3,7 +3,7 @@
 require "test_helper"
 
 # A game costs what the player makes it cost. These run real ROMs through the emulator
-# and assert the profiler finds the frames a PLAYER meets, not only the one the game
+# and assert the profiler finds the frames a player meets, not only the one the game
 # draws standing still.
 #
 # This is the raycaster's lesson as an executable test: it read 225 of 228 doing nothing
@@ -138,7 +138,7 @@ class TestAnalyzerInput < Minitest::Test
 
   # --- the worst frame holds every button, not the dearest one ---
 
-  # THE FRAME A SWEEP OF SINGLE BUTTONS CANNOT REACH. Each button here guards work of its
+  # The frame a sweep of single buttons cannot reach. Each button here guards work of its
   # own, so a frame with both down does both bodies and costs about twice either one. A
   # profiler holding them one at a time finds half of its own worst frame and calls that the
   # answer — which is also not the frame the estimate prices, since nothing at build time
@@ -164,7 +164,7 @@ class TestAnalyzerInput < Minitest::Test
                     "two bodies cost about twice one: #{both.scanlines} against #{one.scanlines}"
   end
 
-  # A GAME SMALL ENOUGH THAT ITS WHOLE FRAME IS UNDER THE OLD FLOOR. A button that doubles
+  # A game small enough that its whole frame is under the old floor. A button that doubles
   # such a frame moves the reading by a hundredth of a scanline, and the floor for blaming it
   # used to be a quarter — so the dearer reading was thrown away and the game was scored
   # standing still. That is what put four tiled examples a fifth under the console.

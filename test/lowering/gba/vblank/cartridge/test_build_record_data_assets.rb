@@ -3,7 +3,7 @@
 require "test_helper"
 require VBlank.root.join("test/fixtures/pacman_port/pacman_fixture").to_s
 
-# THE CARTRIDGE BUILD'S RECORD OF ITS DATA (BuildRecord#data_assets): where each piece the build
+# The cartridge build's record of its data (BuildRecord#data_assets): where each piece the build
 # laid down after the code starts in the finished file, how it is packed and how big it is unpacked.
 # The Pac-Man port reads its facts from it (test/fixtures/pacman_port/).
 class TestBuildRecordDataAssets < Minitest::Test
