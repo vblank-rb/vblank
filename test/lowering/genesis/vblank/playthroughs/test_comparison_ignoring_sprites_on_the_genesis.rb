@@ -3,7 +3,7 @@
 require "test_helper"
 require "sprite_box_fields"
 
-# EVERY SPRITE'S BOX LEFT OUT (`ignoring_sprites: true`) on the Genesis, where it is the only way to
+# Every sprite's box left out (`ignoring_sprites: true`) on the Genesis, where it is the only way to
 # hold scenery while the characters are not made: Genesis Plus GX draws every layer together, so
 # `layers: :backgrounds` is refused. The boxes are read from the console's own sprite table, the
 # entries followed by their links.

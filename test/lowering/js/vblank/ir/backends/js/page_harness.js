@@ -54,10 +54,10 @@
  *                       holds at (X, Y), as the browser keeps them
  *   picture [ID]        prints "picture" and every pixel last put on the canvas of that id
  *                       ("screen" unless named), as the console's fifteen-bit colours
- *   js CODE             runs CODE in the page, and prints "js" and what it comes to, if anything:
+ *   js code             runs code in the page, and prints "js" and what it comes to, if anything:
  *                       how a test reaches a game a page made with createGame (`games[0].pause()`)
- *   choose PATH         the file picker, if the page opened one, is given the file at PATH, or the
- *                       folder at PATH where the page asked for a folder
+ *   choose path         the file picker, if the page opened one, is given the file at path, or the
+ *                       folder at path where the page asked for a folder
  *   cancel-pick         ...or closed without a file
  *   picker              prints "picker" and how many times the page opened the file picker
  *   settle              lets the page's promises run on for a while with no frame, any worker the
@@ -73,7 +73,7 @@
  *                       and how many key presses the page kept from the browser
  *
  * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
- * is read from FILE when the page opens and written to it as the page puts something in, so a
+ * is read from file when the page opens and written to it as the page puts something in, so a
  * second run of the page finds what the first kept.
  *
  * Started with "unfocused" after the page, the window starts without the keyboard, as a page in
@@ -314,7 +314,7 @@ class AudioWorkletProcessor {
   constructor() { this.port = { onmessage: null }; }
 }
 
-/* A WEB WORKER: the code at a Blob's address run on a thread of its own (node's worker_threads),
+/* A web worker: the code at a Blob's address run on a thread of its own (node's worker_threads),
  * with the names a worker's code finds in a browser put in front of it: self, postMessage and
  * onmessage. It has no window and no document, as a browser's has none. Each one the page has
  * started and not ended is in +workers+. */
@@ -475,7 +475,7 @@ function play(frames) {
   }
 }
 
-/* HOW MUCH THE PAGE ALLOCATES A FRAME, while it plays +frames+ of them: V8's allocation sampler,
+/* How much the page allocates a frame, while it plays +frames+ of them: V8's allocation sampler,
  * told to take a sample at every ALLOCATION_SAMPLE_BYTES allocated, with no randomness in where, and
  * to keep the samples of what was collected since, so the count is of everything allocated and the
  * same on every run. Gives the bytes a frame, to the nearest sample. The browser's collector has to

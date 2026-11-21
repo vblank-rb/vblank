@@ -3,7 +3,7 @@
 require "test_helper"
 require "console/genesis/vblank/builder/test_big_sprite_pictures_on_the_genesis"
 
-# WHAT A SPRITE PICTURE COSTS THE GENESIS'S SPRITE TABLE. An entry of the table draws a piece up to 32×32,
+# What a sprite picture costs the Genesis's sprite table. An entry of the table draws a piece up to 32×32,
 # and the console shows 80 entries at once and 20 on a row of the screen, so a big picture is covered by
 # as few pieces as it can be. These read the table the console drew from, in its video memory.
 class TestGenesisSpritePieces < Minitest::Test

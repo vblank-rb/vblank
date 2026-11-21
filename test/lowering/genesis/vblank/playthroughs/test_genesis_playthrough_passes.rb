@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A PLAYING COUNTED IN PASSES ON A GENESIS CARTRIDGE: the reader counts the game's passes from the
+# A playing counted in passes on a Genesis cartridge: the reader counts the game's passes from the
 # runtime's own count, so a tape of passes recorded on the interpreter reads the same buttons on the
 # same pass on the cartridge, though some of its passes take several frames.
 class TestGenesisPlaythroughPasses < Minitest::Test
