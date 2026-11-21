@@ -2,35 +2,46 @@
 
 module VBlank
   module DSL
-    # What `viewer :eye, at: [0.0, 0.0, -4.0]` hands back: the spot a place is seen from, and which
-    # way it faces (`draw_place :cube, seen_by: eye`).
+    # The viewer of a place
     #
-    # Which way it faces is three arrows, each of length one and each square to the others: RIGHT,
-    # UP and ahead. A viewer that has not been turned faces along the place's own arrows: right is
-    # x, up is y and ahead is z. Together the three are what graphics books call an orientation
-    # matrix; nothing here needs the word.
+    # A viewer is the spot a place is seen from, and the way it faces. `viewer` hands one back,
+    # and `draw_place` draws a place as it sees it.
     #
-    # The viewer is twelve variables (its spot, then its three arrows), each a fraction, which the
-    # game moves and turns as it runs:
+    # ```ruby
+    # eye = viewer :eye, at: [0.0, 0.0, -4.0]
+    # draw_place :cube, seen_by: eye
+    # ```
     #
-    #   eye.move :ahead, by: 0.05 if held(:a)    # along its own arrows
-    #   eye.turn :left, by: 2 if held(:left)     # degrees, :left :right :up :down
-    #   eye.turn :right, by: spin                # or degrees the game works out
-    #   eye.roll :right, by: 2 if held(:r)       # :left :right
-    #   eye.at 0.0, 0.0, -4.0                    # put it somewhere
-    #   eye.face right: [...], up: [...], ahead: [...]   # point it, three arrows of three numbers
+    # The way it faces is three arrows, each of length one and each square to the others: right,
+    # up and ahead. A viewer that has not been turned faces along the place's own arrows: right
+    # is x, up is y and ahead is z.
     #
-    # A turn keeps the arrows square and of length one, however many there are (IR::ViewerMotion).
-    # `face` takes the arrows as given. `eye.spot` and `eye.right_arrow`, `eye.up_arrow`,
-    # `eye.ahead_arrow` read them back, each three fractions.
+    # The game moves and turns the viewer as it runs:
+    #
+    # ```ruby
+    # eye.move :ahead, by: 0.05 if held(:a)    # along its own arrows
+    # eye.turn :left, by: 2 if held(:left)     # in degrees
+    # eye.turn :right, by: spin                # or degrees the game works out
+    # eye.roll :right, by: 2 if held(:r)
+    # eye.at 0.0, 0.0, -4.0                    # put it somewhere
+    # eye.face right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1]
+    # ```
+    #
+    # Every turn keeps the arrows square and of length one, so a game can turn for as long as it
+    # likes and the place never comes out stretched. #face takes the arrows as given.
+    #--
+    # The viewer is twelve variables (its spot, then its three arrows), each a fraction. Together
+    # the three arrows are what graphics books call an orientation matrix. IR::ViewerMotion keeps a
+    # turn's arrows square.
+    #++
     class Viewer
-      PARTS = IR::PlaceDrawing::VIEWER_PARTS
+      PARTS = IR::PlaceDrawing::VIEWER_PARTS # :nodoc:
 
       # How far from length one an arrow given to `facing:` may be, and how far from square to
       # the others.
-      SLACK = 0.01
+      SLACK = 0.01 # :nodoc:
 
-      BITS = Fraction::DEFAULT_BITS
+      BITS = Fraction::DEFAULT_BITS # :nodoc:
 
       def initialize(builder, name)
         @builder = builder
@@ -38,39 +49,68 @@ module VBlank
         @motion = IR::ViewerMotion.new(->(part) { variable(part) })
       end
 
+      # The viewer's name, as given to `viewer`.
       attr_reader :name
 
       # The variable that holds +part+ of this viewer (one of PARTS, or a scratch part of
       # IR::ViewerMotion::SCRATCH).
-      def variable(part) = Messages::MadeNames.make(:viewer_part, viewer: @name, part: part)
+      def variable(part) = Messages::MadeNames.make(:viewer_part, viewer: @name, part: part) # :nodoc:
 
       # Every variable, in PARTS order.
-      def variables = PARTS.map { |part| variable(part) }
+      def variables = PARTS.map { |part| variable(part) } # :nodoc:
 
       # The scratch variables a turn works in.
-      def scratch_variables = IR::ViewerMotion::SCRATCH.map { |part| variable(part) }
+      def scratch_variables = IR::ViewerMotion::SCRATCH.map { |part| variable(part) } # :nodoc:
 
-      # Where the viewer is: [x, y, z], each a fraction.
+      # Where the viewer stands: three fractions, across, up and ahead.
+      #
+      # ```ruby
+      # here = STONE if eye.spot[2] < BETWEEN
+      # ```
       def spot = %i[x y z].map { |part| read(part) }
 
-      # Which way it faces, each three fractions.
+      # The viewer's right arrow: three fractions, across, up and ahead.
       def right_arrow = %i[right_x right_y right_z].map { |part| read(part) }
+
+      # The viewer's up arrow: three fractions, across, up and ahead.
       def up_arrow = %i[up_x up_y up_z].map { |part| read(part) }
+
+      # The viewer's ahead arrow, the way it looks: three fractions, across, up and ahead.
       def ahead_arrow = %i[ahead_x ahead_y ahead_z].map { |part| read(part) }
 
-      # All three, as `facing:` takes them: a shape drawn standing where this viewer stands and
-      # facing the way it faces (`draw_place :robot, seen_by: eye, at: bot.spot, facing: bot.facing`),
-      # so a robot moves and turns with the viewer's own words.
+      # The way the viewer faces, as `facing:` takes it: its right, up and ahead arrows.
+      #
+      # A game can keep a second viewer for a thing that moves, move and turn it with the
+      # viewer's own words, and draw a shape standing where that viewer stands and facing its way.
+      #
+      # ```ruby
+      # draw_place :robot, seen_by: eye, at: bot.spot, facing: bot.facing
+      # ```
       def facing = { right: right_arrow, up: up_arrow, ahead: ahead_arrow }
 
-      # Put the viewer at +x+, +y+, +z+ (numbers, or values the game works out).
+      # Puts the viewer at a spot, and returns the viewer so calls chain.
+      #
+      # ```ruby
+      # eye.at 0.0, 0.0, -4.0
+      # ```
+      #
+      # * `x`, `y`, `z` - across, up and ahead: numbers, or values the game works out.
       def at(x, y, z)
         refuse_bad_numbers!("at", [x, y, z])
         %i[x y z].zip([x, y, z]).each { |part, number| store(part, number) }
         self
       end
 
-      # Point the viewer: three arrows, each three numbers or values, taken as given.
+      # Points the viewer along three arrows, taken as given, and returns the viewer.
+      #
+      # A game with a flight model of its own hands its arrows straight in. They are not squared
+      # up, so they must already be of length one and square to each other.
+      #
+      # ```ruby
+      # eye.face right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1]
+      # ```
+      #
+      # * `right:`, `up:`, `ahead:` - each three numbers, or values the game works out.
       def face(right:, up:, ahead:)
         { right: right, up: up, ahead: ahead }.each do |arrow, numbers|
           refuse_bad_numbers!("face #{arrow}:", numbers)
@@ -79,24 +119,50 @@ module VBlank
         self
       end
 
-      # Move the viewer +by+ wholes (a number, or a value the game works out) along its own
-      # arrows: :ahead, :back, :left, :right, :up or :down.
+      # Moves the viewer along its own arrows, and returns the viewer.
+      #
+      # ```ruby
+      # eye.move :ahead, by: 0.05 if held(:a)
+      # ```
+      #
+      # * `direction` - `:ahead`, `:back`, `:left`, `:right`, `:up` or `:down`.
+      # * `by:` - how far, in wholes: a number, or a value the game works out, whole or a fraction.
       def move(direction, by:)
         refuse_unknown_direction!("move", direction, IR::ViewerMotion::MOVES.keys)
         @motion.moved(direction, fraction_node(by)).each { |statement| @builder.record_statement(statement) }
         self
       end
 
-      # Turn the viewer +by+ degrees :left, :right, :up or :down: a number, or a value the game
-      # works out (whole or a fraction, below nought or past a whole turn; a fraction holds no
-      # more than 32767 degrees either way).
+      # Turns the viewer by a number of degrees, and returns the viewer.
+      #
+      # `:up` tips it up and `:down` tips it down. The angle may be below 0 or past a whole turn.
+      # A value the game works out may be whole or a fraction, and a fraction holds no more than
+      # 32767 degrees either way.
+      #
+      # ```ruby
+      # eye.turn :left, by: 2 if held(:left)
+      # eye.turn :right, by: spin
+      # ```
+      #
+      # * `direction` - `:left`, `:right`, `:up` or `:down`.
+      # * `by:` - the degrees: a number, or a value the game works out.
+      #--
+      # A written angle's sine and cosine are settled while the game is built; a worked-out one
+      # reads them from a table of sines in the cartridge.
+      #++
       def turn(direction, by:)
         refuse_unknown_direction!("turn", direction, IR::ViewerMotion::TURNS.keys)
         record_turn(:turn, direction, by)
       end
 
-      # Roll the viewer +by+ degrees round the way it faces, :left or :right, a number or a value
-      # as #turn takes.
+      # Rolls the viewer round the way it faces, by a number of degrees, and returns the viewer.
+      #
+      # ```ruby
+      # eye.roll :right, by: 2 if held(:r)
+      # ```
+      #
+      # * `direction` - `:left` or `:right`.
+      # * `by:` - the degrees, as #turn takes them.
       def roll(direction, by:)
         refuse_unknown_direction!("roll", direction, IR::ViewerMotion::ROLL_SIGNS.keys)
         record_turn(:roll, direction, by)
@@ -156,7 +222,7 @@ module VBlank
       # +number+ (a number, or a value the game works out) as a fraction with sixteen bits: a whole
       # value multiplied up, a fraction taken as it is. +who+ names what was given it, for the
       # friendly error a fraction of another size gets.
-      def self.fraction_node(number, who)
+      def self.fraction_node(number, who) # :nodoc:
         return IR::Build.int(Fraction.scale(number, BITS)) if number.is_a?(Numeric)
         return number.node if number.fraction_bits == BITS
         return IR::Build.binop(:*, number.node, 1 << BITS) if number.fraction_bits.nil?
@@ -167,7 +233,7 @@ module VBlank
 
       # How far from length one, and from square to the others, three written arrows are, as one
       # of the reasons a facing is refused, or nil when they are a facing.
-      def self.unfit_arrows_reason(arrows)
+      def self.unfit_arrows_reason(arrows) # :nodoc:
         return "an arrow is not of length one" unless arrows.all? { |arrow| (dot(arrow, arrow) - 1).abs <= SLACK }
 
         "two of its arrows are not square to each other" unless arrows.combination(2).all? { |one, other| dot(one, other).abs <= SLACK }
@@ -176,7 +242,7 @@ module VBlank
       # The twelve starting numbers for +at+ and +facing+ (a Hash of :right, :up and :ahead, each
       # three numbers), in PARTS order, refused in plain words when they are not a spot and three
       # square arrows of length one.
-      def self.starting_numbers(name, at, facing)
+      def self.starting_numbers(name, at, facing) # :nodoc:
         refuse_bad_spot!(name, at)
         arrows = %i[right up ahead].map { |arrow| facing.fetch(arrow) { refuse_bad_facing!(name, "it has no #{arrow}:") } }
         refuse_bad_arrows!(name, arrows)

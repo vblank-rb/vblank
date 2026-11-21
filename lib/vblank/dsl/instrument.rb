@@ -2,19 +2,25 @@
 
 module VBlank
   module DSL
-    # A playable instrument built from one recorded sample — a piano, a synth pad, whatever you
-    # sampled. You play *notes* on it, and the framework covers the whole keyboard from that one
-    # recording by reading it faster or slower for higher or lower notes. Several notes sound at
-    # once, so you can play chords. `instrument :piano, from: "piano_c4.wav"` hands one back.
+    # Instruments
     #
-    #   piano = instrument :piano, from: "piano_c4.wav", note: :C4
-    #   piano.play(:E4)                 # a single note
-    #   piano.play(:C4, :E4, :G4)       # ...or a chord — all three sound together
-    #   piano.play(:C4) if pressed(:a)   # play it live from a button
+    # An instrument plays notes from one recording: a piano, a synth pad, anything recorded.
+    # VBlank covers the whole keyboard from that one recording by reading it faster for higher
+    # notes and slower for lower ones. Several notes sound at once, so an instrument plays chords.
+    # `instrument` hands one back.
     #
-    # It's a thin layer over a {Sample}: each note becomes a pitched voice in the mixer, shifted
-    # from the sample's own recorded note. No voices, rates, or mixer detail to think about —
-    # just notes.
+    # ```ruby
+    # piano = instrument :piano, from: "piano_c4.wav", note: :C4
+    # piano.play(:E4)                 # one note
+    # piano.play(:C4, :E4, :G4)       # a chord: all three sound together
+    # piano.play(:C4) if pressed(:a)  # a note played from a button
+    # ```
+    #
+    # See Builder#instrument.
+    #--
+    # A thin layer over a Sample: each note becomes a pitched voice in the mixer, shifted from the
+    # sample's own recorded note.
+    #++
     class Instrument
       # Built by Builder#instrument, wrapping the sample it plays.
       def initialize(builder, sample)
@@ -22,15 +28,22 @@ module VBlank
         @sample = sample
       end
 
-      # @return [Symbol] the instrument's (and its sample's) name
+      # The instrument's name, as given to `instrument`.
       def name
         @sample.name
       end
 
-      # Play one or more notes at once — one note is a single tone, several make a chord. Each
-      # note is a voice in the mix, so they sound together rather than cutting each other off.
-      # `volume:` sets how loud they play (:full, :three_quarter, :half, :quarter, :mute).
-      # Returns self so it chains.
+      # Plays one or more notes at once, and returns the instrument so calls chain.
+      #
+      # One note is a single tone, and several make a chord. Each note sounds on a voice of its
+      # own, so the notes do not cut each other off.
+      #
+      # ```ruby
+      # piano.play(:C4, :E4, :G4, volume: :half)
+      # ```
+      #
+      # * `notes` - the notes to play, such as `:C4` or `:Fs4`. At least one.
+      # * `volume:` - how loud they play: `:full`, `:three_quarter`, `:half`, `:quarter` or `:mute`.
       def play(*notes, volume: :full)
         raise ArgumentError, "play a note — e.g. #{name}.play(:C4)" if notes.empty?
 
@@ -38,7 +51,11 @@ module VBlank
         self
       end
 
-      # Silence this instrument — stop any of its notes still sounding. Returns self.
+      # Stops every note of the instrument still sounding, and returns the instrument.
+      #
+      # ```ruby
+      # piano.stop
+      # ```
       def stop
         @sample.stop
         self
