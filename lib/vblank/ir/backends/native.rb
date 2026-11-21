@@ -91,7 +91,7 @@ module VBlank
                                   include: [File.dirname(game), RuntimeFeatures::ROOT], mode: mode)
         end
 
-        # THE OTHER COMPUTERS A GAME CAN BE BUILT FOR FROM THIS ONE, by the name a build asks for
+        # The other computers a game can be built for from this one, by the name a build asks for
         # each, and what zig calls it. zig carries the C library of each and SDL is compiled for
         # each from its own source, so nothing for them has to be installed here. Linux is held to
         # a C library from 2018, so the program also starts on an older system. A Mac cannot be
@@ -100,11 +100,11 @@ module VBlank
         TARGETS = Ractor.make_shareable({ windows: "x86_64-windows-gnu", linux: "x86_64-linux-gnu.2.28",
                                           linux_arm: "aarch64-linux-gnu.2.28" })
 
-        # +game+ built into ONE program with a window, written to +path+: the game checked as a
+        # +game+ built into one program with a window, written to +path+: the game checked as a
         # cartridge build checks it, written as C, and compiled with SDL3 by zig into an
         # executable that needs nothing installed beside it. The first build fetches SDL's source
         # and compiles it, which takes a while once; every build after that reuses it. +target+
-        # names another computer to build for (see TARGETS), and left out it is this one. +console+
+        # names another computer to build for (see targets), and left out it is this one. +console+
         # is the one it plays the game as (#checked_program). +strip+ leaves the program's debugging
         # data out: a far smaller file, and far poorer crash reports. +progress+ (a Messages::Progress)
         # is told each step as it begins: the build's, then writing the C and compiling it.

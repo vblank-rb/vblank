@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHAT A CARTRIDGE LOWERING DOES NOT MAKE YET, as opposed to what its console cannot do at
+      # What a cartridge lowering does not make yet, as opposed to what its console cannot do at
       # all: a part of the build still to be written. A lowering's own error for that includes this,
       # and names the +part+ that is missing ("the picture"), so a test run can skip on it and count
       # its skips by part (Testing::CartridgeCheckedPlayer), whichever console's lowering raised it.
@@ -16,7 +16,7 @@ module VBlank
         end
       end
 
-      # WHAT A CARTRIDGE LOWERING WORKS OUT FROM A PROGRAM BEFORE IT WRITES ONE INSTRUCTION. The Color
+      # What a cartridge lowering works out from a program before it writes one instruction. The Color
       # and Super Nintendo lowerings (GBC::Lowering, SNES::Lowering) each turn a program into machine
       # code for a processor of their own, and both first have to answer the same questions about it:
       # which routines a run can reach and which statements, the number each timer and scene is
@@ -131,7 +131,7 @@ module VBlank
         # A routine of the game's, as the author names it: a scene as one.
         def routine_said(name) = @scenes.key?(name) ? "scene #{name.inspect}" : name.to_s
 
-        # THE ONE SCENE WHOSE SPRITES ALONE SHOW THE PICTURE +name+, or nil where sprites of two
+        # The one scene whose sprites alone show the picture +name+, or nil where sprites of two
         # scenes show it, or one declared in no scene. A sprite declared in a scene shows only while
         # that scene is up, so a picture only one scene's sprites show is wanted in video memory only
         # then, and a console short of room keeps it there only then (SNES::Art's scene tiles,
@@ -175,7 +175,7 @@ module VBlank
           end
         end
 
-        # SORTS A CARTRIDGE LOWERING MAY KEEP ITS OWN WAY, by the name of the list each sorts: a draw
+        # Sorts a cartridge lowering may keep its own way, by the name of the list each sorts: a draw
         # order's (Builder::DrawOrder#order_sort_nodes). Each sorts a list made empty and filled by one
         # loop pushing its places in order as the game starts, so the order starts as declared, by a
         # list of whole words made full and written only at places written in the program, every one
@@ -197,7 +197,7 @@ module VBlank
                                                           tick_handlers_waiting.values) { |statements| statements_wait?(statements) }
         end
 
-        # THE TICK HANDLERS THAT CAN WAIT, by their timer's name. A handler runs at the frame boundary, so one
+        # The tick handlers that can wait, by their timer's name. A handler runs at the frame boundary, so one
         # that waits, itself or in a routine it calls, runs again inside its own wait, and the interpreter
         # keeps each run's loop counts and ticks still to answer to itself (Reference#accrue_timer). A cartridge
         # keeps them at fixed places, so it keeps them apart and puts them back as it does a routine's
@@ -215,7 +215,7 @@ module VBlank
         # runtime itself finds that boundary.
         def keeps_last_pass_number? = tick_handlers_waiting.any?
 
-        # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
+        # The routines a frame boundary can call while a call of them is still going, by name. What a timer
         # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
         # own wait, or inside a routine it called that waits. A routine they call that can be waiting
         # there runs again from its start while the call that waits is part way through, and the
@@ -228,7 +228,7 @@ module VBlank
             Reach.routines_called_from(@program, @tick_handlers.values + @bend_roots).select { |name| waits?(name) }
         end
 
-        # WHETHER A LOWERING THAT WORKS THE BENDS OUT AT EACH WAIT MAKES THEM ONE ROUTINE, which every wait
+        # Whether a lowering that works the bends out at each wait makes them one routine, which every wait
         # calls, rather than code in place at each wait: when a bend's steps call a routine that can be
         # waiting at that boundary (#routines_reentered_at_frame_boundary). The numbers such a call puts
         # back around the steps are known only once every routine is made, after the waits made in place.
@@ -260,7 +260,7 @@ module VBlank
             Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
         end
 
-        # WHETHER A THING OF +pool+ CAN BE ON ITS CHAIN WHILE IT IS NOT LIVE, so a walk of it must
+        # Whether a thing of +pool+ can be on its chain while it is not live, so a walk of it must
         # test each thing it passes (DSL::Pool#each). A thing removed outside a walk is taken out of
         # the chain at once; one removed during a walk stays in it, dead, on the pool's retired list
         # until the walks end (DSL::Pool#removal_routine). So the only way to a dead thing on the
@@ -270,7 +270,7 @@ module VBlank
         # the pool, every thing on its chain is live.
         def dead_on_chain?(pool) = written_during_walks?(pool, DSL::Pool.retired_list(pool))
 
-        # THE BODY OF A POOL'S WALK, +repeat+ (IR::WalkShape), for a lowering stepping the walk its
+        # The body of a pool's walk, +repeat+ (IR::WalkShape), for a lowering stepping the walk its
         # own way: the statements after the walk's steps, without the test of whether the thing is
         # live where every thing on the pool's chain is (#dead_on_chain?), so only the statements
         # the test held. The test reads a byte and compares it each turn; the console's own games
@@ -293,7 +293,7 @@ module VBlank
             read.index.is_a?(Node) && read.index.kind == :var_ref && read.index.name == walk.at
         end
 
-        # WHETHER +pool+'S CHAIN CAN CHANGE WHILE A WALK OF IT RUNS. A walk stops after the thing
+        # WHETHER +pool+'S chain can change while a walk of it runs. A walk stops after the thing
         # that was last when it began (DSL::Pool#each), because a thing spawned during it is added
         # after that one. The chain is changed only by the pool's routines that write its links:
         # adding a spawn at the end, and taking a thing out, which outside a walk is at once and
@@ -312,7 +312,7 @@ module VBlank
         # The steps that name a list and only read it.
         LIST_READS = %i[list_get list_len].freeze
 
-        # THE STATEMENTS THAT CAN RUN WHILE A WALK OF +pool+ RUNS: a walk's body, the routines it
+        # The statements that can run while a walk of +pool+ RUNS: a walk's body, the routines it
         # calls, and what a timer's tick or a bend runs, which can come in the middle of one. The
         # pool's own routines test whether a walk of it is in progress before they change its chain
         # (DSL::Pool#not_walking): what they do only when none is, is left out, since a walk is.
@@ -404,7 +404,7 @@ module VBlank
         # nothing declares.
         def background_named(node, scene:) = @handover.background_named(node, scene: scene, error: @error)
 
-        # A STACK A LOWERING'S LAYERS CANNOT SHOW: a scene's own background behind one every screen shows
+        # A stack a lowering's layers cannot show: a scene's own background behind one every screen shows
         # (SceneHandover#own_scenery_behind_shared?), where the lowering keeps a scene's own scenery in the
         # layers in front of the shared. Refused with +not_made_yet+ (an error that includes
         # Backends::NotMadeYet) naming +part+; the block picks the backgrounds the lowering stacks in its
@@ -419,7 +419,7 @@ module VBlank
           )
         end
 
-        # THE REFUSALS EVERY CARTRIDGE LOWERING MAKES, IN ONE ORDER, before it makes anything; a
+        # The refusals every cartridge lowering makes, in one order, before it makes anything; a
         # console's own refusals come after these. Written in each lowering they drifted, and one game
         # with two faults was refused for a different one by each console. The order:
         #
@@ -473,7 +473,7 @@ module VBlank
           )
         end
 
-        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS OF COLOURS THE GAME CHANGES (Nodes::Background
+        # A background that follows several lists of colours the game changes (Nodes::Background
         # #follows_each) keeps no sets and no write of its own: each list's write changes the tiles
         # drawn from it. How that is done is each console's own (a Genesis draws those tiles from
         # the list's own palette), so a lowering that does not make it yet refuses it here, with
@@ -488,7 +488,7 @@ module VBlank
           )
         end
 
-        # A POSE OF THE PIECES OF SEVERAL BANKS OF COLOURS (Nodes::Bitmap#bank_places, `image ...,
+        # A pose of the pieces of several banks of colours (Nodes::Bitmap#bank_places, `image ...,
         # banks:`) is drawn with each piece in its own bank's list. Each of these consoles' sprite
         # entries names its own palette too (Pan Docs, "OAM": attribute bits 0-2 on the Color;
         # fullsnes, "SNES PPU Sprites (OBJs)": attribute bits 1-3; plutiedev, "Sprites": the pattern
@@ -553,7 +553,7 @@ module VBlank
           end
         end
 
-        # THE LISTS MADE BEFORE ANYTHING CAN READ OR WRITE THEM, by name: each made by a statement of
+        # The lists made before anything can read or write them, by name: each made by a statement of
         # the program's own top level that comes before every statement that names it, however deep in
         # the routines that statement calls. A read or a write before a list is made stops the
         # interpreter's game (Reference#list_value: the list is empty), and a console checks it by the

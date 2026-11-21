@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHAT A CARTRIDGE LOWERING HOLDS WHILE IT MAKES A ROUTINE, and how to make a routine and leave
+      # What a cartridge lowering holds while it makes a routine, and how to make a routine and leave
       # the lowering as it was. A lowering keeps what it makes as it goes — its labels, the numbers a
       # routine keeps and the work memory they take, the tables, pictures and colours it gathers — in
       # its own instance variables and in a few objects of its own (its Memory, its Art). Two things
@@ -54,7 +54,7 @@ module VBlank
         end
 
         # +lowering+'s state now, which Snapshot#restore! puts back. What is kept is what each list,
-        # table and COPIED object holds, every one reached from the lowering, and #restore! writes it
+        # table and copied object holds, every one reached from the lowering, and #restore! writes it
         # back into the same objects: nothing is swapped for a copy, so whatever holds any of them
         # holds the same object, put back.
         def snapshot(lowering)
@@ -139,7 +139,7 @@ module VBlank
           end
         end
 
-        # What +value+ holds, and what each list, table and COPIED object inside it holds, all the
+        # What +value+ holds, and what each list, table and copied object inside it holds, all the
         # way down, into +held+: a list or table by a copy of it, an object by its instance variables.
         def note_insides(value, held)
           return if held.key?(value)
