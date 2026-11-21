@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PAINTED SCREEN ON A SUPER FX CARTRIDGE THAT PAINTS WHAT THE LAST PASS PAINTED (Runtime::RepeatLog):
+# A painted screen on a super FX cartridge that paints what the last pass painted (Runtime::RepeatLog):
 # the pass is passed over, and nothing is painted or sent. Each game is checked against the
 # interpreter on every pass in bsnes, so a pass passed over that should not have been, or one made
 # again wrongly, fails at the first pass it shows.

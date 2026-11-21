@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BACKGROUND SPLIT INTO BANDS OF ROWS costs a game little, in a scene or out of one: the console
+# A background split into bands of rows costs a game little, in a scene or out of one: the console
 # is told where each band starts, and not every line. This pass nearly fills its frame with no bend
 # at all, and it keeps its frame with one.
 class TestSNESRowBands < Minitest::Test
