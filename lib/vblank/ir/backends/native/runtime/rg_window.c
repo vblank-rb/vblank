@@ -366,7 +366,7 @@ int rg_window_shows_frame_time(void) { return now.show_frame_time; }
 
 /* The meter counts the frames played and the game's work in them over half a second at a time,
  * whether or not anything is shown, so what is read is always the last half second's. The first
- * frame only starts the clock: a half second holds the frames that ENDED in it. */
+ * frame only starts the clock: a half second holds the frames that ended in it. */
 #define METER_NS 500000000ull
 static uint64_t meter_began_ns;
 static uint64_t meter_frames;

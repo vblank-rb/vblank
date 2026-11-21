@@ -1,5 +1,5 @@
 /*
- * THE MENU OVER THE WINDOW (Live::WindowMenu in the library says what it holds and how it looks;
+ * The menu over the window (Live::WindowMenu in the library says what it holds and how it looks;
  * Live::Menu is the same menu written in Ruby, for vblank run): how it behaves, and where each of
  * its boxes and words goes. This file is that Ruby written again in C, line for line, and a test
  * (test_native_window_menu.rb) plays the same keys through both and fails at the first thing they
@@ -126,7 +126,7 @@ int rg_window_menu_quit_chosen(void);
 /* A key pressed while the menu is open. */
 void rg_window_menu_press(rg_menu_key key);
 
-/* THE WINDOW OF THE GAME'S VARIABLES, which Developer, Game variables opens over the game as it plays
+/* The window of the game's variables, which Developer, Game variables opens over the game as it plays
  * (rg_window.h's RG_PANEL_VARIABLES, which rg_sdl.c reads the variables for). While it is open and
  * the menu is not, up and down scroll it and close shuts it, and the keys that type a name (a
  * letter, a digit, the minus key for an underscore, and Backspace, by SDL's scancodes) find the
@@ -136,7 +136,7 @@ int rg_window_menu_variables_open(void);
 int rg_window_menu_press_on_variables(rg_menu_key key);
 int rg_window_menu_type_key(int key);
 
-/* WHAT THE WINDOW SAYS OVER THE PICTURE until the player presses a button (Live::Menu#problems=
+/* What the window says over the picture until the player presses a button (Live::Menu#problems=
  * and #tell): what could not be used in the settings file (rg_window_problems, while it is unseen),
  * in the middle, and what the window tells the player (rg_window_told), at the foot of the window.
  * Each has an OK, and a console button pressed answers both. Nothing waits for them.
@@ -176,12 +176,12 @@ typedef struct {
   int letter_count;
 } rg_menu_drawing;
 
-/* WHAT A WINDOW DRAWS over the game, in its own pixels: the window of the game's variables when it
+/* What a window draws over the game, in its own pixels: the window of the game's variables when it
  * is open (as rg_window_watch_* last read them), what the window says until a button answers it,
  * the menu when it is open, and in the top right
  * corner what the window is doing — the frame rate when it is asked for (+frame_rate+, its number as
  * words, or NULL), how long the game's own work took a frame (+frame_work+, in milliseconds, or
- * NULL), and PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as
+ * NULL), and paused while the game is +held+ or the speed while it is played +fast_forward+ times as
  * fast (0 for not). +width+ and +height+ are the window's in pixels, and +density+ how many pixels a
  * point is (two on a Retina screen). Parts go into +out+ back to front. */
 void rg_window_menu_draw(rg_menu_drawing *out, int width, int height, double density, int held, int fast_forward,

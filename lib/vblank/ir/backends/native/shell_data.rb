@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Native
-        # WHAT A SHELL KNOWS, AS C (runtime/rg_shell.c reads it): Original::ShellFacts, the one record
+        # What a shell knows, as C (runtime/rg_shell.c reads it): Original::ShellFacts, the one record
         # every runtime is made from, as the nodes of the C tree for the struct runtime/rg_shell.h
         # declares, every sentence a file is refused in among them. Printer writes them. A build that
         # is no shell (and each part of a shell) gets a file whose facts are NULL.

@@ -519,7 +519,7 @@ static void variables_footer(int count, int dropped, char *text, size_t room) {
   }
 }
 
-/* THE WINDOW OF THE GAME'S VARIABLES, in the top left corner, under the bar when the menu is open:
+/* The window of the game's variables, in the top left corner, under the bar when the menu is open:
  * its title, the letters typed or what to type, a heading of Name and Value, a line for each
  * variable the letters find from the one scrolled to, and which lines those are. It is as wide as
  * its widest name needs, never narrower than variables_width, and always the same height, so it
@@ -681,7 +681,7 @@ static int message_height(const char *const *texts, int text_count, int wide) {
   return rows * row_height + (text_count - 1) * pixels(rg_menu_size.line_before) + 2 * pixels(rg_menu_size.pad);
 }
 
-/* A BOX OF WORDS over the picture, +wide+ pixels across the middle of a window +width+ wide, its
+/* A box of words over the picture, +wide+ pixels across the middle of a window +width+ wide, its
  * top +from_bottom+ above the window's +height+, or in the middle of it for -1: its +title+, then
  * each of +texts+ broken to fit, a line across between one and the next, and an OK with what
  * answers it beside it, or under it in a box too narrow for both (Live::Menu#draw_message). */
