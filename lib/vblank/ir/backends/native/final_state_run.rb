@@ -7,18 +7,18 @@ module VBlank
   module IR
     module Backends
       class Native
-        # A PROGRAM PLAYED AS C WITH NOBODY WATCHING (runtime/rg_headless.c's --final-state): built
+        # A program played as C with nobody watching (runtime/rg_headless.c's --final-state): built
         # optimised, played as fast as the computer goes to its halt or to the end of the frames
         # asked for, and read back once, as its variables and lists stood when it ended. Nothing of
         # a frame is printed or read on the way, which is what lets a long routine run at the C's
         # own speed: a port's unpacking, which may write hundreds of megabytes and wait for a frame
         # a million times (Original::Unpacking#run_as_c).
         #
-        # THE COMPILED PROGRAM IS KEPT by its C (Zig.compile_without_sdl, which keys it on the
+        # The compiled program is kept by its C (Zig.compile_without_sdl, which keys it on the
         # source, the runtime, the flags and zig's version), so the same routine asked for again,
         # in this build or a later one, is only written out as C, not compiled again.
         #
-        # A STUCK PROGRAM. The C counts no steps, so a loop that never waits for a frame would play
+        # A stuck program. The C counts no steps, so a loop that never waits for a frame would play
         # forever. The program prints a "." now and then at a frame boundary, and one that prints
         # none for +stuck_after+ seconds is stopped (Stuck). Every frame can start the count again,
         # so a long run that waits now and then is never cut short.

@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Backends
       class Native
-        # THE WINDOW MENU AS C DATA, for the desktop build's copy of it (runtime/rg_window_menu.c):
+        # The window menu as C data, for the desktop build's copy of it (runtime/rg_window_menu.c):
         # what it holds, its sizes and its colours, from Live::WindowMenu, and the letters it is
         # written in, from Graphics::MenuFont. The menu is written down once, in the library, so a
         # line added there is a line in the desktop build's menu with nothing written in C.

@@ -4,17 +4,17 @@ module VBlank
   module IR
     module Backends
       class Native
-        # A GAME'S RULES AS FAST AS THE MACHINE CAN PLAY THEM, for a bot that plays one long run many
+        # A game's rules as fast as the machine can play them, for a bot that plays one long run many
         # times: the program with nothing to see or hear (IR::RulesOnly), built as C with its
         # checks off, and read only as far as somebody asks.
         #
-        # THE DRAWING WAS NOT MOST OF IT. A run read frame by frame has the program print every
+        # The drawing was not most of it. A run read frame by frame has the program print every
         # variable and list every frame, and this side read them all back, which for a game with
         # long lists costs far more than drawing does. So here the program prints nothing, and a
         # number read is a question sent to it and an answer (`--asked`, runtime/rg_headless.c). A
         # script that reads three numbers a frame pays for three numbers.
         #
-        # ITS FRAMES ARE NOT THE CONSOLE'S. A pass is a frame here, because nothing is late, so a tape
+        # Its frames are not the console's. A pass is a frame here, because nothing is late, so a tape
         # made here does not play on a cartridge. This finds tactics and seeds, and the tape that
         # counts is recorded on the cartridge.
         class RulesRun < HeadlessRun
