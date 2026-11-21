@@ -39,8 +39,8 @@ module BRRRecordings
                   0x98, 0x10, 0x21, 0x12, 0x12, 0x20, 0x21, 0x02, 0x00,
                   0x9F, 0x10, 0x11, 0x01, 0x02, 0x10, 0x11, 0x22, 0x02].freeze
 
-  # Where a made-up Super Nintendo original keeps quiet, and the byte that says where its loop starts;
-  # and where it keeps TAKING_TURNS and loud, loud enough to be heard in a byte a sample.
+  # Where a made-up Super Nintendo original keeps QUIET, and the byte that says where its loop starts;
+  # and where it keeps TAKING_TURNS and LOUD, loud enough to be heard in a byte a sample.
   RECORDING_AT = 0x40
   LOOP_POINT_AT = 0x20
   TAKING_TURNS_AT = 0x80
@@ -68,7 +68,7 @@ module BRRRecordings
                                           [0, 0, 0xA0], [0xFA, 0x74, 0]])
   CHIP_ENVELOPES_AT = 0x80
 
-  # A made-up original holding +bytes+ (64 at most) where quiet is, and the loop point +loop_point+,
+  # A made-up original holding +bytes+ (64 at most) where QUIET is, and the loop point +loop_point+,
   # written into +folder+ under the name +file+.
   def self.original_with(folder, bytes, loop_point:, file: "made_up_one.bin")
     copy = "\0".b * 0xA0

@@ -115,7 +115,7 @@ class TestHeroExample < Minitest::Test
 
   # --- Pictures the game draws while it runs ---
   #
-  # The sign's box and the map (words and MAP_CORNER, in HeroExamplePlaces above).
+  # The sign's box and the map (WORDS and MAP_CORNER, in HeroExamplePlaces above).
 
   private def white_pixels_in_box(screen)
     WORDS[:xs].sum { |x| WORDS[:ys].count { |y| screen.pixel(x, y) == Color.resolve(:white) } }

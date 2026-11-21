@@ -5,7 +5,7 @@ require "test_helper"
 # What a cartridge build does once, held on each console that builds one: what a build works out
 # from the program alone is worked out once however many tries it takes (BuildCache), and a routine
 # is made once when it fits a bank (RoutineCuts#sections). Included by the Color's, the Super
-# Nintendo's and the Genesis's test_*_build_once.rb, each naming its backend as backend.
+# Nintendo's and the Genesis's test_*_build_once.rb, each naming its backend as BACKEND.
 #
 # The counts are read by counting the calls themselves while a test asks, so these tests change
 # the whole process: each class including this says `runs_on_the_main_ractor!`.

@@ -9,7 +9,7 @@ require "test_helper"
 #
 # Maintenance obligation: when you add a new IR feature (a node kind or a binop
 # operator), add it here. The coverage test asserts this fixture touches every
-# kind in Node::CATEGORY and every operator in operators, so a forgotten feature
+# kind in Node::CATEGORY and every operator in OPERATORS, so a forgotten feature
 # fails loudly. See the cross-backend rule in .claude/CLAUDE.md.
 #
 # The lone exception is `raw` — pre-assembled native bytes, which the portable
