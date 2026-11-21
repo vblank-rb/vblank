@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # WHICH LOWERING A RUN OF A SUITE TESTS, named in one setting, and which test files that run
+    # Which lowering a run of a suite tests, named in one setting, and which test files that run
     # loads. Both the rake tasks (RakeTasks) and the tests themselves (Testing.lowering) read it
     # from here, so the two cannot answer differently.
     #
@@ -15,7 +15,7 @@ module VBlank
     # Game Boy Color cartridge and plays that in the emulator, each checked against the
     # interpreter on every frame. A test written once plays on whichever the run is for.
     #
-    # EACH LOWERING'S RUN IS ONE RECORD (RUNS), and everything in the testing kit that differs from
+    # Each lowering's run is one record (runs), and everything in the testing kit that differs from
     # one run to the next reads it from there: the rake tasks, the player a test is handed, the
     # skips, what a run is started with. A lowering joins the kit as a record here.
     module Lowering
@@ -97,7 +97,7 @@ module VBlank
       # Set to anything, a run stops at its first failing test and no later run starts (Testing::FailFast).
       FAIL_FAST_SETTING = "FAIL_FAST"
       # What a run's test processes are told of it, by TestTask: FAIL_FAST is the person's choice and
-      # is not handed on, as CONSOLE is not, or a test that starts a rake of its own would stop early.
+      # is not handed on, as console is not, or a test that starts a rake of its own would stop early.
       STOPS_AT_FAILURE_SETTING = "VBLANK_STOPS_AT_FAILURE"
       # Set to anything, `rake test:all` picks up where FAIL_FAST stopped it (RunProgress).
       RESUME_SETTING = "RESUME"
@@ -136,12 +136,12 @@ module VBlank
       # game is built; a cartridge's run plays its own console's cartridge and nothing else.
       CONSOLE_SETTING = "CONSOLE"
 
-      # The console a run's test processes play as, which TestTask hands them. CONSOLE is the
+      # The console a run's test processes play as, which TestTask hands them. Console is the
       # person's choice of which runs to play, so it is not handed on: a test that starts a rake
       # of its own would have that rake leave out every run but one.
       PLAYED_AS_SETTING = "VBLANK_CONSOLE"
 
-      # The console CONSOLE names in +env+, as its Symbol, or nil when it is unset or empty. A name
+      # The console console names in +env+, as its Symbol, or nil when it is unset or empty. A name
       # no console has is refused.
       def named_console(env)
         named = env[CONSOLE_SETTING]
@@ -149,7 +149,7 @@ module VBlank
       end
 
       # The console +run+ plays a game as, given +env+: the run's own, or the one VBLANK_CONSOLE
-      # names, or CONSOLE for a test file played without the rake tasks.
+      # names, or console for a test file played without the rake tasks.
       def console_from(env, run)
         played_as = env[PLAYED_AS_SETTING]
         console = played_as.nil? || played_as.empty? ? named_console(env) : Console.named(played_as)
@@ -173,7 +173,7 @@ module VBlank
         most.empty? ? last : "#{most.join(', ')} or #{last}"
       end
 
-      # THE FILES +lowering+'s RUN LOADS, playing games as +console+ (the run's own unless told):
+      # The files +lowering+'s run loads, playing games as +console+ (the run's own unless told):
       # every one of +files+ but those in a folder another lowering or another console owns.
       #
       # +folders+ names a lowering's own, `{ gba: [...], native: [...], js: [...] }`: a test there

@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # ONE GAME'S HEARD SOUND HELD TO ANOTHER'S, in a test: a port's cartridge beside the original it
+    # One game's heard sound held to another's, in a test: a port's cartridge beside the original it
     # is made from, the same presses on both in the same emulator. It is the one assertion for what
     # comes out of the speakers, over Playthroughs::HeardComparison, as PlaysAlike is for the picture:
     #
@@ -45,7 +45,7 @@ module VBlank
     #
     # It plays both in the emulator, so the game's test group needs the emulator gems.
     #
-    # A GAME WHOSE ORIGINAL IS NOT A CARTRIDGE holds its sound to a recording instead, a .wav file, with
+    # A game whose original is not a cartridge holds its sound to a recording instead, a .wav file, with
     # #assert_sounds_like.
     module HeardAlike
       def assert_heard_alike(first, second, presses, message = nil, wav: nil, wav_layout: :in_turn, **settings)
@@ -54,7 +54,7 @@ module VBlank
         assert compared.alike?, (compared.alike? ? nil : [message, HeardAlike.difference_message(compared)].compact.join("\n"))
       end
 
-      # OURS HELD TO A RECORDING, for a game whose original is not a cartridge: the original's music
+      # Ours held to a recording, for a game whose original is not a cartridge: the original's music
       # rendered to a .wav file by an accurate emulator of its sound chip, say. Compared as a person
       # hears it, not sample for sample (Diagnostics::RecordingComparison):
       #

@@ -4,7 +4,7 @@ require "minitest/ractor"
 
 module VBlank
   module Testing
-    # A GAME'S TESTS PLAYED IN RACTORS, set up from its test helper in one line:
+    # A game's tests played in ractors, set up from its test helper in one line:
     #
     #   require "vblank/testing/in_ractors"
     #   class Minitest::Test
@@ -28,7 +28,7 @@ module VBlank
     # ShareableConstants), but not the diff program minitest shows a failing comparison with: see
     # .share_diff_command.
     module InRactors
-      # MINITEST'S DIFF PROGRAM, FOUND ONCE HERE ON THE MAIN RACTOR. A failing assert_equal of two
+      # Minitest's diff program, found once here on the main Ractor. A failing assert_equal of two
       # long strings (a cartridge's bytes, say) is shown as the output of `diff -u`, and minitest
       # looks for that program the first time a failure needs it: it reads RbConfig::CONFIG to ask
       # whether this is Windows, and keeps the answer on Minitest::Assertions. A test in a Ractor
@@ -50,7 +50,7 @@ module VBlank
         test_class.parallelize_me!
       end
 
-      # EVERY FIXTURE A TEST CLASS PARKS IN A CONSTANT IS FROZEN, ALL THE WAY DOWN, the moment it
+      # Every fixture a test class parks in a constant is frozen, all the way down, the moment it
       # is declared. Ruby tells a class when a constant is added to it, so there is nothing to
       # remember and nothing to repeat.
       #
@@ -58,8 +58,8 @@ module VBlank
       # of them and read changed by the next, a real bug that is invisible until the day test order
       # moves. And a test in a Ractor may read a constant only when nothing in it can change.
       #
-      # TWO THINGS ARE LEFT ALONE. A nested module or class, because that is code rather than a
-      # fixture. And a STREAM (a file, a socket, $stdout), because freezing one works and then
+      # Two things are left alone. A nested module or class, because that is code rather than a
+      # fixture. And a stream (a file, a socket, $stdout), because freezing one works and then
       # nothing can write to it again: a test that parked $stdout in a constant would take the whole
       # run down, with an error pointing somewhere else entirely.
       #
@@ -78,10 +78,10 @@ module VBlank
         end
       end
 
-      # A FIXTURE AS EVERY RACTOR MAY READ IT: +value+ frozen all the way down, and a String
+      # A fixture as every Ractor may read it: +value+ frozen all the way down, and a String
       # interned besides (`-value`), which is what keeps its bytes when a test writes it out.
       #
-      # RUBY'S IO WRITES A FROZEN STRING OF A FEW HUNDRED BYTES BY MOVING ITS BYTES. The first time
+      # Ruby's IO writes a frozen string of a few hundred bytes by moving its bytes. The first time
       # such a String is written (File.binwrite, IO#write), Ruby (4.0) hands a hidden String its
       # bytes and points the String itself at the hidden one: ObjectSpace.dump calls it "shared"
       # afterwards. That changes the fixture, which every Ractor shares, from whichever Ractor
@@ -167,7 +167,7 @@ module VBlank
         nil
       end
 
-      # A FIXTURE MADE ONCE IN EACH RACTOR, kept under the class's name and +name+, for what cannot
+      # A fixture made once in each Ractor, kept under the class's name and +name+, for what cannot
       # be frozen. It is made as many times as there are workers, so it is for what is cheap or
       # cannot be shared; anything dear that can be frozen belongs in a constant.
       module ReadOnce
