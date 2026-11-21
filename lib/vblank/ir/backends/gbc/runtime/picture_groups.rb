@@ -27,7 +27,7 @@ module VBlank
           # The tables, written by #emit_slot and #emit_chunk (for Lowering::Picture#emit_group_slots and
           # Art#emit_group_tables), so their layout is written in this one place:
           # - game_group_slots: for each slot of each set, the place of the group it wants (a byte,
-          #   NONE for none, follow for the one the game names), the place of the one it holds, the
+          #   NONE for none, FOLLOW for the one the game names), the place of the one it holds, the
           #   place of the number the game gave (four bytes), the bank of its set's tiles, its set's
           #   table of groups and how many groups the set has; then a word of nought.
           # - a set's table of groups: for each group, how many chunks it copies and where their

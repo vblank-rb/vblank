@@ -88,7 +88,7 @@ module VBlank
             FAR_CELLS_END = Memory::HIGH_END
             # A background bent row by row (`scroll_each_row`): how far each of the screen's rows
             # sits along, worked out once a pass into a table of the bend's own (the lowering keeps
-            # one for each bend) and shown from bends in the frame after, as the scroll is.
+            # one for each bend) and shown from BENDS in the frame after, as the scroll is.
             # BENDS_FROM is the table of the background up, BENDING 1 while that background has a
             # bend (rt_bends_on, rt_bends_off), and BEND_BASE the scroll the shown rows are along
             # from.
@@ -140,7 +140,7 @@ module VBlank
             PIECES_BANK = "rt picture pieces bank"
 
             # A status bar (`status_bar`), in a game that has one: the console's window, read from
-            # the second grid. Bar is the row its top is at, the number of the grid in the window's
+            # the second grid. BAR is the row its top is at, the number of the grid in the window's
             # grid (0xFF for none, or one with a cell changed), and 0xFF while the grid's rows are
             # still being copied in; BAR_JOB is that copy, kept as MAP_JOB keeps the background's.
             BAR = "rt picture bar"
@@ -1337,7 +1337,7 @@ module VBlank
               asm.load_high(h::IE, :a)
               asm.ret
 
-              # The rest of the rows into bends, for the line interrupt to read, after the blank's
+              # The rest of the rows into BENDS, for the line interrupt to read, after the blank's
               # video memory (rt_upload). It keeps ahead of the display: a row is copied many times
               # over in the time the display draws one line. Flags as they were, for rt_upload.
               asm.label("rt_bends_copy")
@@ -1400,7 +1400,7 @@ module VBlank
               %i[hl de af].each { |pair| asm.pop(pair) }
               asm.reti
 
-              # The cells changed during the pass (cells), each its tile into the first bank of video
+              # The cells changed during the pass (CELLS), each its tile into the first bank of video
               # memory and its colours into the second.
               asm.label("rt_picture_cells")
               asm.load(:hl, memory[CELLS])
@@ -1417,7 +1417,7 @@ module VBlank
               # lines, cell by cell for as long as each is on lines the display has not reached yet
               # (rt_picture_cells_late), so the frame shows it whole. From the first cell it has
               # reached, which would show the top of the screen without the pass's changes and the
-              # rest with them, that cell and every one after it, in order, are kept in cells for the
+              # rest with them, that cell and every one after it, in order, are kept in CELLS for the
               # next blank (rt_picture_cells_kept), and rt_upload says there is more to copy: the
               # wait copies them in the blanks after, and the pass is shown once all of it is in, as
               # a pass that runs late is.
@@ -1457,7 +1457,7 @@ module VBlank
               asm.call("rt_picture_cells_next")
               asm.jump("rt_picture_cells_far")
 
-              # The B cells from HL on, moved to the front of cells for the next blank, in order.
+              # The B cells from HL on, moved to the front of CELLS for the next blank, in order.
               asm.label("rt_picture_cells_kept")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
@@ -1731,14 +1731,14 @@ module VBlank
             #
             # In the blank after the pass, with the rest of the pass's picture: the cell waits in
             # CELLS, so the frame being drawn still shows the pass before, as the interpreter shows
-            # it. A pass that fills cells goes on in the far list (FAR_CELLS), which the blanks write
-            # after cells, so the cells stay in the order the game changed them and the last change
+            # it. A pass that fills CELLS goes on in the far list (FAR_CELLS), which the blanks write
+            # after CELLS, so the cells stay in the order the game changed them and the last change
             # of a cell is the one that stands, with nothing to search. Only a pass that fills both,
             # more cells than a whole grid has, has them written where it asks (rt_cells_write_now).
             #
             # On the frame being drawn, for a cell the game asks to see there (CELL_SHOWN_NOW): it is
             # written where the game asks, so the rows the display has not reached show it, and it
-            # goes into cells as well, so a change of the same cell waiting there cannot put the
+            # goes into CELLS as well, so a change of the same cell waiting there cannot put the
             # older tile back in the blank.
             #
             # A grid with a cell changed is no longer the one declared, so the next put up of it puts
@@ -1869,7 +1869,7 @@ module VBlank
             # reached any line the cell shows on, so it can be written and show this frame; clear when
             # it has. A cell is on screen where the background shows its map, from the background's
             # scroll down (SCY), the top rows' cells cut off above the first line counting as reached;
-            # and where the window shows its map, from the window's top (wy). A cell of a map neither
+            # and where the window shows its map, from the window's top (WY). A cell of a map neither
             # shows is never reached. Two lines ahead of the display, for the wait before its write.
             # Keeps B, DE and HL.
             def emit_cell_ahead(asm)
@@ -1938,7 +1938,7 @@ module VBlank
               asm.ret
             end
 
-            # A cell into cells, which has room for it: A how many it holds, HL where the cell goes,
+            # A cell into CELLS, which has room for it: A how many it holds, HL where the cell goes,
             # BC the cell. The last thing rt_background_cell does.
             def emit_cell_push_near(asm, memory)
               asm.inc(:a)
@@ -1961,12 +1961,12 @@ module VBlank
               asm.ret
             end
 
-            # The far list (FAR_CELLS). rt_cells_push_far: a cell into it, cells being full; HL where
+            # The far list (FAR_CELLS). rt_cells_push_far: a cell into it, CELLS being full; HL where
             # the cell goes, BC the cell. Bank 1 is put back in view after, as the game left it: an
             # interrupt reads only the always-there half of work memory, so it can come while another
             # bank is in view (as it does while a painting is worked on, Runtime::Paint). Once the far
             # list is full too, both lists are written while the display draws (rt_cells_write_now)
-            # and the cell starts cells again.
+            # and the cell starts CELLS again.
             def emit_cells_far(asm, memory)
               h = Console::GBCHardware
               far = memory[FAR_CELLS]
@@ -2054,7 +2054,7 @@ module VBlank
             end
 
             # rt_cells_far_to_near: the far list's first cells moved to CELLS's end while it has room,
-            # for a pass that took cells out of cells (rt_bar_show, its one caller), so the cells after
+            # for a pass that took cells out of CELLS (rt_bar_show, its one caller), so the cells after
             # go after them; and the far list emptied once nothing is left in it.
             def emit_cells_far_to_near(asm, memory)
               h = Console::GBCHardware
@@ -2107,7 +2107,7 @@ module VBlank
             # The far list written: in the blank, and while the display draws once it is full.
             def emit_cells_far_written(asm)
               h = Console::GBCHardware
-              # rt_picture_cells_far: the far list in the blank, after cells, as many as the blank
+              # rt_picture_cells_far: the far list in the blank, after CELLS, as many as the blank
               # holds, or all of them with the display off. Unlike CELLS, a cell the blank does not
               # reach waits for the next blank: the far list is a big change, one the display would
               # reach long before it was written between its lines.
@@ -2147,7 +2147,7 @@ module VBlank
               asm.jump("rt_cells_far_kept")
 
               # rt_cells_write_far_now: the far list written while the display draws, as
-              # rt_cells_write_rest writes cells, and emptied.
+              # rt_cells_write_rest writes CELLS, and emptied.
               asm.label("rt_cells_write_far_now")
               asm.call("rt_cells_far_span")
               asm.ret(:z)
@@ -2197,7 +2197,7 @@ module VBlank
             # memory can be written between the lines the display reads but not while it reads one
             # (STAT's low two bits, 3 while it reads video memory), so each write waits for a moment
             # it is not reading, with the interrupt held off from the wait to the write and open
-            # between cells. rt_cells_write_now(A, how many cells holds) writes cells and then the far
+            # between cells. rt_cells_write_now(A, how many CELLS holds) writes CELLS and then the far
             # list, keeps HL and BC (the cell being changed), and comes back with A nought, CELLS's new
             # length. rt_cells_write_rest is its loop over CELLS: HL the next cell, B how many are left.
             def emit_cells_write_now(asm, memory)
@@ -2246,7 +2246,7 @@ module VBlank
             # copy it in (rt_upload); rt_background_scroll(x, y) sets where the view sits.
             #
             # rt_background_put_up_unscrolled(grid) is the same with the view put back at the
-            # top-left corner first, even when the grid is up already: the blank copies scroll into
+            # top-left corner first, even when the grid is up already: the blank copies SCROLL into
             # the console's two scroll registers, so the background is shown from its corner until
             # the game sets where the view sits again. That is what a background's statement and a
             # scene's arrival put up with, as the Advance does (GBA::BackgroundDrawing
@@ -2678,7 +2678,7 @@ module VBlank
             # draws from its top row, WY, to the bottom of the screen, over the background and under
             # the sprites, reading its cells from the second grid. The bar's grid goes there; the
             # window is switched on in the display's switches the blank writes (LCDC_WANTED), and WY
-            # is written from bar in the blank (rt_upload).
+            # is written from BAR in the blank (rt_upload).
             #
             # rt_bar_put_up(grid, top): the bar's grid into the window's — +rows+ of it, the most any
             # bar of the game fills, so a shorter bar after a taller one leaves none of it behind —
@@ -2940,7 +2940,7 @@ module VBlank
               asm.jump_relative(:nz, "rt_bar_show_cell")
               asm.load(:a, :c)
               asm.load([memory[CELLS]], :a)
-              # The far list's the same way, and then as many of its cells as cells has room for
+              # The far list's the same way, and then as many of its cells as CELLS has room for
               # again moved to CELLS's end, so a cell changed after this goes after them.
               asm.label("rt_bar_show_far")
               asm.call("rt_cells_far_span")

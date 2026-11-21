@@ -12,7 +12,7 @@ module VBlank
           # its low bits and reads back with the slot's top bit as its sign, 200 in a byte reading
           # -56, exactly as the interpreter does it.
           #
-          # In work memory a list is a header of header bytes and then its slots:
+          # In work memory a list is a header of HEADER bytes and then its slots:
           #
           #   +0 capacity (16 bits)   +2 slot width in bytes   +3 nothing   +4 front (16 bits)
           #   +6 length (16 bits)

@@ -66,7 +66,7 @@ module VBlank
 
             # Songs kept in the cartridge's banks (GBC::Music#sections): the bank the game's code put
             # in view last (SM83#select_rom_bank notes it here), which the player puts back once it
-            # has read a part's notes from that part's own bank — kept at PART_BANK in [part].
+            # has read a part's notes from that part's own bank — kept at PART_BANK in [PART].
             BANK_NOTED = "rt music bank noted"
             PART_BANK = 6
 
@@ -101,7 +101,7 @@ module VBlank
             def holds?(memory) = memory.reserved?(TUNE_HELD)
 
             # A tune that plays once and has reached its end, in a game that has one
-            # (IR::Tunes.plays_once?): its number, 1 up, as playing had it, or 0 for none. Set at the
+            # (IR::Tunes.plays_once?): its number, 1 up, as PLAYING had it, or 0 for none. Set at the
             # end of its last frame; the next frame quiets it (rt_music_end), as the interpreter's
             # player does (Reference::Player#advance_song_frame keeps @ended, and
             # #switch_to_wanted_song quiets it on the step after). Quieted on the last frame itself,
@@ -115,7 +115,7 @@ module VBlank
             def tune_plays_once?(memory) = memory.reserved?(ENDED)
 
             # Songs' entries kept in a bank (GBC::Music#entries_in_banks?): the playing song's entry,
-            # copied here from its bank as the song starts, which song then names. Every reading of the
+            # copied here from its bank as the song starts, which SONG then names. Every reading of the
             # song after that — its parts, its length, where it comes round from — reads this copy, so
             # the player puts no bank in view for it on any other frame.
             ENTRY_COPY = "rt music entry copy"
@@ -316,7 +316,7 @@ module VBlank
             # The wobble, in a game where a note does (Audio::Vibrato says what it is, IR::Tunes::Wobble
             # how it steps, and every backend steps it the same way).
             #
-            # rt_wobble_start: the note just written to the part's voice ([part]) is the one it
+            # rt_wobble_start: the note just written to the part's voice ([PART]) is the one it
             # wobbles — HL at the note's vibrato, DE its tuning — or, saying none, it holds still. The
             # hiss has no pitch to wobble. Keeps BC and DE.
             #
@@ -477,7 +477,7 @@ module VBlank
             # A square note's shapes, in a game where a square note sets them.
             #
             # rt_shape_start: A = the note's shapes (Audio::Duty#bits), DE its tuning. On a square
-            # voice ([part]) the note is written in its first shape — the part's tone, which
+            # voice ([PART]) the note is written in its first shape — the part's tone, which
             # rt_voice_write writes, is that for this note — and steps its shapes from here, unless it
             # is a rest. Keeps BC, DE and HL.
             #
@@ -574,7 +574,7 @@ module VBlank
             # voices' right switches in bits 0 to 3 and their left ones in bits 4 to 7, all on since
             # power-on (Runtime::Boot).
             #
-            # rt_set_speakers: A = a note's speaker (Audio::Pan.bits_of), the part's voice ([part])
+            # rt_set_speakers: A = a note's speaker (Audio::Pan.bits_of), the part's voice ([PART])
             # set to it — the left alone, the right alone, or both — and the other voices' switches
             # left as they are. Keeps BC, DE and HL.
             def emit_set_speakers(asm, memory)
@@ -720,11 +720,11 @@ module VBlank
               asm.ret
             end
 
-            # rt_music_end: a tune that ended on the frame before (ended, and still playing) goes quiet,
-            # and nothing is playing; ended stays, so the game naming it again changes nothing. Run once
+            # rt_music_end: a tune that ended on the frame before (ENDED, and still PLAYING) goes quiet,
+            # and nothing is playing; ENDED stays, so the game naming it again changes nothing. Run once
             # the player has caught up with what the game named, as
             # Reference::Player#switch_to_wanted_song looks at an ended tune: another tune taken up, or
-            # a stop, has cleared ended already.
+            # a stop, has cleared ENDED already.
             # Must keep every register but A, HL and the flags, and those rt_music_quiet spends: the
             # tick reads what it needs again after the call.
             def emit_end(asm, memory)
@@ -889,7 +889,7 @@ module VBlank
               asm.jump_relative("rt_music_tick_part")
               asm.label("rt_music_tick_parts_done")
               # The next frame; at the end, round to the loop point, or for a tune that ends, quiet on
-              # the frame after (ended).
+              # the frame after (ENDED).
               asm.load(:hl, memory[FRAME])
               asm.inc([:hl])
               asm.jump_relative(:nz, "rt_music_tick_counted")
@@ -1033,7 +1033,7 @@ module VBlank
             end
 
             # The starting song's entry copied out of its bank (ENTRY_COPY), with HL at its place in
-            # the table of songs, and song naming the copy.
+            # the table of songs, and SONG naming the copy.
             #
             # The cartridge shows the processor one bank of 16K at 0x4000 to 0x7FFF at a time, and
             # which one is a number written to the cartridge's memory bank controller (an MBC5, or an
@@ -1183,7 +1183,7 @@ module VBlank
               # note's loudness here (GBC::SoundLog).
               asm.label("rt_music_note_voice")
               asm.call("rt_music_hold")
-              # rt_voice_write: B = the volume, DE = the tuning, onto the part's voice ([part]).
+              # rt_voice_write: B = the volume, DE = the tuning, onto the part's voice ([PART]).
               asm.label("rt_voice_write")
               asm.load(:a, [part])
               asm.cp_a(GBC::Music::WAVE_VOICE)
