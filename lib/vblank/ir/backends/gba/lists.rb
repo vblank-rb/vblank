@@ -151,9 +151,11 @@ module VBlank
             @emitter.emit(ASM.lsl_imm(2, 2, shift)) if shift.positive?      # r2 = bytes to copy
             @emitter.emit(ASM.cmp_imm(2, 0))
             @emitter.emit_branch(:bcond, skip, cond: :le)                    # nothing to copy
-            @emitter.emit(ASM.add_reg(3, ACC, 2))                            # r3 = past the last byte
+            # The start held against the length less the run, which cannot wrap as the start plus
+            # the run could (IR::ListPacking.fit_test).
             @primitives.load_var(TMP, length_var(node.into))
-            @emitter.emit(ASM.cmp_reg(3, TMP))
+            @emitter.emit(ASM.sub_reg(3, TMP, 2))                            # r3 = the last start that fits
+            @emitter.emit(ASM.cmp_reg(ACC, 3))
             @emitter.emit_branch(:bcond, skip, cond: :gt)                    # runs past its end
             @primitives.emit_list_base(into[:base])
             @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))                  # r1 = where the run goes
