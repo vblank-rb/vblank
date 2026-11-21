@@ -24,3 +24,4 @@ require_relative "console/snes_answers"      # The Super Nintendo's answers: wor
 require_relative "console/genesis_answers"   # The Sega Genesis's answers: works or refused
 require_relative "console/ps1_answers"       # The PlayStation's answers: works or refused
 require_relative "console/kit"               # Which parts of the library serve each console
+require_relative "console/hardware_features" # Each target's hardware, and which of it VBlank drives

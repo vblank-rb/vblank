@@ -16,7 +16,7 @@ The toolchain is shaped around fast, readable feedback while building a game, fo
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/where-a-game-runs-dark.svg">
-  <img alt="How much of each target's hardware VBlank drives: Game Boy Advance 46 of 53 features, Super Nintendo 17 of 43, Sega Genesis 23 of 51, Game Boy Color 30 of 46, PlayStation 24 of 61, desktop program 15 of 37, web page 15 of 24" src="assets/where-a-game-runs-light.svg" width="640">
+  <img alt="How much of each target's hardware VBlank drives: Game Boy Advance 46 of 53, Super Nintendo 17 of 43, Sega Genesis 24 of 51, Game Boy Color 30 of 46, PlayStation 24 of 61, Desktop program 15 of 37, Web page 15 of 24" src="assets/where-a-game-runs-light.svg" width="640">
 </picture>
 
 Each bar counts the target's hardware features, checked against its documentation, and how many VBlank supports. The desktop program is played and tested on the Mac; Windows and Linux builds are made but not yet run there. `vblank run` also plays any game on Ruby and SDL3, with no compiler, as a tool for trying and stepping through a game while you write it.
