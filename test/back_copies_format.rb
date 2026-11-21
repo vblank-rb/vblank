@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A MADE-UP PACKED FORMAT OF VBLANK'S OWN, unpacked twice over as an original's map might be: brought
+# A made-up packed format of VBLANK's own, unpacked twice over as an original's map might be: brought
 # in by `VBlank.require_game_file` for test/copy_reader_tests.rb. It keeps as many counters as a real
 # one does, changed in loops inside loops and on both sides of tests the routine makes, so it shows
 # a format's routine written in normal Ruby keeps them all.

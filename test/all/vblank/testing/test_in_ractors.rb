@@ -39,7 +39,7 @@ class TestInRactors < Minitest::Test
     refute Ractor.shareable?(holder::READ)
   end
 
-  # A FIXTURE STRING WRITTEN TO A FILE IS LEFT AS IT WAS. Ruby writes a frozen String of a few
+  # A fixture string written to a file is left as it was. Ruby writes a frozen String of a few
   # hundred bytes by moving its bytes to a hidden String and pointing the fixture at that one
   # (InRactors.shareable says why that loses a fixture's bytes in Ractors). The write must find the
   # fixture already safe to read from, so its record shows no such move.
@@ -97,7 +97,7 @@ class TestInRactors < Minitest::Test
   # Whether +string+'s bytes are another String's now, as ObjectSpace's record of it says.
   private def moved_to_hidden_string?(string) = JSON.parse(ObjectSpace.dump(string)).fetch("shared", false)
 
-  # A FAILING COMPARISON OF TWO LONG BINARY STRINGS IN A RACTOR SHOWS ITS DIFF. Minitest looks for
+  # A failing comparison of two long binary strings in a Ractor shows its diff. Minitest looks for
   # a diff program the first time one is needed, reading RbConfig::CONFIG, which a Ractor may not
   # read: the failure became a Ractor::IsolationError that hid what differed.
   def test_a_failing_binary_comparison_in_a_ractor_shows_its_diff

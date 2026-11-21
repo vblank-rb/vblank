@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "vblank/testing/watched_run"
 
-# A RUN THAT CAN NO LONGER FINISH ENDS ANYWAY. Ruby crashing in a Ractor can stop every other
+# A run that can no longer finish ends anyway. Ruby crashing in a Ractor can stop every other
 # Ractor and never exit, which leaves a whole run holding the machine's lock with nothing moving.
 class TestWatchedRun < Minitest::Test
   # Each case starts a program of its own, which hangs inside a Ractor.
