@@ -4,14 +4,14 @@ require "digest"
 
 module VBlank
   module Network
-    # WHICH GAME, BUILT FOR WHICH CONSOLE, as a value two machines can compare. Machines that play one
+    # Which game, built for which console, as a value two machines can compare. Machines that play one
     # match each run the whole game, so they must run the same program: one extra line in one build
     # and the machines would walk away from each other without a word. The digest is taken over the
     # program as the build made it (IR::Dump writes it out the same way every time), and the console
     # is named beside it because the same game for another console is another program and the words a
     # person is told about it are not the same.
     #
-    # +title+ is only for a person: a refusal says "WANDERERS" and not a string of letters. It is
+    # +title+ is only for a person: a refusal says "wanderers" and not a string of letters. It is
     # not part of what is compared.
     Fingerprint = Data.define(:title, :console, :digest) do
       # The fingerprint of +program+, a program checked and built for a computer.

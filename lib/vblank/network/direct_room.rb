@@ -2,16 +2,16 @@
 
 module VBlank
   module Network
-    # THE HOST OF A DIRECT CONNECTION IS A RELAY. It takes the machines that connect to it, puts them in one
+    # The host of a direct connection is a relay. It takes the machines that connect to it, puts them in one
     # room, and hands each message on to the others, exactly as a relay does (it is the same room, StandInRelay),
     # so the machine that hosts and the machines that join all speak the format they would speak to a relay and
     # cannot tell the difference. The host's own machine is one more member of the room: #host_line is its link.
     #
     # A machine that joins connects a socket (TCP, or a UNIX socket in a test) and joins the one room, which
-    # has a fixed code (CODE), since the address already names which room. The host is player 1 and the others
+    # has a fixed code (code), since the address already names which room. The host is player 1 and the others
     # are numbered as they arrive.
     #
-    # NOTHING HERE RUNS ON ITS OWN. The room moves text between its sockets and its relay when the host's
+    # Nothing here runs on its own. The room moves text between its sockets and its relay when the host's
     # machine looks for a message or waits for one (#pump, called by HostLine), which is also when a
     # machine that has connected is accepted. A machine that is slow to look makes the others wait for the
     # messages it holds, and that is the cost of one machine being the room.

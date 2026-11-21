@@ -4,7 +4,7 @@ require "socket"
 
 module VBlank
   module Network
-    # PLAYING WITH A MACHINE YOU CAN REACH BY ADDRESS, which is what `vblank run --host` and `--join` do:
+    # Playing with a machine you can reach by address, which is what `vblank run --host` and `--join` do:
     # one machine listens on a TCP port and hosts the match (DirectRoom), and the others connect to its address
     # and join it. Nothing is in between and nothing is asked of a relay. The lockstep that comes back has not
     # started yet; its #begin_match waits for the players.
@@ -14,7 +14,7 @@ module VBlank
 
       # Where a host is: a name or an address, and a port.
       Address = Data.define(:host, :port) do
-        # The address in +text+, written HOST:PORT, or just HOST for the default port.
+        # The address in +text+, written HOST:PORT, or just host for the default port.
         def self.parse(text)
           host, port = text.to_s.split(":", 2)
           raise ArgumentError, bad_address(text) if host.to_s.empty? || (port && !port.match?(/\A\d+\z/)) || (port && !port.to_i.between?(1, 65_535))
