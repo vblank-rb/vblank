@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_tile_pose_at_start_tests"
 
-# A POSE OF SPRITE TILES FROM A FRAME OF THE PACK, ITS PACK LEFT OUT, played as Ruby and checked
+# A pose of sprite tiles from a frame of the pack, its pack left out, played as Ruby and checked
 # against the interpreter on every frame (PackTilePoseAtStartTests in
 # test/pack_tile_pose_at_start_tests.rb, which says why these are not in test/all/). The Ruby
 # runtime writes the frame's pieces over the pose's stand-ins, as the C runtime does.
