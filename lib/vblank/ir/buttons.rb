@@ -4,7 +4,7 @@ module VBlank
   module IR
     # The button vocabulary: the set of button names a program may read with
     # `held` / `pressed`. This is a cross-backend contract, not a backend detail,
-    # so it lives in the IR core next to Int32 — every backend agrees on the SAME
+    # so it lives in the IR core next to Int32 — every backend agrees on the same
     # names, then maps each to its own world (a hardware key bit on the console, a
     # set membership in the interpreter, a key event in a browser). The vocabulary
     # is shared; the mapping is per-backend.
@@ -22,7 +22,7 @@ module VBlank
       # and the build refuses the rest.
       NAMES = %i[a b select start right left up down r l x y c].freeze
 
-      # ANY BUTTON AT ALL, which is not a button and so is not in NAMES: `held(:any)` holds
+      # Any button at all, which is not a button and so is not in names: `held(:any)` holds
       # while one of them is down, and `pressed(:any)` on a frame one of them went down —
       # including while another is still held, the same edge each button has on its own. It
       # is how a game leaves an attract screen.
@@ -30,7 +30,7 @@ module VBlank
 
       module_function
 
-      # THE MOST PLAYERS ANY BUILD READS. A console seats fewer, by its controllers
+      # The most players any build reads. A console seats fewer, by its controllers
       # (Console::Description#controllers), and refuses the rest at the build. A computer has no
       # ports to count, so this is the computer's ceiling, and it is ours to choose: it catches a
       # typo (`player: 100`), and it gives the buttons of one pass a largest size — sixteen
@@ -39,7 +39,7 @@ module VBlank
       # twice the eight players a party game wants. Raising it is this one number.
       MOST_PLAYERS = 16
 
-      # THE OTHER PLAYERS' BUTTONS. A game asks with `held(:left, player: 3)`, and whoever plays the
+      # The other players' buttons. A game asks with `held(:left, player: 3)`, and whoever plays the
       # game for it (a test, a tape) holds :p3_left. They are names of their own so that a list of
       # buttons held stays one plain list, whichever controller each is on, on its way through
       # every run to the console. The first player's are the plain names: one name for one button.
@@ -65,7 +65,7 @@ module VBlank
 
       # Every button of one player set, a bit each in NAMES's order: what a computer's runtime keeps
       # of a player's number (Computer::ConsoleNumbers writes it ahead of each runtime), so a button
-      # added to NAMES is kept there too.
+      # added to names is kept there too.
       EVERY_BUTTON_MASK = (1 << NAMES.length) - 1
 
       # Whether +name+ is a button a program can read.
@@ -95,7 +95,7 @@ module VBlank
       end
 
       # Every name a test of +button+ for +player+ looks for among the buttons held: `pressed(:any,
-      # player: 2)` is all of the second player's, and `held(:left, player: ANY)` is every player's
+      # player: 2)` is all of the second player's, and `held(:left, player: any)` is every player's
       # left. A player who is not connected holds nothing, so asking about every player is asking
       # about every connected one.
       def names_asked(button, player)
@@ -107,8 +107,8 @@ module VBlank
       # The highest player with a button among +held+, or 1 for none.
       def highest_player(held) = Array(held).map { |name| player_of(name) }.max || 1
 
-      # THE BUTTONS OF ONE PASS, AS A COMPUTER'S RUNTIME READS THEM: one number per connected
-      # player, the first player's first, a bit each in the order NAMES lists them. This plain
+      # The buttons of one pass, as a computer's runtime reads them: one number per connected
+      # player, the first player's first, a bit each in the order names lists them. This plain
       # list is what a network will carry later, a list a pass.
       #
       # How many are connected: at least +connected+, which is how many the pass before had, and
@@ -120,7 +120,7 @@ module VBlank
         Array.new([connected, highest_player(held)].max) { |index| player_mask(held, index + 1) }
       end
 
-      # THE BUTTONS OF EACH PASS IN TURN, for whatever hands them to a computer's runtime a pass at
+      # The buttons of each pass in turn, for whatever hands them to a computer's runtime a pass at
       # a time (a headless run, a live session): it keeps how many players are connected between
       # passes, so #masks's rule is kept in one place.
       class PassButtons
@@ -138,7 +138,7 @@ module VBlank
         held.reduce(0) { |bits, name| player_of(name) == player ? bits | (1 << NAMES.index(button_of(name))) : bits }
       end
 
-      # +held+ buttons as one number, a bit each in the order NAMES lists them — for the first ten
+      # +held+ buttons as one number, a bit each in the order names lists them — for the first ten
       # the order the Advance's key register has them in, which the emulator's keys read — and each
       # further player's the same, PLAYER_SHIFT up from the one before. Past the second player the
       # number is wider than a console's (Ruby's numbers have no width), which only a playthrough

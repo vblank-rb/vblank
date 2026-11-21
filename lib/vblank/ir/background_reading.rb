@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHERE A BACKGROUND'S STATE IS KEPT, so anything reading a running game asks for it by the
+    # Where a background's state is kept, so anything reading a running game asks for it by the
     # game's name (`player.background(:sky).scroll_x`) rather than by the hidden variables the
     # build made for it (__bg_sky_sx). The build writes one for each background on the program
     # (Program#background_readings), as it does a sprite's (SpriteReading).

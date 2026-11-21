@@ -2,13 +2,13 @@
 
 module VBlank
   module IR
-    # THE CALENDAR IN WHOLE-NUMBER STEPS, for adding a time the game set to a clock chip's
+    # The calendar in whole-number steps, for adding a time the game set to a clock chip's
     # reading on a cartridge (Backends::GBA::ClockChip#emit_add_offset_routine, and the Color's
     # Backends::GBC::Lowering::Clock). Neither console has a calendar of its own, so the date is
     # turned into a count of days, the offset added, and the count turned back into a date —
     # written as the program's own statements, which a lowering then lowers like any others.
     #
-    # THE COUNT STARTS ON 1 MARCH 1600. From a March, so that February, the month whose length
+    # The count starts on 1 MARCH 1600. From a March, so that February, the month whose length
     # changes, comes at the end of each year, where it moves no day after it; and from 1600,
     # the start of a 400-year cycle, the length after which the leap years repeat exactly —
     # every fourth year, but not every hundredth, but every four hundredth — and early enough
