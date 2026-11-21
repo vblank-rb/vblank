@@ -2,20 +2,20 @@
 
 module VBlank
   module IR
-    # WHICH OF A PICTURE'S THINGS MOVE, AND WHICH NEVER CHANGE ONCE THEY ARE DRAWN.
+    # Which of a picture's things move, and which never change once they are drawn.
     #
-    # A question about the PROGRAM, which is why it is here and not in a backend: whether a
+    # A question about the program, which is why it is here and not in a backend: whether a
     # thing ever changes is a fact the program already contains, and every backend that draws
     # the same program has to reach the same answer about it. What each does with the answer
     # is its own business — one that redraws everything from scratch each frame has no use
     # for it, one whose target remembers what it was last told can do less work.
     #
-    # NOTHING IN A PROGRAM DECLARES "THIS ONE DOES NOT MOVE", and nothing should: asking the
+    # Nothing in a program declares "this one does not move", and nothing should: asking the
     # author to repeat what they have already written is asking them to get it wrong. It is
-    # read off what the program DOES instead — a thing is still when nothing that can run
+    # read off what the program does instead — a thing is still when nothing that can run
     # more than once writes any of the numbers it is drawn from.
     #
-    # THE ONE THING THAT MAY STILL CHANGE IS WHETHER IT IS SHOWN, and that is the case worth
+    # The one thing that may still change is whether it is shown, and that is the case worth
     # having, because a title screen is exactly this: lettering put up once and then left
     # alone for as long as anybody looks at it. A thing declared inside a scene is on screen
     # exactly while that scene is, so its own numbers never move and one variable — whichever
@@ -23,14 +23,14 @@ module VBlank
     # comes in two parts: the things that are still, and the one variable that can change what
     # becomes of them. Watch that variable and everything here is settled while it holds.
     #
-    # WHERE THE CAUTION IS POINTED. Getting this wrong in one direction leaves a picture
+    # Where the caution is pointed. Getting this wrong in one direction leaves a picture
     # painted from stale numbers, which is a bug nobody can see the cause of; getting it wrong
     # in the other leaves a thing drawn again that need not have been, which is what every
     # program did before any of this existed. So every question here is answered "it moves"
     # unless the program plainly shows otherwise: an unrecognised way of working a number out,
     # a scene nothing dispatches to, instructions of the author's own anywhere in the program.
     #
-    # ONE STATE VARIABLE, and a program that picks its scenes with two gets nothing from this.
+    # One state variable, and a program that picks its scenes with two gets nothing from this.
     # Watching several would be several compares on every frame and a second answer to keep
     # in step; a program that wants it can be met when one turns up.
     module Movement
@@ -78,12 +78,12 @@ module VBlank
         Answer.new(still: still.map(&:name), watching: (states.first if still.any?))
       end
 
-      # THE THINGS SHOWN ONLY WHILE ONE SCENE IS, by scene: for each, the variable and value
+      # The things shown only while one scene is, by scene: for each, the variable and value
       # that put that scene up, and the names of what it shows. A thing whose visibility does
       # not carry its scene's test in the shape the builder puts there is left out, and so is
       # one outside every scene — both are drawn on every frame, as everything used to be.
       #
-      # Unlike the still things this is about SHOWING and not about moving, so a program with
+      # Unlike the still things this is about showing and not about moving, so a program with
       # its own instructions in it, or two variables picking scenes, loses nothing here.
       SceneThings = Data.define(:scene, :state, :value, :names)
 
@@ -101,10 +101,10 @@ module VBlank
       # What is spared is the plain statements a program runs before its frame loop: those go
       # once, at power-on, so what they set is settled before the first frame is drawn — which
       # is what makes a sprite's declared position count as still rather than as a number
-      # somebody wrote. A statement with a BODY is never spared, wherever it sits, because a
+      # somebody wrote. A statement with a body is never spared, wherever it sits, because a
       # body is something the machine goes back into: a routine, a timer's handler, a block
       # run once a row. One of those written above the frame loop looks like setup and is not.
-      # Picked out BY PLACE: a statement after the loop that happens to read the same as one
+      # Picked out by place: a statement after the loop that happens to read the same as one
       # before it is a different statement, and is not spared along with it.
       def moved_names(program, frame)
         at = program.children.index(frame)
@@ -131,7 +131,7 @@ module VBlank
       end
 
       # Is everything this object is drawn from settled? Its place, its pose, its turn, its
-      # size, its colours and its layer must all read nothing that moves; whether it is SHOWN may also
+      # size, its colours and its layer must all read nothing that moves; whether it is shown may also
       # read its scene's own variable, and nothing else.
       def still?(node, moved, gates)
         shown = visibility_without_scene_test(node, gates)

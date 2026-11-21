@@ -2,8 +2,8 @@
 
 module VBlank
   module IR
-    # A LIST'S ITEMS WRITTEN INTO A LIST OF BYTES (Nodes::ListPack), WRITTEN OUT AS THE LOOP IT
-    # STANDS FOR: for each item, a list_set of each of its bytes, lowest first. This is what the
+    # A list's items written into a list of bytes (Nodes::ListPack), written out as the loop it
+    # stands for: for each item, a list_set of each of its bytes, lowest first. This is what the
     # step means, written once, so a backend with no block copy of its own for it lowers this and
     # cannot mean anything else. The interpreter runs the step itself, and a test holds the two
     # to the same bytes.
@@ -44,7 +44,7 @@ module VBlank
         Build.binop(:&, Build.binop(:>=, node.at.copy, Build.int(0)), Build.binop(:<=, node.at.copy, room))
       end
 
-      # THE STEP WRITTEN OUT AS ITS LOOP, for a cartridge lowering with no copy of its own for it
+      # The step written out as its loop, for a cartridge lowering with no copy of its own for it
       # (Backends::ListPackBlocks::OWN_WAYS names those that have one). Mixed into the lowering, which
       # gives statement(node).
       module Loops

@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # HOW A PROGRAM'S RECORDINGS ARE ADDED TOGETHER INTO ONE STREAM OF SOUND — the questions
+    # How a program's recordings are added together into one stream of sound — the questions
     # about it every backend that mixes asks, answered here once, so two of them mixing the same
     # program make the same bytes. (The numbers the mix is done in are Audio::Sound's.)
     module Mixing
@@ -16,7 +16,7 @@ module VBlank
           Tunes.playable_songs(program).any? { |song| Tunes.recorded_parts(song).positive? }
       end
 
-      # DOES A BUILD FOR A COMPUTER MIX THIS PROGRAM AT SIXTEEN BITS? It does when any recording
+      # Does a build for a computer mix this program at sixteen bits? It does when any recording
       # was given sixteen (Nodes::Sample#full_samples). Every recording is then read at sixteen, an
       # 8-bit one as its byte shifted up eight bits, and each sum of the mix is held to what sixteen
       # bits hold rather than a byte. A console's build mixes the eight bits it holds whatever
@@ -36,8 +36,8 @@ module VBlank
         node.bytes.unpack("c*").map { |level| level << FULL_DEPTH_SHIFT }
       end
 
-      # DOES ANYTHING IN THIS PROGRAM SHAPE A NOTE? Asked once, of the whole program, because the
-      # answer decides what the mix reads for EVERY voice: a voice's GAIN, which a shape moves,
+      # Does anything in this program shape a note? Asked once, of the whole program, because the
+      # answer decides what the mix reads for every voice: a voice's GAIN, which a shape moves,
       # in a program that shapes something, and its loudness as it stands in one that shapes
       # nothing. Three places can ask for one: a recording declared with one, a part of a played tune
       # or a sound effect, or one of that part's notes. A tune nobody plays asks for nothing.
@@ -62,7 +62,7 @@ module VBlank
         rates.group_by(&:itself).max_by { |_rate, list| list.size }.first
       end
 
-      # THE STEP that sounds recording +sample+ at +frequency+ Hz in a mix running at +mix_rate+:
+      # The step that sounds recording +sample+ at +frequency+ Hz in a mix running at +mix_rate+:
       # how many samples of the recording go by for each sample of the mix, in 65536ths (see
       # Sound::STEP_SHIFT). It rolls the recording's own rate against the mix's, so a recording
       # made at another rate still sounds at its pitch, and the note against the one it was
@@ -74,7 +74,7 @@ module VBlank
         [(step * (1 << VBlank::Audio::Sound::STEP_SHIFT)).round, 1].max
       end
 
-      # THE SAMPLES A VOICE READS of +data+ (signed samples) at +step+, one for each sample of the
+      # The samples a voice reads of +data+ (signed samples) at +step+, one for each sample of the
       # mix, in order, until it runs out: the walk Reference::Mixer#mix_voice takes a frame at a
       # time, the part of a sample that does not make a whole one carried on. For a backend that
       # plays a recording as it will be heard rather than mixing it as it plays (GBC::Clips).
@@ -94,13 +94,13 @@ module VBlank
         samples
       end
 
-      # ONE SAMPLE'S SHARE OF A FRAME, out of 1 << (2 * Sound::RAMP_SPLIT): what a shaped note's
+      # One sample's share of a frame, out of 1 << (2 * Sound::RAMP_SPLIT): what a shaped note's
       # distance to its next gain is multiplied by to slide it there over +samples_a_frame+
       # samples. A multiply by a number worked out ahead of time, rather than a divide each
       # frame.
       def slide_share(samples_a_frame) = (1 << (2 * VBlank::Audio::Sound::RAMP_SPLIT)) / samples_a_frame
 
-      # THE WHOLE LOUDNESS NEAREST +gain+, which keeps Sound::GAIN_FRACTION bits of fraction:
+      # The whole loudness nearest +gain+, which keeps Sound::GAIN_FRACTION bits of fraction:
       # half a step added, and the fraction cleared. A frame's slide aims at a whole loudness and
       # lands off it, so the next frame starts from the whole loudness nearest where it landed.
       def nearest_whole_gain(gain)

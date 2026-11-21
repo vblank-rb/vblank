@@ -33,7 +33,7 @@ module VBlank
       # deliberately count only them and leave tiled out.
       BITMAP_MODES = [DIRECT, BUFFERED].freeze
 
-      # The screens drawn out of TILES, spelled the way a `screen` node spells them
+      # The screens drawn out of tiles, spelled the way a `screen` node spells them
       # rather than the way a resolved mode above does. Both are tile hardware —
       # `:rotozoom` is a different pair of layers from `:tiled`'s four, not a
       # different kind of picture — so anything asking whether a program draws out of

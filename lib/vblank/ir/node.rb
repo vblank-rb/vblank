@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHAT EVERY NODE OF THE INTERMEDIATE REPRESENTATION CAN DO — the op-tree the DSL builds
+    # What every Node of the intermediate representation can do — the op-tree the DSL builds
     # *instead of* emitting target code directly.
     #
     # A node is plain Ruby data: no machine code, no output buffer, no interpreter. That is
@@ -27,7 +27,7 @@ module VBlank
     # func defined later. Labels and branch targets are only an artifact of flattening this
     # structure into linear code, so they live in the backend that does the flattening.
     #
-    # THIS IS A MIXIN, AND IT NAMES NO KIND. Each kind is its own class (see {Nodes}), which
+    # This is a mixin, and it names no kind. Each kind is its own class (see {Nodes}), which
     # declares what it is and what operands it carries; this holds only what they all share.
     # Nothing here knows a pixel from a func, so a new kind is a new class and nothing else.
     module Node
@@ -60,7 +60,7 @@ module VBlank
           name
         end
 
-        # Which section of a frame's work this kind belongs to (see CATEGORIES).
+        # Which section of a frame's work this kind belongs to (see categories).
         def category(name = nil)
           name ? @category = name : @category
         end
@@ -72,14 +72,14 @@ module VBlank
           name ? @tier = name : (@tier || :portable)
         end
 
-        # A DECLARATION: something gathered from the whole program before it runs — a
+        # A declaration: something gathered from the whole program before it runs — a
         # picture, a tune, a routine's body — so reaching one where it is written does
         # nothing, on every backend.
         def declaration!
           @declaration = true
         end
 
-        # PART OF ANOTHER KIND'S SHAPE, never run on its own: whatever it hangs from walks its
+        # Part of another kind's shape, never run on its own: whatever it hangs from walks its
         # children itself.
         def part!
           @part = true
@@ -114,7 +114,7 @@ module VBlank
             # the node it hangs from, a sprite given an angle once something turns it. The
             # assignment maintains that, rather than whoever remembers to.
             #
-            # WRITTEN OUT AS SOURCE rather than made from a block, and the reason is not
+            # Written out as source rather than made from a block, and the reason is not
             # style. A method made from a block carries the block's surroundings with it, and
             # Ruby will not let another Ractor call one — so a game that builds from a Ractor
             # stopped dead at the first operand it wrote. Generated from a string it is an
@@ -128,7 +128,7 @@ module VBlank
           write_operand_access(tags.keys)
         end
 
-        # AN OPERAND BY ITS NAME, for code that walks every kind: #operand_named reads one, #attrs gives
+        # An operand by its name, for code that walks every kind: #operand_named reads one, #attrs gives
         # the ones given, and #hold_operand puts one in its instance variable. Each is a `case`
         # over this kind's own names, written out as source for the same reason the writers are,
         # so reading a field by name is a plain read rather than a call made by a built name.
@@ -179,7 +179,7 @@ module VBlank
       # for a class that declares none.
       def kind = node_class.kind
 
-      # THIS NODE'S CLASS, FOUND THROUGH Kernel#class BOUND TO IT (bind_call), NOT BY `self.class`,
+      # This Node's class, found through Kernel#class bound to it (bind_call), NOT BY `self.class`,
       # for the reason Guardrails::Validator#plain_name gives: a call site that sees many classes
       # in turn crashes Ruby (4.0.9, and 4.1 as it stands, on Apple's arm64) when several Ractors
       # build at once, and every node kind is a class of its own, so the sites in this file see
@@ -285,7 +285,7 @@ module VBlank
       # Depth-first, pre-order over this node and every statement under it, an `.else` body
       # included (see #statement_bodies). The `.else` itself is not yielded, only what is in
       # it, so the statements beside one in there are its parent's children, not the `if`'s.
-      # Does NOT descend into value operands — use #walk for the whole tree.
+      # Does not descend into value operands — use #walk for the whole tree.
       def each(&block)
         return enum_for(:each) unless block
 
@@ -293,7 +293,7 @@ module VBlank
         statement_bodies.each { |child| child.each(&block) }
       end
 
-      # Depth-first over the ENTIRE tree: statement children and any value nodes
+      # Depth-first over the entire tree: statement children and any value nodes
       # nested in the operands (directly or inside arrays). This is what a validation
       # pass wants — "show me every node, statement or operand."
       #
@@ -308,7 +308,7 @@ module VBlank
         walk_tree_afresh(&block)
       end
 
-      # THE PROGRAM IS WRITTEN: from here on nothing adds a statement to it or takes one away.
+      # The program is written: from here on nothing adds a statement to it or takes one away.
       # Called on the top of the tree once the game's block has run and the builder has
       # finished with it, and never before — the builder rearranges statements to the very end.
       #
@@ -330,7 +330,7 @@ module VBlank
       end
 
       # Give this statement and everything under it a call site they do not have — the line
-      # of the DECLARATION a framework-built statement serves, so that a sprite's per-frame
+      # of the declaration a framework-built statement serves, so that a sprite's per-frame
       # repaint is traced to the `sprite` line rather than to no line at all. A node that
       # already carries one keeps it. Returns self.
       def default_source!(source)
@@ -342,7 +342,7 @@ module VBlank
       # all new objects. Parents are rewired to the copy as it is built, so the two trees
       # share nothing and changing one cannot show up in the other.
       #
-      # For anything that has to CHANGE a program to learn about it — measuring a frame rate
+      # For anything that has to change a program to learn about it — measuring a frame rate
       # means adding a counter to count frames with — so the program it was handed is still
       # the program afterwards.
       #
@@ -408,7 +408,7 @@ module VBlank
       private
 
       # Put an operand there while constructing, by name. A name the kind does not have is
-      # refused with what it DOES have — the answer is nearly always in that list, and the
+      # refused with what it does have — the answer is nearly always in that list, and the
       # bare NoMethodError a writer would raise says nothing about the alternatives.
       def assign_operand!(name, value)
         unless node_class.tags.key?(name)
@@ -446,7 +446,7 @@ module VBlank
         node_class.tags.each_key.select { |declared| keep.include?(declared) }
       end
 
-      # The operands of THIS node that lead to a node. Every other one holds a name, a
+      # The operands of this node that lead to a node. Every other one holds a name, a
       # number, a colour, a flag or a list of plain data, and a walk has no reason to look
       # inside one.
       def node_fields = @node_fields ||= []
@@ -455,10 +455,10 @@ module VBlank
       # numbers, and hold none.
       def name_fields = @name_fields ||= []
 
-      # ONE READ OF AN OPERAND, answering two questions and holding it still.
+      # One read of an operand, answering two questions and holding it still.
       #
       # Whether a walk has to come back to it: a node, or a list with one in it. Nothing is
-      # taken on trust from what the field is DECLARED to hold, so a list that really does
+      # taken on trust from what the field is declared to hold, so a list that really does
       # hold nodes, like a case statement's clauses, answers yes.
       #
       # Whether it holds a name anywhere: a variable, a routine, a picture, the index a loop
