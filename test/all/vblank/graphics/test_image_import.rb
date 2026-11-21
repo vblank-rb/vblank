@@ -190,7 +190,7 @@ class TestImageImport < Minitest::Test
     assert_equal MARKER, bmp.transparent
   end
 
-  # ---- the whole path for a CUTOUT: the background shows through -------------
+  # ---- the whole path for a cutout: the background shows through -------------
 
   # Import the alpha fixture as transparent over a solid blue field. The opaque
   # top row draws; the transparent bottom row must let the blue show through —

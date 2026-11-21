@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# READING A GAME'S COLLECTIONS AFTER A RUN. A test reads a variable with `run[:score]`; a
+# Reading a game's collections after a run. A test reads a variable with `run[:score]`; a
 # list, and every field of a pool, is read the same way — by the name the game declared it
 # with — rather than by reaching into how the interpreter happens to keep them.
 class TestReadingCollections < Minitest::Test
@@ -123,7 +123,7 @@ class TestReadingCollections < Minitest::Test
     refute_match(/:active|:free/, field, "the pool's own bookkeeping is not a field")
   end
 
-  # THE WHOLE OF A GAME'S OWN STATE IN ONE READING, so a test comparing two moments compares
+  # The whole of a game's own state in one reading, so a test comparing two moments compares
   # all of it — and a list the game gains later is compared too, with nothing to add to the
   # test. What the framework keeps for itself (a sprite's place, a fade, a loop's counter) is
   # not the game's, and is left out.

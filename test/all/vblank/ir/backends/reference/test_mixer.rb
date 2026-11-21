@@ -12,7 +12,7 @@ require "test_helper"
 # straight off the Advance's cartridge in
 # test/lowering/gba/vblank/ir/backends/reference/test_mixer_cartridge.rb.
 class TestMixer < Minitest::Test
-  # A COLOR PLAYS ONE RECORDING AT A TIME, so the interpreter, playing a game as a Color, sounds
+  # A color plays one recording at a time, so the interpreter, playing a game as a Color, sounds
   # the first and drops the rest, as it drops plays past the Advance's sixteen.
   def test_a_color_game_sounds_one_recording_at_a_time
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
@@ -31,7 +31,7 @@ class TestMixer < Minitest::Test
     assert_equal [[:sample, :first], [:sample, :second]], i.audio.select { |event| event.first == :sample }
   end
 
-  # THE VOICE TABLE DECODES WHATEVER MEMORY IT IS HANDED. The reader is passed in rather than
+  # The voice table decodes whatever memory it is handed. The reader is passed in rather than
   # owned, so the decoding — which slot is sounding, which sample it is, whether it loops — is
   # checked here against a plain Hash, with no emulator anywhere. This is the one test that
   # knows the slot layout, which is right: it is the mixer's own.

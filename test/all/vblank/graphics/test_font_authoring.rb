@@ -57,7 +57,7 @@ class TestFontAuthoring < Minitest::Test
     assert_equal 3, mine.height
   end
 
-  # THE REASON THE FONT BELONGS TO THE PROGRAM. A font used to go into one table shared by
+  # The reason the font belongs to the program. A font used to go into one table shared by
   # the whole process, so the second game built in a session could draw with the first
   # game's font — and a name declared twice quietly replaced. Nothing said so, and the
   # picture simply came out wrong in the second game.
