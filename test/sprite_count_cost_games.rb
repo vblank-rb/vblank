@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A SPRITE NOT SHOWING COSTS A FRAME, for each console's own cost test: a game of many sprites
+# What a sprite not showing costs a frame, for each console's own cost test: a game of many sprites
 # declared and four showing, each of the four moving, against the same game with only the four
 # declared; and a pool of many places holding four things, against a pool of four. A game keeps
 # sprites declared for what may show later — the actors of a scene, the places of a pool — and
