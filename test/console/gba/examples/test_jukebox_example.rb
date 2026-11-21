@@ -10,13 +10,13 @@ require VBlank.root.join("examples/jukebox").to_s
 # to with them there, kept once for the cartridge's tests
 # (test/lowering/gba/examples/test_jukebox_example_cartridge.rb).
 module JukeboxListening
-  # SOMEBODY AT THE JUKEBOX: moves the cursor down to the piano tune, waits for the chord it names
+  # Somebody at the jukebox: moves the cursor down to the piano tune, waits for the chord it names
   # (:big, every voice the tune's; :small, four of them), and a few frames into it presses each of
   # +presses+ — a button, and how many frames after the first press it goes down. Each press is
   # held for three frames, so the game sees one press whether a pass of its loop takes one frame
   # or two. Handed whose each voice is on every frame, it answers the buttons held on that frame.
   #
-  # IT WAITS FOR THE CHORD rather than for a frame number, because the two backends do not start
+  # It waits for the chord rather than for a frame number, because the two backends do not start
   # counting at the same moment — the console sets the game up before its first pass — so the
   # same frame number is a different moment of the tune on each. The chord is the same moment.
   class Listener
@@ -55,7 +55,7 @@ module JukeboxListening
     end
   end
 
-  # ONE FRAME OF THE JUKEBOX, as a test reads it: whose each voice was as the frame began, the
+  # One frame of the jukebox, as a test reads it: whose each voice was as the frame began, the
   # voices themselves, how loud the sound was over the frame, and every sample the console's
   # recorded-sound channel played in it, as its value and the cycle it fell due (the last three the
   # console's only — the interpreter mixes nothing).
@@ -85,7 +85,7 @@ module JukeboxListening
 
   private def from_the_press(moments, listener) = moments.drop((listener.pressed_at || 1) - 1)
 
-  # HOORAY ON THE BIG CHORD, in +moments+ from A going down: every voice is the tune's, HOORAY
+  # Hooray on the big chord, in +moments+ from A going down: every voice is the tune's, HOORAY
   # takes one of them, and the tune has it back at its next big chord.
   private def assert_hooray_takes_a_voice_from_the_big_chord(moments)
     assert_equal BIG_CHORD, moments.first.owners, "every voice is the tune's as A goes down"
@@ -154,7 +154,7 @@ class TestJukeboxExample < Minitest::Test
                     "selecting row 1 should play Fur Elise"
   end
 
-  # SWITCHING SONGS IS A FADE, not a cut: the tune playing goes quiet first, the new one starts
+  # Switching songs is a fade, not a cut: the tune playing goes quiet first, the new one starts
   # while nothing can be heard, and then comes up. Read off the log in order — the last volume
   # any voice was set to before the new tune's first note is nothing, and after it the music is
   # loud again.
@@ -178,7 +178,7 @@ class TestJukeboxExample < Minitest::Test
                     "selecting row 2 should play the Minuet"
   end
 
-  # The three headings say they are centred, so the proof is that they LOOK centred:
+  # The three headings say they are centred, so the proof is that they look centred:
   # the gap to the left of the lit pixels matches the gap to the right. Read off the
   # picture rather than recomputed from the font, so it would still catch a font that
   # measured itself wrong. The example used to multiply the character count by four
@@ -228,7 +228,7 @@ class TestJukeboxExample < Minitest::Test
 
   # --- the piano tune and its sound effects ---
 
-  # HOORAY ON THE BIG CHORD takes a voice from the tune, which has every one; the part that lost
+  # Hooray on the big chord takes a voice from the tune, which has every one; the part that lost
   # it has it back at the next big chord, two measures on.
   def test_hooray_takes_a_voice_from_the_tunes_big_chord
     assert_hooray_takes_a_voice_from_the_big_chord(interpreted_jukebox(Listener.new(chord: :big, presses: [[:a, 0]]),
@@ -246,7 +246,7 @@ class TestJukeboxExample < Minitest::Test
                                   interpreted_jukebox(Listener.new(chord: :small, presses: [[:b, 0]]), frames: 200).first)
   end
 
-  # A SECOND PRESS STARTS HOORAY AGAIN from its first note: the interpreter plays that note twice.
+  # A second press starts hooray again from its first note: the interpreter plays that note twice.
   # (On the console HOORAY's voice reads the first note's pitch again where its second note would
   # otherwise be sounding: that is in the cartridge's tests.)
   def test_hooray_pressed_again_starts_from_its_first_note
@@ -256,13 +256,13 @@ class TestJukeboxExample < Minitest::Test
     assert_equal 2, log.count([:note, :"sfx.hooray", VBlank::Audio::Music::NOTE_FREQUENCIES[:C5]])
   end
 
-  # HOORAY KEEPS SOUNDING while the music fades: A, then DOWN moves the cursor off the tune. Its
+  # Hooray keeps sounding while the music fades: A, then DOWN moves the cursor off the tune. Its
   # voice is kept through the fade. (How loud it is, the console says: in the cartridge's tests.)
   def test_hooray_does_not_fade_with_the_music
     assert_hooray_sounds_through_the_fade(interpreted_jukebox(Listener.new(**HOORAY_THEN_DOWN), frames: 200).first)
   end
 
-  # A WHOLE PIECE OF REAL MUSIC, BYTE FOR BYTE: moved up to the piano chords (which fades the
+  # A whole piece of real music, byte for byte: moved up to the piano chords (which fades the
   # tune out, switches, and fades the chords in, a dozen recorded voices at once), with HOORAY
   # asked for over them — every byte of sound the cartridge's mixer writes, worked out by the
   # interpreter too (see MixedSound).

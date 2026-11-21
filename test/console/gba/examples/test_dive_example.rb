@@ -37,7 +37,7 @@ end
 
 # The Dive example: a game whose layers and palette are load-bearing. A title screen in
 # the console's mixed arrangement (two scrolling layers beside one that turns), a play
-# screen in the four-scrolling one, water the diver swims BEHIND, an air gauge that
+# screen in the four-scrolling one, water the diver swims behind, an air gauge that
 # empties by changing cells, and a blackout that fades the world while the water goes on
 # blending. Each of those is a thing the framework only had tests for; here it is a game.
 #
@@ -105,7 +105,7 @@ class TestDiveExample < Minitest::Test
 
   # --- the shafts shimmer ---
 
-  # THE NEAR SHAFTS ADD LIGHT. They show all of what is behind them and three quarters of
+  # The near shafts add light. They show all of what is behind them and three quarters of
   # themselves on top, so where they cross the far sheet the water comes out brighter than
   # any colour the shafts are drawn in — which no layer drawn solid, and no glass that
   # splits one whole between itself and what is behind, can give. Read from the band above
@@ -136,9 +136,9 @@ class TestDiveExample < Minitest::Test
 
   # --- the water in front of the diver ---
 
-  # Scenery in FRONT of something that moves is the one arrangement a picture cannot fall
+  # Scenery in front of something that moves is the one arrangement a picture cannot fall
   # into by accident, and the water is see-through, so both halves show at once: the diver
-  # is visible, and it is visibly UNDER water rather than drawn plain over it.
+  # is visible, and it is visibly under water rather than drawn plain over it.
   def test_the_diver_swims_behind_the_water_and_shows_through_it
     i = swimming_down_for(START_AT + 30)
     drawn = i.sprites(:diver).first
@@ -159,7 +159,7 @@ class TestDiveExample < Minitest::Test
   end
 
   # The water's cells stop at the surface, so above that line there is nothing to see
-  # through and what is behind draws plain. Swim up until the head comes out and ONE
+  # through and what is behind draws plain. Swim up until the head comes out and one
   # sprite is half blended and half not — the head in its own colours, the suit below it
   # still under water. Nothing in the game says where that line is; the map says it.
   def test_the_divers_head_comes_out_of_the_water_at_the_top
@@ -198,7 +198,7 @@ class TestDiveExample < Minitest::Test
     (0...BARS).count { |which| screen.pixel(*bar_middle(which)) == Dive::Ink::AIR }
   end
 
-  # These pixels belong to a BACKGROUND, so the only thing that can change one is the
+  # These pixels belong to a background, so the only thing that can change one is the
   # cell under it changing — which is the whole point of the gauge being tiles rather
   # than ten of the 128 sprites the console draws at once.
   def test_the_air_gauge_empties_bar_by_bar_as_the_air_goes

@@ -22,7 +22,7 @@ class TestExamplePiano < Minitest::Test
     i
   end
 
-  # The x-center of the MELODY key-light. Scanned on the right of the keyboard so
+  # The x-center of the melody key-light. Scanned on the right of the keyboard so
   # the fixed chord lights on the left can't be mistaken for it. nil if hidden.
   private def melody_light_center(i, row: 141)
     xs = (120...220).select { |x| i.screen.pixel(x, row) == YELLOW }

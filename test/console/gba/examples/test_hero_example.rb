@@ -35,7 +35,7 @@ class TestHeroExample < Minitest::Test
   include HeroExamplePlaces
 
   # The game opens on its file screen. A on the first frame picks FILE 1, whose menu opens
-  # on NEW GAME since the file is empty; A on the third starts the game, and the walk begins
+  # on new game since the file is empty; A on the third starts the game, and the walk begins
   # on the frame after.
   STARTED = 4
 
@@ -63,7 +63,7 @@ class TestHeroExample < Minitest::Test
 
   # At rest the camera sits at scroll (4, 4), so the pond (world px 80..) shows just
   # up-left of the centered hero. Walk right for 30 frames and the camera follows to
-  # scroll (64, 4): the hero is STILL dead center, and the pond has slid ~60px left —
+  # scroll (64, 4): the hero is still dead center, and the pond has slid ~60px left —
   # out of its old spot and onto the hero's left. The world moved, not the hero.
   def test_the_hero_stays_centered_while_the_world_scrolls
     blue = Color.resolve(:blue)
@@ -82,7 +82,7 @@ class TestHeroExample < Minitest::Test
   # --- The weather: mist that thickens as you walk north ---
   #
   # Two things at once, and the second is what makes the first mean anything. The mist is
-  # a background declared IN FRONT of the hero, so it washes out the hero as well as the
+  # a background declared in front of the hero, so it washes out the hero as well as the
   # world — the one arrangement a picture cannot fall into by accident. And how see-
   # through it is, is not a number in the program: it is `100 - mist`, worked out afresh
   # every frame from how far north the player has walked.
@@ -115,7 +115,7 @@ class TestHeroExample < Minitest::Test
 
   # --- Pictures the game draws while it runs ---
   #
-  # The sign's box and the map (WORDS and MAP_CORNER, in HeroExamplePlaces above).
+  # The sign's box and the map (words and MAP_CORNER, in HeroExamplePlaces above).
 
   private def white_pixels_in_box(screen)
     WORDS[:xs].sum { |x| WORDS[:ys].count { |y| screen.pixel(x, y) == Color.resolve(:white) } }
@@ -171,7 +171,7 @@ class TestHeroExample < Minitest::Test
   end
 
   # Walk right, save with START, and turn the console off. On again, the file screen shows
-  # how far that walk went; picking the file opens its menu on CONTINUE, which puts the hero back exactly
+  # how far that walk went; picking the file opens its menu on continue, which puts the hero back exactly
   # where the save left them — the whole of the world around them drawn the same.
   def test_a_saved_walk_continues_where_it_was_saved
     store = SaveImage.new
@@ -199,7 +199,7 @@ class TestHeroExample < Minitest::Test
     assert_equal 0, power_on(store, frames: 3)[:shown0]
   end
 
-  # ERASE, three rows down from CONTINUE in the file's menu, empties the file; the
+  # ERASE, three rows down from continue in the file's menu, empties the file; the
   # next power-on finds it empty.
   def test_erase_empties_the_file
     store = SaveImage.new
@@ -209,7 +209,7 @@ class TestHeroExample < Minitest::Test
     assert_equal 0, power_on(store, frames: 3)[:shown0]
   end
 
-  # COPY TO NEXT puts file 1's walk in file 2 as well.
+  # Copy to next puts file 1's walk in file 2 as well.
   def test_copy_puts_the_walk_in_the_next_file
     store = SaveImage.new
     play(frames: 25, store: store) { |f| { 21 => :start }.fetch(f) { f <= 20 ? :right : nil } }
