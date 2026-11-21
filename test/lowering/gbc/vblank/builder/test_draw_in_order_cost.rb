@@ -4,7 +4,7 @@ require "test_helper"
 require "draw_order_cost_games"
 require "sprite_count_cost_games"
 
-# WHAT AN ORDER OF SEVEN COSTS ON THE GAME BOY COLOR, measured in the emulator. The sort is written
+# What an order of seven costs on the Game Boy Color, measured in the emulator. The sort is written
 # in the Color's own code with both lists' places known, a compare an item when nobody passed
 # anybody, so working out the seven numbers and sorting them is a few of the frame's 154 lines.
 # Placing the sprites in a worked-out order costs little more than placing them in a fixed one: a
@@ -62,7 +62,7 @@ class TestGBCDrawInOrderCost < Minitest::Test
     game_player.run(DrawOrderCostGames.reversed_pool_game(:gbc, 32).program(console: :gbc), frames: 8)
   end
 
-  # A PLACE OF AN ORDER IS WRITTEN SHORT. The Color sees its cartridge a bank of 16 KB at a time (Pan
+  # A place of an order is written short. The Color sees its cartridge a bank of 16 KB at a time (Pan
   # Docs, "MBC5"), and the sort is written out a place at a time in the bank of the code that runs it,
   # so every byte a place takes is a byte that code cannot have. A place is its number, its step of
   # the sort and of the walk, the test of whether it shows, and the test of its flag with a call to

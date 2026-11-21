@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TAPE WRITES ANY PLAYER'S BUTTONS BY NUMBER, :p3_right as :p2_right, and they reach that
+# A tape writes any player's buttons by number, :p3_right as :p2_right, and they reach that
 # player on a way that plays more players than a console seats: the interpreter, and the game as
 # Ruby, whose runtime is handed a list of buttons a player at a time. Each step of the tape is
 # played the way a tape plays it (Tape#play), its buttons as one number (Playthrough.key_mask)

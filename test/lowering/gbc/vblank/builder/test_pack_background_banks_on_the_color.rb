@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_background_tests"
 
-# A BACKGROUND FROM THE DATA PACK IN BANKS OF FOUR COLOURS, as the Color's cartridge holds it. The
+# A background from the data pack in banks of four colours, as the Color's cartridge holds it. The
 # original keeps eight lists of four colours for its backgrounds, and each cell names one by its
 # bank: every tile of a bank is drawn from that list, the bank's colours at the bank's places,
 # however many of them the tile draws. So the cartridge holds a list for each bank the map uses,
@@ -33,7 +33,7 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
     end
   end
 
-  # A TOLD CELL THAT DRAWS NOTHING shows only the backdrop, as an empty cell does, so it costs no
+  # A told cell that draws nothing shows only the backdrop, as an empty cell does, so it costs no
   # list of its own: the screen in all eight banks, every bank walked up from black, still fits
   # the eight with a see-through cell told beside a drawn one, and both written over the map. The
   # checked run holds every pass to the interpreter.
@@ -107,7 +107,7 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
     b.program
   end
 
-  # THE SAME IN A SCENE OF ITS OWN, beside a scene drawn from two other lists: ten lists between
+  # The same in a scene of its own, beside a scene drawn from two other lists: ten lists between
   # them, so each scene brings its own lists in as it comes up. Every scene shows a bar whose tile
   # draws nothing too, asked for before any scene's lists are, and neither it nor the told cell
   # takes a list: the scene's eight banks still fit the eight.
