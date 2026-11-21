@@ -1,5 +1,5 @@
 /*
- * THE GAME'S SAVE MEMORY: the bytes a cartridge's chip keeps while the console is off.
+ * The game's save memory: the bytes a cartridge's chip keeps while the console is off.
  *
  * On a cartridge those bytes are a chip beside the game. Here they are an array, laid out byte
  * for byte the way the chip is (lib/vblank/ir/save_layout.rb says how), and a driver keeps the
@@ -70,7 +70,7 @@ int rg_save_file_is_due(void);
 /* The driver wrote the file: save memory holds nothing a file does not. */
 void rg_save_file_written(void);
 
-/* TURN THE POWER OFF part way through a save, for a test: once +steps+ more steps are taken the
+/* Turn the power off part way through a save, for a test: once +steps+ more steps are taken the
  * next one stops the game as a `halt` does, with what was done kept and nothing after. A byte
  * written is one step and a wipe is two (IR::SaveImage#cut_power_after). */
 void rg_save_cut_power_after(long steps);

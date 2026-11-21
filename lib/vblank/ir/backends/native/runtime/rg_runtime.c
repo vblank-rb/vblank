@@ -17,7 +17,7 @@
 
 const rg_driver *rg_active_driver;
 
-/* EACH PLAYER'S BUTTONS, a number each, the first player's first (IR::Buttons.masks), a bit a
+/* Each player's buttons, a number each, the first player's first (IR::Buttons.masks), a bit a
  * button; RG_ONE_PLAYERS_BUTTONS (rg_console.h) has every button's bit set. The lists are as long
  * as the most players any build reads; only the first +connected+ can hold anything, and a player
  * past them holds nothing. */
@@ -115,7 +115,7 @@ static int64_t ticks_crossed(game_timer *timer) {
   return whole_ticks(timer) - before;
 }
 
-/* A HANDLER THAT WAITS. The interpreter runs a timer's handler inside the frame boundary, and a wait
+/* A handler that waits. The interpreter runs a timer's handler inside the frame boundary, and a wait
  * in the handler is a frame boundary of its own (Reference#accrue_timer, #advance_frame): that one
  * moves every timer on and runs the handlers to their end, the frame it reaches is shown, and the
  * handler carries on. Only once it ends do the boundary's other timers tick, and then its frame ends:
@@ -208,7 +208,7 @@ static int64_t clock_ticks;         /* ...and the console's ticks into the next 
  * day it is in. */
 static int64_t floor_div(int64_t a, int64_t b) { return a / b - (a % b != 0 && (a < 0) != (b < 0)); }
 
-/* A CHIP THAT KEEPS NO DATE (RG_CLOCK_KEEPS_DATE 0, the Color's; IR::Clock.undated) counts only
+/* A chip that keeps no date (RG_CLOCK_KEEPS_DATE 0, the Color's; IR::Clock.undated) counts only
  * the days and the time of day since it started, taken as that many days on from 1 January 2000:
  * so it starts on that day, at the time of day it was started at. */
 void rg_clock_starts_at(int64_t seconds, int64_t ticks, int32_t set) {
@@ -290,7 +290,7 @@ int32_t rg_clock_reading(int32_t reading, int32_t offset_days, int32_t offset_se
   }
 }
 
-/* SETTING THE CLOCK (Reference#exec_set_clock): how far the time set is from the clock's own, to
+/* Setting the clock (Reference#exec_set_clock): how far the time set is from the clock's own, to
  * the whole second, in days and the seconds left over, kept here until the game takes the two
  * parts into its saved numbers (rg_clock_kept_days and rg_clock_kept_seconds). The clock itself is never changed — in a
  * window it is the computer's — and from then on it reads as set. */
@@ -318,7 +318,7 @@ int32_t rg_clock_kept_seconds(int32_t current) { return clock_present ? clock_ke
 
 /* --- the motor (Reference#exec_rumble, #step_motor) --- */
 
-/* THE CARTRIDGE'S MOTOR, which shakes the player's hands: on a console whose cartridge carries
+/* The cartridge's motor, which shakes the player's hands: on a console whose cartridge carries
  * one, it runs on or off each frame by an eight-frame pattern, for the frames the game set. A
  * desktop or a web page shakes nothing yet, but the motor is kept all the same, so a test can
  * ask whether it runs. The pattern is read as IR::Rumble reads it: turned a place to the right
@@ -413,7 +413,7 @@ static void frame_ends(void) {
 }
 
 /* The middle of Reference#advance_frame, in its order: the picture is switched on, the timers
- * tick, and then the sound moves on — or, where a handler stopped (A HANDLER THAT WAITS above), only
+ * tick, and then the sound moves on — or, where a handler stopped (a handler that waits above), only
  * as far as that, or only the end of the frame its walk began. */
 int32_t rg_frame_begins(void) {
   if (frame_end_pending) {
@@ -491,7 +491,7 @@ static int32_t seed_given;
 void rg_seed_given(int32_t seed) { seed_given = seed; }
 int32_t rg_match_seed(void) { return seed_given; }
 
-/* THE FILE THE GAME IS HANDED AS IT STARTS (see rg_runtime.h): its bytes, a copy of the
+/* The file the game is handed as it starts (see rg_runtime.h): its bytes, a copy of the
  * driver's, or none yet. */
 static uint8_t *start_file;
 static int32_t start_file_size = -1;
@@ -758,7 +758,7 @@ void rg_start_file_fill_picture(const int32_t *rules) {
 /* How many pixels a tile has, and how many a side. */
 enum { RG_FILL_TILE_SIDE = 8, RG_FILL_TILE_PIXELS = 64 };
 
-/* A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original:
+/* A frame of a sprite in the file is a record of VBlank's own, one layout whatever the original:
  * lib/vblank/original/frame_record.rb (Original::FrameRecord) is where it is written down, and
  * rg_console.h says it again beside the numbers (RG_FRAME_, RG_PIECE_). The pack's unpacking wrote
  * the record from the original's frame, so nothing here knows how an original keeps one.
@@ -846,7 +846,7 @@ int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at) {
              : 0;
 }
 
-/* A POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM (rg_start_file_pose_pieces), worked out
+/* A pose's pieces as the console's sprite table holds them (rg_start_file_pose_pieces), worked out
  * from the frame's pieces as IR::StartFile.fill_pose and Backends::SpriteLines.picture_places do it.
  * Each piece of the frame is cut into blocks of 16x16 and of 8x8 along an odd edge
  * (Original::FrameRecord::Piece#blocks); a block knows where it is in the picture, how big it is,
@@ -1180,7 +1180,7 @@ static int32_t start_file_map_place(int32_t cell, int32_t down, int32_t along, i
   return ((((cell / across) * side) + down) * across * side) + ((cell % across) * side) + along;
 }
 
-/* THE TILES AS DRAWN OF EACH BACKGROUND READ FROM THE FILE (rg_start_file_fill_background), by the
+/* The tiles as drawn of each background read from the file (rg_start_file_fill_background), by the
  * number the runtime knows the background by: a record each, as rg_runtime.h says. Kept for the
  * game's life, and grown as the file is read, so they cost what the maps name and not what they
  * could. */

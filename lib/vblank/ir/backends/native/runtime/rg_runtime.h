@@ -43,7 +43,7 @@ void rg_game_timer_ticks(void);
 /* --- what the runtime provides --- */
 
 /* The game's next pass: rg_game_main, or where a timer's handler stopped to wait, that handler
- * carried on in its place (rg_runtime.c, "A HANDLER THAT WAITS"). 1 when it stopped for a frame, 0
+ * carried on in its place (rg_runtime.c, "a handler that waits"). 1 when it stopped for a frame, 0
  * when the game is done. Every driver plays the game through this. */
 int32_t rg_game_pass(void);
 
@@ -103,7 +103,7 @@ void rg_seed_given(int32_t seed);
  * seed of a playing's own (Computer::Lowering#mix_seed). */
 void rg_game_mix_seed(void);
 
-/* A GAME'S TIMERS (`timer :beat, per_second: 60`): counters that tick so many times a second,
+/* A game's timers (`timer :beat, per_second: 60`): counters that tick so many times a second,
  * whatever the game is doing. Each has a number of its own. There is no clock here: a frame is
  * the model's sixtieth of a second, as it is for the interpreter, so a running timer gains its
  * rate over +frames_a_second+ ticks at every frame boundary, and its handler runs once for each
@@ -118,7 +118,7 @@ void rg_timer_stop(int32_t timer);
 int32_t rg_timer_ticks(int32_t timer);
 int32_t rg_timer_ticking(int32_t timer);
 
-/* THE CARTRIDGE'S CLOCK (`clock`): one reading of it, by its place in IR::Clock::READINGS —
+/* The cartridge's clock (`clock`): one reading of it, by its place in IR::Clock::READINGS —
  * the hour, minute, second, year, month, day and day of the week (0 for Sunday), then whether
  * there is a clock and whether it was set, 1 or 0. Every reading is 0 when either of those two is.
  * Where the time comes from is the driver's to give (rg_driver.h); a run it gives no time to has
@@ -145,7 +145,7 @@ void rg_dump_list(const struct rg_list *list);
  * a call goes to, and an entry of an array is not a name, so the entry is handed to this. */
 static inline void rg_call_routine(void (*routine)(void)) { routine(); }
 
-/* A FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile). A game built with its data pack left
+/* A file the game is handed as it starts (IR::StartFile). A game built with its data pack left
  * out reads its pack from one, and its unpacking reads the player's copy of the original; the
  * program holds zeros where those numbers go.
  *
@@ -369,7 +369,7 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * frames' records starting at +records_at+: 0 for a frame with no piece. The game writes with it
  * which list a pose drawn in its frame's bank follows (IR::StartFile::Pose#bank_lists).
  *
- * A COLOUR OF SUCH A LIST IS WRITTEN IN THE GAME AS A MARKER wherever the game would hold the
+ * A colour of such a list is written in the game as a marker wherever the game would hold the
  * colour (IR::StartFile, "MARKERS"): a number of sixteen bits above RG_MARKED_COLOR, never all
  * sixteen, which names entry (marker - RG_MARKED_COLOR - 1) of +colors+.
  * rg_start_file_fill_marked_pixels puts the entry's colour where each marker is among +count+
@@ -383,7 +383,7 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_marked_color is +color+, or the entry it names where it is a marker, for a colour
  * a statement picks from a table as the game runs.
  *
- * WHAT A RUNTIME FEATURE READS THE FILE BY, for the parts of the file only some games read (a
+ * What a runtime feature reads the file by, for the parts of the file only some games read (a
  * recording's settings, a song part's notes), which the feature fills itself: the file's bytes,
  * and the number +width+ bytes from +at+ in it hold, low byte first, or high byte first where
  * +high_byte_first+ is 1. */
