@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # SUMS WITH A NUMBER WRITTEN IN THE PROGRAM, worked out where the number is rather than by
+          # Sums with a number written in the program, worked out where the number is rather than by
           # the runtime's routines. Mixed into Lowering.
           #
           # The Color's processor works on a byte at a time, so the runtime's routine for a sum
@@ -13,17 +13,17 @@ module VBlank
           # When one side is a number written in the program, most of that work is known before
           # the game runs:
           #
-          # - A SHIFT by a whole number of bytes is each byte moved into the register beside it,
+          # - A shift by a whole number of bytes is each byte moved into the register beside it,
           #   which is what a shift by 8 is on a byte-wide processor: x >> 8, a place kept in 256ths
           #   of a pixel made a whole pixel, is four loads rather than eight trips round a loop.
           #   What is left of the count is a few single shifts.
-          # - AND, OR and XOR with such a number are a byte of it to each byte of the other: an
+          # - And, or and XOR with such a number are a byte of it to each byte of the other: an
           #   AND with 0x00 is nought, one with 0xFF is the byte as it is, and only the rest need
           #   the instruction.
           # - An AND that keeps only the low one or two bytes (x & 0xFFFF, the two bytes a place
           #   wraps in) needs only those bytes of x, so x is worked out at that width (#low_value):
           #   a variable's two bytes read where it is kept, a sum two bytes wide.
-          # - A COMPARISON with such a number is the subtraction rt_cmp32 does, its bytes written
+          # - A comparison with such a number is the subtraction rt_cmp32 does, its bytes written
           #   into the instructions, so the carry gives the answer.
           #
           # What every number means is unchanged: these give IR::Int32's answer, as the runtime's
@@ -173,7 +173,7 @@ module VBlank
               end
             end
 
-            # THE LOW +bytes+ BYTES OF +operand+'s NUMBER, in E (and D for two), the registers above
+            # The low +bytes+ BYTES OF +operand+'s NUMBER, in E (and D for two), the registers above
             # them holding anything: what a caller keeping only those bytes needs (an AND with
             # 0xFFFF). The low bytes of a sum, an AND, an OR or an XOR come from the low bytes of
             # its two sides alone, so each side is worked out that wide too, and a variable has

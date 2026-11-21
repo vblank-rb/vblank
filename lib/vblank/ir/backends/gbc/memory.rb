@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # WHERE EVERYTHING THE GAME KEEPS LIVES WHILE IT RUNS.
+        # Where everything the game keeps lives while it runs.
         #
         # A Game Boy Color has 32K of work memory, but only 8K of it is in view at once: 4K always
         # (0xC000), and one of seven more banks of 4K beside it (0xD000). The game's variables, its
@@ -81,7 +81,7 @@ module VBlank
 
           # +bytes+ of work memory for +name+ that all share one page (one high byte of the address), for a
           # table read by putting its page in one register and its index in another. Asked first, it
-          # lands at FIRST with nothing lost; asked later, a place that would cross a page moves up
+          # lands at first with nothing lost; asked later, a place that would cross a page moves up
           # to the next one.
           def reserve_in_page(name, bytes)
             raise ArgumentError, "#{bytes} bytes do not fit in one page" if bytes > 0x100

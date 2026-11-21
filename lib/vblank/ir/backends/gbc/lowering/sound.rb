@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # THE SOUND, lowered for a Game Boy Color: a beep, a hit on the noise voice and a tone on
+          # The sound, lowered for a Game Boy Color: a beep, a hit on the noise voice and a tone on
           # the wave voice as a row of writes to the Color's sound registers, which the runtime makes
           # where the game asks for it (Runtime::Sound, GBC::SoundRegisters); and the songs, which
           # the music player walks each frame (GBC::Music, Runtime::Music). Mixed into Lowering.
@@ -189,7 +189,7 @@ module VBlank
             # Reference#exec_rumble: the cartridge's motor, a frame at a time (Runtime::Rumble).
             def emit_rumble(node) = runtime_call("rt_rumble", [node.frames, node.pattern])
 
-            # A CARTRIDGE WITH A CLOCK HAS NO MOTOR: the Color's cartridges with a clock chip carry
+            # A cartridge with a clock has no motor: the Color's cartridges with a clock chip carry
             # an MBC3 (Lowering::Clock), and its rumble cartridges an MBC5, and none was made with both.
             def refuse_rumble_beside_clock!
               return unless rumbles? && clock?
@@ -226,7 +226,7 @@ module VBlank
             # The square voice a `beep` plays on, the song's second square part's.
             BEEP_VOICE = 2
 
-            # THE GAME'S OWN SOUND TAKES +voice+, so it wobbles no song's note (Runtime::Music#emit_wobbles)
+            # The game's own sound takes +voice+, so it wobbles no song's note (Runtime::Music#emit_wobbles)
             # — set before the sound is written, so a frame of the player in between writes the song's
             # pitch under the game's sound and not over it. Nothing in a game where no note wobbles.
             def emit_stop_wobble(voice)
