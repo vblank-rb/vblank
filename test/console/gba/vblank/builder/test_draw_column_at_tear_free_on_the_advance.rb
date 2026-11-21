@@ -21,7 +21,7 @@ class TestDrawColumnAtTearFreeOnTheAdvance < Minitest::Test
       image(:ghost, "." => :transparent, "W" => :white) { "W\n.\n.\nW\n" }
       at = var :at, 0
       game_loop do
-        # Repainted every pass, because this screen has TWO pages and the loop draws on
+        # Repainted every pass, because this screen has two pages and the loop draws on
         # whichever one is hidden — a clear above the loop would paint only one of them.
         clear_screen :gray
         draw_column_at :bars, slice: 0, x: 10, top: 0, height: 8  # an even column...
@@ -37,7 +37,7 @@ class TestDrawColumnAtTearFreeOnTheAdvance < Minitest::Test
         draw_column_at :bars, slice: 0, x: 240, top: 0, height: 8    # off the right edge
         draw_column_at :bars, slice: 0, x: -1, top: 0, height: 8     # off the left edge
 
-        # ...and the same as STRIPS, which write whole pairs where they can. Both parities,
+        # ...and the same as strips, which write whole pairs where they can. Both parities,
         # a width that covers a pair exactly and one that does not, and both edges.
         draw_column_at :bars, slice: 0, x: 140, top: 20, height: 12, width: 3
         draw_column_at :bars, slice: 0, x: 151, top: 20, height: 12, width: 3

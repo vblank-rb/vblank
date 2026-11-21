@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "all/vblank/builder/test_draw_in_order"
 
-# AN ORDER OF MORE THAN 128 THINGS, which only the Advance can keep: it has places for 512
+# An order of more than 128 THINGS, which only the Advance can keep: it has places for 512
 # sprites, and the other consoles fewer than the 132 here. The order keeps each thing's place in
 # a list, and past the 128th a place no longer fits in a byte. The games are DrawInOrderGames'.
 class TestDrawInOrderOnTheAdvance < Minitest::Test

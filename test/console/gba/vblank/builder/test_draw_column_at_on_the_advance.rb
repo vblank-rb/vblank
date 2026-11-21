@@ -103,7 +103,7 @@ class TestDrawColumnAtOnTheAdvance < Minitest::Test
     assert_equal %i[red green blue white], column_on_screen(run, 10, 0, 4)
   end
 
-  # A first-person view draws its columns in a LOOP, so this is the case that matters most, and
+  # A first-person view draws its columns in a loop, so this is the case that matters most, and
   # it was broken: a loop keeps its count in the console's registers unless the body needs them,
   # and a stretched column needs them twice over — it works in them, and it calls the divide
   # routine to find its step. Undeclared, the first column drew and the loop then walked off.
@@ -145,7 +145,7 @@ class TestDrawColumnAtOnTheAdvance < Minitest::Test
                  "the thing shows over the far wall and is hidden by the near one"
   end
 
-  # A STRIP IS ONE WALK. Its pixels all show the same picture column at the same height, so
+  # A strip is one walk. Its pixels all show the same picture column at the same height, so
   # asking for them one at a time works the same answer out that many times over. What it
   # draws has to be identical, which is what this pins.
   def test_a_strip_draws_what_the_same_pixels_drawn_one_at_a_time_draw

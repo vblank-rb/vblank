@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE TESTS OF vblank/builder/test_fade_held_to_area.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_fade_held_to_area.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # A fade held to part of the screen: `fade :black, 75, inside: [x, y, w, h]` darkens that
