@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A NOISE HIT ON A SUPER NINTENDO. The Advance's noise voice steps a random-bit register at a clock
+# A noise hit on a Super Nintendo. The Advance's noise voice steps a random-bit register at a clock
 # of its own: fifteen bits for a hiss that never seems to repeat, seven for a "metallic" rattle
 # that comes round every 127 steps. The S-DSP has one noise generator of the first kind, its clock
 # kept in FLG's low five bits beside the mute and reset switches; it has none of the second, which

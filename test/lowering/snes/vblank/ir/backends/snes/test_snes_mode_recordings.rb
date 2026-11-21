@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EACH MODE BRINGS ITS OWN RECORDINGS INTO THE SOUND CHIP. A game that picks its modes by calling
+# Each mode brings its own recordings into the sound chip. A game that picks its modes by calling
 # the routine a variable names (`call mode`) has them take turns as a game's scenes do, so a
 # recording only one mode plays is wanted in the Super Nintendo's sound chip only while that mode
 # runs. Its recordings together are more than the chip's 64K, and each mode's fit alone: the mode

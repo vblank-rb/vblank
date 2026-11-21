@@ -3,7 +3,7 @@
 require "test_helper"
 require "narrow_variable_cost_games"
 
-# VARIABLES PROVEN TO STAY IN 16 BITS ON THE SUPER NINTENDO, measured in the emulator: each kept in
+# Variables proven to stay in 16 bits on the Super Nintendo, measured in the emulator: each kept in
 # two bytes (SNES::HalfVariables), set with its low half worked out alone and one STA
 # (SNES::Lowering#emit_set_half), where a whole number is two loads, two stores and an add of each
 # half. The 65816 works 16 bits at a time with its accumulator wide, and the console's own games
