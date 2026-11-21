@@ -101,7 +101,7 @@ class TestPlacesCartridge < Minitest::Test
     assert_backends_agree(both, frames: 3, console_frames: 30, name: "BOTHGAPS")
   end
 
-  # THE BIGGEST FILL ROUTINE THERE IS: lit, see-through, every 8 pixels and every 16 in one game, so
+  # The biggest fill routine there is: lit, see-through, every 8 pixels and every 16 in one game, so
   # it has every run and every twin. Its room in the quick memory (GBA::Faces.routine_bytes) leaves
   # it little to spare, so a routine grown past it fails here, not in a game.
   def test_a_lit_see_through_face_drawn_every_8_and_every_16_pixels_builds_and_agrees
