@@ -4,11 +4,11 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHICH SHAPE A `repeat` IS LOWERED TO, decided from the loop's body alone.
+        # Which shape a `repeat` is lowered to, decided from the loop's body alone.
         #
         # A loop has to keep two numbers: how many passes it has made, and how many it is going
-        # to make. Kept in MEMORY, every pass loads the counter, adds one, stores it back, loads
-        # the limit, compares and branches. Kept in REGISTERS it is an add, a compare and a
+        # to make. Kept in memory, every pass loads the counter, adds one, stores it back, loads
+        # the limit, compares and branches. Kept in registers it is an add, a compare and a
         # branch. (A loop whose index nothing reads counts down instead and is cheaper again
         # either way — see #unread_indexes.)
         #
@@ -22,7 +22,7 @@ module VBlank
         # it needs. That is decidable by looking, which is the point: the author writes
         # `repeat` and the build works out which shape it can have.
         #
-        # THIS ANSWER IS ASKED FOR IN TWO PLACES — here, where the loop is emitted, and in the
+        # This answer is asked for in two places — here, where the loop is emitted, and in the
         # cost estimate, which has to charge for the shape that will really run. It lives in
         # one place so those two cannot drift apart, which is a thing that has happened to
         # every other pair of that kind in this project.
@@ -30,7 +30,7 @@ module VBlank
           module_function
 
           # The registers the fast shape keeps its counter and limit in. Nothing else in the
-          # lowering writes either of them EXCEPT the blit clipper and the sound mixer, and
+          # lowering writes either of them except the blit clipper and the sound mixer, and
           # both of those are named below as blockers — see the test that proves the rest of
           # the statement kinds leave them alone.
           COUNTER = 10
@@ -61,7 +61,7 @@ module VBlank
           # call away, not laid out inline (see Drawing#emit_digit_routines).
           CALLS_A_ROUTINE = %i[div_fix pixels_overlap draw_column_at draw_digit].freeze
 
-          # HOW MANY STATEMENTS ARE WORTH BRACKETING before giving up the registers is cheaper.
+          # How many statements are worth bracketing before giving up the registers is cheaper.
           # A bracket is the count written out to its variable, then the registers saved and
           # restored around the statement — three instructions, or two for a loop counting down,
           # which has no index to write out. A pass through memory costs one more than a pass in
@@ -77,11 +77,11 @@ module VBlank
             node.kind == :raw || writes?(node, index)
           end
 
-          # THE LOOPS THAT CAN COUNT DOWN: the ones whose index nothing in the program reads.
+          # The loops that can count down: the ones whose index nothing in the program reads.
           #
           # Counting down is cheaper because of how the processor reports a result. Every
           # subtract that sets the flags also shows whether the answer was nought, so a count
-          # taken down by one IS the test for the last pass, and the branch reads it straight
+          # taken down by one is the test for the last pass, and the branch reads it straight
           # off. Counting up has to compare against the limit as an instruction of its own —
           # and, in memory, load that limit first.
           #
@@ -143,7 +143,7 @@ module VBlank
           # The loop's own statements that hold something needing the registers — the ones a
           # spilling loop brackets.
           #
-          # ITS COUNT IS NOT AMONG THEM, and that is why this asks the children rather than
+          # Its count is not among them, and that is why this asks the children rather than
           # walking everything under the node: the count is worked out before either register
           # is loaded (see Statements#emit_repeat_in_registers), so whatever it takes, it takes while
           # there is nothing yet to lose.
@@ -164,7 +164,7 @@ module VBlank
             statement.walk.any? { |inner| unbracketable?(inner, index) }
           end
 
-          # WHAT STOPPED IT, in the words an author would use, for the one report that says so.
+          # What stopped it, in the words an author would use, for the one report that says so.
           # The first thing found rather than all of them: an author fixes one at a time, and
           # the next build says what is next.
           def register_blocker_phrase(node)

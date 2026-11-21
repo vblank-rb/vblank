@@ -7,20 +7,20 @@ module VBlank
         # A list is a block of 4-byte slots in IWRAM plus a hidden `length` variable, and it
         # is stored one of two ways depending on what the program does to it.
         #
-        # A LIST THAT IS SHIFTED IS A RING. Dropping from the front means the oldest item moves,
+        # A list that is shifted is a ring. Dropping from the front means the oldest item moves,
         # so the list keeps a `head` as well, and the item logically at position i sits in the
         # physical slot (head + i) & mask. The mask is what makes that wrap a single bitwise AND
         # rather than a division — which needs a power-of-two block, so a ring is given the next
-        # power of two up and pays for the slots in between. It never HOLDS more than it was
+        # power of two up and pays for the slots in between. It never holds more than it was
         # asked for; the extra slots exist only so the mask cannot point outside its own block.
         #
-        # A LIST THAT IS ONLY INDEXED IS A PLAIN ARRAY, which is nearly all of them: a pool's
+        # A list that is only indexed is a plain array, which is nearly all of them: a pool's
         # fields, a board, anything filled once and then read and written by number. Its head
-        # can never move, so the physical slot IS the index — no head to load, no wrap to do,
+        # can never move, so the physical slot is the index — no head to load, no wrap to do,
         # and no rounding to pay for. A pool of 145 slots takes 145 and not 256, which on a
         # cartridge with a lot of them is thousands of bytes of the console's 32K.
         #
-        # EITHER WAY A BAD INDEX STAYS INSIDE THE LIST. The ring's mask confines it; the plain
+        # Either way a bad index stays inside the list. The ring's mask confines it; the plain
         # array compares against its own length and reads slot nought instead. So an index off
         # the end can pick up a stale slot and can never reach a neighbouring variable. This
         # mirrors the interpreter's list (same items readable, same length, same overflow
@@ -127,7 +127,7 @@ module VBlank
           # list_pack: every item of a list written into a byte list, lowest byte first. The
           # processor keeps a number in memory lowest byte first (GBATEK, "ARM CPU Overview": the
           # Advance runs little-endian), so a plain array's slots, side by side from its first,
-          # already ARE those bytes, and the run is handed to the routine every list_copy calls
+          # already are those bytes, and the run is handed to the routine every list_copy calls
           # (#emit_copy_routine), which moves it a word at a time when it can. A byte at a time,
           # each shifted and set as the loops the step stands for do, is several instructions a
           # byte where the copy is a fraction of one.
@@ -175,7 +175,7 @@ module VBlank
           # table, the same as the interpreter holds it, and the run always lands at the front
           # of the list — so a ring's head goes back to its first slot and the copy is still
           # one block of memory. The bytes are handed to one routine (see #emit_copy_routine).
-          # THE LIST OF A GROUP OF `tile_pictures` IS NEVER WRITTEN. Every picture is in the cartridge
+          # The list of a group of `tile_pictures` is never written. Every picture is in the cartridge
           # in the form video memory keeps, so the copy that shows one is from there, and all a
           # "copy into the list" has to do is set where that picture starts: +held+ is each such
           # list's variable for it (see BackgroundDrawing#emit_copy_painted_run).
@@ -293,7 +293,7 @@ module VBlank
             e.emit(ASM.pop(SORT_AT, SORT_END, SORT_KEYS, SORT_ITEM, SORT_FIRST))
           end
 
-          # THE ROUTINE THAT COPIES A RUN: r0 where it comes from, r1 where it goes, r2 how many
+          # The routine that copies a run: r0 where it comes from, r1 where it goes, r2 how many
           # bytes, more than nought. The copying engine moves a run without the processor, a
           # word or a half-word at a time, while a byte at a time is all the processor can do
           # in a loop — so the widest one the two addresses and the length all allow is taken:
@@ -355,7 +355,7 @@ module VBlank
             end
           end
 
-          # THE ROUTINE THAT WRITES A RUN: r0 the word pattern, r1 where the run starts, r2 how
+          # The routine that writes a run: r0 the word pattern, r1 where the run starts, r2 how
           # many bytes, more than nought. Bytes one at a time until the address is on a whole
           # word, then whole words, then the bytes left over. Each byte written alone is the
           # pattern's low byte, and the pattern is turned a byte along after it, so the next
@@ -396,7 +396,7 @@ module VBlank
             e.place_label(DerivedNames.routine_end(FILL_ROUTINE))
           end
 
-          # THE WHOLE WORDS OF THE RUN, handed to the copying engine rather than stored one at a
+          # The whole words of the run, handed to the copying engine rather than stored one at a
           # time: told to read the same word over and over, it writes it across the run with the
           # processor waiting, which is a few cycles a word where a store in a loop run from the
           # cartridge is several times that. The engine reads its word from memory, so the pattern
@@ -418,7 +418,7 @@ module VBlank
             e.emit(ASM.pop(ACC))
           end
 
-          # START THE COPYING ENGINE from r0 to r1 with the control word in r3, every register
+          # Start the copying engine from r0 to r1 with the control word in r3, every register
           # as it was afterwards. The engine is set up in three writes and goes on the last, and
           # a routine answering an interrupt can use the same engine — a timer's handler that
           # fills or copies — so an interrupt between the writes would leave this one starting
@@ -462,7 +462,7 @@ module VBlank
           # variables. Called once per name during the definitions pass; a name
           # created twice with different capacities is a contradiction.
           #
-          # +ring+ marks that the program SHIFTS this one, so its head moves and its slots have to be
+          # +ring+ marks that the program shifts this one, so its head moves and its slots have to be
           # rounded up to a power of two for the wrapping mask. Everything else is a plain
           # array of exactly the slots it asked for.
           #
@@ -510,21 +510,21 @@ module VBlank
           # its wrap is one AND.
           def self.slots_of(capacity, ring:) = ring ? Build.round_up_capacity(capacity) : capacity
 
-          # The bytes a list's slots take, rounded up to a whole word so the NEXT thing allocated
+          # The bytes a list's slots take, rounded up to a whole word so the next thing allocated
           # stays word-aligned — a narrow list is allowed to be an odd number of bytes long, but
           # nothing after it is.
           def self.slot_bytes(capacity, width, ring:)
             Memory.whole_words(slots_of(capacity, ring: ring) * Build::ELEMENT_BYTES.fetch(width))
           end
 
-          # EVERYTHING ONE LIST TAKES, its slots and the counters that go where it goes (#register_list:
+          # Everything one list takes, its slots and the counters that go where it goes (#register_list:
           # how many it holds, and a ring's oldest), read before the program is lowered by the
           # build's memory check (Console::AdvanceKit#list_bytes).
           def self.reserved_bytes(capacity, width, ring:)
             slot_bytes(capacity, width, ring: ring) + ((ring ? 2 : 1) * Memory::WORD)
           end
 
-          # WHETHER +var+ IS A NUMBER A COLLECTION IN THE ROOMY MEMORY KEEPS FOR ITSELF, and so
+          # Whether +var+ is a number a collection in the roomy memory keeps for itself, and so
           # goes there with it (see Primitives#var_addr). For a list that is how many items it
           # holds and where its oldest is. For a pool it is every variable of its own — how many
           # are live, the first and last of its order, where each walk of it has got to — which
@@ -536,15 +536,15 @@ module VBlank
             @lists.dig(owner, :roomy) || false
           end
 
-          # WHICH MEMORY THIS ONE GOES IN. The quick one unless the author marked that it does not
+          # Which memory this one goes in. The quick one unless the author marked that it does not
           # need to be there, or there is no longer room — and then the roomy one, which is
           # eight times the size and about six times the wait on a read.
           #
           # Nothing is moved to make space for another collection: the caller registers the
-          # collections a frame touches FIRST (see Roomy), so whatever is left when the quick
-          # memory fills is the coldest thing the program has. Room for CODE is weighed before
+          # collections a frame touches first (see Roomy), so whatever is left when the quick
+          # memory fills is the coldest thing the program has. Room for code is weighed before
           # this runs (see {QuickMemoryPlan}), and a collection that gives way to code comes
-          # here already set to go to the roomy memory. Running out of BOTH is a real
+          # here already set to go to the roomy memory. Running out of both is a real
           # ceiling, and the message says which one gave way.
           def place_list(name, want, fast)
             if fast == false || !@memory.room_for?(want)
@@ -565,7 +565,7 @@ module VBlank
               "narrower items (`width: :byte`)."
           end
 
-          # THE COLLECTIONS IN THE QUICK MEMORY THAT THE FRAMEWORK MAY STILL MOVE, and the room
+          # The collections in the quick memory that the framework may still move, and the room
           # each holds there: every one the author set nothing about. {Placement} weighs them
           # against the code that wants the same room.
           def movable_quick_lists
@@ -582,7 +582,7 @@ module VBlank
                   .to_h { |name, info| [name, info[:capacity] * info[:bytes]] }
           end
 
-          # WHERE EACH LIST LIVES, for a finished cartridge to be asked about: the address of its
+          # Where each list lives, for a finished cartridge to be asked about: the address of its
           # first slot, how many slots it may hold, how many bytes a slot is, and the address of
           # the number saying how many it holds now. A measurement that wants a list held full
           # writes that number (see Diagnostics::FullCollections), and nothing but this build
@@ -610,7 +610,7 @@ module VBlank
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # A pool is kept in the layout its placement gives: where slot s of each of its lists is, in
           # bytes from the list's first slot (PoolLayout::SlotPlace), and how wide its value is. Every
           # read and write of a slot by an index (#emit_slot_address, #written_slot_offset, and the
           # loads and stores at the slot's width) asks #slot_place for that, a pool's list and any other
@@ -618,7 +618,7 @@ module VBlank
           # slot list a block of its own, slot s at s times its width. A walk of a pool kept so is
           # stepped by the statements the tree gives it (IR::WalkShape#step_statements).
           #
-          # WHAT THE LISTS COST AGAINST THE CONSOLE'S HABIT. An ARM game keeps a thing as a record and
+          # What the lists cost against the console's habit. An ARM game keeps a thing as a record and
           # holds its address in a register through the code that works on it, so a field is one LDR or
           # STR with an immediate offset from that base, and the next thing is the base plus the record's
           # size (GBATEK, "ARM Opcodes: Memory: Single Data Transfer",
@@ -649,7 +649,7 @@ module VBlank
             PoolLayout::ADAPTERS.fetch(:lists).place(shape)
           end
 
-          # EACH POOL KEPT AT ONE STRIDE given its block, before any list is registered: the quick
+          # Each pool kept at one stride given its block, before any list is registered: the quick
           # memory where it has room and the pool is not one +roomy+ names or the author marked
           # cold, else the roomy one, else it keeps :lists. +roomy+ is the lists the plan sent to
           # the roomy memory.
@@ -765,7 +765,7 @@ module VBlank
           # register_list); this just zeroes head and length. The slot contents are
           # left as-is — nothing reads them until a push makes them live.
           #
-          # A list FULL OF a value holds all its items at once instead: its length is its
+          # A list full of a value holds all its items at once instead: its length is its
           # capacity, and every slot is set to the value by the routine a list_fill calls, a
           # whole word at a time — where pushing them would work out an address and store the
           # length again for each item. The console's memory is not zero at power-on, so a
@@ -956,7 +956,7 @@ module VBlank
           # keep its counter in registers can touch.
           THING = LoopForm::COUNTER
 
-          # The walk whose thing THING holds while +block+ runs (IR::WalkShape).
+          # The walk whose thing thing holds while +block+ runs (IR::WalkShape).
           def with_held_walk(walk)
             outer = @held_walk
             @held_walk = walk
@@ -965,7 +965,7 @@ module VBlank
             @held_walk = outer
           end
 
-          # Whether a walk is holding THING on a thing now.
+          # Whether a walk is holding thing on a thing now.
           def held_walk? = !@held_walk.nil?
 
           # r0 = the link +links+ of the held thing, as kept: the next thing's distance into the
@@ -1005,7 +1005,7 @@ module VBlank
           end
 
           # [the register, the distance] a load or store of +width+ bytes reaches a field +distance+
-          # from THING through: THING itself where the instruction's distance reaches, else r1 made
+          # from thing through: thing itself where the instruction's distance reaches, else r1 made
           # THING plus the distance.
           def held_field_operand(distance, width)
             return [THING, distance] if distance <= (width == 4 ? 0xFFF : 0xFF)
@@ -1015,7 +1015,7 @@ module VBlank
             [TMP, 0]
           end
 
-          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
+          # A link kept as the slot times the stride (PoolLayout.strided_place), two bytes with NONE
           # as $FFFF: read with its sign, NONE is -1, and an arithmetic shift right brings any other
           # back to the slot and leaves -1 as it is.
           def emit_value_unscaled(slot)
@@ -1064,7 +1064,7 @@ module VBlank
 
           def emit_list_pack_loops(node) = ListPacking.loops_for(node).each { |loop| @lowering.statement(loop) }
 
-          # A SLOT NAMED BY A WRITTEN NUMBER, in a list of words whose items never move (no ring) and
+          # A slot named by a written number, in a list of words whose items never move (no ring) and
           # with no check on its length, is a fixed distance from the list's first slot: one load or
           # store from the list's base, where a worked-out index takes six instructions or more to
           # bound and scale. The byte offset, or nil where the slot must be found as the game runs
@@ -1082,10 +1082,10 @@ module VBlank
           # in TMP (r1), ready for ldr/str.
           #
           # A ring adds its head and wraps with the mask. A plain array's head can never move,
-          # so the offset IS the slot — which saves a variable read and an add on every access,
+          # so the offset is the slot — which saves a variable read and an add on every access,
           # and costs a compare instead of the mask to keep a bad index inside the block.
           #
-          # THE LIST'S OWN BASE IS LEFT WHERE IT WAS PUT and the slot address built somewhere
+          # The list's own base is left where it was put and the slot address built somewhere
           # else, which is the whole reason a second touch of the same list is cheaper than
           # the first: the base outlives the access instead of being written over by its
           # answer. A variable has always worked this way — a register holds where the
@@ -1106,12 +1106,12 @@ module VBlank
             @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))       # r1 = base + slot*size
           end
 
-          # LOAD AND STORE ONE ELEMENT at the address in +addr+, at the list's own width. A
+          # Load and store one element at the address in +addr+, at the list's own width. A
           # word list is one instruction either way; a narrower one is the same instruction
           # with the size bits set, so a narrow list is no slower to read or write — it is
           # only smaller.
           #
-          # A NARROW ELEMENT IS READ BACK SIGN-EXTENDED, filling the whole register with the
+          # A narrow element is read back sign-extended, filling the whole register with the
           # number it holds including its sign, so what comes out of a byte slot holding -4 is
           # -4 and not 252. That is why there is no unsigned option: a slot that could not come
           # back negative would break every countdown written `sub` first and tested second.
@@ -1150,7 +1150,7 @@ module VBlank
           end
 
           # Hold r0 inside 0...capacity, reading slot nought for anything outside it. The
-          # compare is UNSIGNED, which is what catches a negative index too: as an unsigned
+          # compare is unsigned, which is what catches a negative index too: as an unsigned
           # number it is enormous, so it fails the same test. Predicated rather than branched,
           # so there is no jump in the hottest thing a list does.
           def emit_bound_to_capacity(capacity)
