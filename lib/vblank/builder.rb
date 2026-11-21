@@ -369,71 +369,63 @@ module VBlank
 
     # --- Lists ---
 
-    # Declare a named list — a bounded, ordered collection whose length changes as
-    # the game runs (a snake's body, a queue of shots). Returns a {List} handle you
-    # push onto, drop from, index into, and iterate.
+    # Declares a list: a bounded, ordered collection whose length changes as the game runs, such as
+    # a snake's body or a queue of shots. It returns a handle that you push onto, drop from, index
+    # into and go through.
     #
-    #   body = list :body, capacity: 256
-    #   body.push head_cell
-    #   body.shift unless growing
+    # ```ruby
+    # body = list :body, capacity: 256
+    # body.push head_cell
+    # body.shift unless growing
+    # ```
     #
-    # `capacity` is the most it can ever hold; it's rounded up to a power of two so
-    # the hardware can wrap an index cheaply, and every backend enforces that same
-    # ceiling, so a program overflows at the same point everywhere.
+    # `capacity` is the most it can ever hold. It is rounded up to a power of two, so that an index
+    # wraps cheaply, and every build enforces that same ceiling, so a program overflows at the same
+    # point everywhere.
     #
-    # `estimate:` does nothing but earn a warning (see #record_estimate_line). The build
-    # measures each scene with the list held at its capacity instead
-    # (VBlank.warn_of_collections_that_fill).
+    # `holds:` sets what kind of number the list keeps, by showing one. Write a Float and the list
+    # holds numbers with a fraction, exactly as writing one makes a variable hold them. A game with
+    # many of something that moves in halves and quarters never has to pick a scale and carry it by
+    # hand. The number is only an example, and a list still starts empty.
     #
-    # `holds:` sets what KIND of number the list keeps, by showing one. Write a Float and
-    # the list holds numbers with a fraction, exactly as writing one makes a variable hold
-    # them: `list :speeds, capacity: 8, holds: 0.0`. Every value read out then carries the
-    # scale and every value put in is checked against it, so a game with many of something
-    # that moves in halves and quarters never has to pick a scale and carry it by hand. The
-    # number itself is only an example — a list still starts empty.
+    # `width:` sets how big one slot is, and it is the difference between a list that fits in the
+    # console's fast memory and one that does not. A slot is a whole 32-bit number unless you set
+    # another, and most lists do not hold anything like that much. `:byte` holds -128 to 127 and
+    # `:half` holds -32768 to 32767, at a quarter and a half of the memory. A list of flags,
+    # directions, which picture is showing, hit points or countdowns is a list of bytes.
     #
-    # `width:` sets HOW BIG ONE SLOT IS, and it is the difference between a list that fits in
-    # the console's fast memory and one that does not. A slot is a whole 32-bit number unless
-    # you set another, and most lists do not hold anything like that much: `:byte` holds
-    # -128..127 and `:half` holds -32768..32767, at a quarter and a half of the memory. A list
-    # of flags, of directions, of which-picture-is-showing, of hit points, of countdowns —
-    # every one of those is a byte, and a game with many of them gets that memory back for
-    # other things.
+    # ```ruby
+    # list :hurt, capacity: 64, width: :byte   # 64 bytes, not 256
+    # list :speeds, capacity: 8, holds: 0.0    # numbers with a fraction
+    # ```
     #
-    #   list :hurt, capacity: 64, width: :byte   # 64 bytes, not 256
+    # A narrow slot always goes below nothing, so a `:byte` holds -128 to 127 and a number that has
+    # to reach past 127 asks for `:half`. A number too big for its slot keeps the low bits that fit,
+    # exactly as the console does, so 200 in a `:byte` reads back as -56 on every build. Reading and
+    # writing a narrow slot costs the same as a wide one. Only the memory differs.
     #
-    # A NARROW SLOT ALWAYS GOES BELOW NOTHING, and there is nothing to say about that — it is
-    # not a choice you are given, because there is no way to make it correctly. The case that
-    # decides it is a countdown: `wait -= 7` followed by `wait <= 0` really does hold -4
-    # while that test runs, and a slot that could not go below nothing would read -4 back as
-    # 252 and the test would never fire — a game that quietly stops working. Nothing at build
-    # time can see that coming, since the value is worked out as the game runs. So a `:byte`
-    # holds -128..127, and a number that has to reach past 127 asks for `:half`.
-    #
-    # A number too big for its slot keeps the low bits that fit, exactly as the console does,
-    # and both backends drop the same bits — 200 in a `:byte` reads back as -56 on each.
-    # Reading and writing a narrow slot costs the same as a wide one; only the memory differs.
-    #
-    # @param name [Symbol] the list's name
-    # @param capacity [Integer] the most items it can hold
-    # @param estimate [Object] does nothing but earn a warning
-    # @param holds [Numeric] an example of what it holds; a Float means it holds fractions
-    # WHERE IT LIVES is a question you almost never have to answer. The console has two
-    # work memories — a small quick one and a large one that makes it wait — and the
-    # framework puts what a frame touches in the quick one and lets the rest fall into
-    # the roomy one, so a game with a lot of state builds where it used to fail. Set
-    # `fast: false` on one you know is cold (a world state read when a menu opens) to
-    # give the quick memory back to the things that are walked every frame, or `fast:
-    # true` to insist on one the framework did not pick. It is the same word `func`
-    # already uses for the same question about code, and it changes nothing the program
-    # does — only how long a read takes. `rom.profile` says where everything went.
-    #
-    # @param width [Symbol] how big one slot is — :byte, :half or :word (the default)
-    # @param fast [Boolean, nil] insist on the quick memory (true) or give it up (false)
-    # @param full_of [Numeric, nil] start holding +capacity+ items of this, rather than none.
-    #   The loop it replaces, a push for each item, finds each item's place and stores the
-    #   length again every time; this is one fill, done the moment the declaration runs.
-    # @return [List] a handle to the list
+    # * `name` - the list's name, as a symbol.
+    # * `capacity:` - the most items it can hold.
+    # * `holds:` - an example of what it holds. A Float means it holds fractions.
+    # * `width:` - how big one slot is: `:byte`, `:half` or `:word` (the default).
+    # * `fast:` - where the list lives. The framework puts what a frame touches in the quick memory
+    #   and lets the rest fall into the roomy one, so you almost never answer this. `false` on a
+    #   list you know is cold, such as a world state read when a menu opens, gives the quick memory
+    #   back to the things that are walked every frame, and `true` insists on a list the framework
+    #   did not pick. It changes nothing the program does, only how long a read takes. It is the
+    #   same word `func` uses for the same question about code.
+    # * `full_of:` - start holding `capacity` items of this value, rather than none. It is one fill,
+    #   done the moment the declaration runs, in place of a loop that pushes each item.
+    # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
+    #   line that still gives one.
+    #--
+    # The build measures each scene with the list held at its capacity instead
+    # (VBlank.warn_of_collections_that_fill). A narrow slot always goes below nothing because there
+    # is no way to make it correctly: a countdown `wait -= 7` followed by `wait <= 0` really does
+    # hold -4 while that test runs, and a slot that could not go below nothing would read -4 back
+    # as 252 and the test would never fire. Nothing at build time can see that coming, since the
+    # value is worked out as the game runs. `rom.profile` says where everything went.
+    #++
     def list(name, capacity:, estimate: nil, holds: nil, width: :word, fast: nil, full_of: nil)
       record_estimate_line(estimate)
       width = kept_unsigned_halves({ name => width }) { name }.fetch(name)
@@ -663,11 +655,16 @@ module VBlank
       raise ArgumentError, "#{what} copies from table :#{table.name}, which holds #{table_holds}. The list holds " \
                            "#{list_holds}. A copy moves the numbers as they are, so give both the same kind of number."
     end
-
-    # Define an entry point of raw ARM instructions — the escape hatch for
-    # patterns the DSL can't express. The block runs in an {EntryContext} that
-    # collects the emitted bytes into a raw IR node, which the backend appends to
-    # the code verbatim.
+    # Defines an entry point of raw machine instructions, as an escape hatch for what the verbs
+    # cannot say.
+    #
+    # The block collects the instructions you emit, and they are placed in the cartridge exactly as
+    # written. They are the Game Boy Advance's own (ARM) instructions, so it is for people who know
+    # that processor.
+    #--
+    # The block runs in an EntryContext that collects the emitted bytes into a raw IR node, which
+    # the backend appends to the code verbatim.
+    #++
     def entry(&block)
       ctx = EntryContext.new
       ctx.instance_eval(&block)

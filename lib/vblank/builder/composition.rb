@@ -2,15 +2,23 @@
 
 module VBlank
   class Builder
-    # The composition verb: `pool` — declare a component (named fields) and a
-    # fixed-capacity set of instances of it in one call, the DSL's unit for
-    # "many of a thing that has state and behaves." A concern of {Builder}, mixed in
-    # so `pool` stays a flat DSL verb; the {Pool} handle it returns does the rest.
+    # Many of a thing
     #
-    # A pool desugars entirely onto what already exists — one {List} per field, an
-    # `active` column, a `free`-slot stack, and a `repeat` for iteration — so there's no
-    # new IR and every backend runs it. This module just sets that storage up (once, at
-    # boot) and hands back the handle.
+    # A pool declares a kind of thing with named fields, and room for a fixed number of them, in one
+    # call. It is the unit for many of a thing that has state and behaves, such as bullets, enemies
+    # or sparks. The handle `pool` returns spawns instances, goes through the live ones with `each`,
+    # and answers `count` and `full?`.
+    #
+    # ```ruby
+    # bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+    # ```
+    #--
+    # A concern of Builder, mixed in so `pool` stays a flat DSL verb; the Pool handle it returns
+    # does the rest. A pool desugars entirely onto what already exists, one List per field, an
+    # `active` column, a `free`-slot stack, and a `repeat` for iteration, so there is no new IR and
+    # every backend runs it. This module just sets that storage up (once, at boot) and hands back
+    # the handle.
+    #++
     module Composition
       Build = IR::Build
 
@@ -29,63 +37,80 @@ module VBlank
       # (IR::Guardrails::Checks::IwramBudget), which adds up everything it declares.
       POOL_MAX_QUICK_BYTES = 16 * 1024
 
-      # Declare a pool of a component. Name the fields with their defaults and give a
-      # capacity (the most instances live at once):
+      # Declares a pool: many of one kind of thing that has state and behaves, such as bullets,
+      # enemies or sparks, with room for a fixed number of them.
       #
-      #   bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+      # Name the fields with their starting values and give a `capacity`, the most instances that
+      # are live at once. It returns a handle to spawn instances, to go through the live ones with
+      # `each`, and to ask its `count` and `full?`.
       #
-      # Returns a {Pool} handle — spawn instances, iterate the live ones with `each`,
-      # ask its `count` / `full?`.
+      # ```ruby
+      # bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+      # ```
       #
-      # Give the pool an `image:` and each live instance draws itself as a hardware
-      # sprite at its x/y (spawn shows one, remove hides it) and gains a collision box:
+      # Give the pool an `image:` and each live instance draws itself as a sprite at its `x` and
+      # `y`. Spawning one shows it, removing one hides it, and each gains a collision box. A pool
+      # with pictures needs `x:` and `y:` fields and a `screen :tiled`. Without an image it is a
+      # pure data pool, and you draw it yourself in `each`.
       #
-      #   enemies = pool :enemy, x: 0, y: 0, hp: 3, capacity: 16, image: :ufo
-      #   enemies.each { |e| e.y += 1; e.remove if bullet.overlaps?(e) }
+      # ```ruby
+      # enemies = pool :enemy, x: 0, y: 0, hp: 3, capacity: 16, image: :ufo
+      # enemies.each { |e| e.y += 1; e.remove if bullet.overlaps?(e) }
+      # ```
       #
-      # A spriteful pool needs x: and y: fields and a `screen :tiled` (its instances are
-      # hardware sprites). Without an image it's a pure-data pool (draw it yourself in
-      # `each`).
+      # By default a spawn onto a full pool does nothing. Pass `on_full: :recycle_oldest`, the usual
+      # choice for particles and effects, so that a new spawn reuses the longest-lived instance and
+      # a new one always appears.
       #
-      # By default a spawn onto a full pool is a safe no-op. Pass `on_full: :recycle_oldest`
-      # (the usual choice for particles and effects) so a new spawn instead reuses the
-      # longest-lived instance — a new one always appears:
+      # ```ruby
+      # sparks = pool :spark, x: 0, y: 0, life: 0, capacity: 32, on_full: :recycle_oldest
+      # ```
       #
-      #   sparks = pool :spark, x: 0, y: 0, life: 0, capacity: 32, on_full: :recycle_oldest
+      # A pooled thing faces and animates the way a sprite does, spelled the same way. Give the
+      # pool `facing:` or `frames:` instead of `image:`, with `rate:` for either animated form. Each
+      # instance holds its own direction and its own place in the cycle, so ten guards face ten ways
+      # and do not march in step.
       #
-      # `estimate:` does nothing but earn a warning (see Builder#record_estimate_line).
+      # ```ruby
+      # guards = pool :guard, x: 0, y: 0, capacity: 32, rate: 6,
+      #               facing: { left: [:walk_l1, :walk_l2], right: [:walk_r1, :walk_r2] }
+      # guards.each { |g| g.face :left; g.x -= 1 }
+      # ```
       #
-      # A pooled thing FACES AND ANIMATES the way a sprite does, spelled the same way.
-      # Give the pool `facing:` (a picture per direction, or a list of frames per
-      # direction) or `frames:` (a flipbook) instead of `image:`, with `rate:` for
-      # either animated form:
+      # A pool is one list for each field, and a field left at its full width costs four bytes a
+      # slot to keep a direction or a flag. Name the narrow fields with `widths:` to make a big
+      # pool much smaller.
       #
-      #   guards = pool :guard, x: 0, y: 0, capacity: 32, rate: 6,
-      #                 facing: { left: [:walk_l1, :walk_l2], right: [:walk_r1, :walk_r2] }
-      #   guards.each { |g| g.face :left; g.x -= 1 }
+      # ```ruby
+      # guards = pool :guard, dir: 0, hp: 0, capacity: 145, widths: { dir: :byte, hp: :byte }
+      # ```
       #
-      # Each instance holds its own direction and its own place in the cycle, so ten
-      # guards face ten ways and do not march in step. That is the pool's own
-      # bookkeeping — a hidden slot beside the fields, not something to declare.
-      #
-      # WHICH OF THE CONSOLE'S TWO WORK MEMORIES A POOL IS KEPT IN is the build's to decide,
-      # as it is for a list: the quick one for what a frame touches while there is room, the
-      # roomier one for the rest. `fast: false` marks the pool as cold and gives the quick
-      # memory back; `fast: true` insists on it. A pool bigger than POOL_MAX_QUICK_BYTES cannot
-      # share the quick memory, so it is kept in the roomier one whatever a frame does with
-      # it, and `fast: true` on such a pool is a friendly error.
-      #
-      # @param name [Symbol] the pool's name
-      # @param capacity [Integer] the most instances that can be live at once
-      # @param fast [Boolean, nil] false to keep it out of the quick memory, true to insist on it
-      # @param image [Symbol, nil] the sprite image each live instance draws
-      # @param facing [Hash{Symbol=>Symbol,Array}, nil] direction => picture, or => frames
-      # @param frames [Array<Symbol>, nil] same-size pictures to cycle as an animation
-      # @param rate [Integer, nil] game-frames per animation step (needed with an animation)
-      # @param on_full [Symbol] :drop (default) or :recycle_oldest — see above
-      # @param estimate [Object] does nothing but earn a warning
-      # @param fields [Hash{Symbol=>Object}] field name => default value
-      # @return [Pool]
+      # * `name` - the pool's name, as a symbol.
+      # * `capacity:` - the most instances that can be live at once.
+      # * `fields` - the pool's fields, written as keywords: each field's name and its starting
+      #   value.
+      # * `image:` - the picture each live instance draws.
+      # * `facing:` - a map from a direction to a picture, or to a list of frames.
+      # * `frames:` - same-size pictures to cycle as an animation.
+      # * `rate:` - how many game frames each animation step lasts. It is needed with an animation.
+      # * `on_full:` - `:drop` (the default) or `:recycle_oldest`.
+      # * `widths:` - a map from a field to how much room it takes, `:byte`, `:half` or `:word`, as
+      #   a list's `width:` is. `:unsigned_half` keeps a place in 256ths of a pixel.
+      # * `fast:` - `false` keeps the pool out of the quick memory, and `true` insists on it.
+      # * `layout:` - how the pool sits in the console's memory: `:lists`, `:tables` or `:records`.
+      #   A game names none to get the build's choice. A console has only the layouts its build
+      #   makes, and naming one it lacks is an error that names the console and its layouts. The
+      #   layout never changes what the game does or what a field holds.
+      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
+      #   line that still gives one.
+      #--
+      # WHICH OF THE CONSOLE'S TWO WORK MEMORIES A POOL IS KEPT IN is the build's to decide, as it is
+      # for a list: the quick one for what a frame touches while there is room, the roomier one for
+      # the rest. A pool bigger than POOL_MAX_QUICK_BYTES cannot share the quick memory, so it is
+      # kept in the roomier one whatever a frame does with it, and `fast: true` on such a pool is a
+      # friendly error. The direction and the place in the cycle are a hidden slot beside the
+      # fields.
+      #++
       def pool(name, capacity:, image: nil, facing: nil, frames: nil, rate: nil,
                on_full: :drop, estimate: nil, widths: {}, fast: nil, layout: nil, **fields)
         validate_pool!(name, capacity, fields)
