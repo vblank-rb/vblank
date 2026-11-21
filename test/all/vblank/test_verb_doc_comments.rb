@@ -13,10 +13,9 @@ class TestVerbDocComments < Minitest::Test
 
   # The verbs whose comment is still to be written for an author. Each is taken off this list in the
   # commit that documents it, and a verb on the list that is documented fails the test until it is.
-  # These are the flat words without their `!` (`add`, `abs`, `set`, ...), which Builder::Variables
-  # makes from source text so that each raises the error saying which word to use; and `flip!`, an
-  # `alias` of `negate!`, which has no `def` of its own to carry a comment.
-  VERBS_AWAITING_DOCS = %i[abs add add_var approach clamp copy flip flip! negate negate_abs set sub sub_var].freeze
+  # A verb made from source text or by `alias` has no `def` to carry a comment: it is documented
+  # with a `# :method: name` comment, which RDoc reads and DslVerbs finds (see Builder::Variables).
+  VERBS_AWAITING_DOCS = %i[].freeze
 
   # The line that opens the part RDoc leaves out.
   ENGINEER_NOTES_START = /\A--\s*\z/

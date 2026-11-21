@@ -45,11 +45,32 @@ module DslVerbs
     return nil unless file
 
     parsed = parsed_file(file)
+    directed = comment_with_method_directive(parsed, name)
+    return Definition.new(name: name, file: file, line: directed.first, comment: directed.last, nodoc: false) if directed
+
     node = parsed.defs.select { |d| d.name == name }.min_by { |d| (d.location.start_line - near_line).abs }
     return nil unless node
 
     Definition.new(name: name, file: file, line: node.location.start_line,
                    comment: comment_above(parsed, node), nodoc: nodoc_marked?(parsed, node))
+  end
+
+  # A verb made from source text or by `alias` has no `def` to carry its comment. RDoc takes a
+  # comment that opens with `# :method: name` as that method's documentation, and so does this:
+  # [line of the directive, the comment lines after it], or nil where the file has none for +name+.
+  def self.comment_with_method_directive(parsed, name)
+    opener = parsed.comments.find { |comment| comment.slice.match?(/\A#\s*:method:\s*#{Regexp.escape(name.to_s)}\s*\z/) }
+    return nil unless opener
+
+    by_line = parsed.comments.to_h { |comment| [comment.location.start_line, comment] }
+    start = opener.location.start_line
+    lines = []
+    line = start + 1
+    while (comment = by_line[line])
+      lines << comment.slice.sub(/\A# ?/, "")
+      line += 1
+    end
+    [start, lines]
   end
 
   ParsedFile = Data.define(:lines, :comments, :defs)

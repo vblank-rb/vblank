@@ -2,14 +2,31 @@
 
 module VBlank
   class Builder
-    # The variable verbs: declare and mutate the game's RAM variables — set/var,
-    # add, sub, negate/flip, copy, abs, negate_abs, clamp, approach — plus
-    # introspection (variables). A concern of {Builder}, mixed in so these stay flat
-    # DSL verbs.
+    # Variables and arithmetic
     #
+    # A variable is a number your game keeps and changes while it runs: a score, a position, a
+    # speed. You make one with plain Ruby (`hp = 10`, then `hp -= 1`), or with `var` when you want
+    # to say more about it, such as how much room it needs. Fractions, names (`mode = :title`)
+    # and yes or no values (`alive = true`) work too.
+    #
+    # ```ruby
+    # VBlank.game "COUNTER" do
+    #   score = 0
+    #   game_loop do
+    #     score += 1
+    #     score = 0 if score > 99
+    #   end
+    # end
+    # ```
+    #
+    # A variable that must survive turning the console off is a `save_var`. Words such as
+    # `negate!`, `abs!`, `clamp!` and `approach!` change a variable in place; the same words
+    # without the `!` are on the variable's own handle and give a new number instead.
+    #--
     # The list of names itself (ensure_var / the @variables set) is builder core,
     # shared by every concern, so it stays in Builder; these verbs just record the ops
-    # and lean on it.
+    # and lean on it. A concern of Builder, mixed in so these stay flat DSL verbs.
+    #++
     module Variables
       # Set a variable's value. If the variable hasn't been declared yet, it is
       # declared here. Returns a {Value} handle for the variable, so it can be
@@ -26,29 +43,36 @@ module VBlank
         value_handle_for(name)
       end
 
-      # Declare a variable and give it a starting value. Unlike {#set} (a runtime
-      # assignment that happens where you write it), a declaration's initial value is
-      # applied once, at program start — so declaring a variable inside a scene or a loop
-      # still initializes it a single time, not every time that code runs. That's what
-      # lets a game object declare its own state (a score, a flag) in its setup even when
-      # that setup lives inside a scene. Returns a {Value} handle for the variable.
+      # Declares a variable with a starting value and returns a handle to it.
       #
-      # A STARTING VALUE THAT IS A NAME — `var :mode, :title` — declares a variable that holds
-      # one of a set of names rather than a count: the states a game can be in, the moves an
-      # enemy can make. The framework gives each name a number, in the order it first appears,
-      # and nothing in the game ever writes one (see {NameSet}). `mode = :playing` and
-      # `(mode == :playing)` read as they look, and `call mode` runs the routine of that name.
+      # Plain Ruby (`hp = 10`) makes a variable for you. Use `var` when you want to say more:
+      # the starting value is set once, when the game starts, even if the `var` is written inside
+      # a scene or a loop that runs many times. That lets a scene declare its own score or flag
+      # where it uses it.
       #
-      # @param name [Symbol] variable name
-      # A VARIABLE THAT ONLY EVER HOLDS A SMALL NUMBER can declare it: `var :flag, 0, width: :byte` keeps
-      # it in a byte and `width: :half` in two, as a list's `width:` does, and a number too big
-      # keeps its low bits and reads back with their sign (see {IR::KeptWidths}). It reads and works
-      # the same everywhere, and a Game Boy Color spends much less time on it.
+      # A starting value that is a name, as in `var :mode, :title`, makes a variable that holds
+      # one of a set of names instead of a count: the states a game can be in, the moves an enemy
+      # can make. Write `mode = :playing` and `mode == :playing` as they look, and `call mode`
+      # runs the routine of that name.
       #
-      # @param name [Symbol] variable name
-      # @param value [Integer, Symbol, Value] the starting value, or the first of its names
-      # @param width [Symbol] :byte or :half to keep it narrow; :word, the default, keeps the whole number
-      # @return [Value] a handle to the variable
+      # A variable that only ever holds a small number can say so: `var :flag, 0, width: :byte`
+      # keeps it in one byte. It reads and works the same, and costs less memory and time on the
+      # consoles that are short of both. A number too big for the width keeps only its low bits.
+      #
+      # ```ruby
+      # var :lives, 3
+      # var :state, :title                 # one of a set of names
+      # var :frame_count, 0, width: :half  # never above 32767
+      # ```
+      #
+      # * `name` - the variable's name, as a symbol.
+      # * `value` - the starting value: a whole number, a fraction, `true` or `false`, or a name.
+      # * `width:` - `:byte` or `:half` to keep it narrow; `:word` keeps the whole number.
+      #--
+      # Unlike #set (a runtime assignment that happens where you write it), a declaration's
+      # initial value is applied once, at program start. Names get numbers in the order they
+      # first appear (see DSL::NameSet). A narrow width is kept by IR::KeptWidths.
+      #++
       def var(name, value, width: :word)
         if [true, false].include?(value)
           remember_boolean_variable(name)
@@ -126,22 +150,23 @@ module VBlank
       # Called by a variable's own handle, not written in a game.
       def boolean_variable?(name) = @boolean_variables.key?(name)  # :nodoc:
 
-      # Declare a variable whose value survives the console being turned off — a high
-      # score, an unlock, a setting. It works exactly like {#var}: you get the same
-      # handle and use it the same way. The difference is where its value lives. It's
-      # kept in the cartridge's save memory, so:
+      # Declares a variable whose value is still there after the console is turned off, such as a
+      # high score, an unlock or a setting.
       #
-      #   - at power-on it comes back with the value it had last time (or +default+ the
-      #     very first time the game is ever run, when nothing is saved yet), and
-      #   - every time you change it, the new value is saved for you automatically —
-      #     there is no separate "save" step to remember.
+      # It works like `var`: you get the same handle and use it the same way. The difference is
+      # where the value lives. It is kept in the cartridge's save memory, so:
       #
-      #   high = save_var :high_score, 0
-      #   high = score if score > high   # a new record — saved on the spot
+      # * At power-on it comes back with the value it had last time, or with `default` the very
+      #   first time the game runs, when nothing is saved yet.
+      # * Each time you change it, the new value is saved for you. There is no separate save step.
       #
-      # @param name [Symbol] variable name
-      # @param default [Integer] the value on a brand-new cartridge (nothing saved yet)
-      # @return [Value] a handle to the variable
+      # ```ruby
+      # high = save_var :high_score, 0
+      # high = score if score > high   # a new record, saved on the spot
+      # ```
+      #
+      # * `name` - the variable's name, as a symbol.
+      # * `default` - a whole number: the value on a new cartridge.
       def save_var(name, default)
         unless default.is_a?(Integer)
           raise ArgumentError,
@@ -185,8 +210,15 @@ module VBlank
         mirror_save(name)
       end
 
-      # Flip a variable's sign: var = -var.
-      # Useful for reversing direction vectors.
+      # Flips a variable's sign, so 5 becomes -5 and -5 becomes 5.
+      #
+      # Use it to turn a speed round. `flip!` is the same verb.
+      #
+      # ```ruby
+      # dx.flip! if x > 232   # bounce off the right edge
+      # ```
+      #
+      # * `name` - the variable to change, as a symbol or its handle.
       def negate!(name)
         record(Build.negate(name))
         ensure_var(name)
@@ -206,16 +238,29 @@ module VBlank
         mirror_save(dest)
       end
 
-      # Absolute value: var = |var|
-      # If var < 0, negate it. Otherwise leave it.
+      # Makes a variable positive: a negative number loses its sign, and any other is left alone.
+      #
+      # ```ruby
+      # distance = x - target
+      # distance.abs!   # how far apart they are, whichever side
+      # ```
+      #
+      # Without the `!`, `distance.abs` gives the positive number and leaves the variable as it is.
+      #
+      # * `name` - the variable to change, as a symbol or its handle.
       def abs!(name)
         record(Build.abs(name))
         ensure_var(name)
         mirror_save(name)
       end
 
-      # Make a variable negative: var = -|var|
-      # If var > 0, negate it. Otherwise leave it.
+      # Makes a variable negative: a positive number gets a minus sign, and any other is left alone.
+      #
+      # ```ruby
+      # speed.negate_abs!   # always heading left, whatever it was
+      # ```
+      #
+      # * `name` - the variable to change, as a symbol or its handle.
       def negate_abs!(name)
         record(Build.negate_abs(name))
         ensure_var(name)
@@ -236,6 +281,112 @@ module VBlank
       # The words plain Ruby has an operator for, which is what a game writes.
       PLAIN_RUBY_OPERATORS = { set: "=", copy: "=", add: "+=", add_var: "+=", sub: "-=", sub_var: "-=" }.freeze
 
+      # :method: set
+      #
+      # Is not used any more. Assign with plain Ruby instead: `hp = 10`.
+      #
+      # Calling `set :hp, 10` raises an error that says so, with the line to write instead.
+      #
+      # * `name` - the variable.
+      # * `value` - the number to store.
+
+      # :method: copy
+      #
+      # Is not used any more. Assign with plain Ruby instead: `x = y`.
+      #
+      # Calling `copy :x, :y` raises an error that says so, with the line to write instead.
+      #
+      # * `dest` - the variable to change.
+      # * `src` - the variable to read.
+
+      # :method: add
+      #
+      # Is not used any more. Add with plain Ruby instead: `x += 1`.
+      #
+      # Calling `add :x, 1` raises an error that says so, with the line to write instead.
+      #
+      # * `name` - the variable.
+      # * `operand` - the number to add.
+
+      # :method: add_var
+      #
+      # Is not used any more. Add one variable to another with plain Ruby instead: `x += y`.
+      #
+      # Calling `add_var :x, :y` raises an error that says so, with the line to write instead.
+      #
+      # * `name` - the variable.
+      # * `operand` - the variable to add.
+
+      # :method: sub
+      #
+      # Is not used any more. Subtract with plain Ruby instead: `x -= 1`.
+      #
+      # Calling `sub :x, 1` raises an error that says so, with the line to write instead.
+      #
+      # * `name` - the variable.
+      # * `operand` - the number to subtract.
+
+      # :method: sub_var
+      #
+      # Is not used any more. Subtract one variable from another with plain Ruby instead: `x -= y`.
+      #
+      # Calling `sub_var :x, :y` raises an error that says so, with the line to write instead.
+      #
+      # * `name` - the variable.
+      # * `operand` - the variable to subtract.
+
+      # :method: abs
+      #
+      # Does not change a variable. To make one positive, write `x.abs!`. To get the positive
+      # number and leave the variable as it is, write `x.abs` on its handle.
+      #
+      # Calling `abs :x` raises an error that says so.
+
+      # :method: negate_abs
+      #
+      # Does not change a variable. To make one negative, write `x.negate_abs!`. To get the
+      # negative number and leave the variable as it is, write `x.negate_abs` on its handle.
+      #
+      # Calling `negate_abs :x` raises an error that says so.
+
+      # :method: negate
+      #
+      # Does not change a variable. To flip its sign, write `x.negate!` (or `x.flip!`). To get the
+      # flipped number and leave the variable as it is, write `x.flip` on its handle.
+      #
+      # Calling `negate :x` raises an error that says so.
+
+      # :method: flip
+      #
+      # Does not change a variable. To flip its sign, write `x.flip!`. To get the flipped number
+      # and leave the variable as it is, write `x.flip` on its handle.
+      #
+      # Calling `flip :x` raises an error that says so.
+
+      # :method: flip!
+      #
+      # Flips a variable's sign, so 5 becomes -5 and -5 becomes 5. It is the same verb as
+      # `negate!`.
+      #
+      # ```ruby
+      # dx.flip! if x > 232   # bounce off the right edge
+      # ```
+
+      # :method: clamp
+      #
+      # Does not change a variable. To hold one inside a range, write `x.clamp! 0, 239`. To get
+      # the held number and leave the variable as it is, write `x.clamp(0, 239)` on its handle.
+      #
+      # Calling `clamp :x, 0, 239` raises an error that says so.
+
+      # :method: approach
+      #
+      # Does not change a variable. To move one toward a target, write `x.approach! target, step`.
+      # To get the new number and leave the variable as it is, write `x.approach(target, step)`
+      # on its handle.
+      #
+      # Calling `approach :x, target, step` raises an error that says so.
+
       # Written out as source rather than made from a block, so another Ractor can call them —
       # see {IR::Node.operands} for why a block-backed method cannot be.
       (CHANGING_HANDLE_WORDS.keys + CHANGING_OPERATOR_WORDS.keys + %i[set copy]).each do |verb|
@@ -246,19 +397,22 @@ module VBlank
         REFUSAL
       end
 
-      # Hold a variable inside a range: below +min_val+ it becomes min_val, above
-      # +max_val+ it becomes max_val, and in between it is left alone.
+      # Holds a variable inside a range: below the lowest it becomes the lowest, above the highest
+      # it becomes the highest, and in between it is left alone.
       #
-      # The bounds can be fixed numbers or things the game works out as it runs — a
-      # limit that depends on the level, a speed that changes — so a range does not
-      # have to be known as the program is written.
+      # The limits can be fixed numbers or things the game works out as it runs, such as a limit
+      # that depends on the level.
       #
-      #   x.clamp! 0, 239              # keep it on screen
-      #   speed.clamp! 0, top_speed    # a limit the game changes
+      # ```ruby
+      # x.clamp! 0, 239              # keep it on screen
+      # speed.clamp! 0, top_speed    # a limit the game changes
+      # ```
       #
-      # @param name [Symbol] variable name
-      # @param min_val [Integer, Symbol, Value] the lowest it may be
-      # @param max_val [Integer, Symbol, Value] the highest it may be
+      # Without the `!`, `x.clamp(0, 239)` gives the held number and leaves the variable as it is.
+      #
+      # * `name` - the variable to change.
+      # * `min_val` - the lowest it may be: a number, a variable or a handle.
+      # * `max_val` - the highest it may be.
       def clamp!(name, min_val, max_val)
         record(Build.clamp(name, DSL::Value.node_for(min_val), DSL::Value.node_for(max_val)))
         ensure_var(name)
@@ -267,24 +421,24 @@ module VBlank
         mirror_save(name)
       end
 
-      # Move a variable toward +target+ by at most +step+ each call, never
-      # overshooting: once it's within +step+ of the target it lands exactly on it
-      # and stays there. This is the "chase, capped to a top speed" move — a homing
-      # enemy, a camera easing to the player, pong's paddle tracking the ball.
+      # Moves a variable toward a target by at most one step each time it runs, and never past it.
       #
-      #   cpu_y.approach! ball_y - PADDLE_H / 2, CPU_SPEED
+      # Once the variable is within a step of the target it lands exactly on it and stays there.
+      # Use it to chase with a top speed: an enemy that homes in, a camera that eases to the
+      # player, a paddle that tracks the ball.
       #
-      # +target+ is where it's heading — a number, another variable, or an
-      # expression Value. +step+ is the most it may move per call, like a top speed.
-      # It can be fixed as you write the program, or something the game works out as
-      # it runs (an easing whose speed depends on how far there is to go, a fade paced
-      # by how many frames it was given). A step the game computes is read as a
-      # distance, so a negative one still moves toward the target, and a step of 0
-      # holds still.
+      # ```ruby
+      # cpu_y.approach! ball_y - PADDLE_H / 2, CPU_SPEED
+      # ```
       #
-      # @param name [Symbol] the variable to move
-      # @param target [Integer, Symbol, Value] where it's heading
-      # @param step [Integer, Symbol, Value] the most it may move per call
+      # The step can be a fixed number or something the game works out as it runs, such as an
+      # easing whose speed depends on how far there is to go. A fixed step must be above 0. A step
+      # the game works out is read as a distance, so a negative one still moves toward the target
+      # and a step of 0 holds still.
+      #
+      # * `name` - the variable to move.
+      # * `target` - where it is heading: a number, a variable or a calculation.
+      # * `step` - the most it may move each time it runs.
       def approach!(name, target, step)
         # A step the author fixed has to be positive. One the game works out is read as a
         # distance instead (see #emit_approach_bounds), so there is nothing to check here.
