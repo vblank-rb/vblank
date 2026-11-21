@@ -4,7 +4,7 @@ require "digest"
 
 module VBlank
   module Original
-    # A PORT'S WHOLE UNPACKING ROUTINE, BUILT WHEN FIRST ASKED FOR. Building a big port's routine
+    # A port's whole unpacking routine, built when first asked for. Building a big port's routine
     # takes many seconds, and a build whose pack is kept (PackCache#pack_of_routine) never needs
     # it. So the build of the data pack holds one of these rather than the routine, and the
     # routine is built only when something asks for it: a pack that is not kept, a shell, a test.
@@ -18,10 +18,10 @@ module VBlank
     # goes: the names the build made (BuiltNames), the slots each part used (a Hash of SlotUses by
     # part) and what each part put in the program (PartPrograms).
     #
-    # AS IT IS BUILT, the files it is built from are recorded (#files, a RoutineFiles): what the
+    # As it is built, the files it is built from are recorded (#files, a RoutineFiles): what the
     # block read, and the game's Ruby. The pack cache keeps them beside the pack.
     #
-    # ONE BUILD PER PROCESS. A test suite builds the same game many times, each build declaring the
+    # One build per process. A test suite builds the same game many times, each build declaring the
     # same routine. A routine built before in this Ractor, for the same declaration and copy, whose
     # files are unchanged, is handed out again with its records rather than built again. Each
     # Ractor keeps its own, the last MOST_KEPT of them.

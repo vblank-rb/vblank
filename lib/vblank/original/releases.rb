@@ -4,7 +4,7 @@ require "digest"
 
 module VBlank
   module Original
-    # ONE FILE OF A RELEASE THAT IS SEVERAL FILES: its name as the original's disks spell it, its
+    # One file of a release that is several files: its name as the original's disks spell it, its
     # SHA-1 and its size in bytes.
     ReleaseFile = Data.define(:name, :sha1, :size)
 
@@ -16,11 +16,11 @@ module VBlank
     # refused, or nil.
     FolderMatch = Data.define(:release, :spelled, :refusal)
 
-    # ONE RELEASE OF THE ORIGINAL, as a decompilation's versions file lists it: its name, its SHA-1,
+    # One release of the original, as a decompilation's versions file lists it: its name, its SHA-1,
     # and if known its MD5, its size in bytes, and whether the game reads it. A release with an MD5
     # and no SHA-1 is one a person might have, and can be named, but is never read.
     #
-    # A RELEASE THAT IS SEVERAL FILES (a computer game's folder: Wolfenstein 3D's VSWAP.WL6,
+    # A release that is several files (a computer game's folder: Wolfenstein 3D's VSWAP.WL6,
     # GAMEMAPS.WL6 and the rest) lists them as +files+, each a ReleaseFile, and only those files are
     # read: whatever else is in the player's folder (a settings file the game rewrites, saves) is
     # left alone. The copy is those files joined one after another in the order listed, so an
@@ -78,7 +78,7 @@ module VBlank
       end
     end
 
-    # THE RELEASES A GAME KNOWS, AND THE WORDS FOR A COPY THAT IS NONE OF THEM. Game asks these of a
+    # The releases a game knows, and the words for a copy that is none of them. Game asks these of a
     # copy named on a build machine; a shell (Shell) asks the same of the file a player picks, so a
     # wrong copy is refused in the same words on both. Nothing here reads a file or raises: each
     # question is answered from a size or a digest, and a refusal is the sentence a person is shown, or nil.
@@ -114,7 +114,7 @@ module VBlank
       # Why a copy +named+ whose SHA-1 is +sha1+ is refused, or nil when it is a release the game
       # reads. +md5+, when known, names a release listed by its MD5 alone.
       #
-      # A COPY NO RELEASE HAS THE DIGEST OF is changed, damaged or cut short. Two things say more
+      # A copy no release has the digest of is changed, damaged or cut short. Two things say more
       # about it, where the caller has them. +size+, the copy's length: when it is no length a
       # release is listed with, the refusal says so (size_refusal refuses such a copy unread only
       # when every release has a size). And the block, asked only here, gives the name of the
@@ -145,7 +145,7 @@ module VBlank
         claimed_length_message(named, release, size)
       end
 
-      # A COPY THAT IS A FOLDER, for a game whose releases are several files. +names+ are the names
+      # A copy that is a folder, for a game whose releases are several files. +names+ are the names
       # of the files in the folder. The release the folder holds is the first one the game reads
       # whose every file is there, matched without regard to case; nil when none is.
       def release_in_folder(names) = readable.select(&:several_files?).find { |release| release.files.all? { |file| file_in(names, file.name) } }

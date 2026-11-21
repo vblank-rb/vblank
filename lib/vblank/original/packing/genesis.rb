@@ -3,7 +3,7 @@
 module VBlank
   module Original
     module Packing
-      # THE SEGA GENESIS'S PACKED FORMATS, which the copy of a Genesis original offers: the formats
+      # The Sega Genesis's packed formats, which the copy of a Genesis original offers: the formats
       # Sega's own games and many others keep their tiles and plane maps in, read as the 68000
       # routines retail games run read them (`NemDec` and `EniDec`), which are their
       # answer key. A block has no header of the BIOS's kind: Nemesis says its tile count, and
@@ -16,7 +16,7 @@ module VBlank
       # Format and the BlockKit alone, as a port writes a format of its own. Read as game code
       # (VBlank.require_game_file).
       module Genesis
-        # THE COPY AS A STREAM OF BITS, read a byte at a time from the variable :src as bits are
+        # The copy as a stream of bits, read a byte at a time from the variable :src as bits are
         # needed: at least +need+ (16 at most) not yet taken are kept at the bottom of the variable
         # :bits, and :have says how many. What is above them in :bits is never read, so it may slide
         # off the top.
@@ -175,7 +175,7 @@ module VBlank
         #   110  one cell spelt out, going down by one for each cell
         #   111  a cell spelt out for each cell; with a count of 15, the end of the map
         #
-        # NOT THE USUAL READING: the format's usual reading lets a spelt cell carry palette and
+        # Not the usual reading: the format's usual reading lets a spelt cell carry palette and
         # priority bits too, and this decompressor, as `EniDec` does, reads only the two
         # flips. A flip is OR'd into the base, and the cell's bits are added to that.
         #
