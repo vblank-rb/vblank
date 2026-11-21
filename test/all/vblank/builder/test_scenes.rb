@@ -255,6 +255,83 @@ class TestScenes < Minitest::Test
     assert_equal [1, 3], [ran[:ran_title], ran[:ran_play]]
   end
 
+  # A scene declared inside another scene's body is declared only as that body is built, after
+  # the Hash is made the dispatch. It is picked all the same.
+  def test_a_hash_picks_a_scene_declared_inside_another_scenes_body
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      ran_menu = 0
+      ran_options = 0
+      scene(:menu) do
+        ran_menu += 1
+        state = 1
+        scene(:options) { ran_options += 1 }
+      end
+      game_loop { call({ 0 => :menu, 1 => :options }, number: state) }
+    end
+    builder.finalize_program
+    ran = game_player.run(builder.program, frames: 4)
+
+    assert_equal [1, 3], [ran[:ran_menu], ran[:ran_options]]
+  end
+
+  def test_a_hash_naming_a_scene_never_declared_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      scene(:menu) { state = 1 }
+      game_loop { call({ 0 => :menu, 1 => :options }, number: state) }
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/scene :options is picked but never declared/, error.message)
+  end
+
+  # `number:` named by the variable's name gets the checks the variable itself gets.
+  def test_a_hash_of_scenes_picked_by_a_variable_of_names_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      var :mode, :title
+      scene(:title) {}
+      scene(:play) {}
+      game_loop { call({ 0 => :title, 1 => :play }, number: :mode) }
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/holds names/, error.message)
+  end
+
+  def test_a_hash_of_scenes_picked_by_a_name_that_is_no_variable_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      var :state, 0
+      scene(:title) {}
+      game_loop { call({ 0 => :title }, number: :stat) }
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/no variable :stat/, error.message)
+  end
+
+  # A `case` on a Symbol is plain Ruby, answered while the game is built: :state is not 0, so
+  # nothing is picked and no dispatch is made.
+  def test_a_plain_case_on_a_symbol_does_not_pick_a_scene
+    builder = Builder.new
+    builder.instance_eval do
+      var :state, 0
+      scene(:title) {}
+      game_loop do
+        case :state
+        when 0 then call :title
+        end
+      end
+    end
+    builder.finalize_program
+
+    refute_includes builder.program.walk.map(&:kind), :case
+  end
+
   def test_a_func_declared_after_a_hash_with_a_scenes_name_is_a_friendly_error
     builder = Builder.new
     builder.instance_eval do

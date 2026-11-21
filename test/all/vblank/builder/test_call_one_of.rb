@@ -260,7 +260,9 @@ class TestCallOneOf < Minitest::Test
   end
 
   # The table a Hash is laid out as has a slot for every number from its first key to its last.
-  def test_a_hash_whose_keys_are_far_apart_is_refused
+  # The table is laid out once every routine is declared, so the refusal names the line that
+  # wrote the Hash.
+  def test_a_hash_whose_keys_are_far_apart_is_refused_naming_its_line
     err = assert_raises(ArgumentError) do
       program_with do
         which = var :which, 0
@@ -269,6 +271,65 @@ class TestCallOneOf < Minitest::Test
     end
 
     assert_match(/0 to 5000/, err.message)
+    assert_match(/at .*test_call_one_of\.rb:\d+/, err.message)
+  end
+
+  # `number:` can be the variable's name, and a name that is no variable is refused rather than
+  # made a new variable.
+  def test_a_hash_picks_by_a_variable_named_in_number
+    program = program_with do
+      n = var :n, 0
+      var :picked, 2
+      b = self
+      b.func(:first) { n = 11 }
+      b.func(:third) { n = 33 }
+      game_loop { b.call({ 0 => :first, 2 => :third }, number: :picked) }
+    end
+
+    assert_equal 33, game_player.run(program)[:n]
+  end
+
+  def test_a_hash_number_naming_no_variable_is_refused
+    err = assert_raises(ArgumentError) do
+      program_with do
+        var :state, 0
+        func(:a) {}
+        func(:b) {}
+        game_loop { call({ 0 => :a, 1 => :b }, number: :stat) }
+      end
+    end
+
+    assert_match(/no variable :stat/, err.message)
+  end
+
+  def test_a_hash_number_naming_a_variable_with_a_fraction_is_refused
+    err = assert_raises(ArgumentError) do
+      program_with do
+        var :speed, 0.5
+        func(:a) {}
+        func(:b) {}
+        game_loop { call({ 0 => :a, 1 => :b }, number: :speed) }
+      end
+    end
+
+    assert_match(/holds a fraction/, err.message)
+  end
+
+  # A `call` taken back out of the program after it was recorded, as a test worked out twice
+  # by a game `while` is, is no longer there to be laid out.
+  def test_a_hash_call_taken_back_out_of_the_program_is_left_out
+    b = VBlank::Builder.new
+    b.instance_eval do
+      var :state, 0
+      func(:a) {}
+      func(:b) {}
+    end
+    mark = b.statement_mark
+    b.instance_eval { call({ 0 => :a, 1 => :b }, number: :state) }
+    b.take_statements_since(mark)
+    b.finalize_program
+
+    refute_includes b.program.walk.map(&:kind), :call_one_of
   end
 
   private

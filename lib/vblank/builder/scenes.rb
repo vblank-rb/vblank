@@ -221,9 +221,10 @@ module VBlank
         arms.all? { |values, name| values.all?(Integer) && declared_scene?(name) }
       end
 
-      # Can +subject+ pick a scene: a game variable that keeps a plain whole number, or its name.
+      # Can +subject+ pick a scene: a game variable's handle, the variable keeping a plain whole
+      # number. A variable's name is not one: the Hash form looks the handle up first
+      # (#scene_number_handle).
       def scene_subject?(subject)
-        return true if subject.is_a?(Symbol)
         return false unless subject.is_a?(DSL::Value) && subject.node.kind == :var_ref
 
         !(subject.truth || subject.fraction? || subject.boolean? || subject.names)
@@ -355,21 +356,25 @@ module VBlank
         fixed = DSL::Value.fixed_number(number)
         return record(Build.call(routines.fetch(fixed))) if fixed
 
-        ensure_var(number)
+        ensure_var(number) unless number.is_a?(Symbol) # a name is looked up at finalize, once every variable is declared
         dispatch = HashDispatch.new(node: Build.call_one_of(routines.values, which: DSL::Value.node_for(number)),
-                                    routines: routines.dup.freeze, scene_number: scene_subject?(number),
+                                    routines: routines.dup.freeze, number: number,
                                     source: Messages::AuthorSource.author_source)
         record(dispatch.node)
-        return resolve_hash_dispatch!(dispatch) if @hash_dispatches_resolved || routines.values.all? { |name| declared_scene?(name) }
+        all_scenes = !number.is_a?(Symbol) && routines.values.all? { |name| declared_scene?(name) }
+        return resolve_hash_dispatch!(dispatch) if @hash_dispatches_resolved || all_scenes
 
         (@hash_dispatches ||= []) << dispatch
         nil
       end
 
       # A Hash given to `call` with a number the game works out, recorded as a placeholder
-      # +node+ until it is known whether its names are scenes. +scene_number+ is whether the
-      # number can pick a scene (#scene_subject?), and +source+ the line that wrote it.
-      HashDispatch = Data.define(:node, :routines, :scene_number, :source)
+      # +node+ until it is known whether its names are scenes. +number+ is what `number:` was
+      # given, a handle or a variable's name, and +source+ the line that wrote it.
+      HashDispatch = Data.define(:node, :routines, :number, :source) do
+        # " at file.rb:12", or nothing where the line is not known, for a message.
+        def where = source ? " at #{source}" : ""
+      end
 
       #--
       # Every routine the game declared outside a routine's body is declared by now, so each
@@ -383,13 +388,18 @@ module VBlank
         @hash_dispatches = []
       end
 
+      # A placeholder taken back out of the tree after it was recorded (a test worked out again
+      # by a game `while`, its first working out dropped) is left alone.
       def resolve_hash_dispatch!(dispatch)
-        routines = dispatch.routines
-        scenes = routines.values.select { |name| declared_scene?(name) }
+        return nil unless dispatch.node.parent&.children&.any? { |child| child.equal?(dispatch.node) }
+
+        names = dispatch.routines.values
+        scenes = names.select { |name| declared_scene?(name) }
+        handle = hash_number_handle(dispatch)
         replacement = if scenes.empty?
-                        hash_table_call(routines, dispatch.node.which)
+                        hash_table_call(dispatch, handle)
                       else
-                        hash_scene_case(dispatch, scenes)
+                        hash_scene_case(dispatch, handle, names.select { |name| @functions.key?(name) })
                       end
         swap_node(dispatch.node, replacement)
         nil
@@ -398,33 +408,89 @@ module VBlank
       # A scene declared with no func of its name.
       def declared_scene?(name) = @functions.key?(:"_scene_#{name}") && !@functions.key?(name)
 
-      # The case node for a Hash whose names are +scenes+. It needs what a plain `case` does
-      # (#scene_case?): every name a scene, the number a game variable.
-      def hash_scene_case(dispatch, scenes)
-        others = dispatch.routines.values - scenes
-        unless others.empty?
-          where = dispatch.source ? " at #{dispatch.source}" : ""
-          raise ArgumentError, "The Hash given to `call`#{where} names scenes and other routines together. " \
-                               ":#{others.first} is not a scene. A Hash picks scenes only, or other routines " \
-                               "only. To fix this, give the scenes a Hash of their own."
+      # The handle of the variable `number:` named, where it was given a name: the same handle
+      # `number: state` gives, so the same checks apply.
+      def hash_number_handle(dispatch)
+        number = dispatch.number
+        return number unless number.is_a?(Symbol)
+
+        unless @variables.include?(number)
+          raise ArgumentError, "The Hash given to `call`#{dispatch.where} has `number: :#{number}`, and the game has " \
+                               "no variable :#{number}. To fix this, give the name of a game variable, or the " \
+                               "variable itself, like `number: state`."
         end
-        unless dispatch.scene_number
-          raise ArgumentError, "The Hash given to `call` picks scenes, so `number:` must be a game variable, " \
-                               "like `number: state`. A working-out, a written number and a pool's field cannot " \
-                               "pick a scene. To fix this, keep the number in a game variable and give that."
-        end
-        clauses = dispatch.routines.to_a
-        refuse_scene_picked_twice!(clauses, ScenePicker::HASH)
-        scene_case_node(dispatch.node.which.name, clauses, ScenePicker::HASH, dispatch.source)
+        value_handle_for(number)
       end
 
-      # The call by number for a Hash of routines that are not scenes, picking by +which+.
-      def hash_table_call(routines, which)
-        refuse_hash_spread_out!(routines)
+      # The case node for a Hash that names a scene. Every other name must be a scene too, or
+      # one not declared yet, as a scene declared inside another scene's body is not: it is
+      # declared as that body is built, after this. A name that never comes to be a scene is
+      # refused when the targets are checked (#check_target_defined!). +funcs+ are the names
+      # that are funcs.
+      def hash_scene_case(dispatch, handle, funcs)
+        unless funcs.empty?
+          raise ArgumentError, "The Hash given to `call`#{dispatch.where} names scenes and other routines together. " \
+                               ":#{funcs.first} is a func. A Hash picks scenes only, or other routines only. To " \
+                               "fix this, give the scenes a Hash of their own."
+        end
+        refuse_scene_number!(dispatch, handle)
+        clauses = dispatch.routines.to_a
+        refuse_scene_picked_twice!(clauses, ScenePicker::HASH)
+        scene_case_node(handle.node.name, clauses, ScenePicker::HASH, dispatch.source)
+      end
+
+      # The number that picks a scene is read by everything that asks which scene is up, so it
+      # must be a game variable keeping a plain whole number (#scene_subject?).
+      def refuse_scene_number!(dispatch, handle)
+        if handle.is_a?(DSL::Value) && handle.names
+          raise ArgumentError, "The Hash given to `call`#{dispatch.where} picks scenes by a variable that holds names, " \
+                               "not numbers. To fix this, write `call` with that variable alone, which runs the " \
+                               "scene it names."
+        end
+        refuse_hash_number_fraction!(dispatch, handle)
+        return if scene_subject?(handle)
+
+        raise ArgumentError, "The Hash given to `call`#{dispatch.where} picks scenes, so `number:` must be a game " \
+                             "variable, like `number: state`. A working-out, a written number and a pool's field " \
+                             "cannot pick a scene. To fix this, keep the number in a game variable and give that."
+      end
+
+      def refuse_hash_number_fraction!(dispatch, handle)
+        return unless DSL::Fraction.bits_of(handle)
+
+        raise ArgumentError, "The Hash given to `call`#{dispatch.where} picks a routine by a whole number, and the " \
+                             "number given to `number:` holds a fraction. To fix this, use `.to_i` to drop the fraction."
+      end
+
+      # The call by number for a Hash of routines that are not scenes, picking by +handle+.
+      def hash_table_call(dispatch, handle)
+        routines = dispatch.routines
+        refuse_hash_number_fraction!(dispatch, handle)
+        refuse_hash_spread_out!(dispatch)
         first = hash_table_start(routines)
         names = (first..routines.keys.max).map { |key| routines.fetch(key) { call_nothing_routine } }
+        which = DSL::Value.node_for(handle)
         which = Build.binop(:-, which, first) unless first.zero?
-        Build.call_one_of(names, which: which)
+        node = Build.call_one_of(names, which: which)
+        (@hash_table_sources ||= {}.compare_by_identity)[node] = dispatch
+        node
+      end
+
+      #--
+      # A Hash none of whose names was a scene when it was made a call by number (#resolve_hash_dispatch!)
+      # cannot pick a scene declared later, inside a routine's body, so it is refused here, once
+      # every routine is declared.
+      #++
+      def refuse_scene_declared_after_hash!
+        (@hash_table_sources || {}).each_value do |dispatch|
+          name = dispatch.routines.values.find { |each| declared_scene?(each) }
+          next unless name
+
+          raise ArgumentError, "The Hash given to `call`#{dispatch.where} names :#{name}, and :#{name} is a scene " \
+                               "declared inside a routine's body. The Hash names no scene declared outside every " \
+                               "routine, so it was made a call of routines before :#{name} was declared. To fix " \
+                               "this, declare one of the Hash's scenes outside every routine."
+        end
       end
 
       def refuse_bad_routine_hash!(routines, number)
@@ -457,12 +523,12 @@ module VBlank
         first.negative? || last >= MOST_HASH_SLOTS ? first : 0
       end
 
-      def refuse_hash_spread_out!(routines)
-        first, last = routines.keys.minmax
+      def refuse_hash_spread_out!(dispatch)
+        first, last = dispatch.routines.keys.minmax
         return if last - first < MOST_HASH_SLOTS
 
         raise ArgumentError,
-              "The Hash given to `call` has keys from #{first} to #{last}. It is kept as a table with a slot " \
+              "The Hash given to `call`#{dispatch.where} has keys from #{first} to #{last}. It is kept as a table with a slot " \
               "for each number between, and #{MOST_HASH_SLOTS} is the most. To fix this, number the routines " \
               "closer together."
       end
@@ -551,6 +617,12 @@ module VBlank
         return if @functions.key?(name)
         raise ArgumentError, scene_called_by_name_message(name) if @functions.key?(:"_scene_#{name}")
 
+        scene = name.to_s.delete_prefix("_scene_")
+        if scene != name.to_s
+          raise ArgumentError,
+                "The scene :#{scene} is picked but never declared. To fix this, declare it with " \
+                "`scene :#{scene} do ... end`. Or correct the name where it is picked."
+        end
         raise ArgumentError,
               "The function :#{name} is called but never defined. To fix this, define it with " \
               "`func :#{name} do ... end`. Or correct the name in the call."
