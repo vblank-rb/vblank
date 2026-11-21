@@ -158,7 +158,7 @@ class TestFilmTasks < Minitest::Test
     assert_match(/parts 1\.\.90/, error.message)
   end
 
-  # Sound. A film file's `sound` hears that side alone: the other side's tone is not in the film.
+  # SOUND. A film file's `sound` hears that side alone: the other side's tone is not in the film.
   def test_a_film_files_sound_hears_the_side_it_names
     film_file("heard", "parts 1..30\nsound \"ours\"\n")
     rakefile = tasks(sides: { "ours" => -> { beeping(beep_on: 6) }, "theirs" => -> { beeping(beep_on: 20) } })

@@ -12,7 +12,7 @@ class TestSaveListMoves < Minitest::Test
   Moves = VBlank::IR::SaveListMoves
   AT = 0x200
 
-  # A list of +width+ holding +items+, stored at at, emptied, given two other items, and loaded
+  # A list of +width+ holding +items+, stored at AT, emptied, given two other items, and loaded
   # back +count+ long. The steps are run as they are, or written out as their loops.
   private def stored_and_loaded(width, items, count:, as_loops:)
     store = save_store_list(:kept, at: AT, width: width, index: :at_item)

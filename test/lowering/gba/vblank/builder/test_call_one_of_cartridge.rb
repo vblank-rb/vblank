@@ -146,7 +146,7 @@ class TestCallOneOfCartridge < Minitest::Test
                     "a second call picking from the same list grew the code by a whole table"
   end
 
-  # +sites+ separate calls, all picking from one list of many routines.
+  # +sites+ separate calls, all picking from one list of MANY routines.
   private def picking_program(sites)
     names = (0...MANY).map { |i| :"op#{i}" }
     program_with do
@@ -159,7 +159,7 @@ class TestCallOneOfCartridge < Minitest::Test
     end
   end
 
-  # A game that dispatches dispatches times a frame, picking from +count+ routines by a number
+  # A game that dispatches DISPATCHES times a frame, picking from +count+ routines by a number
   # read out of a table — so the number is worked out as it runs, as a script's would be.
   private def dispatch_rom(count, code:, dispatches: DISPATCHES)
     names = (0...count).map { |i| :"op#{i}" }

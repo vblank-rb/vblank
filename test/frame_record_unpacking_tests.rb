@@ -55,7 +55,7 @@ module FrameRecordUnpackingTests
   SIZE = [64, 64].freeze
 
   # Must be InRactors.share_constants, not Ractor.make_shareable alone: tests in several Ractors
-  # write copy to a file at once (InRactors.shareable says what that does to a plain frozen String).
+  # write COPY to a file at once (InRactors.shareable says what that does to a plain frozen String).
   VBlank::Testing::InRactors.share_constants(self)
 
   private def frames_original(folder)
