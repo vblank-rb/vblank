@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE MAIN VOLUME OF ALL THE GAME'S SOUND (`enable_sound main_volume:`), played by each console whose
+# The main volume of all the game's sound (`enable_sound main_volume:`), played by each console whose
 # build writes it to its sound chip: the Advance, the Color, the Super Nintendo and the PlayStation.
 # The Genesis's chips have none, so its build refuses such a game (test/all/vblank/console/test_questions.rb).
 #

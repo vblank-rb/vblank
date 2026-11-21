@@ -4,7 +4,7 @@ require "digest"
 require "tmpdir"
 require "pack_background_tests"
 
-# MADE-UP ORIGINALS OF PLATFORMS WHOSE LAYOUT VBLANK DOES NOT READ: a PlayStation original, a computer
+# Made-up originals of platforms whose layout VBLANK does not read: a PlayStation original, a computer
 # original and one that names a platform VBlank does not list (an arcade board). A slot of such an
 # original is in VBlank's own layout (Console::VBLANK_FORMATS): colours of fifteen bits, low byte
 # first; tiles a byte a pixel, each a place in its bank; numbers low byte first. So the port's
@@ -17,7 +17,7 @@ require "pack_background_tests"
 # the left in the high half; a map of two bytes a cell, the tile and then its bank in bit 0,
 # mirrored in bit 1 and upside down in bit 2; numbers of two bytes high byte first, and of one byte.
 #
-# THE ANSWER KEY is the same screen drawn by the game itself (#vblank_layout_drawn_by_hand): the
+# The answer key is the same screen drawn by the game itself (#vblank_layout_drawn_by_hand): the
 # colours, tiles, cells and numbers here, never read back through VBlank's readers.
 module MadeUpVBlankLayoutOriginals
   include PackBackgroundGames
@@ -115,7 +115,7 @@ module MadeUpVBlankLayoutOriginals
     [b.program, b.made_data_pack_file]
   end
 
-  # THE ANSWER KEY: the same screen, its colours, tiles, cells and numbers written in the game.
+  # The answer key: the same screen, its colours, tiles, cells and numbers written in the game.
   private def vblank_layout_drawn_by_hand
     b = VBlank::Builder.new
     b.instance_eval do

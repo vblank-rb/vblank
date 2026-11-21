@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# MORE PLAYERS THAN A CONSOLE SEATS: four people at one game, each moving a marker of their own,
+# More players than a console seats: four people at one game, each moving a marker of their own,
 # and a crowd of sixteen, the most any build reads (IR::Buttons::MOST_PLAYERS). `:any` is every
 # connected player, and the game asks how many are connected.
 #
