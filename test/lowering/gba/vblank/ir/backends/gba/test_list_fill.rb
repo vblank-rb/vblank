@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RUN OF LIST ITEMS SET TO ONE VALUE (list_fill) on the console, against the interpreter.
+# A run of list items set to one value (list_fill) on the console, against the interpreter.
 # The console writes the run a word at a time with a byte at each ragged end, so what is worth
 # checking is every item around both ends, for each width an item can be: a run that starts
 # part way into a word and stops part way into another is where a lead or a tail goes wrong.
@@ -11,7 +11,7 @@ class TestListFill < Minitest::Test
 
   ITEMS = 13
 
-  # A list of ITEMS items of +width+, all 1, with +fill+ (keywords of list_fill) applied, and
+  # A list of items items of +width+, all 1, with +fill+ (keywords of list_fill) applied, and
   # every item read into a variable :item0, :item1, ... so both backends can be asked.
   private def filled(width, **fill)
     program(

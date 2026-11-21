@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A LIGHT COSTS THE CONSOLE ON A FRAME IT SHOWS NOTHING. A light is a window whose edges are
+# What a light costs the console on a frame it shows nothing. A light is a window whose edges are
 # worked out row by row in the gap between frames, and that is real work — so it is done only on
 # a frame where the light shows something and has moved since it was last worked out. A light
 # switched off in a scene that sees through a layer, one that darkens nothing, and one that stands
@@ -75,7 +75,7 @@ class TestLightCost < Minitest::Test
     assert_operator light_cost(light: shown), :<, CHEAP
   end
 
-  # A LIGHT SHOWN NOW FROM A ROUTINE KEPT IN THE CARTRIDGE costs the frame what the gap's working
+  # A light shown now from a routine kept in the cartridge costs the frame what the gap's working
   # out does: the rows are one routine, kept where the frame's own work is, so the one frame a game
   # shows a light at once is not the frame that runs late. Measured as time and not instructions,
   # since the cartridge runs the same instructions slower.

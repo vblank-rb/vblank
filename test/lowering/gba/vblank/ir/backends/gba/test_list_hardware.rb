@@ -3,7 +3,7 @@
 require "test_helper"
 
 # The list feature on real hardware: lower a list program to a ROM, run it in
-# the emulator, and read the pixels it draws. Each drawing test runs the SAME program on
+# the emulator, and read the pixels it draws. Each drawing test runs the same program on
 # the reference interpreter (the oracle) and on the console and asserts identical
 # pixels — the cross-backend agreement the list lowering has to hold. The list's
 # contents are made visible by drawing a marker at each stored x, so the ring
@@ -23,7 +23,7 @@ class TestListHardware < Minitest::Test
            draw_rect_at(list_get(name, var_ref(:i)), ROW, 4, 4, :green))
   end
 
-  # Run +prog+ on both backends and assert every [x, colour] holds at row ROW on
+  # Run +prog+ on both backends and assert every [x, colour] holds at row row on
   # each. A nil colour means "background here" (black) — nothing drawn.
   private def assert_same_markers(prog, expectations)
     screen = Reference.new.run(prog).screen
@@ -117,9 +117,9 @@ class TestListHardware < Minitest::Test
                          [10, nil], [50, nil]])
   end
 
-  # A LIST THAT IS NEVER SHIFTED IS A PLAIN ROW OF SLOTS, not a ring, and it is allocated at
+  # A list that is never shifted is a plain row of slots, not a ring, and it is allocated at
   # exactly the size it asked for — no rounding up to a power of two. Its head can never move,
-  # so the index IS the slot. This is the shape nearly every list in a real game has (a pool's
+  # so the index is the slot. This is the shape nearly every list in a real game has (a pool's
   # fields, a board), and the one that used to pay for slots it could never fill.
   #
   # A capacity of five is the point: five is not a power of two, so under the old rule this
@@ -142,7 +142,7 @@ class TestListHardware < Minitest::Test
                          [50, nil], [110, nil]])
   end
 
-  # ...AND A BAD INDEX STAYS INSIDE IT. There is no mask to confine one on a plain row, so the
+  # ...AND a bad index stays inside it. There is no mask to confine one on a plain row, so the
   # index is held against the list's own size instead and lands on slot nought. What must never
   # happen is that it reaches the variable next door.
   #
@@ -172,7 +172,7 @@ class TestListHardware < Minitest::Test
     assert v.pixel_is?(70, ROW, :red), "and the variable next to the list is untouched"
   end
 
-  # A SLOT NARROWER THAN A WHOLE NUMBER, on the console. The lowering changes for these: the
+  # A slot narrower than a whole number, on the console. The lowering changes for these: the
   # address is scaled by the element size rather than always by four, and the load and store
   # are the byte-sized instructions. So the same markers landing in the same places is the
   # check that all three moved together.
@@ -193,7 +193,7 @@ class TestListHardware < Minitest::Test
                          [60, nil], [180, nil]])
   end
 
-  # ...AND A NUMBER TOO BIG FOR ONE IS CUT DOWN THE SAME WAY ON BOTH. The console's byte store
+  # ...AND a number too big for one is cut down the same way on both. The console's byte store
   # keeps the low eight bits and there is nothing else it could do; what makes that safe rather
   # than a trap is that the interpreter drops exactly the same bits, so a game tested against
   # the oracle behaves the same on the cartridge. 300 is 256 and 44, and the 256 does not fit.
@@ -209,7 +209,7 @@ class TestListHardware < Minitest::Test
     assert_same_markers(prog, [[44, :green], [300 % 240, nil], [20, nil]])
   end
 
-  # A SIGNED narrow slot reads back below nothing, which is what a -1 meaning "none" needs.
+  # A signed narrow slot reads back below nothing, which is what a -1 meaning "none" needs.
   # Read by drawing at 100 plus what came out, so a slot that lost the sign draws at 355 —
   # off the screen — and one that kept it draws at 99.
   def test_a_signed_byte_slot_reads_a_negative_back_on_both_backends
@@ -253,7 +253,7 @@ class TestListHardware < Minitest::Test
     assert v.pixel_is?(210, ROW, :black), "the overflowing fourth push is dropped"
   end
 
-  # TWO LISTS AND A VARIABLE IN ONE EXPRESSION, which is what a pool walk is made of and
+  # Two lists and a variable in one expression, which is what a pool walk is made of and
   # what settles whether a collection's base can be left in a register between touches. A
   # base left there that should have been named again does not fail — it reads the wrong
   # list, or the right list at the wrong distance along — so each marker lands somewhere

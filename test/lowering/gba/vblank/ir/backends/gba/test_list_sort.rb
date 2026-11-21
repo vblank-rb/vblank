@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST OF PLACES PUT IN ORDER BY THE NUMBERS ANOTHER LIST HOLDS (list_sort) on the console,
+# A list of places put in order by the numbers another list holds (list_sort) on the console,
 # against the interpreter. The console walks the list by address, a slot's width a step, and finds
 # each place's number by shifting it by the other list's width, so what is worth checking is every
 # width either list can be, numbers below nothing, level numbers (whose order must not change),
