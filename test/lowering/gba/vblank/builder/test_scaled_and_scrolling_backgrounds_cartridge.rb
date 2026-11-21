@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_scaled_and_scrolling_backgrounds"
 
-# A background that turns or resizes, BESIDE ordinary scrolling ones, on the Advance's own
+# A background that turns or resizes, beside ordinary scrolling ones, on the Advance's own
 # cartridge: the three layers its console shows, and the arrangement its display register is put
 # in, read in the emulator. What the build says about such backgrounds is in
 # test/all/vblank/builder/test_scaled_and_scrolling_backgrounds.rb, which keeps the pieces both
@@ -11,7 +11,7 @@ require "all/vblank/builder/test_scaled_and_scrolling_backgrounds"
 class TestScaledAndScrollingBackgroundsCartridge < Minitest::Test
   include ScaledAndScrollingBackgroundsGames
 
-  # THE ARRANGEMENT ITSELF: two ordinary scrolling layers and one that resizes, all on
+  # The arrangement itself: two ordinary scrolling layers and one that resizes, all on
   # one screen, all three showing. Built at the size it was drawn (1.0) so the picture
   # reads exactly as authored and each layer is judged by one pixel.
   private def three_layer_program(scale: 1.0)

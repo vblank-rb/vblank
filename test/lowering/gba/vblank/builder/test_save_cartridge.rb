@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_save"
 
-# `save_var` ON THE ADVANCE'S CARTRIDGE: the game writes real SRAM, read straight back in the
+# `save_var` on the Advance's cartridge: the game writes real SRAM, read straight back in the
 # emulator, and the cartridge carries the signature that says it saves. The round-trip played on
 # every run is in test/all/vblank/builder/test_save.rb.
 class TestSaveCartridge < Minitest::Test

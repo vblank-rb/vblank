@@ -4,9 +4,9 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHAT ASKING FOR A SAVE COSTS THE FRAME IT IS ASKED ON, measured in the emulator. Asking copies
-# what the record keeps into a buffer of the record's own there and then (Builder::SaveJobs, "THE
-# SAVE HOLDS THE MOMENT IT WAS ASKED FOR"), and the buffer is written over the passes after. A list
+# What asking for a save costs the frame it is asked on, measured in the emulator. Asking copies
+# what the record keeps into a buffer of the record's own there and then (Builder::SaveJobs, "the
+# save holds the moment it was asked for"), and the buffer is written over the passes after. A list
 # of 128 words is 512 bytes of that copy. Its items go in as one step (IR list_pack), which the
 # Advance moves with its copy engine a word at a time (GBA::Lists#emit_list_pack): a read of quick
 # memory and a write of the roomy memory a word, about seven cycles (GBATEK, "Memory Timings": a

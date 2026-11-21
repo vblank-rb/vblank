@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A `save_var` ON 64K OR 128K OF SAVE MEMORY, on the Advance's cartridge: the record the
+# A `save_var` ON 64K OR 128K of save memory, on the Advance's cartridge: the record the
 # save_vars are kept in, written to the cartridge's flash chip in the emulator and read back
 # after the power goes off. The refusal a build makes is in
 # test/all/vblank/builder/test_save_var_record.rb, and the game played with its save memory on
