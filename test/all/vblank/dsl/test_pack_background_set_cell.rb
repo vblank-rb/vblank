@@ -39,7 +39,7 @@ module PackBackgroundSetCellGames
   GENESIS_CELL = ->(tile, bank: 0, mirrored: false, upside_down: false) do
     tile | (mirrored ? 1 << 11 : 0) | (upside_down ? 1 << 12 : 0) | (bank << 13) | (1 << 15)
   end
-  # The Genesis keeps its colours in nine bits, high byte first; banks are levels it shows exactly.
+  # The Genesis keeps its colours in nine bits, high byte first; BANKS are levels it shows exactly.
   GENESIS_COLORS = lambda do |levels|
     levels.map { |red, green, blue| (red << 1) | (green << 5) | (blue << 9) }.pack("n*")
   end

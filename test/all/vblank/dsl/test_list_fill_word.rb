@@ -7,7 +7,7 @@ require "test_helper"
 module ListFillWordGames
   SIZE = 3328
 
-  # A byte list of size items, all 0, filled each pass as +fill+ says, with a few items read
+  # A byte list of SIZE items, all 0, filled each pass as +fill+ says, with a few items read
   # into variables so both backends can be read the same way.
   private def filling(&fill)
     proc do

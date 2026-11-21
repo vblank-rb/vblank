@@ -60,7 +60,7 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_equal Color.resolve(:white), i.screen.pixel(45, 41)
   end
 
-  # A list whose places repeat a colour, as a logo's list does while every place is still black before
+  # A list whose places repeat a COLOUR, as a logo's list does while every place is still black before
   # it fades in. Each place is a place of its own: a pixel drawn at the second green stays green, and
   # a background of other colours beside the sprite never takes that place over.
   def test_a_list_that_repeats_a_color_keeps_each_place_beside_a_background
