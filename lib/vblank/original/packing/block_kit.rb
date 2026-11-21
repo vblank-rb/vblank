@@ -3,7 +3,7 @@
 module VBlank
   module Original
     module Packing
-      # WHAT A FORMAT'S ROUTINE WRITES WITH, the same for every format, the library's and a port's:
+      # What a format's routine writes with, the same for every format, the library's and a port's:
       # the copy read with its fault past the end, the slot written with its fault past the end,
       # variables of the routine's own, and the bytes written counted toward the progress bar, with
       # a wait for the next frame every PROGRESS_BYTES so a shell can show how far it has got.
@@ -31,7 +31,7 @@ module VBlank
       # the build stops on (the first byte that does not fit, whether +expect_size+ or +write+ finds
       # it), and it finishes the block. This file is read as game code.
       #
-      # A ROUTINE'S COUNTERS ARE ITS LOCALS. A format's file is game code (VBlank.require_game_file),
+      # A routine's counters are its locals. A format's file is game code (VBlank.require_game_file),
       # so its routine is a method of a game file, and `block.repeat` is the game verb `repeat`
       # (DSL::PlainRuby::LocalNames::GAME_VERBS). The rewrite that reads every game file therefore
       # makes a local the routine changes inside a `block.repeat` into a variable of the unpacking,
@@ -135,7 +135,7 @@ module VBlank
         end
       end
 
-      # THE WORKINGS BEHIND A BlockKit, which only CopyReader holds: the variables a block is handed,
+      # The workings behind a BlockKit, which only CopyReader holds: the variables a block is handed,
       # the start and end of its routine, the progress count and the waits. A format never sees this.
       class BlockKitInternals
         # How many bytes a block writes between one wait for the next frame and the next.
@@ -171,7 +171,7 @@ module VBlank
           @format_building = nil
         end
 
-        # A WORKING LIST DECLARED AT A SHAPE ANOTHER DECLARATION OF ITS NAME DID NOT GIVE. Formats
+        # A working list declared at a shape another declaration of its name did not give. Formats
         # share a list of one name, and the build makes the list once, at the first declaration's
         # capacity and width, so a block of a format that declared it bigger would run off its end,
         # or would pass only while a format that declared it smaller runs second.
@@ -267,7 +267,7 @@ module VBlank
           end
         end
 
-        # WHAT A BLOCK MAY READ: from the copy's first byte to its end, or, for a block given its
+        # What a block may read: from the copy's first byte to its end, or, for a block given its
         # place in one file of a copy that is several (+file+, a FileReader), from that file's first
         # byte to its end. So a block read at a place worked out as it runs cannot read on into the
         # next file. The block's routine checks each read against the two ends (#outside_block_reads),

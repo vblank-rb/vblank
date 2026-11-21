@@ -3,7 +3,7 @@
 module VBlank
   module Original
     module Packing
-      # A PACKED FORMAT AN UNPACKING ROUTINE CAN READ: a module that extends this, names the
+      # A packed format an unpacking routine can read: a module that extends this, names the
       # format, and writes its routine with a BlockKit. The library's own formats
       # (Packing::GBA, Packing::Genesis) are written this way and no other, so a port writes a
       # format the library lacks the same way, and names it in `data_pack formats: [...]`:

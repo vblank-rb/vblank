@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE PACKED FORMATS AN UNPACKING ROUTINE CAN READ. A format is a module (Packing::Format, written
+# The packed formats an unpacking routine can read. A format is a module (Packing::Format, written
 # with a Packing::BlockKit), and the copy a port's routine is handed offers the formats of the
 # platform its original is for (Original::Game#platform), plus any the port names in
 # `data_pack formats: [...]`. Each file is game code, so each comes in the way a part of a game does.
