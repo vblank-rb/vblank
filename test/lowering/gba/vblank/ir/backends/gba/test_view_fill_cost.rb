@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT FILLING A BIG MAP'S WHOLE VIEW COSTS, on the console. A background whose map is bigger than
+# What filling a big map's whole view costs, on the console. A background whose map is bigger than
 # the console's grid has the cells around its view written into the grid as a scene puts it up, and
 # again whenever the view jumps (see GBA::MapStreaming). That fill is 21 rows of 31 cells, and it
 # runs in the gap between pictures with the layers off, so the lines it takes are lines the scene

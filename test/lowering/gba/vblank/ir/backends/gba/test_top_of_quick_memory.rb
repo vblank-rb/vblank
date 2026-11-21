@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT THE BUILD HOLDS BACK AT THE TOP OF THE QUICK MEMORY: the console's own 256 bytes, the
+# What the build holds back at the top of the quick memory: the console's own 256 bytes, the
 # game's stack, and the divide routines when the game divides — and nothing else, since all of
 # it is room the game's own variables, lists and code cannot have.
 class TestTopOfQuickMemory < Minitest::Test
@@ -39,7 +39,7 @@ class TestTopOfQuickMemory < Minitest::Test
 
   # --- through a real build ---
 
-  # A GAME THAT NEVER DIVIDES GETS THE REST OF THE 32K: the console's 256 bytes and the stack are
+  # A game that never divides gets the rest of the 32K: the console's 256 bytes and the stack are
   # all that is held back, where the whole top 4K used to be.
   def test_a_game_that_never_divides_has_all_but_the_stack_and_the_consoles_room
     rom = VBlank.build("ROOMY", console: :gba, out: StringIO.new, err: StringIO.new) do
@@ -61,7 +61,7 @@ class TestTopOfQuickMemory < Minitest::Test
     assert_equal HW::IWRAM_SIZE - 256 - 2048, placement.used_bytes + placement.free_bytes
   end
 
-  # A CHAIN OF CALLS DEEPER THAN THE ROOM HOLDS GETS MORE, worked out from the program, so a game
+  # A chain of calls deeper than the room holds gets more, worked out from the program, so a game
   # that nests deeply never runs its stack into its own variables.
   def test_a_deep_chain_of_calls_gets_more_stack_room_than_the_usual
     shallow = Top.for(chain(3))
@@ -95,7 +95,7 @@ class TestTopOfQuickMemory < Minitest::Test
 
   # --- what a timer's handler calls ---
 
-  # A TIMER'S HANDLER RUNS ON THE CONSOLE'S OWN INTERRUPT STACK, which ends where the game's stack
+  # A timer's handler runs on the console's own interrupt stack, which ends where the game's stack
   # begins (see TopOfQuickMemory). A plain call costs four bytes there.
   PLAIN_CALL_BYTES = 4
   TICK_DEPTH = 40

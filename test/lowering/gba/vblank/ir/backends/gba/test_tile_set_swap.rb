@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A SECOND SET OF TILES COSTS THE GAME LOOP, and where the work went instead.
+# What a second set of tiles costs the game loop, and where the work went instead.
 #
 # A background that walks between areas brings an area's tiles in as it arrives: the tiles,
 # the colours they are drawn in, the map, and for a big map the cells around the view, all
@@ -12,7 +12,7 @@ require "stringio"
 # kept in the console's quick memory, so what the loop holds of this should be the question
 # "is the set changing?" and a call — not the work itself, once for every background.
 #
-# What the two backends DRAW as an area arrives is in test/all/vblank/builder/test_big_maps.rb.
+# What the two backends draw as an area arrives is in test/all/vblank/builder/test_big_maps.rb.
 class TestTileSetSwap < Minitest::Test
   FRAME_ROUTINE = VBlank::Cartridge::BuildRecord::FRAME_ROUTINE
 
