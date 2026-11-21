@@ -3,14 +3,14 @@
 require "test_helper"
 require "tmpdir"
 
-# A record of this test's own, whose defaults the test sets and changes.
+# A record of this test's own, whose DEFAULTS the test sets and changes.
 PackCacheDefaultsKnob = Data.define(:turn)
 
 # A kept pack is keyed on what its program means, not only on how it is written. The key holds the
 # unpacking program as IR::Dump writes it, and the dump leaves out a record's fields still at their
-# class's DEFAULTS. So a change to defaults can change what a program means and leave its dump as it
+# class's DEFAULTS. So a change to DEFAULTS can change what a program means and leave its dump as it
 # was: a song part built when the default volume was 12 and one built when it is 13 both dump
-# without a volume. The key holds the defaults of every record class the program uses as well.
+# without a volume. The key holds the DEFAULTS of every record class the program uses as well.
 class TestPackCacheDefaults < Minitest::Test
   # It sets and removes a constant of a class every Ractor shares.
   runs_on_the_main_ractor!

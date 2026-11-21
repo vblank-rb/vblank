@@ -20,7 +20,7 @@ class TestBuildWatch < Minitest::Test
 
   # Says each of its lines as the helper says them, +gap+ seconds apart, then works on for
   # +wait_seconds+, holding its end of the pipe open, and ends with +exit_status+. With +deaf+ it
-  # does not end when asked (term). A gap only lets the window draw between two lines: a window
+  # does not end when asked (TERM). A gap only lets the window draw between two lines: a window
   # that draws sooner passes the same.
   HELPER = <<~RUBY
     lines, wait_seconds, exit_status, deaf, gap = Marshal.load(ARGV[0].unpack1("m0"))

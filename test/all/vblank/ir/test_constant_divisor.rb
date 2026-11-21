@@ -83,7 +83,7 @@ class TestConstantDivisor < Minitest::Test
   private
 
   # Each answer to `v op d` the game got wrong, said for a person: the game takes the next numerator
-  # each pass and works out the sum for every one of divisors.
+  # each pass and works out the sum for every one of DIVISORS.
   def wrong_answers(op)
     names = DIVISORS.each_index.map { |k| :"answer#{k}" }
     game = program(
