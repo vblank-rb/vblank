@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_background_areas"
 
-# WHAT DRAWING A BACKGROUND READ AS THE GAME STARTS COSTS THE RUBY RUNTIME A PASS. Such a background
+# What drawing a background read as the game starts costs the Ruby runtime a pass. Such a background
 # keeps each tile of its slot once, as places, and each cell names its tile's bank and turn, applied
 # as the cell is drawn (rg_tiled.rb). That is one more read a pixel than a tile kept in its colours,
 # and nothing else: the row is still drawn a tile's row at a time, never through the routine that
