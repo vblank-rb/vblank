@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/audio/test_song_console_voices"
 
-# A SONG PART ON THE WAVE VOICE AND ON THE NOISE VOICE, on the Advance's own cartridge: what the
+# A song part on the wave voice and on the noise voice, on the Advance's own cartridge: what the
 # lowering wrote to the console's sound registers and its wave memory, read back in the emulator.
 # What a game does with these voices, asked of every run, is in
 # test/all/vblank/audio/test_song_console_voices.rb, which keeps the games both files play.
@@ -38,7 +38,7 @@ class TestSongConsoleVoicesCartridge < Minitest::Test
   # A wave part really reaches the wave voice's registers, and a noise part the noise voice's.
   # Read off the running console rather than off the score, so this is what the lowering did.
   #
-  # THE RATE AND NOT THE TRIGGER, because the pitch is the part that says the right note
+  # The rate and not the trigger, because the pitch is the part that says the right note
   # arrived. Neither can be read back off SOUND3CNT_X — the restart bit and the rate bits are
   # both write-only, so the register says 0 whatever is playing — so the rate is asked of the
   # sound circuit, which holds the one it is actually sounding.
@@ -62,7 +62,7 @@ class TestSongConsoleVoicesCartridge < Minitest::Test
     assert_equal Registers.wave_rate(interpreted[:frequency]), v.wave_rate
   end
 
-  # THE WAVEFORM REACHES WAVE RAM, which is the half a note cannot do for itself: the voice
+  # The waveform reaches wave RAM, which is the half a note cannot do for itself: the voice
   # loops a table, and a table nobody uploaded is whatever the memory held. Uploaded once when
   # the tune starts, so a note stays two register writes.
   def test_the_waveform_is_uploaded_when_the_tune_starts
@@ -75,7 +75,7 @@ class TestSongConsoleVoicesCartridge < Minitest::Test
     assert_equal want, got, "the part's own waveform, not whatever was there"
   end
 
-  # ...AND IT REACHES BOTH BANKS, which is the console's own trap and not visible from the one
+  # ...AND it reaches both banks, which is the console's own trap and not visible from the one
   # bank a reader happens to be shown. Wave RAM is two banks: the voice loops one and the CPU
   # reaches the other, so a table written to the bank being played is simply not heard — the
   # classic source of a wave voice that runs and makes no sound. Writing both means whichever
@@ -100,7 +100,7 @@ class TestSongConsoleVoicesCartridge < Minitest::Test
         control = probe.read32(REG_SOUND3CNT_L)
         probe.write32(REG_SOUND3CNT_L, control ^ 0x0040)
 
-        # THE CONTENTS AND NOT THEIR ORDER. Swapping the bank under a voice that is already
+        # The contents and not their order. Swapping the bank under a voice that is already
         # playing turns the window round as well, which is a fact about reaching in and
         # flipping the register mid-note rather than about the upload. What is being asked here
         # is whether the waveform reached this bank at all: leave one bank out and it reads
@@ -121,10 +121,10 @@ class TestSongConsoleVoicesCartridge < Minitest::Test
     end
   end
 
-  # EVERY PART CARRIES THEM, and only a noise part is ever asked. They are fields with defaults
+  # Every part carries them, and only a noise part is ever asked. They are fields with defaults
   # rather than keys that might not be there, so a square part answers what a drum would and
   # nothing reads it — which is worth pinning, because the risk a default introduces is that it
-  # LEAKS. A drum's default fade must not reach a square part, which holds its notes unless it
+  # leaks. A drum's default fade must not reach a square part, which holds its notes unless it
   # says how they fade (test_song_note_fades.rb), and a rattle is the hiss's alone.
   def test_a_drums_settings_change_nothing_a_square_part_plays
     assert_equal GBA.new.lower(square_song), GBA.new.lower(square_song(rattles: true)),
@@ -162,8 +162,8 @@ class TestSongConsoleVoicesCartridge < Minitest::Test
     (0...Registers.wavetable_halfwords(:sine).length).map { |i| v.mem16(REG_WAVE_RAM + (i * 2)) }
   end
 
-  # THE POINT IS THE DIFFERENCE, so it is asserted rather than assumed: the steps the game gave
-  # reach the console, and what reaches it is NOT what the same part would have played as a
+  # The point is the difference, so it is asserted rather than assumed: the steps the game gave
+  # reach the console, and what reaches it is not what the same part would have played as a
   # triangle. A waveform that merely arrived somewhere would prove nothing.
   def test_a_waveform_of_the_games_own_reaches_the_console_and_is_not_a_triangle
     pulse = wave_ram_of(pad_song(PULSE_50), "PULSE")

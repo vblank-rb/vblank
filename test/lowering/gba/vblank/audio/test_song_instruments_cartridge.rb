@@ -87,7 +87,7 @@ class TestSongInstrumentsCartridge < Minitest::Test
                  "all of them the game's, the part resting"
   end
 
-  # THE MOMENT THE VOICES RUN OUT: every voice is the game's when the part's note comes, so the
+  # The moment the voices run out: every voice is the game's when the part's note comes, so the
   # note takes the voice of the game's sound that has played longest.
   def test_a_note_with_no_voice_free_takes_the_one_the_game_started_first
     assert_equal [:piano] + clip_names(1...VOICES), sounding_on_the_console(note_after_the_burst, frames: 40),

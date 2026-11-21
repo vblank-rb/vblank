@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/audio/test_song_loop_point"
 
-# A SONG WITH AN INTRODUCTION, ON THE ADVANCE'S CARTRIDGE: what its music voice is doing at the
+# A song with an introduction, on the Advance's cartridge: what its music voice is doing at the
 # loop point, read in the emulator. A song block's loop point and the friendly errors are in
 # test/all/vblank/audio/test_song_loop_point.rb.
 class TestSongLoopPointCartridge < Minitest::Test
