@@ -71,8 +71,9 @@ module VBlank
         WIDENING_ROUNDS = 16
 
         # The kinds of statement that name a list only to read, write, drop or sort its items, so
-        # what it holds is what its writes put there.
-        ITEM_ONLY_KINDS = %i[list_new list_get list_len list_set list_push list_drop list_sort].freeze
+        # what it holds is what its writes put there. A list_pack reads its +name+ list's items; the
+        # list it writes into is named some other way.
+        ITEM_ONLY_KINDS = %i[list_new list_get list_len list_set list_push list_drop list_sort list_pack].freeze
 
         # The slots a list can be kept in, narrowest first, with the numbers each holds.
         NARROW_SLOTS = { byte: BYTE, half: HALF }.freeze

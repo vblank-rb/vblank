@@ -48,7 +48,7 @@ module VBlank
           # test_snes_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             timer_start timer_stop on_timer show_light_now rumble show_held_tiles
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Saving::STATEMENT_KINDS +
             Sound::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
@@ -78,6 +78,7 @@ module VBlank
             when :list_fill then emit_list_fill(node)
             when :list_copy then emit_list_copy(node)
             when :list_sort then emit_list_sort(node)
+            when :list_pack then emit_list_pack(node)
             when :timer_start then emit_timer_start(node)
             when :timer_stop then emit_timer_stop(node)
             # a timer's handler runs as its timer ticks, not where it is written
@@ -1517,6 +1518,11 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
+
+          # Reference#exec_list_pack, written as the loop it stands for (IR::ListPacking): this
+          # console has no block copy of its own for it yet.
+          def emit_list_pack(node) = IR::ListPacking.loops_for(node).each { |loop| statement(loop) }
+
           # How many a list holds is a word of its header, read where it is: three instructions, where
           # the runtime's call takes the list's place handed over, the jump there and back, and the
           # header found from the place. A pool asks it of its retired things at the end of every walk.

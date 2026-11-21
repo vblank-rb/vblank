@@ -829,7 +829,7 @@ module VBlank
         # (#exec_declaration).
         STATEMENT_KINDS = (%i[
           program set add sub copy negate abs negate_abs clamp save_init save_store save_write save_erase
-          save_load_list save_store_list if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy
+          save_load_list save_store_list if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy list_pack
           list_sort blit blit_pose save_region restore_region call call_one_of case halt wait_vblank
           hide_sprites rumble screen clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
@@ -870,6 +870,7 @@ module VBlank
           when :list_drop then exec_list_drop(node)
           when :list_set then exec_list_set(node)
           when :list_fill then exec_list_fill(node)
+          when :list_pack then exec_list_pack(node)
           when :list_copy then exec_list_copy(node)
           when :list_sort then exec_list_sort(node)
           when :blit then exec_blit(node)
@@ -4243,6 +4244,26 @@ module VBlank
           [from, from + count - 1].each { |index| check_list_index!(list, node.name, index) }
           value = eval_value(node.value)
           count.times { |i| list.set(from + i, value) }
+        end
+
+        # Every item of the list written into the byte list +into+, lowest byte first, as a
+        # list_set of each byte would write it, one after another: a run reaching outside +into+
+        # writes the bytes before the first slot outside it and stops the game there, with the
+        # same error, as the loop the step stands for does (IR::ListPacking.loops_for).
+        def exec_list_pack(node)
+          items = list_for(node.name).to_a
+          bytes = ListPacking::WIDTH_BYTES.fetch(node.width)
+          into = list_for(node.into)
+          at = eval_value(node.at)
+          items.each_with_index do |item, i|
+            @vars[node.index] = i
+            bytes.times do |b|
+              index = at + (i * bytes) + b
+              check_list_index!(into, node.into, index)
+              into.set(index, Int32.shift_right(item, 8 * b))
+            end
+          end
+          @vars[node.index] = 0
         end
 
         # The list made to hold the run of the table from +at+, held so the whole run is inside

@@ -46,7 +46,7 @@ module VBlank
           # test_gbc_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             save_init save_store save_write save_erase save_load_list save_store_list timer_start timer_stop
             on_timer show_light_now show_held_tiles
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS +
@@ -76,6 +76,7 @@ module VBlank
             when :list_fill then emit_list_fill(node)
             when :list_copy then emit_list_copy(node)
             when :list_sort then emit_list_sort(node)
+            when :list_pack then emit_list_pack(node)
             when :save_init then emit_save_init(node)
             when :save_store then emit_save_store(node)
             when :save_write then emit_save_write(node)
@@ -1178,6 +1179,10 @@ module VBlank
           end
 
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
+
+          # Reference#exec_list_pack, written as the loop it stands for (IR::ListPacking): this
+          # console has no block copy of its own for it yet.
+          def emit_list_pack(node) = IR::ListPacking.loops_for(node).each { |loop| statement(loop) }
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.

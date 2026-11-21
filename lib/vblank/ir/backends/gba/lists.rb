@@ -32,7 +32,7 @@ module VBlank
         # afterward — not because it's a list; see #register_backing/#backing_info.
         class Lists
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
-          STATEMENT_KINDS = %i[list_new list_push list_drop list_set list_fill list_sort].freeze
+          STATEMENT_KINDS = %i[list_new list_push list_drop list_set list_fill list_sort list_pack].freeze
 
           def emit_statement(node)
             case node.kind
@@ -42,6 +42,7 @@ module VBlank
             when :list_set then emit_list_set(node)
             when :list_fill then emit_list_fill(node)
             when :list_sort then emit_list_sort(node)
+            when :list_pack then emit_list_pack(node)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end
@@ -121,6 +122,47 @@ module VBlank
             emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
             @placement.emit_call_cold_routine(FILL_ROUTINE)
             @emitter.place_label(skip)
+          end
+
+          # list_pack: every item of a list written into a byte list, lowest byte first. The
+          # processor keeps a number in memory lowest byte first (GBATEK, "ARM CPU Overview": the
+          # Advance runs little-endian), so a plain array's slots, side by side from its first,
+          # already ARE those bytes, and the run is handed to the routine every list_copy calls
+          # (#emit_copy_routine), which moves it a word at a time when it can. A byte at a time,
+          # each shifted and set as the loops the step stands for do, is several instructions a
+          # byte where the copy is a fraction of one.
+          #
+          # A bad run stays inside the list the way a list_set does: one starting before +into+ or
+          # running past its length writes nothing. A ring, a pool's field, a list narrower or
+          # wider than its slots, or a build checked against the interpreter (which stops at the
+          # first bad index, as the loops' list_sets do) takes the loops instead.
+          def emit_list_pack(node)
+            from = list_info(node.name)
+            into = list_info(node.into)
+            return emit_list_pack_loops(node) unless block_copyable?(node, from, into)
+
+            @copies = true
+            skip = @emitter.gensym
+            @lowering.value(node.at)                                         # r0 = the first byte's slot
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :lt)                    # starts before the list
+            @primitives.load_var(2, length_var(node.name))
+            shift = Math.log2(from[:bytes]).to_i
+            @emitter.emit(ASM.lsl_imm(2, 2, shift)) if shift.positive?      # r2 = bytes to copy
+            @emitter.emit(ASM.cmp_imm(2, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :le)                    # nothing to copy
+            @emitter.emit(ASM.add_reg(3, ACC, 2))                            # r3 = past the last byte
+            @primitives.load_var(TMP, length_var(node.into))
+            @emitter.emit(ASM.cmp_reg(3, TMP))
+            @emitter.emit_branch(:bcond, skip, cond: :gt)                    # runs past its end
+            @primitives.emit_list_base(into[:base])
+            @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))                  # r1 = where the run goes
+            @primitives.emit_list_base(from[:base])
+            @emitter.emit(ASM.mov_reg(ACC, LIST_ADDR))                       # r0 = the list's first slot
+            @placement.emit_call_cold_routine(COPY_ROUTINE)
+            @emitter.place_label(skip)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, node.index)                           # left at nought, as the loops leave it
           end
 
           # The routine every list_copy calls, named once.
@@ -1006,6 +1048,19 @@ module VBlank
           end
 
           private
+
+          # Whether a list_pack's two lists are each a plain array whose slots sit side by side
+          # from the first, as wide as the step says, the one written into of bytes.
+          def block_copyable?(node, from, into)
+            @bookkeeping.nil? && plain_array?(node.name, from) && plain_array?(node.into, into) &&
+              from[:bytes] == ListPacking::WIDTH_BYTES.fetch(node.width) && into[:bytes] == 1
+          end
+
+          # Whether list +name+ (+info+ its layout) is never shifted and is no pool's field, so its
+          # slots sit side by side from its first.
+          def plain_array?(name, info) = !info[:ring] && !(@slot_places || {}).key?(name)
+
+          def emit_list_pack_loops(node) = ListPacking.loops_for(node).each { |loop| @lowering.statement(loop) }
 
           # A SLOT NAMED BY A WRITTEN NUMBER, in a list of words whose items never move (no ring) and
           # with no check on its length, is a fixed distance from the list's first slot: one load or

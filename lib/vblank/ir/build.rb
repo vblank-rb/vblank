@@ -1189,6 +1189,13 @@ module VBlank
         Nodes.build(:list_copy, name: name, table: table, at: to_value_node(at), count: count)
       end
 
+      # Write every item of the list, lowest byte first, into the byte list +into+ from slot +at+
+      # (a value operand) on. +width+ is the list's slot width; +index+ is a variable the builder
+      # declared for the loops a backend may write the step out as (see Nodes::ListPack).
+      def list_pack(name, into:, at:, width:, index:)
+        Nodes.build(:list_pack, name: name, into: into, at: to_value_node(at), width: width, index: index)
+      end
+
       # Put every item of the list in order by the number list +by+ holds at it, the smallest
       # first, or the biggest with +descending+; level items keep their order (see ListSort).
       # +shown+, a value for each place of +by+, puts the items whose value is not 1 behind the rest.

@@ -1316,6 +1316,24 @@ module VBlank
         operands name: :name, table: :name, at: :value, count: :int
       end
 
+      # EVERY ITEM OF A LIST WRITTEN INTO A LIST OF BYTES, lowest byte first: item i's bytes go
+      # in +into+ from slot +at+ + i × the item's size on, as a list_set of each byte would write
+      # them (+into+ keeps the low bits of each, Reference::ListValue#wrap_to_width). +width+ is
+      # the list's own slot width, which says how many bytes an item is. A slot of +into+ the run
+      # does not reach keeps what it held, and a run reaching outside +into+ is the same error a
+      # list_set there is.
+      #
+      # One statement, so a backend whose lists keep their items in memory lowest byte first in
+      # slots side by side copies the run as one block. +index+ names a variable the builder
+      # declared for a backend that writes the step out as the loops it stands for
+      # (IR::ListPacking.loops_for); every backend leaves it at nought, as the loops do.
+      class ListPack
+        include Node
+        kind :list_pack
+        category :list
+        operands name: :name, into: :name, at: :value, width: :option, index: :name
+      end
+
       # Every item the list holds put in order by a number another list keeps for it: each item
       # is a place in +by+, and the number there is what it is ordered by, the smallest first
       # (the biggest first when +descending+). Items whose numbers are equal keep the order they

@@ -465,6 +465,10 @@ module ConformanceFixture
       B.list_new(:primed, 5, width: :byte, full_of: -2), # starts holding five of -2
       B.set(:acc, B.list_len(:primed)),
       B.set(:acc, B.list_get(:primed, 4)),
+      # a list's items written into a byte list lowest byte first: -300's two bytes, 0xD4 and
+      # 0xFE, into slots 1 and 2, which read back -44 and -2, and slot 3 keeps its -2
+      B.list_pack(:owed, into: :primed, at: B.int(1), width: :half, index: :acc),
+      B.set(:acc, B.list_get(:primed, 1)),
 
       # ...and a list of places put in order by the numbers another list holds at them. Two of
       # the numbers are level, so a sort that is not stable puts places 0 and 2 the wrong way

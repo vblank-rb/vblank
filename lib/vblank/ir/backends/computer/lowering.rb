@@ -43,7 +43,7 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
             case halt wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
-            list_set list_fill list_copy list_sort screen clear_screen fill_rect dma_fill_rect draw_rect_at
+            list_set list_fill list_copy list_sort list_pack screen clear_screen fill_rect dma_fill_rect draw_rect_at
             pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
             save_region restore_region background affine_background scroll_background place_bar box_background
             scroll_rows shade_outside show_light_now set_tile set_tile_block show_map show_held_tiles background_colors
@@ -85,6 +85,7 @@ module VBlank
             when :list_fill then lower_list_fill(node)
             when :list_copy then lower_list_copy(node)
             when :list_sort then lower_list_sort(node)
+            when :list_pack then lower_list_pack(node)
             when :screen then lower_screen(node)
             when :clear_screen then lower_clear_screen(node)
             when :fill_rect then lower_fill_rect(node)
@@ -886,6 +887,10 @@ module VBlank
             runs = runs_painted_from(node.name)
             [runs.empty? ? copy : made_where_any_run_pointed(runs.map(&:name), copy)]
           end
+
+          # Reference#exec_list_pack, written as the loop it stands for: a computer sets a byte in a
+          # few instructions, so a routine of its own would save little.
+          def lower_list_pack(node) = ListPacking.loops_for(node).flat_map { |loop| lower(loop) }
 
           # Reference#exec_list_sort, as one call: the runtime sorts the list in place by the
           # numbers +by+ holds, stably.

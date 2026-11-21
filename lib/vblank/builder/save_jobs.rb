@@ -324,9 +324,11 @@ module VBlank
         return put.call(item.value_at(base), sd_var(item.name), SaveRecords::WORD) if item.kind == :var
 
         put.call(item.value_at(base), Build.list_len(item.name), SaveRecords::WORD)
-        repeat(DSL::Value.new(handle, Build.list_len(item.name))) do |i|
-          put.call(item.slot_at(base, i.node), Build.list_get(item.name, i.node), item.slot_bytes)
-        end
+        # The items in one step, which a console whose list keeps them lowest byte first side by
+        # side copies as a block: a byte at a time, each shifted, masked and set, took many times
+        # the work.
+        record(Build.list_pack(item.name, into: stage, at: item.slot_at(base, sd_int(0)), width: item.width,
+                                          index: declare_loop_counter))
       end
 
       def save_job_start(layout)

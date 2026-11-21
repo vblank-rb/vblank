@@ -26,6 +26,7 @@ require_relative "ir/tile_map"              # How big a grid a background scroll
 require_relative "ir/build"
 require_relative "ir/picked_tile"           # A tile picked as the program runs, as the tests it stands for
 require_relative "ir/save_list_moves"       # A whole list moved to or from save memory, as the loops it stands for
+require_relative "ir/list_packing"          # A list's items written into a list of bytes, as the loops it stands for
 require_relative "ir/place_drawing"        # How a place made of flat faces is drawn, as statements every target runs
 require_relative "ir/viewer_motion"         # How the viewer moves and turns
 require_relative "ir/reciprocals"           # How far a point on a face is, for a picture in perspective

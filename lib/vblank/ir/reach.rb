@@ -25,7 +25,8 @@ module VBlank
                                              shade_outside: ->(n) { [n.row] },
                                              copy_owed_tiles: ->(n) { n.masks },
                                              save_init: ->(n) { n.vars.map(&:name) }, save_store: ->(n) { [n.var] },
-                                             save_load_list: ->(n) { [n.index] }, save_store_list: ->(n) { [n.index] }
+                                             save_load_list: ->(n) { [n.index] }, save_store_list: ->(n) { [n.index] },
+                                             list_pack: ->(n) { [n.index] }
                                            })
 
       module_function
