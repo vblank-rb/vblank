@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE SOUND CHIP'S MAIN VOLUME (`enable_sound main_volume:`), read from the S-DSP's own registers
+# The sound chip's main volume (`enable_sound main_volume:`), read from the S-DSP's own registers
 # and heard in the sound bsnes plays. The main volume scales everything the chip mixes, songs and
 # effects alike, after each voice's own volume: a game that names 96 is heard 96/127 as loud as the
 # same game left at the loudest. Each run is checked against the interpreter's sound log on every

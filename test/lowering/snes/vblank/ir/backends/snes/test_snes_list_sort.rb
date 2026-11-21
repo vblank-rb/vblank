@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST PUT IN ORDER, written in place in the Super Nintendo's own code (Lowering#emit_list_sort),
+# A list put in order, written in place in the Super Nintendo's own code (Lowering#emit_list_sort),
 # for each width its two lists can keep: the list of places and the list of numbers each a byte,
 # a half or a word. The numbers have level ones, so a sort that is not stable swaps them, and ones
 # below nought and past 16 bits, so a compare that is not signed, or not whole, puts them in the

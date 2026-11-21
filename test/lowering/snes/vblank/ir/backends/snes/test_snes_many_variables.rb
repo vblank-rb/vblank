@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# MORE NUMBERS THAN THE FIRST 8K OF WORK RAM HOLDS. The code reaches that part quickly, and a game
+# More numbers than the first 8K of work RAM holds. The code reaches that part quickly, and a game
 # with many numbers keeps the ones it names most there and the rest further on, every one still a
 # number the game can do anything with.
 class TestSNESManyVariables < Minitest::Test

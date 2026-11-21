@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE SUPER NINTENDO, measured in the emulator: a `repeat`, and a game's
+# A turn of a loop on the Super Nintendo, measured in the emulator: a `repeat`, and a game's
 # `while i < n` with `i += 1` last, which the build lowers as a counted loop (LoopForm#counted_while).
 # The 65816's own way is a count in an index register, INY or DEX, a compare with the number and a
 # branch back, a few cycles a turn (fullsnes and the SNESdev wiki's 65816 reference). A count below

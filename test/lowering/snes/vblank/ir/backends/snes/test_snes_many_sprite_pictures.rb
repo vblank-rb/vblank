@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# MORE SPRITE PICTURES THAN ONE BANK OF THE CARTRIDGE CAN LIST. A picture is a list of the pieces
+# More sprite pictures than one bank of the cartridge can list. A picture is a list of the pieces
 # it is cut into, and a game with many pictures has more of those lists than a bank holds, however
 # little art they share out between them. A game's own screen is a long way from running out then,
 # so the lists go in banks of their own.
