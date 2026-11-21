@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# HOW FAST EACH GAME PLAYS AS RUBY, with each of Ruby's compilers and with none, so the numbers
+# How fast each game plays as Ruby, with each of Ruby's compilers and with none, so the numbers
 # can be set side by side and compared across Ruby versions.
 #
 #   ruby tools/ruby_speed.rb                       every example

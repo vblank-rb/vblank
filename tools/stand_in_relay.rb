@@ -1,15 +1,15 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# THE STAND-IN RELAY AS A PROGRAM, for something outside Ruby to play against: a node copy of a game, a
+# The stand-in relay as a program, for something outside Ruby to play against: a node copy of a game, a
 # desktop build, a person trying two windows. It listens on a WebSocket port, makes rooms with codes, and
 # hands each message to the others of its room, as the real relay does (docs/network/protocol.md). It never
 # runs the game.
 #
-#   ruby tools/stand_in_relay.rb [PORT]
+#   ruby tools/stand_in_relay.rb [port]
 #
 # It says the address a client connects to on its first line, `listening on ws://127.0.0.1:PORT/`, and
-# serves until it is stopped. PORT is 0 (the system chooses) unless given.
+# serves until it is stopped. Port is 0 (the system chooses) unless given.
 
 require_relative "../lib/vblank"
 
