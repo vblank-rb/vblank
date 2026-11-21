@@ -4,7 +4,7 @@ require "digest"
 require "tmpdir"
 require "genesis_packing_answers"
 
-# THE SEGA GENESIS'S FORMATS AS BUILDING BLOCKS OF AN UNPACKING ROUTINE (Original::Packing::Genesis):
+# The Sega Genesis's formats as building blocks of an unpacking routine (Original::Packing::Genesis):
 # `copy.unpack_nemesis` for tiles and `copy.unpack_enigma` for plane maps, played where an
 # unpacking routine runs (CopyReaderTests says where, and which files include this). Each block is
 # made up, written by GenesisPackingAnswers, and its answer key is that module's decoder, written

@@ -3,10 +3,10 @@
 require "digest"
 require "tmpdir"
 
-# A MADE-UP ORIGINAL WHOSE SCREEN IS A LAYER THAT TURNS AND RESIZES, kept as a console keeps one:
+# A made-up original whose screen is a layer that turns and resizes, kept as a console keeps one:
 # a map of one byte a cell, each the number of a tile and nothing else, over tiles of a byte a
 # pixel, each byte a place in one table of 256 colours. A game shows it through a data pack
-# (Builder::PackBackgrounds), and the SAME background is made beside it from pictures the game
+# (Builder::PackBackgrounds), and the same background is made beside it from pictures the game
 # draws itself, which is the answer key: the same pixels, declared two ways. The made-up data is
 # written here and read by no reader of VBlank's.
 module PackTurningBackgroundGames

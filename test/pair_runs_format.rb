@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A MADE-UP PACKED FORMAT, written as a port writes one of its own (Original::Packing::Format), in
+# A made-up packed format, written as a port writes one of its own (Original::Packing::Format), in
 # normal Ruby: brought in by `VBlank.require_game_file` for test/copy_reader_tests.rb. Pairs of a
 # count and a byte, the byte written that many times, each count multiplied by the `times:`
 # setting, until a count of 0.
