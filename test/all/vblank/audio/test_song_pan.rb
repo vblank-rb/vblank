@@ -23,7 +23,7 @@ module SongPanGames
   end
 end
 
-# A SONG'S PARTS THAT PLAY FROM ONE SPEAKER — the left, the right, or both, which is what every
+# A song's parts that play from one speaker — the left, the right, or both, which is what every
 # part does when it says nothing, or a shade between. A part says its side (`v.pan :left`,
 # `v.pan -0.7`), and a note can say its own (`pan: :right`), so a part can move from side to side as
 # the song goes. Where a recorded part sits is heard on the Super Nintendo
@@ -73,7 +73,7 @@ class TestSongPan < Minitest::Test
     assert_equal [[4, :right]], played.map { |voice, _, side| [voice, side] }
   end
 
-  # A SCORE SAYS IT THE SAME WAY: a part's `pan:` and a note's own.
+  # A score says it the same way: a part's `pan:` and a note's own.
   def test_a_score_says_which_side_its_notes_play_from
     score = VBlank::Audio::Score
     lead = score::Part.new(pan: :left, notes: [score::Note.new(at: 0, key: 72, length: 24),
@@ -91,7 +91,7 @@ class TestSongPan < Minitest::Test
     assert_equal %i[left right], sides_logged(b.program, frames: 30).map(&:last)
   end
 
-  # A SHADE BETWEEN THE SPEAKERS, on a voice that only switches between them, plays from the nearest
+  # A shade between the speakers, on a voice that only switches between them, plays from the nearest
   # of the three: one side alone where that side is at least twice the other, both otherwise.
   def test_a_shade_plays_a_square_part_from_the_nearest_side
     played = sides_logged(song_game do

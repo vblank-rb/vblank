@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG'S NOTES THAT SLIDE THEIR PITCH UP OR DOWN BY THEMSELVES, on the first square voice.
+# A song's notes that slide their pitch up or down by themselves, on the first square voice.
 #
 # That voice has a circuit the others lack: struck at a pitch, it moves the pitch by a small part
 # of itself every so many 128ths of a second, up or down, with nothing from the game — a zap, a
@@ -62,7 +62,7 @@ class TestSongPitchSlides < Minitest::Test
                  played
   end
 
-  # A PART CAN SLIDE EVERY NOTE, and a note can say its own in place of the part's — the voice's own
+  # A part can slide every note, and a note can say its own in place of the part's — the voice's own
   # numbers, for music converted from another game, or :none to hold its pitch.
   def test_a_notes_own_slide_comes_before_its_parts
     played = voices_set(song_game do
@@ -79,7 +79,7 @@ class TestSongPitchSlides < Minitest::Test
                   PitchSlide.downward(every: 3, shift: 5)], played.map(&:last)
   end
 
-  # A SCORE SAYS IT THE SAME WAY, for a game that converts another game's music into one.
+  # A score says it the same way, for a game that converts another game's music into one.
   def test_a_score_says_how_its_notes_slide
     score = VBlank::Audio::Score
     # A beat each, 24 ticks, at 150 beats a minute: 24 frames.
@@ -99,7 +99,7 @@ class TestSongPitchSlides < Minitest::Test
     assert_equal [PitchSlide.upward(every: 7, shift: 5), PitchSlide.downward(every: 1, shift: 5)], sounding.map(&:last)
   end
 
-  # THE MUSIC VOLUME REACHES A HELD NOTE BY STRIKING IT AGAIN, which would start a sliding note's
+  # The music volume reaches a held note by striking it again, which would start a sliding note's
   # slide over. So a note that slides is left to slide, as a fading note is.
   def test_a_new_music_volume_leaves_a_sliding_note_alone
     b = Builder.new
