@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# The child half of `rake emitted` (see tools/emitted.rb): build ONE example
-# against ONE copy of the library and print what it emitted, as a line of JSON.
+# The child half of `rake emitted` (see tools/emitted.rb): build one example
+# against one copy of the library and print what it emitted, as a line of JSON.
 #
 #   ruby tools/emitted_probe.rb <lib root> <repo root> <example.rb>
 #

@@ -3,7 +3,7 @@
 require "fileutils"
 require "tmpdir"
 
-# DOES THE GEM WORK ONCE IT IS INSTALLED? A release check, not a unit test: the suite plays a
+# Does the gem work once it is installed? A release check, not a unit test: the suite plays a
 # checkout, where every file is on hand, so it cannot see a file left out of the gem or an emulator
 # an install did not build. This builds the gem and installs it on two clean Linux machines, made
 # by tools/gem_install_check/Dockerfile:

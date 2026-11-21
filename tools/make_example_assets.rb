@@ -4,7 +4,7 @@ require_relative "../lib/vblank"
 
 # Generate the PNG art the `sheet` importer example reads (examples/sheet.rb).
 #
-# The point of the asset pipeline is that art is DRAWN in a normal image tool and
+# The point of the asset pipeline is that art is drawn in a normal image tool and
 # imported — but the examples still need a couple of real PNGs checked in to import.
 # Rather than commit opaque binaries with no history, this script draws them from
 # plain pixel data so anyone can see (and change) exactly what they contain, then
