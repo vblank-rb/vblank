@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A POOL KEPT EACH WAY THE ADVANCE CAN KEEP ONE (Backends::PoolLayout): as lists, as tables side by
+# A pool kept each way the Advance can keep one (Backends::PoolLayout): as lists, as tables side by
 # side, as a record for each thing, its walks stepped with a register on the thing
 # (GBA::Statements#emit_stepped_walk). The Advance's run plays games on the interpreter, so this reads
 # the cartridge in the emulator: the game does its work in its first twenty passes and then idles, so

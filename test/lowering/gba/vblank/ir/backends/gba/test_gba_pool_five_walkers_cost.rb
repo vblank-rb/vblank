@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# FIVE THINGS OF A POOL, EACH CHECKED AGAINST THE OTHER FOUR EVERY PASS: a routine of the pool
+# Five things of a pool, each checked against the other four every pass: a routine of the pool
 # steps its thing, walks the pool, and turns its thing round when another is within 16 pixels on
 # both axes. Twenty pairs a pass, and the routine's share of the frame is what the profiler reads.
 class TestGBAPoolFiveWalkersCost < Minitest::Test

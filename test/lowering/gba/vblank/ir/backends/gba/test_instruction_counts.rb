@@ -3,10 +3,10 @@
 require "test_helper"
 require "stringio"
 
-# WHAT EACH NODE OF THE PROGRAM TURNED INTO, counted while the code is emitted
+# What each Node of the program turned into, counted while the code is emitted
 # (lib/vblank/ir/backends/gba/attribution.rb). The estimate reads this instead of
 # measuring the same instruction counts a second time, so what is pinned here is the three
-# claims it rests on: the counts are exclusive, they are per USE of a shared node, and a
+# claims it rests on: the counts are exclusive, they are per use of a shared node, and a
 # node whose code does not run the way it is written says so.
 class TestInstructionCounts < Minitest::Test
   private def counts(&block)
@@ -53,8 +53,8 @@ class TestInstructionCounts < Minitest::Test
     assert_equal 3, whole, "a variable read, an add that carries its number, and a store"
   end
 
-  # THE ONE THAT BITES. A `Value` handle held in a Ruby variable and written into many
-  # places is ONE node object in many positions of the tree, lowered at each of them.
+  # The one that bites. A `Value` handle held in a Ruby variable and written into many
+  # places is one node object in many positions of the tree, lowered at each of them.
   # Totalled, it would be charged its own cost as many times over as it appears, and then
   # charged that at every position — measured on examples/breakout.rb, where one variable
   # read sits in sixty-nine places.
