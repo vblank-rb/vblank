@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_background_tests"
 
-# A BACKGROUND FROM THE DATA PACK THAT WALKS BETWEEN AREAS: each area names its own slots of tiles,
+# A background from the data pack that walks between areas: each area names its own slots of tiles,
 # map and colours, as a port keeps each level's art, and `show_map` walks between them as it does
 # between the tilesets of a background the game draws itself. The made-up Advance original keeps
 # two areas: a town and a castle, each its own tiles, its own map and its own two banks of colours.
@@ -40,7 +40,7 @@ module PackBackgroundAreaGames
                      cells: [[2, 1, false, false], [1, 0, false, true], [0, 0, false, false], [3, 1, true, true]],
                      map_at: CASTLE_MAP_AT, colors_at: CASTLE_COLORS_AT, tiles_at: CASTLE_TILES_AT)
   }.freeze
-  # The same two areas drawn over ONE set of tiles: the castle's map read with the town's tiles and
+  # The same two areas drawn over one set of tiles: the castle's map read with the town's tiles and
   # colours, as `one_tile_slot: true` declares them.
   AREAS_OVER_ONE_SLOT = AREAS.transform_values { |area| area.with(places: PLACES, banks: BANKS) }.freeze
   # The cell each area may be written with later: [tile, bank, mirrored, upside down].
@@ -115,12 +115,12 @@ module PackBackgroundAreaGames
     [b.program, b.made_data_pack_file]
   end
 
-  # CELLS TOLD BY A SLOT (`set_cells: pack[:changes]`) on the two areas, each map a slot of map
-  # cells the unpacking writes from AREAS, and the changes slot holding TOLD_PLACES, a cell each
+  # Cells told by a slot (`set_cells: pack[:changes]`) on the two areas, each map a slot of map
+  # cells the unpacking writes from areas, and the changes slot holding TOLD_PLACES, a cell each
   # place. With +by_area+ each area is told by a slot of its own, the same cells; without, one slot
   # tells every area, and each draws the cell from its own tiles and colours. The loop is
   # #emit_written_places, or the block given, run on the builder and handed the background.
-  # +across+ is ACROSS or a width by area. Hands back the program and the pack file the build made.
+  # +across+ is across or a width by area. Hands back the program and the pack file the build made.
   private def told_slot_areas_game_and_file(from, options: VBlank::Cartridge::Options.new, by_area: false, across: ACROSS, &loop_body)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
@@ -168,7 +168,7 @@ module PackBackgroundAreaGames
     end
   end
 
-  # THE ANSWER KEY: both areas drawn by hand, walked by the same loop.
+  # The answer key: both areas drawn by hand, walked by the same loop.
   private def areas_drawn_by_hand(areas = AREAS, across: ACROSS, &loop_body)
     b = VBlank::Builder.new
     b.instance_eval do
@@ -241,7 +241,7 @@ module PackBackgroundAreaGames
     end
   end
 
-  # A CELL WRITTEN LATER IN EACH AREA (WRITTEN): one cell number told for every area, each area
+  # A cell written later in each area (written): one cell number told for every area, each area
   # drawing it from its own tiles and colours. The town's top left is written on the second pass; the
   # game walks to the castle on the sixth and writes its bottom right on the eighth.
   def self.emit_written_cells(builder, world)
@@ -257,7 +257,7 @@ module PackBackgroundAreaGames
     end
   end
 
-  # A WORLD OF BIG ROOMS OVER ONE SLOT OF TILES: each room a map of its own, many cells each, every
+  # A world of big rooms over one slot of tiles: each room a map of its own, many cells each, every
   # one drawn from the town's four tiles and two banks, turned every way. A port draws a whole
   # world's rooms so, and the rooms share what they draw: the same few tiles as drawn, however many
   # cells and rooms there are.
@@ -269,7 +269,7 @@ module PackBackgroundAreaGames
   # The cell +at+ of room number +room+: [tile, bank, mirrored, upside down].
   def self.world_cell(room, at) = [(at + (3 * room)) % 4, (at / 4) % 2, (at / 8).odd?, (at / 16).odd?]
 
-  # THE SAME WORLD OVER A SLOT OF AN ORIGINAL'S SIZE: a thousand and twenty-four tiles in sixteen
+  # The same world over a slot of an original's size: a thousand and twenty-four tiles in sixteen
   # banks of colours, its cells naming tiles all over the slot, in every bank, turned every way. A
   # room's map repeats its first BIG_WORLD_PATTERN cells, so the rooms draw a few thousand different
   # tiles as drawn between them, as a real world's rooms do.
@@ -380,7 +380,7 @@ module PackBackgroundAreaGames
     end
   end
 
-  # MANY ROOMS OVER TWO SETS OF TILES, as a port keeps a world's rooms: each room a small map of its
+  # Many rooms over two sets of tiles, as a port keeps a world's rooms: each room a small map of its
   # own, every room of one set naming that set's slots of tiles and colours. The big set is the slot
   # of an original's size (BIG_SLOT_PLACES, sixteen banks), whose first TURNING_KEYS tiles take turns
   # through two pictures each; the small set is the town's four tiles and two banks. Every room is
@@ -923,7 +923,7 @@ class TestPackBackgroundAreas < Minitest::Test
     end
   end
 
-  # +changed+ is [place, cell] by area: AREAS with that cell of the area's map changed.
+  # +changed+ is [place, cell] by area: areas with that cell of the area's map changed.
   private def areas_with_cell(changed)
     AREAS.to_h do |name, area|
       at, cell = changed[name]

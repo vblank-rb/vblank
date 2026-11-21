@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW LOUD THE MUSIC PLAYS, moved while it plays.
+# How loud the music plays, moved while it plays.
 #
 # A part's volume is written into the song. `music_volume` scales every part of whatever song
 # is playing, while it plays — a settings screen's music slider, and the level `fade_music_out`
@@ -265,7 +265,7 @@ class TestMusicVolume < Minitest::Test
     refute_includes found, :music_faded_out_never_in
   end
 
-  # WHAT LETS A GAME WAIT FOR A FADE: `music_volume` with no number reads how loud the music is
+  # What lets a game wait for a fade: `music_volume` with no number reads how loud the music is
   # now, 0 to 100. A song switched while nobody can hear it is a song switched without a jump.
   def test_the_music_volume_reads_back_how_loud_the_music_is_now
     b = Builder.new
@@ -315,7 +315,7 @@ class TestMusicVolume < Minitest::Test
     assert_equal 100, game_player.run(quiet.program, frames: 2).music_volume, "a game that never set it plays at full"
   end
 
-  # The note starts at its own volume, and a note ALREADY SOUNDING drops to half on the frame
+  # The note starts at its own volume, and a note already sounding drops to half on the frame
   # after the game says so — the same one-frame step `play_song` takes, since the player that
   # sounds the notes reads what the game said at the start of the next frame.
   def test_half_the_music_volume_halves_a_note_already_sounding

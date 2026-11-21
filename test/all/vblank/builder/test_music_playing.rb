@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHICH SONG IS PLAYING, asked of a running game by the song's name (`music_playing`), nil for
+# Which song is playing, asked of a running game by the song's name (`music_playing`), nil for
 # none. The player takes up what a pass named at the frame boundary after it, and pass N runs
 # between boundaries N and N + 1: so a song pass 10 names is playing from frame 11, and frame
 # 10 still has the song before. `stop_music`, and a song that plays once reaching its end, leave

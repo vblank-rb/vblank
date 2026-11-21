@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "stringio"
 
-# A VARIABLE THAT HOLDS A NAME: `var :mode, :title`, `mode = :playing`, `call mode`.
+# A variable that holds a name: `var :mode, :title`, `mode = :playing`, `call mode`.
 #
 # A game's states are names, and what keeps them is a variable, which holds a number. Written
 # out, the author picks the numbers, keeps a comment saying which is which, and keeps any list
@@ -76,7 +76,7 @@ class TestNameVariables < Minitest::Test
     assert_equal 1, game_player.run(program)[:saw]
   end
 
-  # THE ORDERING CASE. A state can be reached only from inside another routine — :over is named
+  # The ordering case. A state can be reached only from inside another routine — :over is named
   # nowhere but in the body of :playing, and a routine's body is built at the end of the build.
   # So the set of names a variable holds is not complete where the `call` is written, and the
   # list of routines it picks from has to be gathered after everything is built.
@@ -98,7 +98,7 @@ class TestNameVariables < Minitest::Test
 
   # --- one per instance ---
 
-  # THE CASE A POOL WANTS: thirty guards, each in its own state, and one line inside `each`
+  # The case a pool wants: thirty guards, each in its own state, and one line inside `each`
   # running a different routine for every one of them.
   def test_each_pooled_instance_keeps_its_own_state
     program = program_with do
