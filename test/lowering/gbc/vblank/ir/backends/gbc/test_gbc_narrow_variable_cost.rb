@@ -3,7 +3,7 @@
 require "test_helper"
 require "narrow_variable_cost_games"
 
-# VARIABLES PROVEN TO STAY IN 16 BITS ON THE GAME BOY COLOR, measured in the emulator: each kept in
+# Variables proven to stay in 16 bits on the Game Boy Color, measured in the emulator: each kept in
 # two bytes (GBC::NarrowVariables), worked out two bytes at a time (WrittenNumbers#low_value), and a
 # mask's byte of all ones or of nought left out (WrittenNumbers#byte_kept_by?). The console's
 # processor works a byte at a time, so a number kept in four is four loads and four stores each
