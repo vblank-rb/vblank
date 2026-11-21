@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # WHERE ON A PAINTED SCREEN EACH DRAWING CAN PAINT, and in what colours, worked out from
+          # Where on a painted screen each drawing can paint, and in what colours, worked out from
           # the program before any of it is lowered: what GBC::SquareColors picks each 8×8 square's
           # list of colours from. Mixed into Lowering.
           #

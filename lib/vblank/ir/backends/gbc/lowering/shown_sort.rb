@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # A DRAW ORDER'S SORT THAT LEAVES OUT WHAT IS NOT SHOWING (IR ListSort's +shown+). Mixed into
+          # A draw order's sort that leaves out what is not showing (IR ListSort's +shown+). Mixed into
           # Lowering, beside KeyedSort, whose sort it starts past the things not showing.
           #
           # A draw order of many things declared and a few showing is what a game with actors waiting in
@@ -23,7 +23,7 @@ module VBlank
           # showing, and the sort moves it forward past the things strictly behind it, so it stays behind
           # the things level with it, as the interpreter has it.
           #
-          # THE WALK STOPS AT A MARK. Walking from the last entry, the walk would need a count of the
+          # The walk stops at a mark. Walking from the last entry, the walk would need a count of the
           # entries left, kept and taken down at every sprite placed, to know where to stop. Instead the
           # last entry not showing, the one just before the first showing, is taken out after the sort
           # and the number past the run's last sprite written in its slot: the walk's table sends that
@@ -124,7 +124,7 @@ module VBlank
               @asm.load([kept.changed], :a)
             end
 
-            # THE SORT, for a list handed +shown+: the stop mark taken out, each place asked, the list moved
+            # The sort, for a list handed +shown+: the stop mark taken out, each place asked, the list moved
             # round when one came or went, the sort past the entries not showing, and the mark put in.
             def emit_shown_keyed_sort(node, kept)
               slots = list_placed(node).first + Runtime::Lists::HEADER
@@ -177,7 +177,7 @@ module VBlank
             # its flag stays as it started. Where the sort makes the numbers, each is worked out where its
             # place shows.
             #
-            # WHAT A PLACE DOES WHEN ITS FLAG TURNS OVER IS WRITTEN ONCE (#emit_flag_turned), and a place
+            # What a place does when its flag turns over is written once (#emit_flag_turned), and a place
             # tests its flag where it stands and calls that code only where it turned over. A pass where
             # nothing came or went runs the same instructions as with all of it written out, and a place
             # is eighteen bytes of this rather than forty: the Color sees its cartridge a bank of 16 KB at
@@ -217,7 +217,7 @@ module VBlank
               @asm.label(marked)
             end
 
-            # THE CODE A PLACE CALLS WHEN ITS FLAG TURNS OVER, at +label+, with HL the flag: the flag made
+            # The code a place calls when its flag turns over, at +label+, with HL the flag: the flag made
             # 1 where the place +shows+ again and 0 where it has gone, +changed+ set, and the count of
             # places not showing moved by one.
             def emit_flag_turned(kept, label, shows:)
@@ -250,7 +250,7 @@ module VBlank
               @setting_sort_keys = false
             end
 
-            # THE LIST MOVED ROUND, on a pass where a place came or went: copied aside, then the entries not
+            # The list moved round, on a pass where a place came or went: copied aside, then the entries not
             # showing written back from the front in the order they stood, then the entries showing after
             # them in theirs. HL reads the copy, DE writes the list, C counts; each entry's flag is read
             # with B holding the entry.

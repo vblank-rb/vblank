@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # THE PICTURE, lowered for a Game Boy Color: the statements that draw, as calls into
+          # The picture, lowered for a Game Boy Color: the statements that draw, as calls into
           # Runtime::Picture and Runtime::Paint, and the art they draw with, made into tiles and
           # palettes (GBC::Art). Mixed into Lowering.
           #
@@ -156,7 +156,7 @@ module VBlank
 
             private
 
-            # THE COLOUR THE GAME SHOWS WHEREVER NOTHING IS DRAWN (IR::SceneHandover#game_backdrop).
+            # The colour the game shows wherever nothing is drawn (IR::SceneHandover#game_backdrop).
             # The Color has no one backdrop colour: each of its background palettes keeps its own
             # first colour, which the see-through pixels of the tiles drawn from it show, and an
             # empty cell shows the first palette's. So the backdrop is built into every palette, and
@@ -181,7 +181,7 @@ module VBlank
               end
             end
 
-            # A BACKDROP THAT FOLLOWS A LIST OF COLOURS (IR::SceneHandover#backdrop_follows_list?). The Color
+            # A backdrop that follows a list of colours (IR::SceneHandover#backdrop_follows_list?). The Color
             # could show one: it is the first colour of each of the eight background palettes, written in
             # the blank. This build keeps that colour in every palette it makes and in every table that
             # changes a palette as the game runs, and does not write it on its own yet.
@@ -229,7 +229,7 @@ module VBlank
 
             # --- the tiles each screen brings in ---
 
-            # WHICH TILES EACH SCREEN BRINGS IN AS IT COMES UP (GBC::Art::Room), for a game whose
+            # Which tiles each screen brings in as it comes up (GBC::Art::Room), for a game whose
             # backgrounds need more tiles than the Color holds at once (GBC#build). The tiles every
             # screen shows are kept from power-on: those of the backgrounds declared in no scene, and
             # the tiles the game paints from lists, which it may paint while any screen is up. Each
@@ -242,7 +242,7 @@ module VBlank
             # a game whose tiles all fit counts them (a tile is numbered as something first names it),
             # not every tile of its tileset.
             #
-            # A GAME WHOSE BACKGROUNDS FIT, and whose scenes bring only their sprite pictures in, keeps
+            # A game whose backgrounds fit, and whose scenes bring only their sprite pictures in, keeps
             # every background's tiles from power-on, as a game with no rooms does: each scene's room
             # is its pictures alone. Its screens then come up as they would with every picture already
             # in, a grid put up as the blank holds it (Runtime::Picture#emit_rooms, #emit_map_rows).
@@ -304,7 +304,7 @@ module VBlank
 
             # --- empty cells ---
 
-            # WHETHER AN EMPTY CELL CAN SHOW while +room+'s colours are in (nil for the colours every
+            # Whether an empty cell can show while +room+'s colours are in (nil for the colours every
             # screen keeps). An empty cell — one a map leaves empty, or past a map's edge — is drawn
             # from the first palette and shows its first colour, black, as the interpreter shows the
             # backdrop there. So the first palette has to keep black first wherever one can show; on
@@ -338,7 +338,7 @@ module VBlank
 
             WAITING_KINDS = %i[wait_vblank call loop halt].freeze
 
-            # IN A GAME WHOSE SCREENS BRING THEIR COLOURS IN, WHERE EACH PUTS ITS OWN FIRST: every scene on
+            # In a game whose screens bring their colours in, where each puts its own first: every scene on
             # a screen of tiles has a room, one of nothing for a scene with no background of its own, so
             # each arrival puts its first palette in — black alone, for a room with none — and a scene
             # never shows its empty cells in the colours the scene before it put first.
@@ -353,7 +353,7 @@ module VBlank
               end
             end
 
-            # IN A GAME WHOSE SCENES BRING THEIR OWN SPRITE PICTURES IN: each such scene's room brings
+            # In a game whose scenes bring their own sprite pictures in: each such scene's room brings
             # them, and a scene with no room yet has one of nothing but its pictures.
             def plan_rooms_for_scene_pictures
               @art.scenes_with_own_pictures.each do |scene|
@@ -366,7 +366,7 @@ module VBlank
               end
             end
 
-            # WHICH SPRITE PICTURES ARE ONE SCENE'S OWN, in a game whose scenes bring their own in
+            # Which sprite pictures are one scene's own, in a game whose scenes bring their own in
             # (Art::TooManySpriteTiles): the picture's name to the scene, for a picture every sprite
             # showing it is that scene's. One a sprite in no scene or of two scenes shows, one in a
             # picture group, and one the game paints, is in sprite memory the whole time.
@@ -510,7 +510,7 @@ module VBlank
 
             # --- pictures grouped by room ---
 
-            # WHICH PICTURES ARE COPIED IN AS A ROOM COMES UP (Runtime::PictureGroups), each with
+            # Which pictures are copied in as a room comes up (Runtime::PictureGroups), each with
             # the set of groups that copies it in. A picture is grouped when a set holds it in a group
             # and every sprite showing it answers to that set — the set of its own scene, or one of
             # every screen — as the interpreter asks (Reference#refuse_pictures_not_up!). One a sprite
@@ -564,7 +564,7 @@ module VBlank
             end
 
             # The groups up now, as the sprites about to be placed need them: each slot's, or NONE
-            # for a number naming no group — or, for a set of a scene not up yet, FOLLOW, the group
+            # for a number naming no group — or, for a set of a scene not up yet, follow, the group
             # the game sets by the blank.
             def emit_groups_wanted
               @group_slots.each do |name, slots|
@@ -588,7 +588,7 @@ module VBlank
               end
             end
 
-            # A SPRITE SHOWING A PICTURE NONE OF WHOSE GROUPS IS UP STOPS THE GAME, as the interpreter
+            # A sprite showing a picture none of whose groups is up stops the game, as the interpreter
             # stops it (Reference#refuse_pictures_not_up!): on the console it would show whatever the
             # groups up put where that picture goes in sprite memory. Asked as the sprite is placed,
             # of every set of its own scene or of every screen that holds the picture in a group,
@@ -670,7 +670,7 @@ module VBlank
               @asm.label(fine)
             end
 
-            # TWO GROUPS UP TOGETHER THAT up_together DOES NOT ALLOW stop the game, asked of
+            # Two groups up together that up_together does not allow stop the game, asked of
             # every set of a scene up, or of every screen, as the sprites are about to be placed —
             # before any sprite's picture is asked about, as the interpreter asks
             # (Reference#refuse_pictures_not_up!). A set of one slot can have only one group up.
@@ -749,7 +749,7 @@ module VBlank
 
             # --- refusals ---
 
-            # THE SETS GIVEN TO `colors_in_use` HAVE TO FIT IN THE EIGHT. The lists a set names are
+            # The sets given to `colors_in_use` have to fit in the eight. The lists a set names are
             # shown together, so each takes turns in a list of its own (IR::Nodes::ColorList
             # .shared_name), and the sprites of a scene and the sprites every scene shows are drawn
             # through as many of those as its biggest set has lists. More than eight of them cannot
@@ -1105,7 +1105,7 @@ module VBlank
               emit_bar_beside(node)
             end
 
-            # WHETHER +bg+'S LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop). Put up the second
+            # WHETHER +bg+'S line can run more than once (one in a routine, or in the game loop). Put up the second
             # time, it keeps the cells the game changed, as the interpreter keeps them (Reference#put_up_background).
             # The Color already copies nothing for a grid that is up, and a changed cell marks its grid as not
             # up (GRID_UP), so a scene's arrival puts the declared map back; a put-up that keeps the cells is
@@ -1173,7 +1173,7 @@ module VBlank
               note_put_up(corner_note(BACKGROUND_LAYER))
             end
 
-            # A BACKGROUND OF SEVERAL MAPS PUT UP AGAIN keeps the map the game handed it, as the interpreter keeps
+            # A background of several maps put up again keeps the map the game handed it, as the interpreter keeps
             # it (Reference#put_up_background). Which map that is, is the number the game's own frame boundary
             # writes as it hands the map over (the second of Nodes::Background#choice, the map really in the
             # cells), so the put-up asks that and not the runtime: the runtime keeps only the grid its layer holds,
@@ -1245,7 +1245,7 @@ module VBlank
               end
             end
 
-            # A STATUS BAR goes up into the console's window (Runtime::Picture#emit_bar), at the row
+            # A status bar goes up into the console's window (Runtime::Picture#emit_bar), at the row
             # it was declared with until it is placed (Reference#bar_top_shown), and covering sprites
             # as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up). The setting is kept
             # only where a reachable `covers_sprites =` sets it (#bar_covers_sprites?).
@@ -1286,7 +1286,7 @@ module VBlank
               @backgrounds.fetch(node.name) { raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}" }
             end
 
-            # A LINE THAT CHANGES A BACKGROUND BY NAME, for a name declared in several scenes: each
+            # A line that changes a background by name, for a name declared in several scenes: each
             # declaration has tiles, maps and colours of its own, and the line means the one on the
             # screen up (Reference#background_up). So the line's code is written once for each
             # declaration, each part run only while its scene is the one running — a compare a
@@ -1379,7 +1379,7 @@ module VBlank
             # the picture, as the interpreter shows it.
             def emit_camera(node) = runtime_call("rt_background_scroll", [node.x, node.y])
 
-            # A BACKGROUND BENT ROW BY ROW (Reference#exec_scroll_rows): a standing declaration,
+            # A background bent row by row (Reference#exec_scroll_rows): a standing declaration,
             # gathered up front. Its rows are worked out at every frame boundary (#emit_bends), and
             # shown while its background is up (#emit_bends_shown).
             def emit_scroll_rows(node) = declared_background!(node)
@@ -1513,7 +1513,7 @@ module VBlank
             # and a bank bit: what an entry of a table of cells holds for a number that stands for no tile.
             NO_GRID_CELL = 0xFFFF
 
-            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A CELL READ FROM A TABLE, as a
+            # A tile picked as the game runs (Nodes::SetTile#picked_by) is a cell read from a table, as a
             # console's own game writes its text: the number, less the one the list starts at, is a
             # place in a table of the cells those tiles show, kept in a bank of the cartridge of its
             # own. So the cost of a cell is the same however many tiles the number can pick, where the
@@ -2099,7 +2099,7 @@ module VBlank
             # Whether every map of +bg+ is one size, so a cell change tests one edge whichever is up.
             def maps_of_one_size?(bg) = bg.every_map.map { |map| TileMap.size_of(map) }.uniq.one?
 
-            # A CELL CHANGE ON MAPS OF DIFFERENT SIZES, each held whole in the grid: the edge it is
+            # A cell change on maps of different sizes, each held whole in the grid: the edge it is
             # tested against is the map's in the cells now (Reference#change_cell), so the block is
             # written for each map's size, and the map in the cells picks which runs (#emit_for_map_shown).
             def each_shown_map_size(bg)
@@ -2192,7 +2192,7 @@ module VBlank
               @asm.label(past)
             end
 
-            # A FRAME WITH SPRITES THAT CHANGE LAYER as the game runs (`put_in_layer`,
+            # A frame with sprites that change layer as the game runs (`put_in_layer`,
             # Reference#object_level): every depth any of them can be at, front-most first, and at
             # each, every sprite that can be there, placed when the layer it is in now is that one —
             # so a sprite is placed once, among the sprites of its layer now, behind the background
@@ -2260,7 +2260,7 @@ module VBlank
               statement(Build.set(note, 1)) if note
             end
 
-            # A FRAME WITHOUT SPRITES (`hide_sprites`, Reference#exec_hide_sprites). The pass that
+            # A frame without sprites (`hide_sprites`, Reference#exec_hide_sprites). The pass that
             # asks only notes it; the next placing of the frame's sprites places none and forgets
             # it was asked. rt_sprites_end then moves every entry of the sprite table above the
             # screen, so nothing of any sprite shows on that frame, and the placing after puts each
@@ -2326,7 +2326,7 @@ module VBlank
             # sprite of the run to place. A sprite of the run with no routine in +placings+ (one not
             # at this depth) is placed by none.
             #
-            # THE NUMBER PICKS THE ROUTINE FROM A TABLE, as the Genesis's does: a routine address for
+            # The number picks the routine from a table, as the Genesis's does: a routine address for
             # each sprite of the run, read by one dispatch the run shares, so the code grows with the
             # run's length and not its square.
             #
@@ -2337,7 +2337,7 @@ module VBlank
             # takes items from the front of, whose slots move round — is walked as the interpreter
             # reads it (DrawOrderWalk), last entry first.
             #
-            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), and the last of them
+            # A sorted run keeps its entries not showing at its front (ShownSort), and the last of them
             # holds a mark while the run is walked: the number past the run's last sprite, which the
             # table sends to a stop. So the walk ends at the first entry not showing, and a run of many
             # declared and a few showing places the few.
@@ -2431,7 +2431,7 @@ module VBlank
                                    "places it only among the sprites of a frame."
             end
 
-            # A SPRITE PLACED AS IT WAS ON THE PASS BEFORE IS LEFT AS IT IS (Runtime::KeptSprites says
+            # A sprite placed as it was on the pass before is left as it is (Runtime::KeptSprites says
             # how). A sprite with a block (#posed_sprite_block) is placed by rt_place_kept_sprite alone,
             # its code three loads and a call: left as it is, changed where it is in the table, or
             # placed afresh. One not drawn and unchanged since is passed over before the call

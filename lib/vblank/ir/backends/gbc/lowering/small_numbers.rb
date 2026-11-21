@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # NUMBERS PROVEN TO STAY IN ONE OR TWO BYTES (Backends::NumberRanges), compared and worked
+          # Numbers proven to stay in one or two bytes (Backends::NumberRanges), compared and worked
           # at that width. Mixed into Lowering.
           #
           # The Color's processor works a byte at a time, so a comparison of two whole numbers is the
@@ -61,7 +61,7 @@ module VBlank
               true
             end
 
-            # TWO SIDES OF A COMPARISON PROVEN TO FIT THE SAME BYTE OR TWO: [the width, :byte for
+            # Two sides of a comparison proven to fit the same byte or two: [the width, :byte for
             # two from 0 to 255, :signed_byte for two from -128 to 127, :half for two that fit 16
             # bits, or :unsigned_half for two from 0 to 65535], or nil.
             def small_sides_width(left, right)
