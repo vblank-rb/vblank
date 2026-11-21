@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_input"
 
-# THE BUTTONS ON THE ADVANCE'S CARTRIDGE: the branches a button test is built of, and the presses
+# The buttons on the Advance's cartridge: the branches a button test is built of, and the presses
 # the cartridge counts in the emulator. The buttons as every run plays them are in
 # test/all/vblank/builder/test_input.rb.
 class TestInputCartridge < Minitest::Test
@@ -144,7 +144,7 @@ class TestInputCartridge < Minitest::Test
     end
   end
 
-  # A TAP WHILE THE GAME SETS UP IS NOT A PRESS. The screen is off until the game loop's first
+  # A tap while the game sets up is not a press. The screen is off until the game loop's first
   # frame, so nothing a player does then has anything to answer — and the console reads no
   # buttons for the game before it either, the way a retail game reads none before its main
   # loop. A button still down when the loop starts is one press, like one held from power-on.

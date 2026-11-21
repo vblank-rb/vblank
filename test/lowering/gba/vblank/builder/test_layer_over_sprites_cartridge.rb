@@ -7,7 +7,7 @@ require "layer_over_sprites_tests"
 # emulator, and what the cartridge tells the display to mix. What every run that plays games as
 # the Advance is held to is in test/console/gba/vblank/builder/test_layer_over_sprites_on_the_advance.rb.
 #
-# THE DISPLAY MIXES A LAYER WITH THE ONE DIRECTLY BEHIND IT AT EACH PIXEL, and only where that one
+# The display mixes a layer with the one directly behind it at each pixel, and only where that one
 # is among the layers its blend control names as the far side. All the sprites are one layer to
 # it. So where a sprite is behind a see-through background and the sprites are not named, the
 # background is drawn there at full strength: a solid patch the shape of the sprite.

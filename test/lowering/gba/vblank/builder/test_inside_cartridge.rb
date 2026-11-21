@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_inside"
 
-# A PART OF THE SCREEN THAT DRAWING STAYS INSIDE, on the Advance's own cartridge. The interpreter
+# A part of the screen that drawing stays inside, on the Advance's own cartridge. The interpreter
 # asks one question at the one place a cell is painted, and the console works the same edges out
 # again inside every shape, so the two agreeing over the whole screen is the proof — and that
 # reads the cartridge in the emulator. What an area does, asked of every run, is in
@@ -12,7 +12,7 @@ require "all/vblank/builder/test_inside"
 class TestInsideCartridge < Minitest::Test
   include InsideGames
 
-  # AN AREA HOLDS DRAWING, NOT THE DISPLAY. The picture is read at a frame boundary, while the
+  # An area holds drawing, not the display. The picture is read at a frame boundary, while the
   # area is still open, and compared with the console's whole: the window stands still, so every
   # frame shows the same picture. Inside the area's right edge the window shows cells from
   # outside it, and outside the area it shows the red square moved by the window.
@@ -25,10 +25,10 @@ class TestInsideCartridge < Minitest::Test
     assert_empty differ.first(8), "read at a frame boundary inside the area, these pixels differ from the console"
   end
 
-  # KEPT LIGHT ON PURPOSE. This screen is drawn straight into the one the console is showing, so
+  # Kept light on purpose. This screen is drawn straight into the one the console is showing, so
   # a frame that takes longer than a frame is read half finished — and since the drawing runs
   # left to right, what that looks like is the right-hand side disagreeing. That is a measure of
-  # how far the console GOT, not of what it draws, and it will happily fail a correct backend.
+  # how far the console got, not of what it draws, and it will happily fail a correct backend.
   # A dozen short columns finish inside a frame with room to spare.
   def test_the_console_clips_where_the_interpreter_clips
     prog = program do
@@ -72,7 +72,7 @@ class TestInsideCartridge < Minitest::Test
     assert_cartridge_matches_interpreter(prog, "INSIDE2", "AIN2")
   end
 
-  # AN AREA OF NO WIDTH CLEARS NOTHING. Clearing inside an area is a fill of the area's rows,
+  # An area of no width clears nothing. Clearing inside an area is a fill of the area's rows,
   # and a row of no pixels once asked the copy engine for nought, which it reads as its biggest
   # count: it filled all of video memory red.
   def test_clearing_an_area_of_no_width_paints_nothing
@@ -87,7 +87,7 @@ class TestInsideCartridge < Minitest::Test
     assert_cartridge_matches_interpreter(prog, "INSIDE4", "AIN4")
   end
 
-  # A TEAR-FREE PICTURE CUT BY AN AREA WITH ODD EDGES. The screen takes two pixels at a time, so
+  # A tear-free picture cut by an area with odd edges. The screen takes two pixels at a time, so
   # an end of a row that falls halfway through a pair is written alone. A row cut down to one
   # pixel once asked the copy engine for no pairs, which it reads as its biggest count, and an
   # end pixel was dropped otherwise.

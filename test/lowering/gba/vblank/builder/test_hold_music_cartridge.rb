@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/builder/test_hold_music"
 
-# THE MUSIC HELD WHERE IT IS, on the Advance's own cartridge: what its first square voice is set
+# The music held where it is, on the Advance's own cartridge: what its first square voice is set
 # to, frame by frame, read in the emulator. What every run plays is in
 # test/all/vblank/builder/test_hold_music.rb, which keeps the games both files play.
 class TestHoldMusicCartridge < Minitest::Test
