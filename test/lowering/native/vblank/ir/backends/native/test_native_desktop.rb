@@ -361,6 +361,7 @@ class TestNativeDesktop < Minitest::Test
       assert_the_menu_holds_the_game_and_keeps_its_keys(exe, dir)
       assert_save_states_are_kept_beside_the_save_and_put_back(exe, dir)
       assert_the_frame_time_shows_without_the_frame_rate(exe, dir)
+      assert_the_game_variables_window_lists_and_finds_them(exe, dir)
     end
   end
 
@@ -890,6 +891,28 @@ class TestNativeDesktop < Minitest::Test
     corner = [(shown.width - 200)...(shown.width - 10), 0...50]
 
     assert_operator shown.text_in(*corner), :>, 50, "the frame time is written in the corner"
+  end
+
+  # Developer, Game variables opens a window of the game's variables over the game as it plays, in
+  # the top left corner; letters typed find a name, and are not the game's buttons; Show frame time,
+  # under it, is a setting the file keeps.
+  def assert_the_game_variables_window_lists_and_finds_them(exe, dir)
+    to_variables = ["0", "0 hotkey:menu", "0 key:Left", "0 key:Down", "0 key:Return"]
+    plain, = picture_of_window(exe, dir, [], frames: 20)
+    listed, = picture_of_window(exe, dir, [*to_variables, "0", "0"], frames: 20)
+    found, typed = picture_of_window(exe, dir, [*to_variables, "0 key:Z", "0 key:Z", "0 key:Q"], frames: 20)
+    rows = [16...260, 90...340] # under the window's heading, where its lines are
+
+    assert_operator listed.text_in(*rows), :>, plain.text_in(*rows) + 500, "a line is written for each variable"
+    assert_operator found.text_in(*rows), :<, listed.text_in(*rows) / 4, "no name has zzq in it"
+    assert_equal 0, typed.variables[:held_b], "Z typed into the window is not the game's B"
+    assert_operator typed.variables[:frames], :>, 10, "the game plays on under the window"
+
+    settings = File.join(dir, "developer.txt")
+    File.write(settings, "")
+    play_window(exe, dir, ["0", "0 hotkey:menu", "0 key:Left", "0 key:Down", "0 key:Down", "0 key:Return"], frames: 20,
+                          options: ["--settings-file", settings])
+    assert_includes settings_lines(settings), "frame_time = on"
   end
 
   public

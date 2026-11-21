@@ -14,7 +14,8 @@ class TestMenu < Minitest::Test
     menu = Menu.new
 
     refute menu.open?
-    assert_equal({ fast_forward_speed: 4, scale: 3, fullscreen: false, volume: 100, muted: false, frame_rate: true },
+    assert_equal({ fast_forward_speed: 4, scale: 3, fullscreen: false, volume: 100, muted: false, frame_rate: true,
+                   frame_time: false },
                  menu.settings.to_h)
   end
 
@@ -36,10 +37,10 @@ class TestMenu < Minitest::Test
     assert_equal "Sound", menu.open_heading
     assert_nil menu.chosen_line
 
-    3.times { menu.press(:right) }
+    4.times { menu.press(:right) }
     assert_equal "Game", menu.open_heading
     menu.press(:left)
-    assert_equal "Hotkeys", menu.open_heading
+    assert_equal "Developer", menu.open_heading
     assert_equal WindowMenu::STARTING, menu.settings
   end
 
@@ -269,18 +270,18 @@ class TestMenu < Minitest::Test
   def test_the_bar_shows_every_heading_and_the_open_headings_lines
     words = drawn_words(opened)
 
-    assert_equal %w[Game Window Sound Keys Hotkeys Resume F1 Fast\ forward 4x Quit Esc], words.map(&:text)
+    assert_equal %w[Game Window Sound Keys Hotkeys Developer Resume F1 Fast\ forward 4x Quit Esc], words.map(&:text)
   end
 
   def test_a_closed_menu_draws_nothing_but_what_the_window_is_doing
-    assert_empty Menu.new.drawing(width: 720, density: 1)
+    assert_empty Menu.new.drawing(width: 720, height: 480, density: 1)
 
-    status = Menu.new.drawing(width: 720, density: 1, held: true, fast_forward: nil, frame_rate: 60)
+    status = Menu.new.drawing(width: 720, height: 480, density: 1, held: true, fast_forward: nil, frame_rate: 60)
     assert_equal ["60 fps", "PAUSED"], status.grep(WindowMenu::Words).map(&:text)
   end
 
   def test_fast_forward_is_said_in_the_corner_with_its_speed
-    status = Menu.new.drawing(width: 720, density: 1, fast_forward: 4)
+    status = Menu.new.drawing(width: 720, height: 480, density: 1, fast_forward: 4)
 
     assert_equal ["FAST FORWARD 4x"], status.grep(WindowMenu::Words).map(&:text)
   end
@@ -292,7 +293,7 @@ class TestMenu < Minitest::Test
     menu.press(:right)
 
     assert_equal ["Size", "3x  (720 × 480)", "Fullscreen", "Show frame rate", "✓"],
-                 drawn_words(menu).map(&:text).drop(5)
+                 drawn_words(menu).map(&:text).drop(6)
   end
 
   # The chosen line has the chosen colour behind it, across the box.
@@ -300,7 +301,7 @@ class TestMenu < Minitest::Test
     menu = opened
     menu.press(:down)
     resume = drawn_words(menu).find { |words| words.text == "Resume" }
-    behind = menu.drawing(width: 720, density: 1).grep(WindowMenu::Box)
+    behind = menu.drawing(width: 720, height: 480, density: 1).grep(WindowMenu::Box)
                  .select { |box| box.color == WindowMenu::COLORS[:chosen] }
 
     assert_equal 1, behind.size
@@ -311,8 +312,8 @@ class TestMenu < Minitest::Test
   # On a screen with twice the pixels each way, the menu is drawn at twice the pixels, so it is
   # the same size to the eye and sharper: here the bar, and the corner of the box under Game.
   def test_a_retina_screen_draws_the_menu_at_twice_the_pixels
-    one = opened.drawing(width: 720, density: 1).grep(WindowMenu::Box)
-    two = opened.drawing(width: 1440, density: 2).grep(WindowMenu::Box)
+    one = opened.drawing(width: 720, height: 480, density: 1).grep(WindowMenu::Box)
+    two = opened.drawing(width: 1440, height: 960, density: 2).grep(WindowMenu::Box)
 
     assert_equal [0, 0, 1440, 44], [two[0].x, two[0].y, two[0].width, two[0].height]
     assert_equal [one[0].width * 2, one[0].height * 2], [two[0].width, two[0].height]
@@ -331,10 +332,10 @@ class TestMenu < Minitest::Test
   # A menu with no places to keep states in (a match with other players) offers none.
   def test_a_menu_with_no_places_for_states_has_no_save_or_load_heading
     menu = opened
-    menu.press(:left)
+    2.times { menu.press(:left) }
 
     assert_equal "Hotkeys", menu.open_heading
-    menu.press(:right)
+    2.times { menu.press(:right) }
     assert_equal "Game", menu.open_heading
   end
 
@@ -354,7 +355,7 @@ class TestMenu < Minitest::Test
     5.times { menu.press(:right) }
     words = drawn_words(menu).map(&:text)
 
-    assert_equal ["Quick Save", "F5", "Slot 1", "Empty", "Slot 2", "Empty", "Slot 3", "2026-11-10 14:03"], words.drop(7).first(8)
+    assert_equal ["Quick Save", "F5", "Slot 1", "Empty", "Slot 2", "Empty", "Slot 3", "2026-11-10 14:03"], words.drop(8).first(8)
   end
 
   def test_quick_save_asks_for_the_quick_state_and_closes_the_menu
@@ -387,8 +388,88 @@ class TestMenu < Minitest::Test
     assert_equal "Save", menu.open_heading
     menu.states = nil
     assert_equal "Game", menu.open_heading
-    menu.press(:left)
+    2.times { menu.press(:left) }
     assert_equal "Hotkeys", menu.open_heading
+  end
+
+  # --- the developer's heading: the game's variables, and the frame time ---
+
+  # Some of a game's variables, as a frontend reads them from the game while it plays.
+  VARIABLES = [["score", 120], ["lives", 3], ["ball_x", -4], ["ball_y", 77], ["paddle_x", 100], ["frames", 9000],
+               ["speed", 2], ["level", 5], ["best_score", 4000], ["timer", 30], ["state", 1], ["hits", 12],
+               ["misses", 0], ["bonus", 50]].freeze
+
+  def test_game_variables_under_developer_opens_the_window_and_closes_the_menu
+    menu = on_developer_line(0)
+    assert_equal "Game variables", menu.chosen_line
+    menu.press(:enter)
+
+    refute menu.open?
+    assert menu.variables_open?
+  end
+
+  # The window has a line for each variable and its value, under a heading that stays put, as many
+  # lines as fit; the rest are reached with down.
+  def test_the_variables_window_lists_each_variable_and_scrolls
+    menu = with_variables_open
+    words = variable_words(menu)
+    assert_equal ["Game variables", "Type letters to find a name", "Name", "Value", "score", "120", "lives", "3"], words.first(8)
+    assert_includes words, "1 to 12 of 14"
+    refute_includes words, "misses"
+
+    3.times { menu.press_on_variables(:down) }
+    words = variable_words(menu)
+    assert_equal %w[Name Value ball_x -4], words[2, 4], "down past the end goes no further than the last line"
+    assert_includes words, "bonus"
+    assert_includes words, "3 to 14 of 14"
+
+    menu.press_on_variables(:up)
+    assert_includes variable_words(menu), "2 to 13 of 14"
+  end
+
+  # Letters typed find the variables whose names have them, in any case; Backspace takes the last off.
+  def test_typed_letters_filter_the_variables_by_name
+    menu = with_variables_open
+    [22, 6, 18].each { |letter| assert menu.type_key(letter) } # S, C and O, by where they sit on the keyboard
+    words = variable_words(menu)
+
+    assert_equal ["sco", "Name", "Value", "score", "120", "best_score", "4000", "1 to 2 of 2"], words.drop(1)
+    assert menu.type_key(WindowMenu::BACKSPACE_KEY)
+    assert menu.type_key(WindowMenu::BACKSPACE_KEY)
+    assert_includes variable_words(menu), "1 to 9 of 9", "s alone is in nine names"
+    [27, 27].each { |letter| menu.type_key(letter) } # X, X
+    assert_includes variable_words(menu), "No name has these letters"
+  end
+
+  # Only the keys that type a name are the window's, and none of them while the menu is open over it.
+  def test_only_letters_digits_and_the_underscore_are_typed
+    menu = with_variables_open
+    refute menu.type_key(40), "Return types nothing"
+    refute menu.type_key(WindowMenu::BACKSPACE_KEY + 1000)
+    menu.toggle
+    refute menu.type_key(22), "the menu open over the window has the keys"
+  end
+
+  # The gamepad's B closes the window; so does Game variables chosen again.
+  def test_close_or_game_variables_again_shuts_the_window
+    menu = with_variables_open
+    menu.press_on_variables(:close)
+    refute menu.variables_open?
+
+    menu = with_variables_open
+    on_developer_line(0, menu)
+    menu.press(:enter)
+    refute menu.variables_open?
+  end
+
+  # Show frame time is a check under Developer, and the frame time is the menu's setting.
+  def test_show_frame_time_is_switched_under_developer
+    menu = on_developer_line(1)
+    assert_equal "Show frame time", menu.chosen_line
+    menu.press(:enter)
+
+    assert menu.settings.frame_time
+    assert_includes drawn_words(menu).map(&:text), "✓"
   end
 
   private
@@ -399,5 +480,23 @@ class TestMenu < Minitest::Test
     menu
   end
 
-  def drawn_words(menu) = menu.drawing(width: 720, density: 1).grep(WindowMenu::Words)
+  # The Developer heading, the last, on its line at +index+.
+  def on_developer_line(index, menu = Menu.new)
+    menu.toggle
+    menu.press(:left)
+    (index + 1).times { menu.press(:down) }
+    menu
+  end
+
+  def with_variables_open
+    menu = on_developer_line(0)
+    menu.press(:enter)
+    menu
+  end
+
+  def variable_words(menu)
+    menu.drawing(width: 720, height: 480, density: 1, variables: VARIABLES).grep(WindowMenu::Words).map(&:text)
+  end
+
+  def drawn_words(menu) = menu.drawing(width: 720, height: 480, density: 1).grep(WindowMenu::Words)
 end

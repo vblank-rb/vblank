@@ -31,6 +31,10 @@ module VBlank
     #                                (answering `state`), and how the match is set up, before the first pass
     #   seat_players(most_players)   optional: the most players the game seats (0 for none named), told
     #                                before the first pass, for a window that seats several (Seats)
+    #   read_variables_from(game)    optional: the game, told before the first pass, for a window that
+    #                                shows its variables (answering `vars`) as it plays
+    #   frame_worked(seconds)        optional: how long the game's own work took in the pass just played,
+    #                                for a window that shows the frame time
     #   save_file                    optional: where the game's save memory is kept between plays
     #                                (SaveFile), or nil for nowhere; asked as each play starts
     #   take_state_request           optional: a save state the player asked for, or nil (#take_state_request)
@@ -129,6 +133,7 @@ module VBlank
         @setup = NO_SETUP # the pass the game set itself up in, once it has been played (#record_setup)
         @started = @frame_began = @device.now
         @device.seat_players(@game.seats) if @device.respond_to?(:seat_players)
+        @device.read_variables_from(@game) if @device.respond_to?(:read_variables_from)
         @device.wait_until(@frame_began)
       end
 
@@ -238,8 +243,9 @@ module VBlank
         return unless @pass_began
         return @lateness.record_fast_forward if speed > 1
 
-        @lateness.record(work_seconds: @device.now - @pass_began,
-                         collection_seconds: LatenessTally.seconds_collecting_since(@collection_began))
+        work = @device.now - @pass_began
+        @device.frame_worked(work) if @device.respond_to?(:frame_worked)
+        @lateness.record(work_seconds: work, collection_seconds: LatenessTally.seconds_collecting_since(@collection_began))
       end
 
       # ONE FULL COLLECTION, ONCE THE GAME HAS SET ITSELF UP. Ruby keeps young objects apart from old

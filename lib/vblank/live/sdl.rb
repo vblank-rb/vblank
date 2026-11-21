@@ -262,6 +262,9 @@ module VBlank
         @shown_this_second = 0
         @second_began = now
         @frame_rate = 0 # pictures shown in the last whole second
+        @work_this_second = 0.0 # seconds of the game's own work in the passes of this second
+        @worked_this_second = 0 # ...and how many passes those were
+        @frame_work = nil # the game's work a pass over the last whole second, in milliseconds, as words
         begin
           open_window(caption || title, scale)
         rescue Failed
@@ -404,6 +407,19 @@ module VBlank
 
       # How many new pictures went up in the last whole second, the number the menu can put up.
       attr_reader :frame_rate
+
+      # How long the game's own work took in a pass that has just been played, in seconds, which
+      # Session tells after each pass: the frame time, the developer's reading, is the average of a second's.
+      def frame_worked(seconds)
+        @work_this_second += seconds
+        @worked_this_second += 1
+      end
+
+      # The game whose variables the window of them shows (LiveGame, answering +vars+), which Session
+      # tells before the first pass.
+      def read_variables_from(game)
+        @variables_game = game
+      end
 
       # The console's buttons whose keys are down now, as SDL last heard them (#show reads what
       # SDL has heard). The keyboard is read when it is asked, whichever pass it is asked for. A
@@ -843,11 +859,13 @@ module VBlank
       # game's own size (the logical presentation, which scales it by a whole number with bars where
       # the window is the wrong shape), which is put aside while the menu draws and put back after.
       def draw_menu_and_status
-        return unless held? || @fast_forward || @settings.frame_rate
+        return unless held? || @fast_forward || @settings.frame_rate || @settings.frame_time || @menu.variables_open?
 
-        drawing = @menu.drawing(width: output_size.first, density: pixel_density, held: held?,
+        width, height = output_size
+        drawing = @menu.drawing(width: width, height: height, density: pixel_density, held: held?,
                                 fast_forward: (@settings.fast_forward_speed if @fast_forward && !held?),
-                                frame_rate: (@frame_rate if @settings.frame_rate))
+                                frame_rate: (@frame_rate if @settings.frame_rate),
+                                frame_work: (@frame_work if @settings.frame_time), variables: game_variables)
         upload_menu_letters
         @sdl.SDL_SetRenderLogicalPresentation(@renderer, 0, 0, LOGICAL_PRESENTATION_DISABLED)
         begin
@@ -921,13 +939,24 @@ module VBlank
         end
       end
 
-      # New pictures shown in the last whole second, for the frame rate the menu can put up.
+      # The game's variables as name and value pairs, read from it while the window of them is open
+      # (#read_variables_from), and none while it is shut, so a game nobody is watching pays nothing.
+      def game_variables
+        return [] unless @menu.variables_open? && @variables_game
+
+        @variables_game.vars.to_a
+      end
+
+      # New pictures shown in the last whole second, for the frame rate the menu can put up, and the
+      # game's work a frame over the same second, for the frame time.
       def count_frame_rate
         @shown_this_second += 1 unless @repeating_picture
         return if now - @second_began < 1
 
         @frame_rate = @shown_this_second
-        @shown_this_second = 0
+        @frame_work = format("%.2f", @work_this_second * 1000 / @worked_this_second) if @worked_this_second.positive?
+        @shown_this_second = @worked_this_second = 0
+        @work_this_second = 0.0
         @second_began = now
       end
 
@@ -1070,6 +1099,8 @@ module VBlank
         elsif @menu.open? && PAD_MENU_KEYS.key?(button)
           @pad_kept << button
           press_menu(PAD_MENU_KEYS[button])
+        elsif PAD_MENU_KEYS.key?(button) && @menu.press_on_variables(PAD_MENU_KEYS[button])
+          @pad_kept << button # the D-pad's up and down scroll the window of variables, and B shuts it
         end
       end
 
@@ -1096,6 +1127,7 @@ module VBlank
           return write_settings_soon
         end
         return @closed = true if scancode == ESCAPE && !repeat
+        return if read_variables_key(scancode, repeat)
 
         hotkey = @player_settings.hotkey_of_key(scancode)
         if menu_opener?(scancode, hotkey) && @has_menu
@@ -1116,6 +1148,18 @@ module VBlank
           @menu.settings = @menu.settings.with(switch => !@menu.settings.setting(switch))
           apply_menu_settings
         end
+      end
+
+      # The window of the game's variables, open with the menu shut, has the arrows that scroll it and
+      # the keys that type a name (Menu#type_key), held ones too for the arrows and Backspace; the
+      # game plays on with the rest. Gives whether the key was the window's.
+      def read_variables_key(scancode, repeat)
+        moves = MENU_KEYS[scancode]
+        taken = if %i[up down].include?(moves) then @menu.press_on_variables(moves)
+                elsif !repeat || scancode == WindowMenu::BACKSPACE_KEY then @menu.type_key(scancode)
+                end
+        @kept_from_game << scancode if taken
+        taken
       end
 
       # The window settings a hotkey switches on and off.

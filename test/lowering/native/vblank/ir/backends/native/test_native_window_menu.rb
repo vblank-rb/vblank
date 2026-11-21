@@ -23,10 +23,16 @@ class TestNativeWindowMenu < Minitest::Test
 
   HARNESS = Ractor.make_shareable(File.expand_path("menu_harness.c", __dir__))
 
-  # How the window is drawn after each key, taken in turn: its width in pixels, its density, whether
-  # the game is held, fast forward's speed, and the frame rate and the frame time, as words.
-  DRAWS = [[720, 1.0, false, nil, "60.0", nil], [1440, 2.0, true, nil, "59.9", "4.25"], [1080, 1.5, false, 4, nil, nil],
-           [900, 1.25, true, nil, nil, "0.50"]].freeze
+  # How the window is drawn after each key, taken in turn: its width and height in pixels, its
+  # density, whether the game is held, fast forward's speed, and the frame rate and the frame time,
+  # as words.
+  DRAWS = [[720, 480, 1.0, false, nil, "60.0", nil], [1440, 960, 2.0, true, nil, "59.9", "4.25"],
+           [1080, 720, 1.5, false, 4, nil, nil], [900, 600, 1.25, true, nil, nil, "0.50"]].freeze
+
+  # The game's variables as the window reads them, by "watch NAME VALUE" after "watch_begin".
+  WATCHED = [["score", 120], ["lives", 3], ["ball_x", -4], ["ball_y", 77], ["paddle_x", 100], ["frames", 9000],
+             ["speed", 2], ["level", 5], ["best_score", 4000], ["timer", 30], ["state", 1], ["hits", 12],
+             ["misses", 0], ["a_rather_long_name_for_a_variable", -2_147_483_648]].freeze
 
   # Every heading, every line, both ends of every slider, each check on and off, and the ways out.
   WALK = [
@@ -95,6 +101,20 @@ class TestNativeWindowMenu < Minitest::Test
   end
 
 
+  # Developer: the window of the game's variables opened, filled, scrolled past its end and back,
+  # found by typed letters (S, C, O, an underscore, a digit, Backspace and a key that types nothing),
+  # read again with fewer variables, the menu opened over it, and shut by B and by its line; then
+  # Show frame time switched on and off.
+  def test_the_variables_window_and_the_frame_time_draw_the_same
+    to_developer = ["toggle", "press left", "press down"]
+    watch = ["watch_begin", *WATCHED.map { |name, value| "watch #{name} #{value}" }]
+    assert_same_drawing([*to_developer, "press enter", *watch, *["variables down"] * 4, "variables up", "type_key 22",
+                         "type_key 6", "type_key 18", "type_key 42", "type_key 42", "type_key 45", "type_key 30",
+                         "type_key 40", "type_key 42", "type_key 42", "watch_begin", "watch lives 2", "toggle", "type_key 22",
+                         "toggle", "variables close", *to_developer, "press enter", *to_developer, "press enter",
+                         "toggle", "press left", "press down", "press down", "press enter", "press enter"], most_scale: 6)
+  end
+
   # A shell's parts keep no states, so their window has no Save or Load, and no F5 or F9.
   def test_a_window_with_no_states_has_no_save_or_load_heading
     with, without = [true, false].map { |states| Native::MenuData.source(states: states) }
@@ -127,13 +147,15 @@ class TestNativeWindowMenu < Minitest::Test
     menu = Menu.new(picture: picture, scales: 1..most_scale, states: slots = Slots.new)
     commands = ["picture #{picture.join(' ')}", "most_scale #{most_scale}"]
     expected = []
+    watched = []
     (["start"] + walk).each_with_index do |step, index|
-      play_in_ruby(menu, step, slots) unless step == "start"
+      play_in_ruby(menu, step, slots, watched) unless step == "start"
       commands << step unless step == "start"
-      width, density, held, fast, rate, work = DRAWS[index % DRAWS.size]
-      commands << "draw #{width} #{density} #{held ? 1 : 0} #{fast || 0} #{rate || '-'} #{work || '-'}"
-      expected << [step, drawing_lines(menu.drawing(width: width, density: density, held: held, fast_forward: fast,
-                                                    frame_rate: rate, frame_work: work))]
+      width, height, density, held, fast, rate, work = DRAWS[index % DRAWS.size]
+      commands << "draw #{width} #{height} #{density} #{held ? 1 : 0} #{fast || 0} #{rate || '-'} #{work || '-'}"
+      expected << [step, drawing_lines(menu.drawing(width: width, height: height, density: density, held: held,
+                                                    fast_forward: fast, frame_rate: rate, frame_work: work,
+                                                    variables: watched))]
     end
     said = ask(*commands).slice_after("end").to_a
     expected.each_with_index do |(step, lines), index|
@@ -146,10 +168,14 @@ class TestNativeWindowMenu < Minitest::Test
     end
   end
 
-  def play_in_ruby(menu, step, slots)
-    command, name = step.split
+  def play_in_ruby(menu, step, slots, watched)
+    command, name, value = step.split
     case command
     when "slot" then slots.set(name.to_i, step.split(" ", 3).last)
+    when "watch_begin" then watched.clear
+    when "watch" then watched << [name, value.to_i]
+    when "type_key" then menu.type_key(name.to_i)
+    when "variables" then menu.press_on_variables(name.to_sym)
     when "toggle" then menu.toggle
     when "press" then menu.press(name.to_sym)
     when "capture_key" then menu.controls.capture_key(name.to_i)

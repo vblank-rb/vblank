@@ -1,12 +1,12 @@
 // The windows over the picture (rg_menu.h): Dear ImGui, drawn through SDL3's renderer.
 //
 // THIS FILE ONLY DRAWS. Anything a player does with it is a call to a plain function of
-// rg_window.h, the very one a hotkey calls, and nothing is kept here but what is needed to draw:
-// what is typed in a filter box. Take it away and the window still does everything.
+// rg_window.h, the very one a hotkey calls, and nothing is kept here. Take it away and the window
+// still does everything.
 //
-// The menu itself is not here: it is the library's own (rg_window_menu.h), drawn by rg_sdl.c. What
-// is left is the window of keys and gamepad buttons, the window of the game's variables, and what
-// was wrong with the settings file, until the menu has its own way to show each.
+// The menu itself is not here: it is the library's own (rg_window_menu.h), drawn by rg_sdl.c, and
+// so is the window of the game's variables. What is left is the window of keys and gamepad
+// buttons, and what was wrong with the settings file, until the menu has its own way to show each.
 #include "rg_menu.h"
 
 #include <stdio.h>
@@ -21,7 +21,6 @@ namespace {
 
 SDL_Window *menu_window;
 SDL_Renderer *menu_renderer;
-char variable_filter[64];
 
 // What a button that chooses a key does when it is clicked.
 enum class KeyClick { NONE, CHOOSE, CLEAR };
@@ -141,43 +140,6 @@ void controls_window() {
   if (!open) rg_window_capture_cancel();
 }
 
-bool contains_ignoring_case(const char *text, const char *wanted) {
-  if (!wanted[0]) return true;
-  size_t length = strlen(wanted);
-  for (; *text; text++)
-    if (SDL_strncasecmp(text, wanted, length) == 0) return true;
-  return false;
-}
-
-void variables_window() {
-  bool open = rg_window_panel_shown(RG_PANEL_VARIABLES) != 0;
-  if (!open) return;
-  ImGui::SetNextWindowPos(ImVec2(30.0f, 40.0f), ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSize(ImVec2(340.0f, 380.0f), ImGuiCond_FirstUseEver);
-  if (ImGui::Begin("Game variables", &open, ImGuiWindowFlags_NoSavedSettings)) {
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##filter", "type part of a name to find it", variable_filter, sizeof variable_filter);
-    if (ImGui::BeginTable("variables", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerH)) {
-      ImGui::TableSetupScrollFreeze(0, 1);
-      ImGui::TableSetupColumn("Name");
-      ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-      ImGui::TableHeadersRow();
-      for (int i = 0; i < rg_window_watch_count(); i++) {
-        if (!contains_ignoring_case(rg_window_watch_name(i), variable_filter)) continue;
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        ImGui::TextUnformatted(rg_window_watch_name(i));
-        ImGui::TableNextColumn();
-        ImGui::Text("%d", (int)rg_window_watch_value(i));
-      }
-      ImGui::EndTable();
-    }
-    if (rg_window_watch_dropped()) ImGui::TextDisabled("%d more not shown", rg_window_watch_dropped());
-  }
-  ImGui::End();
-  rg_window_show_panel(RG_PANEL_VARIABLES, open);
-}
-
 // What was wrong with the settings file, over the picture as the window opens, until the player
 // has seen it: a player who opened the game by double-clicking it has no terminal to read. The
 // controls window keeps saying it after this is closed.
@@ -270,7 +232,6 @@ void rg_menu_draw(void) {
   settings_problems_window();
   shell_told_window();
   controls_window();
-  variables_window();
 
   ImGui::Render();
   // The picture was drawn through a logical size (so it scales by a whole number); the windows are

@@ -81,9 +81,10 @@ class TestJSPageMenu < Minitest::Test
   private def assert_same_menu(walk, game = walking_game)
     controls = VBlank::IR::ComputerControls.runtime_numbers(game.program.computer_controls)
     buttons = VBlank::Console.described(game.consoles.first).buttons
-    headings = Live::WindowMenu.headings(buttons: buttons)
+    # The page has no window of the game's variables yet, and so no Developer heading.
+    headings = Live::WindowMenu.headings(buttons: buttons, developer: false)
     settings = Live::Settings.new(key_names: KeyNames.new, game_controls: controls, buttons: buttons)
-    menu = Live::Menu.new(controls: settings, states: EmptySlots.new)
+    menu = Live::Menu.new(controls: settings, states: EmptySlots.new, developer: false)
     expected = [ruby_says(menu, headings)]
     codes = walk.map do |step|
       case step

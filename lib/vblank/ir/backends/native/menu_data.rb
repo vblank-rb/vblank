@@ -71,8 +71,11 @@ module VBlank
           def sizes_and_colors
             sizes = Live::WindowMenu::SIZES.map { |name, points| ".#{name} = #{points}" }
             colors = Live::WindowMenu::COLORS.map { |name, parts| ".#{name} = {#{parts.join(', ')}}" }
+            menu = Live::WindowMenu
             "const rg_menu_sizes rg_menu_size = {#{sizes.join(', ')}};\n" \
-              "const rg_menu_colors rg_menu_color = {#{colors.join(', ')}};\n"
+              "const rg_menu_colors rg_menu_color = {#{colors.join(', ')}};\n" \
+              "const int rg_menu_variable_rows = #{menu::VARIABLE_ROWS}, rg_menu_filter_most = #{menu::FILTER_MOST};\n" \
+              "const char rg_menu_widest_value[] = #{c_string(menu::WIDEST_VALUE)};\n"
           end
 
           # One density's picture and measures, as arrays named for the density.

@@ -34,15 +34,20 @@ module VBlank
       # one is being chosen the window hands it the next key or gamepad button (#capture_key).
       # +states+ answers #text_for(slot) with the words for a place a state is kept (when it was
       # taken, or that it is empty); a menu given none has no Save or Load heading, which is how a
-      # match with other players has none.
+      # match with other players has none. +developer+ false leaves out the Developer heading, as a
+      # frontend with no window of the game's variables does (WindowMenu.headings).
       def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES,
-                     controls: Settings.new(key_names: NumberedKeys.new), states: nil)
+                     controls: Settings.new(key_names: NumberedKeys.new), states: nil, developer: true)
         @scales = scales
         @controls = controls
+        @developer = developer
         self.states = states
         self.settings = settings
         @picture = picture
         @open = @quit = false
+        @variables_open = false
+        @filter = +"" # the letters typed into the window of variables
+        @variables_scroll = 0 # the first of the lines it finds that the window shows
         @state_request = nil
         @heading = 0
         @row = -1
@@ -52,7 +57,7 @@ module VBlank
       # has them once its game does. The menu starts again on its first heading.
       def states=(states)
         @states = states
-        @headings = WindowMenu.headings(states: states ? true : false,
+        @headings = WindowMenu.headings(states: states ? true : false, developer: @developer,
                                         buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
         @state_request = nil
         @heading = 0
@@ -113,19 +118,57 @@ module VBlank
         end
       end
 
-      # WHAT A WINDOW DRAWS over the game, in its own pixels: the menu when it is open, and in the
-      # top right corner what the window is doing — the frame rate when it is asked for, how long
-      # the game's own work took a frame (+frame_work+, in milliseconds, the developer's reading),
-      # and PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as
-      # fast. +width+ is the window's in pixels, and +density+ how many pixels a point is (two on a
-      # Retina screen). Gives WindowMenu::Box and WindowMenu::Words, back to front.
-      def drawing(width:, density:, held: false, fast_forward: nil, frame_rate: nil, frame_work: nil)
+      # Whether the window of the game's variables is open (WindowMenu::VARIABLE_ROWS).
+      def variables_open? = @variables_open
+
+      # One of :up, :down or :close, pressed while the window of variables is open and the menu is not:
+      # up and down scroll it a line, and close shuts it. Gives whether the key was the window's.
+      def press_on_variables(key)
+        return false unless @variables_open && !@open
+
+        case key
+        when :up then @variables_scroll = [@variables_scroll - 1, 0].max
+        when :down then @variables_scroll += 1
+        when :close then @variables_open = false
+        else return false
+        end
+        true
+      end
+
+      # Key +key+ (SDL's scancode) pressed while the window of variables is open and the menu is not: a
+      # letter, digit or underscore goes on the end of what the window finds, and Backspace takes the
+      # last off. Gives whether the key was the window's.
+      def type_key(key)
+        return false unless @variables_open && !@open
+
+        if key == WindowMenu::BACKSPACE_KEY
+          @filter = @filter[0...-1]
+        else
+          letter = WindowMenu.typed_letter(key) or return false
+          @filter += letter if @filter.length < WindowMenu::FILTER_MOST
+        end
+        @variables_scroll = 0
+        true
+      end
+
+      # WHAT A WINDOW DRAWS over the game, in its own pixels: the window of the game's +variables+
+      # when it is open (name and value pairs, as the frontend read them from the game, with
+      # +variables_dropped+ more it had no room to read), the menu when it is open, and in the top
+      # right corner what the window is doing — the frame rate when it is asked for, how long the
+      # game's own work took a frame (+frame_work+, in milliseconds, the developer's reading), and
+      # PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as fast.
+      # +width+ and +height+ are the window's in pixels, and +density+ how many pixels a point is (two
+      # on a Retina screen). Gives WindowMenu::Box and WindowMenu::Words, back to front.
+      def drawing(width:, height:, density:, held: false, fast_forward: nil, frame_rate: nil, frame_work: nil, variables: [],
+                  variables_dropped: 0)
         @out = []
         @density = density
         @font = Graphics::MenuFont.load
-        top = 0
+        @window_height = height
+        top = @open ? size(:bar) : 0
+        draw_variables(top, variables, variables_dropped) if @variables_open
         if @open
-          top = draw_bar(width)
+          draw_bar(width)
           draw_lines(top)
         end
         draw_status(width, top, held, fast_forward, frame_rate, frame_work)
@@ -196,9 +239,17 @@ module VBlank
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
+          show_variables(!@variables_open) if line.does == :variables
           @controls.reset_keys if line.does == :reset_keys
           @controls.reset_hotkeys if line.does == :reset_hotkeys
         end
+      end
+
+      # The window of variables opened or shut from its line, and the menu closed so the game plays
+      # under it.
+      def show_variables(shown)
+        @variables_open = shown
+        @open = false
       end
 
       # A save or load chosen from a line: asked for, and the menu closes so the game goes on.
@@ -271,6 +322,55 @@ module VBlank
           y += row
         end
         add_words_in_row(notice, @heading_left + pad, y, row, :paused) if notice
+      end
+
+      # THE WINDOW OF THE GAME'S VARIABLES, in the top left corner, under the bar when the menu is
+      # open: its title, the letters typed or what to type, a heading of Name and Value, a line for
+      # each variable the letters find from the one scrolled to, and which lines those are. It is as
+      # wide as its widest name needs, never narrower than variables_width, and always the same
+      # height, so it stands still as the list changes.
+      def draw_variables(top, variables, dropped)
+        pad = size(:pad)
+        row = size(:row)
+        rows = WindowMenu::VARIABLE_ROWS
+        found = variables.select { |name, _| name.downcase.include?(@filter) }
+        @variables_scroll = @variables_scroll.clamp(0, [found.size - rows, 0].max)
+        value_room = width_of(WindowMenu::WIDEST_VALUE)
+        inner = [size(:variables_width), *variables.map { |name, _| width_of(name) + size(:label_gap) + value_room }].max
+        wide = inner + (2 * pad)
+        high = ((rows + 4) * row) + (2 * pad)
+        x = size(:status_gap)
+        y = top + size(:status_gap)
+        border = pixels(1)
+        add_box(x, y, wide, high, size(:corner), :border)
+        add_box(x + border, y + border, wide - (2 * border), high - (2 * border), size(:corner) - border, :box)
+        left = x + pad
+        right = left + inner
+        line = y + pad
+        add_words_in_row("Game variables", left, line, row, :text)
+        line += row
+        if @filter.empty? then add_words_in_row("Type letters to find a name", left, line, row, :dim)
+        else add_words_in_row(@filter, left, line, row, :text)
+        end
+        line += row
+        add_words_in_row("Name", left, line, row, :dim)
+        add_words_in_row("Value", right - width_of("Value"), line, row, :dim)
+        line += row
+        add_box(left, line, inner, border, 0, :border)
+        found[@variables_scroll, rows].each do |name, value|
+          add_words_in_row(name, left, line, row, :text)
+          add_words_in_row(value.to_s, right - width_of(value.to_s), line, row, :text)
+          line += row
+        end
+        add_words_in_row(variables_footer(found.size, dropped), left, y + pad + ((rows + 3) * row), row, :dim)
+      end
+
+      # Which of the lines found are shown, or that none are, and how many the frontend had no room for.
+      def variables_footer(count, dropped)
+        said = if count.zero? then @filter.empty? ? "No variables" : "No name has these letters"
+               else "#{@variables_scroll + 1} to #{[@variables_scroll + WindowMenu::VARIABLE_ROWS, count].min} of #{count}"
+               end
+        dropped.positive? ? "#{said}, and #{dropped} more not shown" : said
       end
 
       # How much room the right of a line takes: a slider, a shortcut, or a check mark.

@@ -15,6 +15,12 @@ static int menu_open, quit_chosen, heading, row = -1;
 static int picture_width, picture_height;
 static int most_scale = RG_WINDOW_SCALE_MOST;
 
+/* The window of the game's variables: the letters typed into it, and the first of the lines they
+ * find that it shows. Whether it is open is rg_window.c's (RG_PANEL_VARIABLES). */
+#define FILTER_ROOM 64
+static char filter[FILTER_ROOM];
+static int variables_scroll;
+
 static int clamped(int value, int least, int most) { return value < least ? least : value > most ? most : value; }
 
 void rg_window_menu_reset(int width, int height) {
@@ -23,6 +29,9 @@ void rg_window_menu_reset(int width, int height) {
   picture_width = width;
   picture_height = height;
   most_scale = rg_menu_scale_most;
+  filter[0] = '\0';
+  variables_scroll = 0;
+  rg_window_show_panel(RG_PANEL_VARIABLES, 0);
 }
 
 void rg_window_menu_set_most_scale(int most) {
@@ -65,6 +74,8 @@ static int setting_value(rg_menu_setting setting) {
     return rg_window_muted();
   case RG_MENU_FRAME_RATE:
     return rg_window_shows_frame_rate();
+  case RG_MENU_FRAME_TIME:
+    return rg_window_shows_frame_time();
   case RG_MENU_NO_SETTING:
     break;
   }
@@ -90,6 +101,9 @@ static void set_setting(rg_menu_setting setting, int value) {
     break;
   case RG_MENU_FRAME_RATE:
     rg_window_set_show_frame_rate(value);
+    break;
+  case RG_MENU_FRAME_TIME:
+    rg_window_set_show_frame_time(value);
     break;
   case RG_MENU_NO_SETTING:
     break;
@@ -123,6 +137,11 @@ static void enter(const rg_menu_line *line) {
       rg_window_reset_pad();
     }
     if (line->does == RG_MENU_RESET_HOTKEYS) rg_window_reset_hotkeys();
+    /* The window of variables opened or shut, and the menu closed so the game plays under it. */
+    if (line->does == RG_MENU_VARIABLES) {
+      rg_window_show_panel(RG_PANEL_VARIABLES, !rg_window_menu_variables_open());
+      menu_open = 0;
+    }
     break;
   case RG_MENU_BUTTON:
     rg_window_capture_for_button(line->place);
@@ -184,6 +203,57 @@ void rg_window_menu_press(rg_menu_key key) {
   case RG_MENU_CLOSE:
     break;
   }
+}
+
+int rg_window_menu_variables_open(void) { return rg_window_panel_shown(RG_PANEL_VARIABLES); }
+
+static int variables_take_keys(void) { return rg_window_menu_variables_open() && !menu_open; }
+
+int rg_window_menu_press_on_variables(rg_menu_key key) {
+  if (!variables_take_keys()) return 0;
+  switch (key) {
+  case RG_MENU_UP:
+    if (variables_scroll > 0) variables_scroll--;
+    return 1;
+  case RG_MENU_DOWN:
+    variables_scroll++; /* held to the last line when it is drawn */
+    return 1;
+  case RG_MENU_CLOSE:
+    rg_window_show_panel(RG_PANEL_VARIABLES, 0);
+    return 1;
+  case RG_MENU_LEFT:
+  case RG_MENU_RIGHT:
+  case RG_MENU_ENTER:
+    break;
+  }
+  return 0;
+}
+
+/* The letter key +key+ types (Live::WindowMenu.typed_letter, by SDL's scancodes): A to Z, 1 to 9
+ * and 0, and the minus key for an underscore; 0 for a key that types none. */
+static char typed_letter(int key) {
+  if (key >= 4 && key <= 29) return (char)('a' + (key - 4));
+  if (key >= 30 && key <= 39) return (char)('0' + (key - 30 + 1) % 10);
+  return key == 45 ? '_' : '\0';
+}
+
+#define BACKSPACE_KEY 42
+
+int rg_window_menu_type_key(int key) {
+  if (!variables_take_keys()) return 0;
+  size_t length = strlen(filter);
+  if (key == BACKSPACE_KEY) {
+    if (length > 0) filter[length - 1] = '\0';
+  } else {
+    char letter = typed_letter(key);
+    if (!letter) return 0;
+    if ((int)length < rg_menu_filter_most && length + 1 < FILTER_ROOM) {
+      filter[length] = letter;
+      filter[length + 1] = '\0';
+    }
+  }
+  variables_scroll = 0;
+  return 1;
 }
 
 static void press_on_bar(rg_menu_key key) {
@@ -426,15 +496,96 @@ static void draw_status(int width, int top, int held, int fast_forward, const ch
   for (int i = 0; i < count; i++) add_words(said[i], x + pad, y + pad + i * line, colors[i]);
 }
 
-void rg_window_menu_draw(rg_menu_drawing *drawing, int width, double pixels_a_point, int held, int fast_forward, const char *frame_rate,
-                         const char *frame_work) {
+/* Whether +name+ has the letters typed, in any case: the letters are typed small. */
+static int found_by_filter(const char *name) {
+  char small[64];
+  size_t i = 0;
+  for (; name[i] && i + 1 < sizeof small; i++) small[i] = name[i] >= 'A' && name[i] <= 'Z' ? (char)(name[i] - 'A' + 'a') : name[i];
+  small[i] = '\0';
+  return strstr(small, filter) != NULL;
+}
+
+/* Which of the lines found are shown, or that none are, and how many there was no room to read. */
+static void variables_footer(int count, int dropped, char *text, size_t room) {
+  if (count == 0) {
+    snprintf(text, room, "%s", filter[0] ? "No name has these letters" : "No variables");
+  } else {
+    int last = variables_scroll + rg_menu_variable_rows < count ? variables_scroll + rg_menu_variable_rows : count;
+    snprintf(text, room, "%d to %d of %d", variables_scroll + 1, last, count);
+  }
+  if (dropped > 0) {
+    size_t used = strlen(text);
+    snprintf(text + used, room - used, ", and %d more not shown", dropped);
+  }
+}
+
+/* THE WINDOW OF THE GAME'S VARIABLES, in the top left corner, under the bar when the menu is open:
+ * its title, the letters typed or what to type, a heading of Name and Value, a line for each
+ * variable the letters find from the one scrolled to, and which lines those are. It is as wide as
+ * its widest name needs, never narrower than variables_width, and always the same height, so it
+ * stands still as the list changes. */
+static void draw_variables(int top) {
+  int pad = pixels(rg_menu_size.pad);
+  int row_height = pixels(rg_menu_size.row);
+  int rows = rg_menu_variable_rows;
+  int count = rg_window_watch_count();
+  int found = 0;
+  for (int i = 0; i < count; i++) found += found_by_filter(rg_window_watch_name(i));
+  int most_scroll = found - rows > 0 ? found - rows : 0;
+  variables_scroll = clamped(variables_scroll, 0, most_scroll);
+  int value_room = width_of(rg_menu_widest_value);
+  int inner = pixels(rg_menu_size.variables_width);
+  for (int i = 0; i < count; i++) {
+    int wide = width_of(rg_window_watch_name(i)) + pixels(rg_menu_size.label_gap) + value_room;
+    if (wide > inner) inner = wide;
+  }
+  int wide = inner + 2 * pad;
+  int high = (rows + 4) * row_height + 2 * pad;
+  int x = pixels(rg_menu_size.status_gap);
+  int y = top + pixels(rg_menu_size.status_gap);
+  int border = pixels(1);
+  add_box(x, y, wide, high, pixels(rg_menu_size.corner), rg_menu_color.border);
+  add_box(x + border, y + border, wide - 2 * border, high - 2 * border, pixels(rg_menu_size.corner) - border, rg_menu_color.box);
+  int left = x + pad;
+  int right = left + inner;
+  int line = y + pad;
+  add_words_in_row("Game variables", left, line, row_height, rg_menu_color.text);
+  line += row_height;
+  if (filter[0]) add_words_in_row(filter, left, line, row_height, rg_menu_color.text);
+  else add_words_in_row("Type letters to find a name", left, line, row_height, rg_menu_color.dim);
+  line += row_height;
+  add_words_in_row("Name", left, line, row_height, rg_menu_color.dim);
+  add_words_in_row("Value", right - width_of("Value"), line, row_height, rg_menu_color.dim);
+  line += row_height;
+  add_box(left, line, inner, border, 0, rg_menu_color.border);
+  int seen = 0;
+  for (int i = 0; i < count; i++) {
+    const char *name = rg_window_watch_name(i);
+    if (!found_by_filter(name)) continue;
+    int place = seen++;
+    if (place < variables_scroll || place >= variables_scroll + rows) continue;
+    char value[16];
+    snprintf(value, sizeof value, "%d", (int)rg_window_watch_value(i));
+    add_words_in_row(name, left, line, row_height, rg_menu_color.text);
+    add_words_in_row(value, right - width_of(value), line, row_height, rg_menu_color.text);
+    line += row_height;
+  }
+  char footer[96];
+  variables_footer(found, rg_window_watch_dropped(), footer, sizeof footer);
+  add_words_in_row(footer, left, y + pad + (rows + 3) * row_height, row_height, rg_menu_color.dim);
+}
+
+void rg_window_menu_draw(rg_menu_drawing *drawing, int width, int height, double pixels_a_point, int held, int fast_forward,
+                         const char *frame_rate, const char *frame_work) {
   out = drawing;
   out->part_count = 0;
   out->letter_count = 0;
   density = pixels_a_point;
-  int top = 0;
+  (void)height;
+  int top = menu_open ? pixels(rg_menu_size.bar) : 0;
+  if (rg_window_menu_variables_open()) draw_variables(top);
   if (menu_open) {
-    top = draw_bar(width);
+    draw_bar(width);
     draw_lines(top);
   }
   draw_status(width, top, held, fast_forward, frame_rate, frame_work);

@@ -21,7 +21,8 @@ module VBlank
 
           def description(states, buttons)
             window_menu = Live::WindowMenu
-            shown = window_menu.headings(states: states, buttons: buttons)
+            # The page has no window of the game's variables yet, so no Developer heading.
+            shown = window_menu.headings(states: states, buttons: buttons, developer: false)
             { headings: shown.map { |heading| heading_of(heading) },
               buttons: window_menu::BUTTON_NAMES, hotkeys: window_menu::HOTKEY_NAMES,
               colors: window_menu::COLORS.transform_values { |(red, green, blue, opacity)| "rgba(#{red},#{green},#{blue},#{opacity / 255.0})" } }

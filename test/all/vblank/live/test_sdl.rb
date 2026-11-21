@@ -255,6 +255,59 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A game whose variables a window reads, counting how often it is asked.
+  class CountedVariables
+    attr_reader :asked
+
+    def initialize = @asked = 0
+
+    def vars
+      @asked += 1
+      { "score" => 120, "lives" => 3 }
+    end
+  end
+
+  # Developer, Game variables: the window reads the game's variables each time it draws while the
+  # window of them is open, and never while it is shut. The keys that type a name are the window's
+  # then, and do nothing else: P, the pause's key, types a P and pauses nothing.
+  def test_game_variables_are_read_while_their_window_is_open_and_its_letters_are_the_windows
+    window = open_window
+    game = CountedVariables.new
+    window.read_variables_from(game)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_equal 0, game.asked, "a window that is shut reads nothing"
+
+    press_key(SDL::MENU)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    %i[left down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+    window.hold_while_paused
+    press_key(SDL::PAUSE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert_operator game.asked, :>=, 1
+    refute window.hold_while_paused, "the game plays on under the window, and P was typed into it"
+  ensure
+    window&.close
+  end
+
+  # Developer, Show frame time is a setting the settings file keeps.
+  def test_show_frame_time_is_written_to_the_settings_file
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      window = open_window(settings_file: path)
+      press_key(SDL::MENU)
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      %i[left down down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+      press_key(SDL::MENU)
+      window.hold_while_paused
+      window.close
+
+      assert_includes File.read(path), "frame_time = on\n"
+    ensure
+      window&.close
+    end
+  end
+
   # Quit in the menu stops the play.
   def test_quit_in_the_menu_stops_the_play
     window = open_window

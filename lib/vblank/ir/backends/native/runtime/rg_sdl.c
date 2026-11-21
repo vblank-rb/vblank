@@ -92,8 +92,10 @@
  * F1 or the key above Tab, or a gamepad's guide button, or its Back and Start together. It is drawn
  * over the picture in the window's own pixels, so its letters are sharp on any screen, and holds
  * the game while it is open. It changes nothing but what the hotkeys and the settings file change,
- * through the plain functions of rg_window.h. The windows of keys and of the game's variables are
- * Dear ImGui's still (rg_menu.cpp).
+ * through the plain functions of rg_window.h. Its Developer heading opens a window of the game's
+ * variables over the game as it plays (rg_window_menu.h says how it is worked), which this file
+ * reads the variables for each time it is drawn (watch_variables). The window of keys is Dear
+ * ImGui's still (rg_menu.cpp).
  *
  * THE SETTINGS are the scale, fullscreen, volume, mute, frame rate, fast forward's speed, the keys,
  * the gamepad buttons and the hotkeys, in one small text file a player can edit (rg_window.h says
@@ -1064,7 +1066,7 @@ static void draw_menu_and_status(void) {
   double density = pixel_density();
   if (rg_window_menu_is_open()) rg_window_menu_set_most_scale(largest_scale_that_fits());
   int fast = !game_held() && rg_window_fast_forwarding() ? rg_window_fast_speed() : 0;
-  rg_window_menu_draw(&menu_drawing, width, density, game_held(), fast, rg_window_shows_frame_rate() ? rate : NULL,
+  rg_window_menu_draw(&menu_drawing, width, height, density, game_held(), fast, rg_window_shows_frame_rate() ? rate : NULL,
                       rg_window_shows_frame_time() ? work : NULL);
   if (menu_drawing.part_count == 0) return;
 
@@ -1338,6 +1340,8 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   int moves = menu_key_of(key->scancode);
   if (key->repeat) {
     if (key->down && rg_window_menu_is_open() && moves >= 0 && moves != RG_MENU_ENTER) press_menu((rg_menu_key)moves);
+    if (key->down && (moves == RG_MENU_UP || moves == RG_MENU_DOWN)) rg_window_menu_press_on_variables((rg_menu_key)moves);
+    if (key->down && code == SDL_SCANCODE_BACKSPACE) rg_window_menu_type_key(code);
     return;
   }
   /* One of player 2's keys coming up lets go of player 2's button whoever has the key now, so a key
@@ -1346,6 +1350,10 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   if (!key->down && second_up >= 0) second_keys_down &= ~(1u << (uint32_t)second_up);
   if (key->down && rg_window_capture_key(code)) return;
   if (key->down && rg_menu_wants_keyboard()) return;
+  /* The window of the game's variables, open with the menu shut, has the keys that type a name and
+   * the arrows that scroll it; the game plays on with the rest. */
+  if (key->down && rg_window_menu_type_key(code)) return;
+  if (key->down && (moves == RG_MENU_UP || moves == RG_MENU_DOWN) && rg_window_menu_press_on_variables((rg_menu_key)moves)) return;
   if (key->down && code == RG_KEY_ESCAPE) quit_play();
 
   int hotkey = rg_window_key_hotkey(code);
@@ -1438,6 +1446,8 @@ static void pad_button_changed(const SDL_GamepadButtonEvent *event) {
   } else if (rg_window_menu_is_open() && moves >= 0) {
     pad_buttons_kept |= bit;
     press_menu((rg_menu_key)moves);
+  } else if (moves >= 0 && rg_window_menu_press_on_variables((rg_menu_key)moves)) {
+    pad_buttons_kept |= bit; /* the D-pad's up and down scroll the window of variables, and B shuts it */
   }
 }
 

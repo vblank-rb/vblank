@@ -9,8 +9,12 @@
  *   hotkey NAME                      a hotkey pressed, as rg_window.c takes it: frame_rate, mute...
  *   capture_key N                    a key pressed, by number, while one is being chosen
  *   capture_pad N                    a gamepad button pressed, by SDL's number, the same
- *   draw WIDTH DENSITY HELD FAST RATE WORK
+ *   draw WIDTH HEIGHT DENSITY HELD FAST RATE WORK
  *                                    print what the menu draws; RATE and WORK are words, - for none
+ *   watch_begin                      the game's variables read afresh: none yet
+ *   watch NAME VALUE                 ...and one of them, as the window reads it from the game
+ *   type_key N                       a key pressed, by SDL's number, for the window of variables
+ *   variables up|down|close          a key of the menu's pressed, for the window of variables
  *   state                            print whether it is open and whether Quit was chosen
  *   slot N WORDS                     what slot N (0 is the quick one) says at its right, as a state's time
  *   request                          print the save or load the menu asked for and use it up:
@@ -82,13 +86,24 @@ int main(void) {
         if (strcmp(rg_window_hotkey_setting(h), name) == 0) rg_window_hotkey_changed(h, 1);
     } else if (strcmp(command, "draw") == 0) {
       int width = atoi(strtok(NULL, " \n"));
+      int height = atoi(strtok(NULL, " \n"));
       double density = strtod(strtok(NULL, " \n"), NULL);
       int held = atoi(strtok(NULL, " \n"));
       int fast = atoi(strtok(NULL, " \n"));
       const char *rate = strtok(NULL, " \n");
       const char *work = strtok(NULL, " \n");
-      rg_window_menu_draw(&drawing, width, density, held, fast, strcmp(rate, "-") ? rate : NULL, strcmp(work, "-") ? work : NULL);
+      rg_window_menu_draw(&drawing, width, height, density, held, fast, strcmp(rate, "-") ? rate : NULL,
+                          strcmp(work, "-") ? work : NULL);
       print_drawing();
+    } else if (strcmp(command, "watch_begin") == 0) {
+      rg_window_watch_begin();
+    } else if (strcmp(command, "watch") == 0) {
+      const char *name = strtok(NULL, " \n");
+      rg_window_watch_note(name, (int32_t)atol(strtok(NULL, " \n")));
+    } else if (strcmp(command, "type_key") == 0) {
+      rg_window_menu_type_key(atoi(strtok(NULL, " \n")));
+    } else if (strcmp(command, "variables") == 0) {
+      rg_window_menu_press_on_variables(key_named(strtok(NULL, " \n")));
     } else if (strcmp(command, "slot") == 0) {
       int slot = atoi(strtok(NULL, " \n"));
       const char *words = strtok(NULL, "\n");

@@ -62,9 +62,8 @@ module VBlank
       FAST_SPEEDS = (2..8)
       FLAGS = { "fullscreen" => :fullscreen, "mute" => :muted, "frame_rate" => :frame_rate, "frame_time" => :frame_time }.freeze
 
-      # The desktop build's starting values: the window's (WindowMenu::STARTING), and the frame
-      # time, which its developer view shows, not shown.
-      STARTING = Ractor.make_shareable(WindowMenu::STARTING.to_h.merge(frame_time: false))
+      # The desktop build's starting values: the window's (WindowMenu::STARTING).
+      STARTING = Ractor.make_shareable(WindowMenu::STARTING.to_h)
 
       # The key +hotkey+ starts on.
       def self.starting_key(hotkey) = HOTKEYS.find { |each| each.setting == hotkey }.key
