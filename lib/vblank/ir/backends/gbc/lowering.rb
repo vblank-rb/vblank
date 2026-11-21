@@ -4,13 +4,13 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # ONE PROGRAM, LOWERED STRAIGHT TO SM83 MACHINE CODE: the Color's peer of the GBA lowering,
+        # One program, lowered straight to SM83 machine code: the Color's peer of the GBA lowering,
         # which does the same in ARM. It walks the IR with a table naming the method for each kind of
         # statement and each kind of value (the interpreter's own shape, Reference), and emits the
         # instructions through the encoder (SM83), calling the runtime (GBC::Runtime) for what the
         # runtime does: the 32-bit arithmetic, the frame, the buttons.
         #
-        # HOW A NUMBER IS WORKED OUT. Every value leaves its answer in the four registers B C D E, B
+        # How a number is worked out. Every value leaves its answer in the four registers B C D E, B
         # the top byte, which is where every runtime routine takes and gives a number. A sum of two
         # works out the right-hand side first and pushes it on the stack — which then holds it lowest
         # byte first, as a number sits in memory — works out the left-hand side, and hands the
@@ -18,7 +18,7 @@ module VBlank
         # pushed, the first deepest (Runtime::Calls). Nothing is kept in a register from one
         # statement to the next, so a statement never has to know what came before it.
         #
-        # WHERE THINGS LIVE. The game's variables, and each routine's own numbers — a loop's count, a
+        # Where things live. The game's variables, and each routine's own numbers — a loop's count, a
         # `case`'s reading — are places in work memory (Memory), fixed while the program is built, so
         # a routine cannot call itself, and a program in which one can is refused. Tables go in the
         # part of the cartridge always in view; routines go in the banks, and one in another bank is
@@ -40,7 +40,7 @@ module VBlank
           include DrawOrderWalk
           include SceneryWrites
 
-          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # Every kind this lowering writes: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Picture, Sound and the rest, and the
           # loops and tests every cartridge lowering shares, ControlFlow), which each part writes in a
           # case of its own. A declaration writes nothing where it is. Read by
@@ -157,7 +157,7 @@ module VBlank
           include KeyedSort
           include ShownSort
 
-          # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
+          # Every kind this lowering cannot make yet, by what it is part of. A kind leaves the list the
           # day the Color does it; test_gbc_kind_coverage.rb holds the list and the kind lists above to
           # every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({})
@@ -353,7 +353,7 @@ module VBlank
           # (#banked_tables).
           def tables_copied_to_lists = @reachable.filter_map { |node| node.table if node.kind == :list_copy }
 
-          # DOES THE GAME COUNT THE FRAMES ITS SCREEN IS OFF FOR, from power-on to its first frame
+          # Does the game count the frames its screen is off for, from power-on to its first frame
           # (Runtime::Frame#emit_dark_start)? A game that reads `frames_since_power_on` and waits for
           # the screen does, so that setting up counts as it does on the Advance. The timer counts
           # them, and in a game that plays a recording the timer is the recording's, so such a game
@@ -503,7 +503,7 @@ module VBlank
           def table_parts_label(name) = "table #{name} parts"
           def table_part_label(name, part) = "table #{name} part #{part}"
 
-          # THE TABLES KEPT OUT OF THE PART ALWAYS IN VIEW. That part is 16 kilobytes and holds the
+          # The tables kept out of the part always in view. That part is 16 kilobytes and holds the
           # runtime and everything read without switching a bank in, so a big table there — the
           # walls of a hundred-cell-square room are ten thousand bytes — leaves no room for the
           # rest. A table at least this big is kept in banks instead, cut into parts so that one
@@ -513,7 +513,7 @@ module VBlank
           # in view, since the list's copy reads it in a loop of its own.
           BANKED_TABLE_BYTES = 1024
 
-          # MANY SMALLER TABLES CAN COME TO THE SAME. A game they do not fit in view for is built
+          # Many smaller tables can come to the same. A game they do not fit in view for is built
           # again with tables of each of these sizes going to banks too, the bigger first, so its
           # short tables are the last to pay for a read. Below the last, a table's place in the
           # list of parts would take nearly what the table does.
@@ -569,7 +569,7 @@ module VBlank
 
           def little_endian(value, size) = Array.new(size) { |i| (value >> (8 * i)) & 0xFF }
 
-          # A NUMBER THAT LIVES FOR ONE STEP AND NO LONGER, by +what+, kept once a routine however
+          # A number that lives for one step and no longer, by +what+, kept once a routine however
           # many of its steps keep one (#keep_local): a step stores it and reads it back before the
           # step ends, and nothing it runs between can reach another step of the routine, so every
           # step of the routine can use the one place. A routine cut into parts (RoutineCuts) keeps
@@ -605,7 +605,7 @@ module VBlank
             @asm.section
           end
 
-          # DATA KEPT BESIDE THE CODE THAT READS IT, in a game whose indexes are in banks
+          # Data kept beside the code that reads it, in a game whose indexes are in banks
           # (GBC#roomier_view): a list of routines a call picks from, a scene's record
           # of its own sprite lists. The routine's code runs in its own bank, which is in view while
           # it runs and while the runtime routines it calls read what it hands them, so data in the
@@ -693,7 +693,7 @@ module VBlank
           # RET, which ends every routine section: a byte.
           RETURN_BYTES = 1
 
-          # WHAT THE LOWERING HOLDS WHILE IT MAKES A ROUTINE (LoweringState), which RoutineCuts puts
+          # What the lowering holds while it makes a routine (LoweringState), which RoutineCuts puts
           # back when a routine comes out too big for a bank. The Color measures a statement on the
           # lowering itself rather than on copies (#bytes_of), so this is used only for that.
           # Copied: the work memory, whose places a routine's own numbers take; and the lowering's
@@ -711,7 +711,7 @@ module VBlank
           # The console this lowers for (BuildCache).
           CONSOLE = Console::COLOR
 
-          # WHAT THE COLOR'S LOWERING ALONE WORKS OUT FROM THE PROGRAM, once a build for all its tries
+          # What the color's lowering alone works out from the program, once a build for all its tries
           # (BuildCache#facts): what each tile's picture gives (Art#tile_fact), the tiles each
           # background shows and its `set_tile`s put in it, the screens' modes, each tile's colours
           # with each of its background's lists, a background's lists at each step, its recolour
@@ -769,7 +769,7 @@ module VBlank
             # The lists kept in two bytes read back with no sign.
             def unsigned_lists = @unsigned_lists ||= @cache.plan.number_ranges.unsigned_half_lists.to_set
 
-            # THE VARIABLES WHOSE PLACE THE LOWERING HANDS OVER (Lowering#place_of): to a runtime
+            # The variables whose place the lowering hands over (Lowering#place_of): to a runtime
             # routine that reads or writes them where they are kept, or to code reading all four
             # bytes. Each is kept whole on every try after the one that found it, declared narrow
             # or not.
@@ -791,7 +791,7 @@ module VBlank
             def screen_modes = @screen_modes ||= Modes.resolve(@cache.program)
           end
 
-          # WHERE VARIABLE +name+ IS KEPT, for code that reads or writes all four of its bytes there,
+          # Where variable +name+ is kept, for code that reads or writes all four of its bytes there,
           # or hands the place to a runtime routine that does (rt_music_level reads the music's
           # level so). A variable kept narrower (KeptVariables) has other variables straight after
           # it, so it cannot be asked for here: it is kept whole from the next try on, and this
@@ -824,7 +824,7 @@ module VBlank
           # and routine data it reads, each of which it would keep a copy of on its own.
           MeasuredStatement = Data.define(:from, :constants, :data)
 
-          # A STATEMENT MADE WHILE A RUN OF THEM IS MEASURED (#bytes_of), its size noted for cutting
+          # A statement made while a run of them is measured (#bytes_of), its size noted for cutting
           # (RoutineCuts#note_size): the bytes it would come to measured on its own. That is its code,
           # which is the same wherever it stands, and the numbers and routine data it reads, which a
           # routine keeps once however many of its statements read them (#constant_label,
@@ -1407,7 +1407,7 @@ module VBlank
           # for it to copy off the stack: a pool's every field is a list, read several times a thing
           # a pass, and the copy was a large part of each read.
           #
-          # A LIST NOTHING TAKES FROM THE FRONT keeps its first item in its first slot for good, so
+          # A list nothing takes from the front keeps its first item in its first slot for good, so
           # an item's slot is its index: such a list's item is read straight from its place, once
           # the index is held to the length the header holds — every field of a pool is such a list.
           # An index out of range goes the whole way round, so the game stops as the interpreter's.
@@ -1424,7 +1424,7 @@ module VBlank
           # The lists kept in two bytes read back with no sign, for reading them back (Places).
           public def unsigned_lists = @cache.facts.unsigned_lists.to_a
 
-          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
+          # A link kept as the slot times the stride (PoolLayout.strided_place), two bytes with NONE
           # as $FFFF, read back into BCDE as the tree holds it: its sign is spread already, so NONE
           # is -1, and an arithmetic shift right of the low two bytes brings any other back to the
           # slot and leaves -1 as it is.
@@ -1623,7 +1623,7 @@ module VBlank
             @asm.call("rt_list_set_taken")
           end
 
-          # A LIST ALWAYS AS LONG AS IT CAN BE — declared full, and named by no step but a read, a
+          # A list always as long as it can be — declared full, and named by no step but a read, a
           # write or its length — has every slot in range for good, so a read at an index written in
           # the program is a read of one place in memory, with nothing to check: where the slot is,
           # or nil for any other read. A pool's copy of its things in order is such a list, read by
@@ -1707,7 +1707,7 @@ module VBlank
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # A pool is kept in the layout its placement gives: where slot s of each of its lists is, in
           # bytes from the start of the list's area (PoolLayout::SlotPlace), how wide its value is, and
           # the number it is kept multiplied by. Every read and write of a slot asks for that through
           # #list_placed, and the headless run reads a pool's lists back through the same
@@ -1716,7 +1716,7 @@ module VBlank
           # list in (#list_width, NumberRanges#list_widths), which can be narrower than the game declared, so
           # the pool is placed with those widths.
           #
-          # WHAT THE LISTS COST ON THIS PROCESSOR. The SM83 has no indexed addressing, and HL is the
+          # What the lists cost on this processor. The SM83 has no indexed addressing, and HL is the
           # register pair that reaches memory cheaply: a byte through it is one instruction, ADD [HL] or
           # INC [HL] (https://gbdev.io/pandocs/CPU_Instruction_Set.html). A pool kept as lists cannot
           # use that: each field read or write checks the index, multiplies it by the slot's width and
@@ -1749,7 +1749,7 @@ module VBlank
             end
           end
 
-          # A WALK OF A POOL STEPPED THE PROCESSOR'S WAY. The tree's walk keeps the thing it goes to
+          # A walk of a pool stepped the processor's way. The tree's walk keeps the thing it goes to
           # next and the last it visits as whole numbers, tests the next against NONE, copies it into
           # the thing it is on, compares that with the last and reads the link out of a list at an
           # index checked and scaled each time; and every field the body reads or writes checks and
@@ -1926,7 +1926,7 @@ module VBlank
             @asm.load(:h, address >> 8)
           end
 
-          # A FIELD OF THE HELD THING MOVED ON BY A NUMBER WRITTEN IN THE PROGRAM, `t.x += 2`: each of
+          # A field of the held thing moved on by a number written in the program, `t.x += 2`: each of
           # its bytes added where it is, lowest first, the carry taken up, as the slot keeps the low
           # bytes of the sum the interpreter works out in 32 bits. True where it was made so.
           def emit_held_field_stepped(node)
@@ -2070,7 +2070,7 @@ module VBlank
             emit_entry_read(bytes, signed)
           end
 
-          # A TABLE PAST 64 KILOBYTES, read at the index in BCDE, which is already held inside it.
+          # A table past 64 KILOBYTES, read at the index in BCDE, which is already held inside it.
           # The entry's offset (the index × the entry's size) is more than two bytes can hold, so it
           # is kept in three, CDE, and the part it is in is found here rather than by
           # rt_far_read_parts: the offset's bits from the part's size up are the part's number, and
@@ -2259,7 +2259,7 @@ module VBlank
           # Reference#timer_ticks: nought for a timer never started, which is what its count starts at.
           def value_of_timer_ticks(node) = value(timer_number(node.name, :ticks))
 
-          # THE ROUTINES THE RUNTIME RUNS AT EACH FRAME BOUNDARY: one that moves every running timer
+          # The routines the runtime runs at each frame boundary: one that moves every running timer
           # on, in the order the timers were first started — the k-th started is looked for k-th —
           # and one for each timer, which moves it on and runs its handler, so each handler is made
           # once however many timers there are. None for a game with no timers.
@@ -2842,7 +2842,7 @@ module VBlank
             value(Entry.new(drawing_table("data #{node.name}", 1, bytes), 1, false, Build.int(node.index)))
           end
 
-          # A BUTTON READ IS A BIT OF A BYTE, read where the game asks, as the console's own games
+          # A button read is a bit of a byte, read where the game asks, as the console's own games
           # test their joypad byte (Pan Docs, "Joypad Input"): the buttons are read once a frame into
           # bytes of a bit each (Runtime::Frame, rt_pad_read, rt_read_buttons), the held ones and
           # those pressed during the pass. The one controller is read whatever player is named, as
