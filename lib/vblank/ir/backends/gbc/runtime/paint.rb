@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A PAINTED SCREEN on a console that only draws tiles.
+          # A painted screen on a console that only draws tiles.
           #
           # The Advance has screens that are a picture in memory, a colour for every pixel, which a
           # game paints into (`screen :bitmap`). A Game Boy Color has no such thing: everything it
@@ -16,14 +16,14 @@ module VBlank
           # background's last, which the build picks for every square and fills with the colours
           # that can be painted there (GBC::SquareColors), black first.
           #
-          # The game paints into a copy of the 360 tiles in work memory (the FRAME, in work memory's
+          # The game paints into a copy of the 360 tiles in work memory (the frame, in work memory's
           # banks 2 to 4, 120 tiles to a bank), and the copy goes into the console between passes.
           # Copying all of it, 5760 bytes, takes three blanks, so only the tiles that changed go:
           #
-          # - CLEARING the screen writes nothing. It moves the frame on a GENERATION, and a tile
+          # - CLEARING the screen writes nothing. It moves the frame on a generation, and a tile
           #   last painted in an earlier generation is the clearing colour throughout. The first
           #   paint of a tile in a generation fills it with that colour before painting.
-          # - A tile is DIRTY once painted, and at the end of the pass (rt_paint_scan) each dirty
+          # - A tile is dirty once painted, and at the end of the pass (rt_paint_scan) each dirty
           #   tile is held against the copy last sent to the console, kept beside it. Only one that
           #   differs is sent.
           # - A tile that is the clearing colour throughout is not sent at all: its cell of the
@@ -31,7 +31,7 @@ module VBlank
           #   Every cell not showing its own tile shows the clearing colour, so a clear in another
           #   colour is the clear tile's sixteen bytes rewritten, whatever the screen holds.
           #
-          # What has to go is a list (LIST), made when the pass ends, and the blank works down it
+          # What has to go is a list (list), made when the pass ends, and the blank works down it
           # (rt_paint_upload), as far as the blank lasts; the pass counts as shown once it is done.
           module Paint
             # Which kind of screen is up: a painted one, or one drawn from tiles.
@@ -40,7 +40,7 @@ module VBlank
 
             # Where the frame lives: a bank of work memory for every six rows of tiles, and in each
             # bank the tiles as painted, the tiles as last sent, a byte of state a tile (its
-            # generation, and DIRTY), and what its cell of the grid shows now (a colour, or OWN).
+            # generation, and dirty), and what its cell of the grid shows now (a colour, or own).
             BANKS = [2, 3, 4].freeze
             CELLS_A_BANK = 120
             ROWS_A_BANK = 6
@@ -81,11 +81,11 @@ module VBlank
             # already, so only the tile is sent. Most of a picture painted again is such tiles.
             KEEPS_CELL_BIT = 6
             KEEPS_CELL = 1 << KEEPS_CELL_BIT
-            # In the tile byte of a SOLID entry: no cell, but the clear tile itself, rewritten in
+            # In the tile byte of a solid entry: no cell, but the clear tile itself, rewritten in
             # the entry's colour. No bank holds this many tiles.
             CLEAR_TILE_ENTRY = 0xFF
 
-            # AN ENTRY OF THE LIST TO SEND is a RUN of tiles side by side along a row of the
+            # An entry of the list to send is a run of tiles side by side along a row of the
             # screen, sent the same way: their cells are next to each other in the frame's work
             # memory, in video memory and in the grid, so the console's copy takes the whole run at
             # once, and its cells are written in a short loop. A word of text is a run, where it
@@ -112,9 +112,9 @@ module VBlank
             # the blank (entries as above, and LIST_END after the last), the tiles painted since
             # the last pass, the tiles whose cells show their own picture — each a count and then
             # two bytes an entry (for the last two, a tile's number in its bank and the bank's
-            # among BANKS); where the blank has got to down the first (the place of its next
+            # among banks); where the blank has got to down the first (the place of its next
             # entry); the last two runs put on the list to send, which a cell painted next to
-            # either is added to (RUNS, as #emit_send keeps them; NO_BANK for none yet); whether
+            # either is added to (runs, as #emit_send keeps them; NO_BANK for none yet); whether
             # the screen was cleared since the last pass,
             # and the colour every cell not showing its own picture shows; and the area painting
             # is held to (rt_paint_area), its left, top, right and bottom. For a game whose scenes
@@ -181,13 +181,13 @@ module VBlank
 
             # What the painting keeps in the processor's quick memory: the generation, the clearing
             # colour and its two bytes a row, the colour being painted's two, and the bank of the
-            # tile being painted, by its number among BANKS; and while a picture of one colour is
+            # tile being painted, by its number among banks; and while a picture of one colour is
             # painted (rt_paint_bits), the pixels of the column of tiles it is painting and the
             # bytes a row of the picture takes.
             Quick = Data.define(:generation, :clear, :clear_low, :clear_high, :ink_low, :ink_high, :bank_index,
                                 :bits_mask, :bits_stride)
 
-            # rt_screen(kind): the screen up is a painted one (PAINTED) or one of tiles. 1 when
+            # rt_screen(kind): the screen up is a painted one (painted) or one of tiles. 1 when
             # that is a change of kind, which replaces the whole display: a painted screen comes
             # up black, and a tiled one with nothing up. Either way with the console's sprite layer
             # off. The interpreter never puts the sprites of a game's tiled screens on a painted
@@ -355,7 +355,7 @@ module VBlank
 
             # Tables the painting reads: for each row of tiles (eight bytes each) its bank of work
             # memory, where its first tile is there, that tile's number in the bank, and the bank's
-            # number among BANKS; and the masks of a span. The rest are in a bank of their own
+            # number among banks; and the masks of a span. The rest are in a bank of their own
             # (#table_sections).
             def emit_tables(asm)
               asm.label("rt_paint_rows")
@@ -372,7 +372,7 @@ module VBlank
               asm.data_bytes((0..8).map { |x| (~(0xFF >> x)) & 0xFF })
             end
 
-            # THE TABLES OF HOW EACH CELL IS SENT, which are most of the painted screen's bytes, in
+            # The tables of how each cell is sent, which are most of the painted screen's bytes, in
             # a bank of the cartridge of their own rather than in the part always in view, where a
             # game's own code and tables need the room. The blank and the end of the pass put the
             # bank in view while they read them (rt_paint_tables_in_view) and the game's back after
@@ -416,7 +416,7 @@ module VBlank
               asm.ret
             end
 
-            # THE LAST LINE A RUN OF +length+ TILES MAY START ON, so that it is done before the
+            # The last line a run of +length+ tiles may start on, so that it is done before the
             # blank is. The blank is lines 144 to 153, and one started on a line has the lines after
             # it, so a run that takes two lines starts on 151 at the latest. What a run costs is
             # counted from #emit_upload's instructions, generously: RUN_CYCLES for the entry and
@@ -451,7 +451,7 @@ module VBlank
               (1..room).find { |back| map.fetch(cell - back) != map.fetch(cell) }&.pred || room
             end
 
-            # HOW TILE +cell+ IS SENT, in the order the blank writes it (#emit_upload), so the blank
+            # How tile +cell+ is sent, in the order the blank writes it (#emit_upload), so the blank
             # only reads it along: the bank of work memory it is painted in, where it is there (high
             # byte first, as the console's copy takes it), its bank of video memory, where it goes
             # there; then for its cell of the grid, the cell's place, the number the grid shows the
@@ -887,7 +887,7 @@ module VBlank
               asm.ret
             end
 
-            # THE ROWS OF ONE TILE A PICTURE OF ONE COLOUR COVERS, painted by rt_paint_bits_rows_N for
+            # The rows of one tile a picture of one colour covers, painted by rt_paint_bits_rows_N for
             # a picture N pixels to the left of the tile's edge: B rows, from the picture's byte for
             # the first at DE into the tile's row at HL. A row's eight pixels in the tile are the
             # picture's byte there and the next shifted left N, so each N has a routine of its own,
@@ -1258,7 +1258,7 @@ module VBlank
               asm.ret
             end
 
-            # A PATCH OF THE PICTURE KEPT AND PUT BACK — what a sprite drawn on a painted screen
+            # A patch of the picture kept and put back — what a sprite drawn on a painted screen
             # covers, kept as it is drawn and put back before it is drawn somewhere else
             # (Reference#exec_save_region, #exec_restore_region).
             #
@@ -1498,7 +1498,7 @@ module VBlank
               asm.load([patch + 1], :a)
             end
 
-            # THE END OF A PASS: what has to go to the console, listed (LIST). Only tiles something
+            # The end of a pass: what has to go to the console, listed (LIST). Only tiles something
             # happened to are looked at:
             #
             # - After a clear, every tile showing a picture of its own (OWN_LIST) that was not
@@ -1730,7 +1730,7 @@ module VBlank
               asm.ret
             end
 
-            # rt_paint_send: A = the bank, and SOLID and a colour for a single colour, or
+            # rt_paint_send: A = the bank, and solid and a colour for a single colour, or
             # KEEPS_CELL; C = the tile in its bank, or CLEAR_TILE_ENTRY for the clear tile
             # rewritten in the colour. Onto the list to send: added to either end of the last run,
             # or of the one before it, when the cell is next to it along its row and sent the same
@@ -1738,7 +1738,7 @@ module VBlank
             #
             # Two runs, because two rows of text are painted a column at a time, down both rows,
             # so a row's runs are taken in turn; either end, because a menu's cursor is painted
-            # after the words just to its right. Each run is kept (RUNS) as the scan has its
+            # after the words just to its right. Each run is kept (runs) as the scan has its
             # tiles, a tile and its bank, so that whether a tile is next to it is a byte or two
             # compared: the tile after its last and the tile before its first, how many more cells
             # its row has room for after it and before it (#emit_tables's rt_paint_room_after
@@ -1961,7 +1961,7 @@ module VBlank
             end
 
             # The next entry of a list being walked, HL its place: C = the tile in its bank, E = the
-            # bank's number among BANKS, and the place after it pushed.
+            # bank's number among banks, and the place after it pushed.
             def emit_list_entry(asm)
               asm.load(:a, [:hli])
               asm.load(:c, :a)
@@ -1980,7 +1980,7 @@ module VBlank
               asm.pop(:bc)
             end
 
-            # IN THE BLANK: the list, from where it got to, for as long as the blank lasts. A run
+            # In the blank: the list, from where it got to, for as long as the blank lasts. A run
             # of tiles of their own is copied by the console's own copy, all of it at once, and
             # their cells pointed at them unless they are already (SENDS_KEEPING_CELL); a run of
             # single colours is its cells pointed at the clear tile, and SENDS_CLEAR_TILE the
@@ -1999,7 +1999,7 @@ module VBlank
             # rt_paint_map(n): the scene arriving shows map +n+ of the screen's squares (Art#square_maps)
             # from now: each run the blank sends writes its cells' attributes from it.
             #
-            # A cell whose palette is another in this map is marked STALE, as showing neither its
+            # A cell whose palette is another in this map is marked stale, as showing neither its
             # own tile nor a colour, so the next time its tile is painted it is sent with its cell,
             # in this map's palette, even when the tile is painted exactly as it was: a colour keeps
             # its place in every palette, so the same tile in another scene can be other colours. A

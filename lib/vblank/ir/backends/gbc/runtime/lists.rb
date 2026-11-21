@@ -5,14 +5,14 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A GAME'S LISTS, as the interpreter means them (Reference::ListValue): a ring
+          # A game's lists, as the interpreter means them (Reference::ListValue): a ring
           # of slots, the oldest item at +front+, so taking from the front moves where the front is
           # rather than every item. A slot is the width the game declared — a byte, a half or a whole
           # word — which matters on a machine with 8K of memory: a number too big for its slot keeps
           # its low bits and reads back with the slot's top bit as its sign, 200 in a byte reading
           # -56, exactly as the interpreter does it.
           #
-          # In work memory a list is a header of HEADER bytes and then its slots:
+          # In work memory a list is a header of header bytes and then its slots:
           #
           #   +0 capacity (16 bits)   +2 slot width in bytes   +3 nothing   +4 front (16 bits)
           #   +6 length (16 bits)
@@ -396,7 +396,7 @@ module VBlank
               emit_copy(asm, memory, q)
             end
 
-            # A QUEUE OF BYTES is the commonest list on a machine this small, and the routines above
+            # A queue of bytes is the commonest list on a machine this small, and the routines above
             # are slow for it: each copies its numbers off the stack and the list's whole header into
             # quick memory, then writes the header back. These three work on the header where it is,
             # with the list's place in HL and the value in registers already, about a quarter of the
@@ -406,12 +406,12 @@ module VBlank
             # of range puts its numbers where the routines above take them and goes there, so the
             # game stops in the same words with the same numbers.
             #
-            # A QUEUE OF HALVES — two-byte numbers, a sprite's place or a tile's number — is pushed
+            # A queue of halves — two-byte numbers, a sprite's place or a tile's number — is pushed
             # and read the same way, the slot found as for a byte and then doubled, since each is two
             # bytes along. Taking from the front never looks at a slot, so rt_list_shift serves both.
             #
             # +widths+ are the slot widths the game keeps queues of, [1], [2] or [1, 2]. A game with
-            # queues of both has ONE push and ONE item routine, answering to both names, which read
+            # queues of both has one push and one item routine, answering to both names, which read
             # the width from the list's header: the two copies were nearly the same instructions, and
             # this code sits in the part of the cartridge that is always in view, where every byte is
             # taken from what the game's own tables and songs can have. A game with one width keeps
@@ -728,7 +728,7 @@ module VBlank
               asm.ret
             end
 
-            # A LIST OF BYTES IS FILLED IN ONE WALK, from the first slot's address. The Color has no
+            # A list of bytes is filled in one walk, from the first slot's address. The Color has no
             # copying engine for work memory, so this is the quickest there is: a store and a count
             # for each byte, where the walk below works out an address and writes a number of four
             # bytes for each slot. A game declares its lists before its first frame, and this is
@@ -883,7 +883,7 @@ module VBlank
               asm.ret
             end
 
-            # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND WORK MEMORY AS A BLOCK (IR save_load_list,
+            # A whole list moved between save memory and work memory as a block (IR save_load_list,
             # save_store_list; Reference#exec_save_load_list, #exec_save_store_list). A record that
             # keeps a list used to read and write it an item at a time, each a call that copied
             # its numbers, checked the place in 32 bits, switched save memory on and off and opened
@@ -1016,7 +1016,7 @@ module VBlank
               asm.jump("rt_save_off")
             end
 
-            # A LIST'S ITEMS COPIED INTO A LIST OF BYTES (IR list_pack, Backends::ListPackBlocks): what
+            # A list's items copied into a list of bytes (IR list_pack, Backends::ListPackBlocks): what
             # a save's snapshot is made of. A slot keeps its bytes lowest first (rt_list_write), as the
             # list of bytes wants them, so the run is a copy, one LD A,(DE) and one LD (HL+),A a byte
             # (Pan Docs, "CPU Instruction Set"), where a list_set a byte took two calls, each taking its

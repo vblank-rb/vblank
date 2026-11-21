@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A GAME'S ARITHMETIC ON AN 8-BIT PROCESSOR, exactly as IR::Int32 says it: signed 32-bit
+          # A game's arithmetic on an 8-BIT PROCESSOR, exactly as IR::Int32 says it: signed 32-bit
           # whole numbers that wrap, a divide by nought that gives 1 or -1, shifts past 31 that empty
           # the number, and fractions multiplied and divided at full width.
           #
@@ -113,7 +113,7 @@ module VBlank
               end
             end
 
-            # COMPARING TWO SIGNED NUMBERS: BCDE against (HL), leaving both as they were and the
+            # Comparing two signed numbers: BCDE against (HL), leaving both as they were and the
             # answer in A — 0 when they are equal, 1 when BCDE is the smaller, 2 when it is the larger
             # — with the zero flag set only for equal. A caller asks `cp 1` and so on.
             #
@@ -247,7 +247,7 @@ module VBlank
               end
             end
 
-            # BCDE = BCDE × A, A a byte: the same long multiplication as rt_mul32, with the byte
+            # BCDE = BCDE × a, a a byte: the same long multiplication as rt_mul32, with the byte
             # walked in a register rather than four bytes of memory, so a number times a small count
             # — a row of poses times how many poses, a speed times a sine kept in 256ths — is a few
             # turns of a short loop. rt_mul32 comes here when the smaller of its two is a byte.
@@ -425,8 +425,8 @@ module VBlank
               asm.ret
             end
 
-            # DIVISION AND REMAINDER, as IR::Int32 has them: a quotient cut toward nought, a remainder
-            # with the sign of the number divided BY (the way Ruby's % works), a divide by nought
+            # Division and remainder, as IR::Int32 has them: a quotient cut toward nought, a remainder
+            # with the sign of the number divided by (the way Ruby's % works), a divide by nought
             # that gives 1 (or -1 for a number below nought) and a remainder by nought that gives the
             # number back.
             #
@@ -644,7 +644,7 @@ module VBlank
               asm.jump("rt_neg32")
             end
 
-            # DIVIDING BY A BYTE WRITTEN IN THE GAME, 3 to 255 (Lowering::Division#emit_divide_by_number):
+            # Dividing by a byte written in the game, 3 to 255 (Lowering::Division#emit_divide_by_number):
             # BCDE ÷ A as Int32.div has it, and BCDE % A as Int32.mod has it for a divisor above
             # nought. The lowering gives a negative divisor its sign.
             #
@@ -799,7 +799,7 @@ module VBlank
               asm.ret
             end
 
-            # NUMBERS WITH A FRACTION, kept as whole numbers with +bits+ of fraction below the point.
+            # Numbers with a fraction, kept as whole numbers with +bits+ of fraction below the point.
             # Multiplying two such numbers makes one with twice the bits of fraction, so the product
             # is worked out at its full 64 bits and shifted back down; dividing shifts the dividend
             # up first. The fraction's bit count is the number on top of the stack (HL+4 below the
