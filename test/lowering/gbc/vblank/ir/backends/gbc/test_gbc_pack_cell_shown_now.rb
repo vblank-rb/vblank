@@ -93,7 +93,7 @@ class TestGBCPackCellShownNow < Minitest::Test
   end
 
   # The first frame, numbered from 1 at power-on, on which the cell at +at+ shows something other
-  # than the field, with Down pressed for frame press.
+  # than the field, with Down pressed for frame PRESS.
   private def frame_lit(program, at)
     rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "LIGHT")
     down = VBlank::Console::Hardware::KEY_DOWN

@@ -10,7 +10,7 @@ require "stringio"
 class TestGBCCellPlaces < Minitest::Test
   CELLS = 24
 
-  # A game changing cells cells a pass. +worked_out+ keeps their columns in a variable, so the
+  # A game changing CELLS cells a pass. +worked_out+ keeps their columns in a variable, so the
   # cartridge cannot know them; otherwise they are written in the program. The variable can hold
   # more than a byte (300 while A is held, which nothing holds here), since a column the build
   # proves stays in a byte has a quicker way of its own (GBC Picture#byte_column?), and this is the

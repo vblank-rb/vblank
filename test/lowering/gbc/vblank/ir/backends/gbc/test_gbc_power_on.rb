@@ -100,7 +100,7 @@ class TestGBCPowerOn < Minitest::Test
   # Sixteen places across the screen.
   SPOTS = [20, 60, 100, 140].product([16, 56, 96, 136]).freeze
 
-  # The frames of the first thirty a cartridge of +program+ shows black on at any of spots.
+  # The frames of the first thirty a cartridge of +program+ shows black on at any of SPOTS.
   private def black_frames(program)
     rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "WHITE")
     v = VBlank::Diagnostics::Verifier.new(rom, frames: 0)

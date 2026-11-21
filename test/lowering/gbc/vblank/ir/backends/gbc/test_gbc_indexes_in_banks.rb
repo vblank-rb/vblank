@@ -41,7 +41,7 @@ class TestGBCIndexesInBanks < Minitest::Test
   # +effect_count+ sound effects. The game loop moves to the next screen every SCREEN_FRAMES frames,
   # starts the second song, plays an effect, and calls one of two routines picked by number.
   #
-  # +ships+ of the ships are put on the screens, over +background_lists+ of each screen's lists.
+  # +ships+ of the SHIPS are put on the screens, over +background_lists+ of each screen's lists.
   # With +bare+, the second screen shown is a scene with no background of its own. +more+, given, is
   # run in the game before its loop, and the block it gives back is run in the loop each pass.
   private def many_screens(screens: 30, songs: 64, notes: 64, effect_count: 30, ships: SHIPS,
