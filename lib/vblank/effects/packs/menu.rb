@@ -21,17 +21,17 @@ module VBlank
       # does. Nearly every game has one — a title screen, a pause screen, a shop, a
       # jukebox — and until now this framework had no word for it.
       #
-      # WHAT A GAME WROTE INSTEAD, and it is the same thirty lines every time: a variable
+      # What a game wrote instead, and it is the same thirty lines every time: a variable
       # holding which row is picked, two button tests that add and subtract with the
       # wrapping done by hand, a pass that draws every row in the dull colour, a second
       # pass that redraws the picked one in the bright colour, a cursor drawn beside it,
       # and a test for the button that acts. That is a lot of bookkeeping around three
       # lines of intent, and every game gets a slightly different bit of it wrong.
       #
-      # SAID ONCE, a menu is: an ordered list of items, one of them picked, up and down
+      # Said once, a menu is: an ordered list of items, one of them picked, up and down
       # moving the pick and wrapping at both ends, and a button running the picked item's
       # block. Everything else — which colour is which, what the cursor looks like, how
-      # far apart the rows are — is decoration the game NAMES rather than builds.
+      # far apart the rows are — is decoration the game names rather than builds.
       #
       # This is a pack, so every line below is written in public DSL verbs — `var`,
       # `held`, `pressed`, `if`, `draw_text`. Nothing here is new capability, which is
@@ -80,7 +80,7 @@ module VBlank
           #   m.item("LOAD GAME", enabled: false) { }
           #   m.item("ODE TO JOY", picked: :yellow)
           #
-          # A SETTINGS ROW SAYS A DIFFERENT THING depending on the setting, so give it the
+          # A settings row says a different thing depending on the setting, so give it the
           # list of things it can say and the variable that decides which:
           #
           #   m.item(["MUSIC: OFF", "MUSIC: ON"], showing: music) { music = 1 - music }
@@ -91,7 +91,7 @@ module VBlank
           # `draw_text` of the value beside it, the value would sit outside the row and
           # stay whatever colour it was drawn in.
           #
-          # A ROW THAT CAN BE PICKED ONLY SOME OF THE TIME — Continue while there is a save,
+          # A row that can be picked only some of the time — Continue while there is a save,
           # Resume while a game is running — takes a test the game works out, or a variable
           # that holds 0 or 1, instead of true or false:
           #
@@ -218,7 +218,7 @@ module VBlank
         #
         # Returns a handle that answers `picked`, `moved` and `length`.
         #--
-        # THE COST OF A ROW: a row lights up by CHANGING COLOUR rather than by being drawn twice,
+        # The cost of a row: a row lights up by CHANGING COLOUR rather than by being drawn twice,
         # which is what keeps the sprite count at one and not two (see draw_text's `showing:`). The
         # cursor is the only per-row extra, because it is shown or not shown rather than recoloured.
         # The pick is a variable, and a variable's starting value is applied once, at power-on,
@@ -327,12 +327,12 @@ module VBlank
 
         # One step of the cursor, wrapping at the end it walked off.
         #
-        # A row that cannot be picked is stepped OVER rather than landed on. Which rows
+        # A row that cannot be picked is stepped over rather than landed on. Which rows
         # those are is settled as the program is built, so each one costs a single test:
         # land on it, and go straight on to the next row that can be picked. A menu with
         # nothing disabled emits none of these tests at all.
         #
-        # A ROW THE GAME OPENS AND SHUTS cannot be settled that way, because which rows can
+        # A row the game opens and shuts cannot be settled that way, because which rows can
         # be picked is only known as the game runs. Then the step is a walk: move one row,
         # and keep moving while the row landed on cannot be picked — never more than once
         # round the list, so a menu whose every row is shut right now leaves the cursor
@@ -440,7 +440,7 @@ module VBlank
         # rather than a test because a test belongs to one place in the tree, and a row
         # that can say several things asks the same question once for each of them.
         #
-        # The words are ONE draw in a pair of colours rather than two draws under a test.
+        # The words are one draw in a pair of colours rather than two draws under a test.
         # It says the same thing and paints the same pixels; what it saves is on a tiled
         # screen, where two draws would be two sprites for every character with one of
         # them always hidden. The cursor is still a test, because it is shown or not
@@ -504,7 +504,7 @@ module VBlank
           end
         end
 
-        # What `enabled:` set, kept as true, false, or a VARIABLE that is 1 while the row can
+        # What `enabled:` set, kept as true, false, or a variable that is 1 while the row can
         # be picked. A test is turned into one here, at the top of the menu's frame: it is asked
         # in several places — stepping, choosing, drawing — and a test belongs to one place in
         # the program, where a variable can be read as often as anybody likes.

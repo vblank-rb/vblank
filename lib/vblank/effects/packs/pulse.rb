@@ -21,7 +21,7 @@ module VBlank
       # This is a pack, so every line below is written in public DSL verbs — `var`,
       # `once_a_frame`, `.approach!`, `if` — the same ones a game is written in. It knows
       # nothing about matrices or video memory. What makes it possible at all is
-      # `sprite.scale`, which IS a hardware feature and lives in the library proper; the
+      # `sprite.scale`, which is a hardware feature and lives in the library proper; the
       # rhythm on top of it is not, so it lives here. That split is the whole rule (see
       # {Effects}): new capability is kernel, new convenience is a pack.
       #
@@ -71,7 +71,7 @@ module VBlank
           state = pulse_state(sprite, half)
           state[:top] = to.to_f
           state[:bottom] = from.to_f
-          # Over one frame FEWER than the half cycle, so the size lands exactly on the
+          # Over one frame fewer than the half cycle, so the size lands exactly on the
           # size that was asked for on the last frame of the climb rather than a hair
           # short of it. It cannot overshoot: `approach` stops at its target.
           state[:step] = (to - from).abs / [half - 1, 1].max.to_f

@@ -26,7 +26,7 @@ module VBlank
       # Walking that amount over frames is not — it is a few variables and a routine that
       # runs each frame, so it lives here, written in the same verbs a game is written in.
       #
-      # WHY THE LEVEL HOLDS A FRACTION. The amount runs 0 to 100 and a fade lasts tens of
+      # Why the level holds a fraction. The amount runs 0 to 100 and a fade lasts tens of
       # frames, so a whole-number step would be 3 for a thirty-frame fade — and 3 a frame
       # reaches 100 in thirty-four frames, not thirty. Saying `frames: 30` and taking
       # thirty-four is the kind of small lie that makes two effects drift apart when a
@@ -34,14 +34,14 @@ module VBlank
       # 100/29 and lands on the last frame, so the number an author writes is the number
       # they get.
       #
-      # WHY THE COLOR IS A BRANCH rather than a variable handed to `fade`. The display
+      # Why the color is a branch rather than a variable handed to `fade`. The display
       # picks brighten-toward-white or darken-toward-black with two bits of a register,
       # so there is no hardware reason it cannot be worked out as the game runs — the IR
       # simply settles it while building today. Until that changes, one routine covers
       # both by testing which is wanted; that is two compares on a frame that is fading
       # and nothing at all on a frame that is not.
       #
-      # AND WHY ANY OTHER COLOR IS ONE MORE BRANCH. Black and white are a BRIGHTNESS
+      # And why any other color is one more branch. Black and white are a brightness
       # change, which is what `fade` is. Red is not: mixing a color in is a different
       # piece of the display, and that is `tint`. Both take an amount from 0 to 100 and
       # both leave the picture untouched underneath, so the ramp above them is the same
@@ -328,7 +328,7 @@ module VBlank
         # places in the game fade. The handles live on the builder, so the second call
         # finds them rather than declaring a second fade.
         #
-        # THE ORDER INSIDE MATTERS. The level is APPLIED first and moved after, so the
+        # The order inside matters. The level is applied first and moved after, so the
         # first frame of a fade shows the level the screen is actually at — nothing yet
         # for a fade out, and full brightness for a flash, which is the frame a flash
         # exists for. Moving first would spend that frame part of the way there and a
@@ -371,7 +371,7 @@ module VBlank
           end
         end
 
-        # WHAT THE RAMP HANDS TO `fade`: the level with its fraction, when the game has a
+        # What the ramp hands to `fade`: the level with its fraction, when the game has a
         # fade too long for the display's own steps, and the whole percentage otherwise.
         #
         # The display fades in seventeen levels, so a fade over more frames than that shows
@@ -380,7 +380,7 @@ module VBlank
         # costs a blend per declared color on each frame the fade moves, so a game whose
         # fades are all short keeps the display's fade, which costs nothing.
         #
-        # A DISPLAY THAT DIMS (Console::Description#fades_by_brightness) always takes the fraction. Its
+        # A display that dims (Console::Description#fades_by_brightness) always takes the fraction. Its
         # brightness is a level of sixteen that a whole percentage, gone through the seventeen
         # levels of a blend first, would not land on evenly.
         #
@@ -390,7 +390,7 @@ module VBlank
           longest_fade_frames > DISPLAY_LEVELS || console.fades_by_brightness ? level : level.to_i
         end
 
-        # WHY A FADE TO BLACK ON A DISPLAY THAT DIMS IS NUDGED. The ramp lands on each brightness to
+        # Why a fade to black on a display that dims is nudged. The ramp lands on each brightness to
         # the last bit of its fraction, then 256ths and level fifteenths each drop what is left over,
         # so a level the ramp reaches exactly reads as the one below it. Going down that holds a level
         # a frame too long, and going up it skips one. This is a little more than the most those two
@@ -420,7 +420,7 @@ module VBlank
         # on the target on the final frame rather than a hair short of it — the same
         # reckoning the pulse pack makes for the same reason.
         #
-        # A DISPLAY THAT DIMS TAKES ONE STEP FOR EACH FRAME INSTEAD. It has fifteen moves from full to
+        # A display that dims takes one step for each frame instead. It has fifteen moves from full to
         # black, and a game with a fade of its own counts those: fifteen frames is a level a frame and
         # thirty is a level every second frame, up or down. So there, a length that is a multiple of
         # the moves holds every level alike (Console::Description#fades_by_brightness).
@@ -441,7 +441,7 @@ module VBlank
           (console.fades_by_brightness ? count : [count - 1, 1].max).to_f
         end
 
-        # WHERE THIS GAME'S SCREEN FADE SITS, and there is one of it.
+        # Where this game's screen fade sits, and there is one of it.
         #
         # The pack is one ramp — one level, one color, one routine that walks them — and
         # its place in the stack is the same kind of thing: what a game means by "the
@@ -449,7 +449,7 @@ module VBlank
         # `fade_out under: :ui` is undone by a plain `fade_in`.
         #
         # Two different places is a friendly error rather than a choice, and the reason is
-        # in the console: there is ONE set of blend registers, so two fades at two depths
+        # in the console: there is one set of blend registers, so two fades at two depths
         # cannot both be in force. A game that really wants that is writing two effects,
         # not one, and `fade` itself takes `under:` per call for it.
         def set_fade_layer!(under)
@@ -516,9 +516,9 @@ module VBlank
           @fade_tint_colors ||= []
         end
 
-        # A COLORED FADE CANNOT BE PLACED IN THE STACK, and the reason is the display
+        # A colored fade cannot be placed in the stack, and the reason is the display
         # rather than this pack. Putting an effect at a depth works by hiding it from what
-        # sits in front, and the console can hide only a BRIGHTNESS change that way — a
+        # sits in front, and the console can hide only a brightness change that way — a
         # color mixed in reaches the whole picture however it is asked for.
         #
         # A game has one screen fade, so this asks about the whole game and not one call:

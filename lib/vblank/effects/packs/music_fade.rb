@@ -23,7 +23,7 @@ module VBlank
       # in. The level holds a fraction for the reason the screen fade's does — a whole-number
       # step would not land on the frame the author asked for.
       #
-      # A FADED-OUT SONG GOES ON PLAYING, SILENTLY, the way a faded-out screen goes on being
+      # A faded-out song goes on playing, silently, the way a faded-out screen goes on being
       # drawn. What happens while nobody can hear it is the game's to decide: stop it, switch to
       # another song, or bring the same one back. Stopping it here instead would fight a game
       # that names its song every frame, which a jukebox does — the old tune would start over
@@ -39,7 +39,7 @@ module VBlank
         FULL = 100.0  # :nodoc:
         DEFAULT_FRAMES = 30 # :nodoc: Half a second, the same as a screen fade — they are usually called together
 
-        # TARGET starts below nothing, so the guardrail can tell a fade in (which writes FULL) from
+        # TARGET starts below nothing, so the guardrail can tell a fade in (which writes full) from
         # the declaration. The value is never used: the routine runs only once a fade has set both.
         NEVER_FADED = -1.0  # :nodoc:
 
@@ -159,7 +159,7 @@ module VBlank
         # The fade's variables and the routine that walks them, declared once however many places
         # in the game fade the music.
         #
-        # THE LEVEL MOVES FIRST AND IS APPLIED AFTER, which is the other way round from the screen
+        # The level moves first and is applied after, which is the other way round from the screen
         # fade, and for a reason on the other side of the same coin. The frame a fade is called on
         # is already the music at its old volume — the player reads the volume at the start of the
         # next frame — so a routine that applied first would spend a frame saying what was already

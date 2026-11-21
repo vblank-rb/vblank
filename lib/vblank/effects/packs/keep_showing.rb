@@ -5,7 +5,7 @@ module VBlank
     module Packs
       # A picture that is drawn when it changes and then left there
       #
-      # A score, a health bar, a GAME OVER banner or the words over a finished game need painting
+      # A score, a health bar, a game over banner or the words over a finished game need painting
       # only when they change. A picture repainted every frame needs none of this. A picture left
       # alone between changes is much cheaper, and on the tear-free screen (`screen :bitmap,
       # tear_free: true`) leaving it alone needs care. That screen keeps two pictures and shows them
@@ -22,19 +22,19 @@ module VBlank
       # ```
       #--
       # A picture that is drawn when it changes and then left there — a score, a
-      # health bar, a GAME OVER banner, the words over a finished game.
+      # health bar, a game over banner, the words over a finished game.
       #
-      # WHAT IT IS FOR. A picture repainted every frame needs none of this. A picture
+      # What it is for. A picture repainted every frame needs none of this. A picture
       # left alone between changes is much cheaper, and on the tear-free screen
       # (`screen :bitmap, tear_free: true`) leaving it alone needs care: that screen
-      # keeps TWO pictures and shows them in turn, so the program draws into the one
+      # keeps two pictures and shows them in turn, so the program draws into the one
       # nobody is looking at and they trade places at the frame boundary. A change
       # painted a single time therefore reaches one of the two, and the screen flickers
       # between the new figure and the old one, half the frames each. (A Game Boy Color
       # shows a painted picture whole, so it keeps one page even there, and a second
       # paint only draws the same picture again.)
       #
-      # So a change is painted once per picture the screen keeps. The game marks WHEN
+      # So a change is painted once per picture the screen keeps. The game marks when
       # the picture changed; how many paints that takes is read off the screen the game
       # declared, and no game writes the number down.
       #
@@ -46,7 +46,7 @@ module VBlank
       #   # ...and in the frame, where the picture belongs in the drawing order:
       #   bar.draw
       #
-      # ON A PLAIN SCREEN THE SAME GAME CODE IS RIGHT and costs one paint, because a
+      # On a plain screen the same game code is right and costs one paint, because a
       # screen that keeps one picture needs one. Nothing in the game names which screen
       # it is on, which is the point — a game moved from `screen :bitmap` to
       # `screen :bitmap, tear_free: true` keeps working, and the flicker that would
@@ -115,7 +115,7 @@ module VBlank
             builder.func(routine, &drawing)
           end
 
-          # THE PICTURE CHANGED. Call it at the moment the thing it shows moves — when
+          # The picture changed. Call it at the moment the thing it shows moves — when
           # the score goes up, when the game ends. It paints nothing itself; it marks
           # that every page now wants a fresh copy.
           #
@@ -126,7 +126,7 @@ module VBlank
             self
           end
 
-          # PAINT IT IF ANY PAGE STILL WANTS IT. Call this every frame, at the point in
+          # Paint it if any page still wants it. Call this every frame, at the point in
           # the drawing order where the picture belongs — over the scene it sits on top
           # of, under anything that covers it. A frame with no change outstanding costs
           # one comparison and draws nothing.
@@ -138,7 +138,7 @@ module VBlank
             self
           end
 
-          # NOBODY WANTS IT ANY MORE. Call it where the thing the picture showed is put
+          # Nobody wants it any more. Call it where the thing the picture showed is put
           # back — a new game starting over a finished one. Any paints still owed from
           # the last change are dropped, so a banner cannot follow the game that ended
           # into the one that replaced it. It erases nothing itself; whatever draws next
