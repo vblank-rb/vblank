@@ -157,7 +157,7 @@ class TestIrisOnTheAdvance < Minitest::Test
     seen
   end
 
-  # THE GAME'S OWN WALK: The Minish Cap starts a closing iris at 150 and takes 4 off every frame
+  # The game's own walk: The Minish Cap starts a closing iris at 150 and takes 4 off every frame
   # (tmc: src/fade.c, SetFadeIris and FadeMain). Its first size, 146, is the light's at the end of
   # the frame the walk starts on, then 142 ... 2 and nought, and the iris is shut on the frame its
   # size reaches nought.

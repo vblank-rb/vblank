@@ -127,7 +127,7 @@ class TestSpriteLayerChoiceOnTheAdvance < Minitest::Test
     assert_backends_agree(scene_room(STAIRS), frames: 4, name: "LYRSC")
   end
 
-  # A hero declared ONCE, for every room, in a game with a plain room (a floor and nothing
+  # A hero declared once, for every room, in a game with a plain room (a floor and nothing
   # over it) and the arched one. The ground floor is one depth from the front in the plain
   # room and two in the arched one, so the console has to be told which room is up.
   private def two_rooms(mode)

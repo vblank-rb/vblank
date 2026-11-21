@@ -36,10 +36,10 @@ module SpriteDrawsWithOnTheAdvanceGames
   end
 end
 
-# THE TESTS OF vblank/dsl/test_sprite_draws_with.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/dsl/test_sprite_draws_with.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A SPRITE THAT DRAWS WITH A DIFFERENT SET OF COLOURS while the game runs — a character that
+# A sprite that draws with a different set of colours while the game runs — a character that
 # cannot be hit flashing warm, a poisoned enemy turning green. Its picture does not change:
 # every pixel keeps its place in the sprite's own list of colours, and only the colours those
 # places show are swapped for the ones in another list.
@@ -87,7 +87,7 @@ class TestSpriteDrawsWithOnTheAdvance < Minitest::Test
     assert_backends_agree(every_draw_program, frames: 3)
   end
 
-  # SIXTEEN IS EXACTLY ENOUGH: the ship's own colours and fifteen lists, one group each, with
+  # Sixteen is exactly enough: the ship's own colours and fifteen lists, one group each, with
   # nothing left over. The first group of the table is one of the sixteen. Its first entry is
   # never drawn, as in every group, so sprites can have it. The groups the ship wears on the
   # Advance's cartridge are read in
@@ -100,7 +100,7 @@ class TestSpriteDrawsWithOnTheAdvance < Minitest::Test
 
   # --- scenes take turns with the groups ---
 
-  # THE SIXTEEN GROUPS ARE ONE SCENE'S, NOT THE WHOLE GAME'S, the way a scene's pictures and
+  # The sixteen groups are one scene's, not the whole game's, the way a scene's pictures and
   # scenery already are: two scenes are never on screen together, so each can have the groups
   # to itself. Here each scene's ship draws with one of nine lists besides its own — ten groups
   # a scene, twenty for the game. The ship shows the last list, so a group another scene took
@@ -152,7 +152,7 @@ class TestSpriteDrawsWithOnTheAdvance < Minitest::Test
     assert_equal [shade(:one, PICKED), shade(:two, PICKED), shade(:one, PICKED)], seen
   end
 
-  # ...UNDER A TINT, and beside a sprite every scene shows. A tiled screen tints by moving the
+  # ...UNDER a tint, and beside a sprite every scene shows. A tiled screen tints by moving the
   # colour tables themselves, and a tint held steady is not walked again — so a scene's colours
   # sent as it takes over have to go in already tinted, or its sprites arrive at full colour in
   # the middle of a red screen. The badge belongs to no scene and has to keep its colours
