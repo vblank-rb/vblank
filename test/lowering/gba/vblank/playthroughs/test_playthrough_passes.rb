@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# A PLAYING COUNTED IN PASSES OF THE GAME LOOP. The game below takes one frame over some passes and
+# A playing counted in passes of the game loop. The game below takes one frame over some passes and
 # several over others on a console, and one on the ways that play a pass a frame. Counted in frames,
 # the same presses land on different passes on each; counted in passes, the game reads the same
 # buttons on the same pass on every way.
