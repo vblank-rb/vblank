@@ -51,6 +51,8 @@ module VBlank
           include TileRuns
           include PoseRooms
           include ShownSort
+          include BendSchedule
+          include Bends
 
           # Every kind this lowering writes: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Picture, Sound, Collision, and
@@ -160,7 +162,6 @@ module VBlank
           # to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the status bar" => %i[place_bar],
-                                                    "backgrounds bent row by row" => %i[scroll_rows],
                                                     "sprite tiles the game loads" => %i[load_sprite_tiles],
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at],
@@ -312,8 +313,9 @@ module VBlank
             end
             timers = timer_sections
             @lowering_scene = nil
+            bend_routine = bend_sections
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
-            [data_section, video_registers_section, *table_sections, *routines, *timers, *main,
+            [data_section, video_registers_section, *table_sections, *routines, *timers, *bend_routine, *main,
              *paint_sections, *art_sections, *tile_runs_section, *pose_rooms_sections, *collision_sections]
           end
 
@@ -375,6 +377,7 @@ module VBlank
             words = VIDEO_REGISTERS.map do |register, value|
               value = plane_size_register if register == Console::GenesisHardware::REG_PLANE_SIZE
               value = backdrop_register if register == Console::GenesisHardware::REG_BACKDROP
+              value = Console::GenesisHardware::MODE3_HSCROLL_LINES if register == Console::GenesisHardware::REG_MODE3 && bends.any?
               Console::GenesisHardware::VDP_REGISTER | (register << 8) | value
             end
             asm.data_words(words)
@@ -875,8 +878,11 @@ module VBlank
 
           # A pass that halts ends as every pass does, with its sprites and scroll placed
           # (IR::Frames::ConsoleLoop#pass_end), as the interpreter ends it
-          # (Reference#place_pass_end_before_halt), and nothing before any runs.
+          # (Reference#place_pass_end_before_halt), and nothing before any runs. A game that never waits has
+          # its bends worked out as it stops, for the picture it stops on, as the interpreter works each
+          # row out as it paints it.
           def emit_halt(_node)
+            emit_bends(painting: true) if bends.any? && @program.walk.none? { |node| node.kind == :wait_vblank }
             loops_ending_passes.each_with_index do |ending, i|
               other = fresh("not_this_loop")
               jump_unless(Build.binop(:==, Build.var_ref(@loop_running), Build.int(i + 1)), other)
@@ -890,7 +896,11 @@ module VBlank
           # counters the program can read move on, where the interpreter moves them
           # (Reference#store_frame_counters): the frames shown by every frame the pass took, and what
           # the game catches up by held at the cap, both as the runtime counted them.
+          #
+          # The rows of each background bent row by row come first (Reference#work_out_bends): the wait's
+          # blank sends the scroll this pass placed, and a row's bend goes out with it.
           def emit_wait_vblank(_node)
+            emit_bends_at_wait
             call_routine("rt_wait_vblank")
             emit_corners_forgotten
             @asm.moveq(0, @asm.d(0))

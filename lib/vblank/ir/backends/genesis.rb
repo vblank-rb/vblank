@@ -32,6 +32,7 @@ require_relative "genesis/lowering/products"
 require_relative "genesis/lowering/tile_runs"
 require_relative "genesis/lowering/pose_rooms"
 require_relative "genesis/lowering/shown_sort"
+require_relative "genesis/lowering/bends"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -187,6 +188,7 @@ module VBlank
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
           counted = IR::Frames.counts_from_power_on?(program)
+          bends = picture == :tiled && Lowering::Bends.bends?(program)
           Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs, counted: counted,
                                   music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
@@ -194,7 +196,7 @@ module VBlank
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program),
-                                  second_pad: Runtime::Frame.reads_second_pad?(program))
+                                  second_pad: Runtime::Frame.reads_second_pad?(program), bends: bends)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                                       streamed: try.settings.streamed, cache: cache)
@@ -212,7 +214,7 @@ module VBlank
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
                                              runs: picture == :tiled && lowering.paints_tiles?,
                                              poses: lowering.streams_poses?,
-                                             blocks: picture == :tiled && lowering.writes_cell_blocks?,
+                                             blocks: picture == :tiled && lowering.writes_cell_blocks?, bends: bends,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,

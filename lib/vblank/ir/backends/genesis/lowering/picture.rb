@@ -17,7 +17,7 @@ module VBlank
           module Picture
             STATEMENT_KINDS = %i[
               background scroll_background set_tile set_tile_block show_map present_objects color_list_holds
-              background_colors fade tint hide_sprites
+              background_colors fade tint hide_sprites scroll_rows
             ].freeze
 
             def emit_picture_statement(node)
@@ -33,6 +33,7 @@ module VBlank
               when :fade then emit_fade(node)
               when :tint then emit_tint(node)
               when :hide_sprites then emit_hide_sprites(node)
+              when :scroll_rows then emit_scroll_rows(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -1045,7 +1046,10 @@ module VBlank
 
             # +which+ is the map whose cells go onto the plane, or nil to keep the cells the plane holds: then
             # nothing is copied, and the view goes back to the corner as rt_background_put_up puts it there.
+            #
+            # The plane shows the background's bend from here on, or none (Bends#emit_bend_shown).
             def emit_put_up(bg, which, reset_view:)
+              emit_bend_shown(layer_of(bg), bg)
               if which
                 runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
               else
@@ -1312,6 +1316,7 @@ module VBlank
               jump_unless(Build.binop(:!=, Build.var_ref(before), Build.int(-1)), first)
               unused.each do |plane|
                 runtime_call("rt_background_put_up", [Build.int(plane), Build.int(empty_grid.number), Build.int(1)])
+                emit_bend_shown(plane, nil)
               end
               @asm.label(first)
             end
