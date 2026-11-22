@@ -49,9 +49,9 @@ module VBlank
         #
         # Declaring it also writes the kind's own Node#kind, a method that returns the name
         # and nothing more. Every backend asks a node its kind for every node it runs or
-        # lowers, and the shared Node#kind has to find the class first (#node_class), which
-        # makes new objects on each call. Written out as source rather than made from a block,
-        # for the reason #operands gives: another Ractor cannot call a method made from a block.
+        # lowers, so it answers without asking the class first. Written out as source rather
+        # than made from a block, for the reason #operands gives: another Ractor cannot call a
+        # method made from a block.
         def kind(name = nil)
           return @kind unless name
 
@@ -177,15 +177,7 @@ module VBlank
 
       # Every kind that declares its name answers this itself (Declarations#kind); this is
       # for a class that declares none.
-      def kind = node_class.kind
-
-      # This Node's class, found through Kernel#class bound to it (bind_call), NOT BY `self.class`,
-      # for the reason Guardrails::Validator#plain_name gives: a call site that sees many classes
-      # in turn crashes Ruby (4.0.9, and 4.1 as it stands, on Apple's arm64) when several Ractors
-      # build at once, and every node kind is a class of its own, so the sites in this file see
-      # hundreds. bind_call keeps nothing at the call site; reaching around the plain call is the
-      # point here.
-      def node_class = Kernel.instance_method(:class).bind_call(self)
+      def kind = self.class.kind
 
       # The program this node belongs to — the top of the tree it hangs from. A node not
       # attached to anything answers with itself, which is what a hand-built fragment in a
@@ -207,7 +199,7 @@ module VBlank
       # This tree's own table. Read it through #fonts, which starts from the top whatever
       # node you are holding.
       def font_table = @font_table ||= FontTable.of(self)
-      def category = node_class.category || :unknown
+      def category = self.class.category || :unknown
       def value? = category == :value
       def control? = category == :control
 
@@ -240,10 +232,10 @@ module VBlank
       # not whether a :w exists.
 
       # A rectangle: something with a width and a height of its own.
-      def sized? = node_class.tags.key?(:w) && node_class.tags.key?(:h)
+      def sized? = self.class.tags.key?(:w) && self.class.tags.key?(:h)
 
       # Something drawn in a color.
-      def colored? = node_class.tags.key?(:color)
+      def colored? = self.class.tags.key?(:color)
 
       # Every color this node can draw in, for the places that need all of them (a table
       # of colors has to hold each). One, for everything but a kind that can pick between
@@ -251,7 +243,7 @@ module VBlank
       def drawn_colors = colored? && color ? [color] : []
 
       # A test with a branch to take when it fails.
-      def branching? = node_class.tags.key?(:else)
+      def branching? = self.class.tags.key?(:else)
 
       # Every statement directly under this node, wherever it runs: its children, and for a
       # test the body it runs when the test fails too, which it keeps apart from its children.
@@ -349,7 +341,7 @@ module VBlank
       # An operand that leads to no node is plain data held frozen (see #operand_flags!), so the copy
       # shares it rather than copying a game's data table number by number.
       def copy
-        node_class.new(source: source,
+        self.class.new(source: source,
                        children: @children.map(&:copy),
                        **attrs.to_h { |name, value| [name, node_fields.include?(name) ? copy_operand(value) : value] })
       end
@@ -402,7 +394,7 @@ module VBlank
         parts = [kind.inspect]
         parts.concat(attrs.map { |k, v| "#{k}=#{v.inspect}" })
         suffix = @children.empty? ? "" : " {#{@children.size}}"
-        "#<IR::#{node_class.name.split('::').last} #{parts.join(' ')}#{suffix}>"
+        "#<IR::#{self.class.name.split('::').last} #{parts.join(' ')}#{suffix}>"
       end
 
       private
@@ -411,8 +403,8 @@ module VBlank
       # refused with what it does have — the answer is nearly always in that list, and the
       # bare NoMethodError a writer would raise says nothing about the alternatives.
       def assign_operand!(name, value)
-        unless node_class.tags.key?(name)
-          known = node_class.tags.keys
+        unless self.class.tags.key?(name)
+          known = self.class.tags.keys
           raise InvariantError,
                 "#{kind} has no #{name.inspect} field to set. It has: " \
                 "#{known.empty? ? '(nothing)' : known.map(&:inspect).join(', ')}. " \
@@ -443,7 +435,7 @@ module VBlank
         return fields if wanted == fields.include?(name)
 
         keep = wanted ? fields + [name] : fields - [name]
-        node_class.tags.each_key.select { |declared| keep.include?(declared) }
+        self.class.tags.each_key.select { |declared| keep.include?(declared) }
       end
 
       # The operands of this node that lead to a node. Every other one holds a name, a

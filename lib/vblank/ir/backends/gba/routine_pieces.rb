@@ -100,7 +100,7 @@ module VBlank
           # none, nor any of the author's own instructions (`entry`'s raw ARM), which can read a
           # register a statement before it left.
           def movable?(node)
-            node.statement? && node.each.none? { |inside| inside.node_class.role == :declaration || inside.kind == :raw }
+            node.statement? && node.each.none? { |inside| inside.class.role == :declaration || inside.kind == :raw }
           end
 
           # A copy of +program+ with each place of +cuts+ (routine name to the places of its pieces)

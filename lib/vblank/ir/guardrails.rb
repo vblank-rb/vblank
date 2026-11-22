@@ -291,21 +291,8 @@ module VBlank
         #
         # A check from a pack or a game that declares none is named by its class, so every
         # check in the list still has something to show.
-        #
-        # The check's class is found through Kernel#class bound to it (bind_call), NOT BY
-        # `check.class`, because the plain call crashes Ruby (4.0.9, and 4.1 as it stands, on
-        # Apple's arm64) when several Ractors build at once. This one line sees some sixty classes
-        # in turn, in the same order in every Ractor. Ruby keeps what it found for the last class
-        # at the call site itself, in memory every Ractor shares, and for Kernel#class (one of
-        # Ruby's own methods written in Ruby around a call into C, a "leaf builtin") that call
-        # races between Ractors: about one build run in fifty jumped to address zero. The crash
-        # report then loops for ever printing the C backtrace, so the run hung rather than
-        # stopped. Ruby alone shows it, with no VBlank: Ractors each asking `.class` of objects
-        # of two thousand classes crash most runs, while the same through bind_call, or with
-        # #hash (a plain C method), or with one or two classes, never did. bind_call keeps
-        # nothing at the call site, and reaching around the plain call is the point here.
         def plain_name(check)
-          klass = Kernel.instance_method(:class).bind_call(check)
+          klass = check.class
           return klass::PLAIN_NAME if klass.const_defined?(:PLAIN_NAME, false)
 
           klass.name.to_s.split("::").last
