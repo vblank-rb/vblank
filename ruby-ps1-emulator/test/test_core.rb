@@ -138,6 +138,27 @@ class TestCore < Minitest::Test
     end
   end
 
+  # The console is switched on again with a Multitap in, and plays the program as before. Its plugs are
+  # read in VBlank's own tests, by the runtime that reads them (test_ps1_multitap.rb).
+  def test_a_multitap_is_plugged_in_before_the_first_frame
+    played(red_screen, 0) do |core|
+      core.plug_in_multitap
+      core.set_buttons(%i[cross], port: 4)
+      120.times { core.run_frame }
+
+      assert core.multitap?
+      assert_equal MARKER, core.ram_read32(MARKER_AT)
+    end
+  end
+
+  def test_a_multitap_is_refused_once_a_frame_has_run
+    played(red_screen, 1) do |core|
+      error = assert_raises(ArgumentError) { core.plug_in_multitap }
+
+      assert_match(/before the first frame/, error.message)
+    end
+  end
+
   def test_the_memory_card_holds_what_was_written_to_it
     played(red_screen, 0) do |core|
       core.memory_card = "\x5A".b * 16

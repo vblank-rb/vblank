@@ -70,7 +70,10 @@ static const char *dlerror(void) { return dl_error_text; }
 #define PIXEL_FORMAT_XRGB8888 1
 #define DEVICE_JOYPAD 1
 #define JOYPAD_MASK 256
-#define PORTS 2
+/* The first controller is libretro's port 0. An adapter of four plugs in the second port (a Super
+ * Multitap, a Team Player, a PlayStation Multitap) gives its plugs the ports after it, 1 to 4, as
+ * each of the three cores numbers the controllers it asks for one after another. */
+#define PORTS 5
 
 struct retro_game_info {
     const char *path;
@@ -517,7 +520,7 @@ static VALUE frontend_set_buttons(VALUE self, VALUE port, VALUE mask)
 {
     struct frontend *f = open_frontend(self);
     unsigned index = NUM2UINT(port);
-    if (index >= PORTS) rb_raise(rb_eArgError, "a libretro frontend here has controllers 0 and 1, not %u", index);
+    if (index >= PORTS) rb_raise(rb_eArgError, "a libretro frontend here has controllers 0 to %u, not %u", PORTS - 1, index);
     f->buttons[index] = (uint16_t)NUM2UINT(mask);
     return Qnil;
 }
