@@ -39,6 +39,7 @@ module Emitted
   COLOR_PROBE = File.join(__dir__, "emitted_color_probe.rb").freeze
   GENESIS_PROBE = File.join(__dir__, "emitted_genesis_probe.rb").freeze
   SNES_PROBE = File.join(__dir__, "emitted_snes_probe.rb").freeze
+  PS1_PROBE = File.join(__dir__, "emitted_ps1_probe.rb").freeze
 
   # What ends the name of an example's Color cartridge in the baseline.
   COLOR_MARK = "@gbc"
@@ -48,6 +49,9 @@ module Emitted
 
   # ...and of its Super Nintendo cartridge.
   SNES_MARK = "@snes"
+
+  # ...and of its PlayStation program.
+  PS1_MARK = "@ps1"
 
   # Which Ruby to launch, asked once. Asking reads Ruby's own table of how it was built,
   # which a worker Ractor may not touch.
@@ -181,6 +185,11 @@ module Emitted
     Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bsnes\b/) }
   end
 
+  # The examples that say they are for the PlayStation, as absolute paths.
+  def ps1_examples
+    Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bps1\b/) }
+  end
+
   # Build every example against the library at +lib_root+, one process each.
   def measure(lib_root, paths, detail: false)
     paths.to_h { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }
@@ -196,6 +205,9 @@ module Emitted
 
   # Each example's Super Nintendo cartridge, the same two numbers (tools/emitted_snes_probe.rb).
   def measure_snes(lib_root, paths) = measure_cartridges(lib_root, paths, SNES_PROBE, SNES_MARK)
+
+  # Each example's PlayStation program, the same two numbers (tools/emitted_ps1_probe.rb).
+  def measure_ps1(lib_root, paths) = measure_cartridges(lib_root, paths, PS1_PROBE, PS1_MARK)
 
   # Each of +paths+ built by +probe+, one process each, named with +mark+ after the example.
   def measure_cartridges(lib_root, paths, probe, mark)

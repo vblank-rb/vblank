@@ -23,7 +23,8 @@ module Emitted
   #
   # Per example rather than one total: a program that shrank would otherwise mask
   # one that grew. A cartridge's Color build is an entry of its own, <example>@gbc, and so are its
-  # Genesis and Super Nintendo builds, <example>@genesis and <example>@snes.
+  # Genesis, Super Nintendo and PlayStation builds, <example>@genesis, <example>@snes and
+  # <example>@ps1.
   #
   # The frame-work estimate is deliberately not recorded. It is an estimate whose
   # weights are re-measured from the emulator now and then, so it would churn for
@@ -61,7 +62,7 @@ module Emitted
           if name.end_with?(COLOR_MARK)
             parts << growth("always in view", then_[:code], now[:code], :bytes)
             parts << growth("in the banks", then_[:data], now[:data], :bytes)
-          elsif name.end_with?(GENESIS_MARK, SNES_MARK)
+          elsif name.end_with?(GENESIS_MARK, SNES_MARK, PS1_MARK)
             parts << growth("code", then_[:code], now[:code], :bytes)
             parts << growth("data", then_[:data], now[:data], :bytes)
           else
@@ -133,13 +134,14 @@ module Emitted
     #
     # Each Color cartridge beside them, named <example>@gbc, since what the Color's lowering
     # emits grows on its own, and a game there stops building when the part always in view fills. And
-    # each Genesis cartridge, <example>@genesis, and each Super Nintendo one, <example>@snes, for the
-    # same reason: each lowering grows on its own.
+    # each Genesis cartridge, <example>@genesis, each Super Nintendo one, <example>@snes, and each
+    # PlayStation program, <example>@ps1, for the same reason: each lowering grows on its own.
     def current
       lib = File.join(ROOT, "lib")
       Emitted.measure(lib, Emitted.examples).merge(Emitted.measure_color(lib, Emitted.color_examples))
                                             .merge(Emitted.measure_genesis(lib, Emitted.genesis_examples))
                                             .merge(Emitted.measure_snes(lib, Emitted.snes_examples))
+                                            .merge(Emitted.measure_ps1(lib, Emitted.ps1_examples))
     end
 
     def sizes(measurements)
