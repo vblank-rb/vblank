@@ -84,9 +84,9 @@ module VBlank
       # The parent's command, with the seed it settled on put last, where it wins: a run that was
       # not given one picks its own, after COMMAND was taken. One word, `--seed=N`, because
       # rake's loader takes a word that does not start with a dash for a file to load. Warnings
-      # are on in a child when they are on here.
+      # are on in a child when they are on here, turned on the same way (warnings_on.rb).
       def child_command
-        warnings = $VERBOSE ? ["-w"] : []
+        warnings = $VERBOSE ? ["-r#{File.expand_path("warnings_on.rb", __dir__)}"] : []
         bundler = bundler_setup_path
         [RbConfig.ruby, *warnings, *LOAD_PATHS.map { |path| "-I#{path}" }, *("-r#{bundler}" if bundler),
          "-r#{__FILE__}", *COMMAND, "--seed=#{Minitest.seed}"]

@@ -91,6 +91,7 @@ module VBlank
       def define
         @ruby_opts << "-r#{bundler_setup_path}" if bundler_setup_path
         @ruby_opts << "-r#{File.expand_path('quiet_warnings.rb', __dir__)}"
+        warnings_after_boot! if warning
         @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if in_processes?
         @defined = true
         super
@@ -181,6 +182,13 @@ module VBlank
         { Lowering::SETTING => lowering.to_s, "MT_RACTOR" => nil, "MT_CPU" => "1", **shared,
           "TESTOPTS" => ENV["TESTOPTS"] && without_ractor(ENV["TESTOPTS"]),
           "TEST_PROCESSES" => ENV.fetch("TEST_PROCESSES") { ENV.fetch("MT_RACTOR_WORKERS") { RactorSettings.default_workers.to_s } } }
+      end
+
+      # Warnings asked for (`t.warning`, on unless a game turns it off) are turned on by a file the
+      # run loads first (warnings_on.rb says why) rather than by `ruby -w`.
+      def warnings_after_boot!
+        self.warning = false
+        @ruby_opts << "-r#{File.expand_path('warnings_on.rb', __dir__)}"
       end
 
       # RactorSettings' roomy heap, for a run in Ractors whose record asks for it

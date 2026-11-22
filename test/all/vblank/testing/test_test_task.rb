@@ -68,6 +68,23 @@ class TestTestTask < Minitest::Test
     assert_equal "", heap_slots_in_run(:gba, test_options: "--ractor")
   end
 
+  # A Ruby started with -w prints each RUBY_GC_ setting as it boots, so a run handed the roomy heap
+  # turns its warnings on after the boot: on all the same, and nothing printed.
+  def test_a_run_given_the_roomy_heap_warns_and_prints_no_heap_settings
+    err = nil
+    warns = nil
+    with_environment("RUBY_GC_HEAP_0_INIT_SLOTS" => nil) do
+      _out, err = capture_subprocess_io do
+        warns = record_from_run(:snes, test_options: "--ractor") do |record|
+          "File.write(#{record.inspect}, [$VERBOSE, Warning[:deprecated]].inspect)\n"
+        end
+      end
+    end
+
+    assert_equal "[true, true]", warns
+    refute_match(/RUBY_GC_/, err)
+  end
+
   # A checked run's processes, the one rake starts and the ones it plays its tests in, require
   # the process runner, which requires minitest, from Ruby's command line. Ruby 4.1 no longer
   # sets bundler up while RubyGems loads, so that line runs before RUBYOPT's bundler/setup, and
