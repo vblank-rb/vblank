@@ -217,11 +217,12 @@ module VBlank
       # same emulator can read back as it was: a snapshot of a whole console. Each gem compiles the
       # fingerprint of its C source into BUILT_FROM. The Super Nintendo, the Genesis and the
       # PlayStation play in a libretro core built beside that, so the core's own file is part of it
-      # too. The Advance's libmgba is the system's library, which nothing here can fingerprint, so
-      # a libmgba installed again is not seen: a snapshot it will not take is played to again.
+      # too. The Advance and the Color play in libmgba, the system's library, which can be installed
+      # again under an extension that is not rebuilt, so the version and commit the library itself
+      # reports as it loads (RubyGBAEmulator::MGBA_BUILD) are part of it.
       def advance_build
         load!
-        ::RubyGBAEmulator.const_defined?(:BUILT_FROM) ? ::RubyGBAEmulator::BUILT_FROM : ::RubyGBAEmulator::VERSION
+        "#{::RubyGBAEmulator::BUILT_FROM} #{::RubyGBAEmulator::MGBA_BUILD}"
       end
 
       def snes_build

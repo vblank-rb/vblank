@@ -4929,6 +4929,14 @@ Init_ruby_gba_emulator_ext(void)
     rb_define_const(mRubyGBAEmulator, "BUILT_FROM",
                     rb_obj_freeze(rb_str_new_cstr(RUBY_GBA_EMULATOR_BUILT_FROM)));
 
+    /* Which libmgba this extension is linked to, read from the library itself as it loads: its
+     * version and the commit it was built from. libmgba is the system's library, so it can be
+     * installed again under an extension that is not rebuilt; anything an emulator wrote that
+     * only the same emulator reads back as it was (a saved state) is kept under this. Frozen,
+     * so a Ractor may read it. */
+    rb_define_const(mRubyGBAEmulator, "MGBA_BUILD",
+                    rb_obj_freeze(rb_sprintf("%s %s", projectVersion, gitCommit)));
+
     /* RubyGBAEmulator::Core class */
     cCore = rb_define_class_under(mRubyGBAEmulator, "Core", rb_cObject);
     rb_define_alloc_func(cCore, mgba_core_alloc);
