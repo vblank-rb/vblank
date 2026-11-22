@@ -1,10 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-# A plain require, not ShareableConstants.require_file: Pixels is a game written at the top of its
-# file, so its block belongs to Ruby's top-level object and cannot be shared. This run plays no
-# test in a Ractor, so nothing here needs it shared.
-require VBlank.root.join("examples/pixels").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pixels").to_s)
 
 # examples/pixels.rb on a Genesis: placed from the screen's own size, so the flag is in the middle of
 # its 320×224 screen and a marker is in each of its corners — held to the interpreter, every pixel,
@@ -14,7 +11,7 @@ class TestPixelsOnGenesis < Minitest::Test
   Color = VBlank::Graphics::Color
 
   def test_the_flag_is_in_the_middle_and_the_markers_in_the_corners
-    run = game_player.run(Pixels.program(console: game_console), frames: 4)
+    run = game_player.run(Pixels::GAME.program(console: game_console), frames: 4)
     screen = run.screen
     width = screen.width
     height = screen.height
@@ -27,7 +24,7 @@ class TestPixelsOnGenesis < Minitest::Test
   end
 
   def test_the_flag_is_three_stripes_and_the_dots_are_under_it
-    screen = game_player.run(Pixels.program(console: game_console), frames: 4).screen
+    screen = game_player.run(Pixels::GAME.program(console: game_console), frames: 4).screen
     middle = screen.height / 2
 
     assert_equal [Color.resolve(:green) & 0x03E0, Color.resolve(:white), Color.resolve(:red)],

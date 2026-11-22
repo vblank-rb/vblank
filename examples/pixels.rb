@@ -18,46 +18,50 @@
 
 require_relative "../lib/vblank"
 
-Pixels = VBlank.game("RUBYGBA", consoles: %i[gba snes genesis]) do
-  screen :bitmap
+# The game lives in a module, as every example's does, so its block belongs to the module
+# rather than to Ruby's own main object, which two cores may never share.
+module Pixels
+  GAME = VBlank.game("RUBYGBA", consoles: %i[gba snes genesis]) do
+    screen :bitmap
 
-  # Draw an Italian flag in the center of the screen
-  stripe_w = 33
-  flag_h = 60
-  flag_x = (screen_width - (stripe_w * 3)) / 2
-  flag_y = (screen_height - flag_h) / 2
+    # Draw an Italian flag in the center of the screen
+    stripe_w = 33
+    flag_h = 60
+    flag_x = (screen_width - (stripe_w * 3)) / 2
+    flag_y = (screen_height - flag_h) / 2
 
-  # A paint program shows a colour as three numbers from 0 to 255, and `rgb8` takes those, so a
-  # colour picked there can be typed in as it reads. (`rgb` is the same thing counted 0 to 31,
-  # which is how finely the console tells colours apart.)
-  fill_rect flag_x,                flag_y, stripe_w, flag_h, rgb8(0, 255, 0) # green
-  fill_rect flag_x + stripe_w,     flag_y, stripe_w, flag_h, :white          # white
-  fill_rect flag_x + stripe_w * 2, flag_y, stripe_w, flag_h, :red            # red
+    # A paint program shows a colour as three numbers from 0 to 255, and `rgb8` takes those, so a
+    # colour picked there can be typed in as it reads. (`rgb` is the same thing counted 0 to 31,
+    # which is how finely the console tells colours apart.)
+    fill_rect flag_x,                flag_y, stripe_w, flag_h, rgb8(0, 255, 0) # green
+    fill_rect flag_x + stripe_w,     flag_y, stripe_w, flag_h, :white          # white
+    fill_rect flag_x + stripe_w * 2, flag_y, stripe_w, flag_h, :red            # red
 
-  # RGB dots below the flag
-  dot_x = flag_x + 35
-  dot_y = flag_y + flag_h + 10
-  pixel dot_x,      dot_y, :red
-  pixel dot_x + 1,  dot_y, :red
-  pixel dot_x + 2,  dot_y, :red
+    # RGB dots below the flag
+    dot_x = flag_x + 35
+    dot_y = flag_y + flag_h + 10
+    pixel dot_x,      dot_y, :red
+    pixel dot_x + 1,  dot_y, :red
+    pixel dot_x + 2,  dot_y, :red
 
-  pixel dot_x + 10, dot_y, :green
-  pixel dot_x + 11, dot_y, :green
-  pixel dot_x + 12, dot_y, :green
+    pixel dot_x + 10, dot_y, :green
+    pixel dot_x + 11, dot_y, :green
+    pixel dot_x + 12, dot_y, :green
 
-  pixel dot_x + 20, dot_y, :blue
-  pixel dot_x + 21, dot_y, :blue
-  pixel dot_x + 22, dot_y, :blue
+    pixel dot_x + 20, dot_y, :blue
+    pixel dot_x + 21, dot_y, :blue
+    pixel dot_x + 22, dot_y, :blue
 
-  # Corner markers
-  right = screen_width - 4
-  bottom = screen_height - 4
-  fill_rect 0, 0, 4, 4, :yellow                   # top-left
-  fill_rect right, 0, 4, 4, :cyan                 # top-right
-  fill_rect 0, bottom, 4, 4, :magenta             # bottom-left
-  fill_rect right, bottom, 4, 4, color("#FF8800") # bottom-right (orange via hex)
+    # Corner markers
+    right = screen_width - 4
+    bottom = screen_height - 4
+    fill_rect 0, 0, 4, 4, :yellow                   # top-left
+    fill_rect right, 0, 4, 4, :cyan                 # top-right
+    fill_rect 0, bottom, 4, 4, :magenta             # bottom-left
+    fill_rect right, bottom, 4, 4, color("#FF8800") # bottom-right (orange via hex)
 
-  halt
+    halt
+  end
 end
 
-Pixels.write_if_main
+Pixels::GAME.write_if_main
