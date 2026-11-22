@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 require "tmpdir"
 require "vblank/live"
 
@@ -187,7 +188,7 @@ class TestWrittenGames < Minitest::Test
       FileUtils.cp(VBlank.root.join("test/fixtures/aseprite/hero.png"), dir)
       exported = File.join(dir, "hero.json")
       inputs = BuildInputs.recording do
-        VBlank.build("PICTURES", console: :gba) do
+        VBlank.build("PICTURES", console: :gba, out: StringIO.new, err: StringIO.new) do
           screen :tiled
           image :ship, from: picture, width: 2, height: 2
           sprite :hero, at: [40, 40], from_aseprite: exported
