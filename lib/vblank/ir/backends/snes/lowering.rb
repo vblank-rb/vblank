@@ -324,6 +324,7 @@ module VBlank
             # A Super FX reads and writes the variables its routines name in four bytes (ChipCode).
             @half_variables = chip ? Set.new : cache.facts.half_variables
             @handed_over = Set.new
+            @cancelled_steps = cancelled_steps
           end
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
@@ -777,15 +778,74 @@ module VBlank
             copied: [Memory, Art, PaintedArt, TextLayerArt],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
                      SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode, Sound::ModeCall],
-            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over @shown_sorts @shown_sort_nodes @unsigned_lists]
+            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over @shown_sorts @shown_sort_nodes @unsigned_lists @cancelled_steps]
           )
 
           # --- statements ---
 
           def statement(node)
             return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
+            return if @cancelled_steps.include?(node)
 
             emit_statement(node)
+          end
+
+          # The steps of a variable up and back down by the same number, `x += 1` ... `x -= 1`, in
+          # one run of statements where nothing between them names the variable, calls anything or
+          # reaches a frame boundary: nothing can read the variable while it is stepped, and it
+          # ends as it began (the sum wraps as Int32 does, so even its largest comes back), so
+          # neither step is made. A pool's walk counts the walks under way around its loop, so a
+          # thing removed during one is freed as the walks end; a walk that removes nothing and
+          # calls nothing has no use for the count.
+          def cancelled_steps
+            Set.new.compare_by_identity.tap do |cancelled|
+              @program.walk do |node|
+                statement_lists(node).each { |list| note_cancelled_steps(list, cancelled) }
+              end
+            end
+          end
+
+          # The runs of statements +node+ holds: its children, and each operand that is a list.
+          def statement_lists(node)
+            lists = node.attrs.values.select { |value| value.is_a?(Array) && value.all?(Node) && value.any? }
+            node.children.empty? ? lists : [node.children, *lists]
+          end
+
+          def note_cancelled_steps(list, cancelled)
+            list.each_with_index do |up, at|
+              number = up.kind == :add && folded(up.operand)
+              next unless number && !cancelled.include?(up)
+
+              # The first statement after that keeps the step (one naming the variable among them)
+              # ends the search, so a run of steps of one variable is looked through once.
+              down_at = (at + 1...list.length).find { |each| list[each].walk.any? { |inner| breaks_step_pair?(inner, up.var) } }
+              down = down_at && list[down_at]
+              next unless down && down.kind == :sub && down.var == up.var && folded(down.operand) == number
+
+              cancelled << up << down
+            end
+          end
+
+          # The kinds that can run between a step up and its step back without keeping the steps:
+          # numbers worked out and written to variables, and the tests and loops made of them.
+          # None of these can stop the game, call anything or wait. Any other kind keeps the steps,
+          # so a kind added later is taken as one that can stop the game until it is listed here:
+          # the interpreter stops on a scroll of a background not yet put up, too many sprites, a
+          # save list that does not fit, and more.
+          STEP_PAIR_SAFE_KINDS = %i[
+            set add sub copy negate abs negate_abs clamp if else repeat
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right table_get list_len
+            held pressed pulled
+          ].freeze
+
+          # Whether +node+, run between a step up of +var+ and its step back, keeps the steps: it
+          # names the variable, or is not among STEP_PAIR_SAFE_KINDS and is not a list's slot read or
+          # written where the slot is proven inside it.
+          def breaks_step_pair?(node, var)
+            return true if node.attrs.values.flatten.include?(var)
+            return !slot_proven_inside?(node) if %i[list_get list_set].include?(node.kind)
+
+            !STEP_PAIR_SAFE_KINDS.include?(node.kind)
           end
 
           def emit_nothing(_node) = nil
@@ -826,7 +886,10 @@ module VBlank
             return store_half_number(name, known) if known
 
             emit_low_half(value, 16)
-            @asm.sta(low_half_of(name))
+            into = low_half_of(name)
+            @asm.sta(into)
+            # A still holds what was stored, so `d = d.abs` straight after reads it from A.
+            @asm.note_accumulator_holds(into.value + into.plus) if variable_operand?(into)
           end
 
           # A number written in the program into the variable +name+, kept in two bytes.
@@ -997,7 +1060,8 @@ module VBlank
               if half.zero? && at <= 0xFFFF # nothing stores a nought straight to a whole address
                 @asm.stz(at_place(at + (2 * i)))
               else
-                @asm.lda(half)
+                # A high half the same as the low, as -1's is, is in A already.
+                @asm.lda(half) unless i == 1 && half == (number & 0xFFFF)
                 @asm.sta(at_place(at + (2 * i)))
               end
             end
@@ -1658,8 +1722,13 @@ module VBlank
             if halves
               emit_slot_into_x(place, stride, index_halves(node.index), checked: checked)
             elsif index
-              slot_value(node.value, width)
+              in_a = slot_value(node.value, width)
+              before = @asm.here
               emit_slot_into_x(place, stride, index, checked: checked)
+              # X held the slot already, so nothing was written and A still holds the number:
+              # `e.y += 256` stores what it worked out with no load of it back.
+              return @asm.sta(slot_operand(list_slots(node).base, 0, true)) if in_a && width == 2 && @asm.here == before
+
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             else
               push_value(node.index)
@@ -2278,16 +2347,23 @@ module VBlank
           # only: the high half is work whose answer the slot throws away. The console's own games
           # keep such fields in 8- or 16-bit memory and work them that way. Any other number is
           # worked out whole. R0's low half holds the number to store; its high half is not written.
+          #
+          # True when A is left holding R0's low half, as the low half worked out leaves it.
           def slot_value(node, width)
-            return value(node) if width == 4 || folded(node) || !(sum_in_halves?(node) || narrow_slot_read?(node))
+            if width == 4 || folded(node) || !(sum_in_halves?(node) || narrow_slot_read?(node))
+              value(node)
+              return false
+            end
 
             emit_low_half(node, width == 1 ? 8 : 16)
             @asm.sta(@asm.direct(R0))
+            true
           end
 
           # The deepest a sum is worked out a half at a time by #emit_low_half; deeper, it is worked
-          # out whole.
-          MOST_LOW_HALF_DEPTH = 4
+          # out whole. Each level keeps at most one half on the stack. A place stepped by a table at
+          # a byte field, `(x + steps[dir & 3]) & 0xFFFF`, is five levels down to the field.
+          MOST_LOW_HALF_DEPTH = 8
 
           def narrow_slot_read?(node)
             plain_slot_read?(node) && list_placed(node)[2] < 4
@@ -2305,6 +2381,18 @@ module VBlank
             unless sum_in_halves?(node) && depth < MOST_LOW_HALF_DEPTH
               value(node)
               return @asm.lda(@asm.direct(R0))
+            end
+
+            mask = folded(node.rhs) if node.op == :&
+            if mask
+              # An AND keeping every bit wanted changes nothing wanted: `& 0xFFFF` of a half.
+              wanted = (1 << bits) - 1
+              return emit_low_half(node.lhs, bits, depth + 1) if (mask & wanted) == wanted
+
+              # A mask of the low byte alone clears the high one, so the left side's high byte
+              # need not be right: a byte slot is read with no sign carried into it.
+              emit_low_half(node.lhs, (mask & 0xFF00).zero? ? 8 : bits, depth + 1)
+              return @asm.and_a(@asm.imm(mask & 0xFFFF))
             end
 
             if (right = low_half_operand(node.rhs, bits))
@@ -2429,11 +2517,15 @@ module VBlank
             return false unless within_half?(proven_range(operand))
 
             positive = fresh("positive")
-            emit_low_half(operand, 16, depth + 1)
+            # The CMP sets the flags, so a variable A holds already need not be loaded again
+            # (#emit_low_half_load).
+            place = low_half_operand(operand, 16)
+            variable_operand?(place) ? emit_low_half_load(place) : emit_low_half(operand, 16, depth + 1)
             @asm.cmp(0x8000) # the carry is set when the number is below nought
             @asm.bcc(positive)
             emit_negate_a
-            @asm.label(positive)
+            # Reached only from the branch above, so what X held before still holds here.
+            @asm.label(positive, join: true)
             true
           end
 
@@ -2451,9 +2543,16 @@ module VBlank
           # A shift down of a number that stays in 16 bits: LSR when it is never below nought, and
           # otherwise the sign carried in from the top (CMP $8000 sets the carry for a number below
           # nought) as each place is rotated in. Fifteen places or more leave only the sign.
+          #
+          # A number from 0 to 65535, as a place kept in 256ths of a pixel is, has nothing above
+          # its 16 bits, so its low half is all of it and LSR shifts it down exactly. A shift by
+          # eight or more of such a number starts with XBA, which swaps A's two bytes, and an AND
+          # keeping the low one: the place's high byte is its pixel, and the two instructions take
+          # six cycles where eight LSRs take sixteen (fullsnes, "CPU 65XX Microprocessor").
           def emit_low_half_shifted_down(operand, count, depth)
             range = proven_range(operand)
-            return false unless within_half?(range) && Int32.shift_count_in_range?(count)
+            unsigned = NumberRanges.inside?(range, NumberRanges::UNSIGNED_HALF)
+            return false unless (unsigned || within_half?(range)) && Int32.shift_count_in_range?(count)
             if range.begin >= 0 && count >= 16
               @asm.lda(0)
               return true
@@ -2461,6 +2560,11 @@ module VBlank
 
             emit_low_half(operand, 16, depth + 1)
             if range.begin >= 0
+              if count >= 8
+                @asm.xba
+                @asm.and_a(0x00FF)
+                count -= 8
+              end
               count.times { @asm.lsr }
             else
               [count, 15].min.times do
@@ -3457,11 +3561,22 @@ module VBlank
             known = folded(condition)
             return (@asm.brl(label) if known.zero?) if known
 
-            if binop?(condition, :and) && Unchanging.value?(condition.rhs) { |part| folded(part) }
+            if binop?(condition, :and) && unchanging?(condition.rhs)
               # The interpreter works both sides out; the second is skipped here when the first does
               # not hold, which is the same thing where working it out changes nothing.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
+            elsif binop?(condition, :or) && unchanging?(condition.rhs)
+              # The same for either side holding: the second is tested only where the first does not
+              # hold, so `dir == 0 || dir == 2` is two compares and branches, with no 1 or 0 made of
+              # either.
+              second = fresh("either_second")
+              holds = fresh("either_holds")
+              jump_unless(condition.lhs, second)
+              @asm.jump(holds)
+              @asm.label(second, join: true)
+              jump_unless(condition.rhs, label)
+              @asm.label(holds, join: true)
             elsif (tested = comparison_in_truth_test(condition))
               comparison, holds = tested
               branch = compare(comparison)
@@ -3477,6 +3592,19 @@ module VBlank
           end
 
           def binop?(node, op) = node.is_a?(Node) && node.kind == :binop && node.op == op
+
+          # Whether working +node+ out changes nothing (Unchanging): a number the lowering knows, or
+          # a read of a slot whose index cannot be outside its list, such as a pool routine's own
+          # thing's field, counts as nothing changed, since no such read can stop the game.
+          def unchanging?(node)
+            Unchanging.value?(node) { |part| folded(part) || (slot_read_at_variable?(part) && slot_proven_inside?(part)) }
+          end
+
+          # Whether the slot +node+ reads or writes is proven inside its list, so reaching it cannot
+          # stop the game.
+          def slot_proven_inside?(node)
+            !front_dropped_lists.include?(node.name) && index_inside_full_list?(node.name, node.index)
+          end
 
           # A comparison's answer tested against 1 OR 0 — `(2 < count) == 1`, which is how a pool's
           # drawing asks whether a slot is among the live ones — is the comparison itself, or its
@@ -3516,7 +3644,11 @@ module VBlank
 
             left, right = %i[> <=].include?(op) ? [node.rhs, node.lhs] : [node.lhs, node.rhs]
             with_both_halves(left, right) do |lefts, halves|
-              if %i[== !=].include?(op)
+              if %i[== !=].include?(op) && folded(right)&.zero?
+                # Nought or not: the two halves ORed together are nought only when both are.
+                @asm.lda(lefts[0])
+                @asm.ora(lefts[1])
+              elsif %i[== !=].include?(op)
                 differ = fresh("differ")
                 emit_low_half_load(lefts[0])
                 @asm.cmp(halves[0])
@@ -3576,6 +3708,13 @@ module VBlank
             if ranges.all? { |range| range.begin >= 0 }
               @asm.cmp(operand) # the carry is set when the left is not below the right
               return %i[< >].include?(op) ? :bcs : :bcc
+            end
+            # Where the left less the right is proven to stay in 16 bits, the subtract cannot
+            # overflow, so the sign CMP leaves is the order: no carry to set and no sign to turn.
+            left_range, right_range = ranges
+            if within_half?((left_range.begin - right_range.end)..(left_range.end - right_range.begin))
+              @asm.cmp(operand)
+              return %i[< >].include?(op) ? :bpl : :bmi
             end
 
             signed = fresh("signed")
@@ -3769,7 +3908,9 @@ module VBlank
             emit_slot_into_x(place, list_slots(slot).stride, index_halves(slot.index), checked: !index_inside_full_list?(slot.name, slot.index))
             @asm.lda(@asm.long_x(list_slots(slot).base))
             @asm.and_a(0x00FF) if width == 1
-            @asm.cmp(number & (width == 1 ? 0xFF : 0xFFFF))
+            # The load or the AND sets the zero flag already, so a test against nought needs no CMP.
+            kept = number & (width == 1 ? 0xFF : 0xFFFF)
+            @asm.cmp(kept) unless kept.zero?
             op == :== ? :bne : :beq
           end
 
@@ -3784,7 +3925,9 @@ module VBlank
 
             case operand
             when Symbol then load_variable(operand)
-            when Node then value_of_kind(operand)
+            when Node
+              kept = shifted_read(operand) && kept_read(operand)
+              kept ? load_variable(kept) : value_of_kind(operand)
             when LongAddress then load_long_address(operand.label)
             else raise LoweringError, "cannot make #{operand.inspect} a number"
             end
@@ -4140,13 +4283,17 @@ module VBlank
           # in it (LoweringPlan::FRAME_ENDING_KINDS), so nothing else runs while it goes, and its
           # index cannot be outside the list (#index_inside_full_list?), so reading it first, even for
           # a loop that never reads it, cannot stop the game.
+          #
+          # A kept read shifted down by a number written in the program, `e.place_x >> 8` (a place
+          # in 256ths of a pixel made a pixel), is kept shifted, so no turn shifts it again; the read
+          # alone is kept as well only where the loop reads it unshifted too.
           def with_invariant_reads_kept(node)
-            kept = invariant_reads(node).to_h do |read|
-              number = keep_local(:kept_read, every_turn: true)
-              value(read)
-              store(number)
-              [[read.name, read.index.name], number]
+            reads = invariant_reads(node)
+            shifts = invariant_shifts(node, reads)
+            kept = reads.reject { |read| only_read_shifted?(node, read, shifts) }.to_h do |read|
+              [kept_read_key(read), emit_kept_number(read)]
             end
+            shifts.each { |shift| kept[kept_read_key(shift)] = emit_kept_number(shift) }
             outer = @kept_reads
             @kept_reads = (outer || {}).merge(kept)
             yield
@@ -4174,11 +4321,88 @@ module VBlank
             node.kind != reader && node.attrs.values.flatten.any?(name)
           end
 
-          # The number a read is kept in before its loop (#with_invariant_reads_kept), or nil.
-          def kept_read(node)
-            return unless @kept_reads && node.kind == :list_get && node.index.is_a?(Node) && node.index.kind == :var_ref
+          # A number of the routine's own holding +read+ (a slot read or a shift of one), worked out
+          # once before the loop.
+          #
+          # A shift proven never below nought and inside 16 bits is worked out in its low half alone
+          # (#emit_low_half), its high half nought.
+          def emit_kept_number(read)
+            number = keep_local(:kept_read, every_turn: true)
+            range = shifted_read(read) && proven_range(read)
+            if range && range.begin >= 0 && within_half?(range)
+              emit_low_half(read, 16)
+              at = place_of(number)
+              @asm.sta(at_place(at))
+              if at + 2 <= 0xFFFF
+                @asm.stz(at_place(at + 2))
+              else
+                @asm.lda(0) # STZ has no long form
+                @asm.sta(at_place(at + 2))
+              end
+            else
+              value(read)
+              store(number)
+            end
+            number
+          end
 
-            @kept_reads[[node.name, node.index.name]]
+          # The shifts down by a number written in the program of the kept +reads+ in +loop+, one
+          # for each read and count.
+          def invariant_shifts(loop, reads)
+            keys = reads.to_set { |read| kept_read_key(read) }
+            loop.walk.select do |each|
+              (read = shifted_read(each)) && keys.include?(kept_read_key(read))
+            end.uniq { |shift| kept_read_key(shift) }
+          end
+
+          # Whether +loop+ reads +read+'s slot only as the left side of one of the kept +shifts+.
+          def only_read_shifted?(loop, read, shifts)
+            key = kept_read_key(read)
+            under_shift = shifts.select { |shift| kept_read_key(shifted_read(shift)) == key }
+            return false if under_shift.empty?
+
+            counts = under_shift.to_set { |shift| kept_read_key(shift) }
+            reads = loop.walk.count { |each| each.kind == :list_get && kept_read_key(each) == key }
+            shifted = loop.walk.count { |each| (inner = shifted_read(each)) && kept_read_key(inner) == key && counts.include?(kept_read_key(each)) }
+            reads == shifted
+          end
+
+          # A slot read +node+ shifts down by a number written in the program, as the read and the
+          # count; or nil.
+          ShiftedRead = Data.define(:read, :count)
+
+          def shift_of_slot_read(node)
+            return unless node.is_a?(Node)
+
+            read, count = case node.kind
+                          when :shift_right then [node.operand, node.bits]
+                          when :binop then [node.lhs, folded(node.rhs)] if node.op == :>>
+                          end
+            ShiftedRead.new(read: read, count: count) if count && slot_read_at_variable?(read)
+          end
+
+          # The slot read +node+ shifts down by a number written in the program, or nil.
+          def shifted_read(node) = shift_of_slot_read(node)&.read
+
+          # Whether +node+ reads a list's slot at a variable.
+          def slot_read_at_variable?(node)
+            node.is_a?(Node) && node.kind == :list_get && node.index.is_a?(Node) && node.index.kind == :var_ref
+          end
+
+          # How a kept read is known: its list and index variable, and for a shift of one its count.
+          def kept_read_key(node)
+            return [node.name, node.index.name] if node.kind == :list_get
+
+            shift = shift_of_slot_read(node)
+            [shift.read.name, shift.read.index.name, shift.count]
+          end
+
+          # The number a read, or a shift of one, is kept in before its loop
+          # (#with_invariant_reads_kept), or nil.
+          def kept_read(node)
+            return unless @kept_reads && (shifted_read(node) || slot_read_at_variable?(node))
+
+            @kept_reads[kept_read_key(node)]
           end
 
           # Where the two halves of +node+ can be read without working anything out: the number itself
