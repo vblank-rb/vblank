@@ -101,6 +101,7 @@ class TestPaintedSquares < Minitest::Test
     b.instance_eval do
       screen :bitmap
       inner = var :inner, 0
+      var :state, 0
       scene :inner do
         clear_screen :black
         pixel 15, 23, :green

@@ -41,7 +41,7 @@ class TestBigMapRefusals < Minitest::Test
     error = assert_raises(ArgumentError) do
       program do
         test.big_ground(self)
-        background(:ground, tiles: :ground, map: ["." * 80] * 80).rotate(10)
+        background(:ground, tiles: :ground, map: ["." * 80] * 80).rotate!(10)
         game_loop {}
       end
     end

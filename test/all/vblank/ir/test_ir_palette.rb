@@ -206,6 +206,7 @@ class TestIRPalette < Minitest::Test
   def test_two_screens_given_different_colors_is_refused
     err = assert_raises(Palette::Conflict) do
       Palette.build(program do
+        var :state, 0
         scene(:a) { screen :bitmap, tear_free: true, colors: %i[black red] }
         scene(:b) { screen :bitmap, tear_free: true, colors: %i[black blue green] }
         game_loop { call({ 0 => :a, 1 => :b }, number: :state) }
@@ -217,6 +218,7 @@ class TestIRPalette < Minitest::Test
 
   def test_the_same_colors_given_to_every_screen_is_fine
     pal = Palette.build(program do
+      var :state, 0
       scene(:a) { screen :bitmap, tear_free: true, colors: %i[black red] }
       scene(:b) { screen :bitmap, tear_free: true, colors: %i[black red] }
       game_loop { call({ 0 => :a, 1 => :b }, number: :state) }

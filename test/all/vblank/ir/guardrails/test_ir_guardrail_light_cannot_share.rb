@@ -194,6 +194,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
 
   def test_a_light_in_a_game_that_shows_a_bitmap_screen_is_an_error
     found = findings do
+      var :mode, 0
       scene(:title) { screen :bitmap }
       call({ 0 => :title }, number: :mode)
     end
