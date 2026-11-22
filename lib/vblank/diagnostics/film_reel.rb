@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "English"
 require "zlib"
 
 module VBlank
@@ -89,7 +88,7 @@ module VBlank
           return unless @ffmpeg
 
           @ffmpeg.close
-          raise ArgumentError, FFMPEG_STOPPED unless $CHILD_STATUS.success?
+          raise ArgumentError, FFMPEG_STOPPED unless Process.last_status.success?
         rescue Errno::EPIPE
           raise ArgumentError, FFMPEG_STOPPED
         end
@@ -177,7 +176,7 @@ module VBlank
         # What ImageMagick makes of +arguments+, read back as a Shot.
         def imagemagick(*arguments)
           ppm = IO.popen([@commands.fetch(IMAGEMAGICK), *arguments, "-depth", "8", "ppm:-"], "rb", &:read)
-          raise ArgumentError, "ImageMagick could not draw the film's words." unless $CHILD_STATUS.success?
+          raise ArgumentError, "ImageMagick could not draw the film's words." unless Process.last_status.success?
 
           Film.shot_from_ppm(ppm)
         end
