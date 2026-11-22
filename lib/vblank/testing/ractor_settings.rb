@@ -17,9 +17,8 @@ module VBlank
     # place of those options when it is set: `TESTOPTS="--name=/x/"` would play that one test without
     # Ractors, and a test could pass alone that the suite would refuse. Options that already name
     # --ractor or --no-ractor (for chasing one failure the plain way) are left as they are, matched as
-    # whole words, so a pattern that happens to contain "ractor" is not taken for the flag. The native
-    # and other checked runs take it out again themselves (TestTask), since they cannot play in
-    # Ractors.
+    # whole words, so a pattern that happens to contain "ractor" is not taken for the flag. A run whose
+    # record plays it in processes takes it out again itself (TestTask, Lowering::Run#ractors).
     #
     # Half the machine's cores, unless MT_RACTOR_WORKERS asks otherwise. A run on every core holds the
     # whole machine for its length, and is not much quicker: so much of a test run waits on things

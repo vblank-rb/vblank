@@ -1,15 +1,16 @@
 # frozen_string_literal: true
 
-# The native run's tests, spread over several processes and reported as one run. The native
-# lowering's rake task (RakeTasks) loads this beside the test files (ruby -r), and it changes one
-# thing about the run: where each test is played.
+# A run's tests spread over several processes and reported as one run, for each run whose record
+# does not play it in Ractors (Lowering::Run#ractors). Its rake task (TestTask) loads this beside
+# the test files (ruby -r), and it changes one thing about the run: where each test is played.
 #
 # Why processes. A suite can put each test in a Ractor, which is how one Ruby process uses
-# several cores, but a native test starts child processes (zig, and the program it builds) and
-# Ruby cannot do that from inside a Ractor. Threads can, and the native run used to put its tests
-# on threads — which bought next to nothing, because a native test is nearly all Ruby work
-# (lowering the game to C, playing it again on the interpreter, comparing every frame) and
-# threads take turns at Ruby work. Separate processes do not.
+# several cores, and checks then that no test reaches state the whole process shares. A test in a
+# Ractor can start child processes (zig, and the program it builds), so that is no reason to be
+# here; these runs are here until each is moved and measured in Ractors. Before this, the native
+# run put its tests on threads, which bought next to nothing, because a native test is nearly all
+# Ruby work (lowering the game to C, playing it again on the interpreter, comparing every frame)
+# and threads take turns at Ruby work. Separate processes do not.
 #
 # How it is one run. The process rake starts loads every test file and runs minitest as usual:
 # its options, its seed, its reporters and the suite's own (the skips by reason). Only the

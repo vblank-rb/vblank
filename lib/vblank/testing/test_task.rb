@@ -31,16 +31,18 @@ module VBlank
     # its run is for. RakeTasks makes its two runs out of two of these, so a twin a game makes is
     # the run `rake test:lowering:native` is, and how a native run is started lives here alone.
     #
-    # A native run is played differently, and this is all of how. Every test starts zig and the
-    # program it builds, which Ruby cannot do from inside a Ractor, so it is plain minitest's
-    # whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests are spread over
-    # several processes instead (Processes) — TEST_PROCESSES of them, or as many as the Ractor run
-    # has workers, or half the machine's cores — each playing one test at a time (MT_CPU=1). And
-    # zig is asked for before any test is played, so a missing or wrong one stops the run with
-    # one plain line rather than failing every test in turn.
+    # A run is played in Ractors or in processes, as its record says (Lowering::Run#ractors). A run
+    # in Ractors takes the game's Ractor settings as they are. Each other run is
+    # plain minitest's whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests
+    # are spread over several processes instead (Processes) — TEST_PROCESSES of them, or as many
+    # as the Ractor run has workers, or half the machine's cores — each playing one test at a time
+    # (MT_CPU=1). That is not because a test starts programs: one in a Ractor can (zig, node, the
+    # program a build makes), as Testing's unbuffered standard output lets it. Those runs have
+    # not been moved and measured yet.
     #
-    # A JavaScript run is played the same way, for the same reason — every test starts node and
-    # the program it builds — and asks for node in place of zig.
+    # A native run asks for zig before any test is played, so a missing or wrong one stops the
+    # run with one plain line rather than failing every test in turn; a JavaScript run asks for
+    # node the same way.
     #
     # None of that is written into the settings of the rake process: it is handed to the run this
     # task starts and to nothing else, so a GBA run after it in the same rake call is played as the
@@ -89,14 +91,14 @@ module VBlank
       def define
         @ruby_opts << "-r#{bundler_setup_path}" if bundler_setup_path
         @ruby_opts << "-r#{File.expand_path('quiet_warnings.rb', __dir__)}"
-        @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if checked?
+        @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if in_processes?
         @defined = true
         super
       end
 
-      # The test options this run is played with. A checked run leaves out --ractor.
+      # The test options this run is played with. A run played in processes leaves out --ractor.
       def option_list(...)
-        checked? ? without_ractor(super) : super
+        in_processes? ? without_ractor(super) : super
       end
 
       private
@@ -148,16 +150,17 @@ module VBlank
       # RUBYOPT names then loads nothing a second time.
       def bundler_setup_path = ENV.fetch("RUBYOPT", "")[%r{-r(\S*bundler/setup)(?:\.rb)?(?=\s|\z)}, 1]
 
-      def checked? = Lowering.run_named(lowering).checked?
+      # A run whose tests are spread over processes (Processes), as its record says.
+      def in_processes? = !Lowering.run_named(lowering).ractors?
 
-      # A run whose tests are played in Ractors: one that is not checked, told --ractor.
-      def in_ractors? = !checked? && option_list.split.include?("--ractor")
+      # A run whose tests are played in Ractors: one whose record allows it, told --ractor.
+      def in_ractors? = !in_processes? && option_list.split.include?("--ractor")
 
       # Is the run played with YJIT, Ruby's compiler of hot methods to machine code? Where its
       # record shows YJIT makes it faster (Lowering::Run#yjit), and never in Ractors: with several
       # running at once it makes a run many times slower. Off is set on Ruby's command line,
       # which wins over a --yjit in RUBYOPT; on is set in the environment (#run_settings), which
-      # the processes a checked run starts for its tests inherit. A Ruby built without YJIT takes
+      # the processes a run in processes starts for its tests inherit. A Ruby built without YJIT takes
       # both and ignores them.
       def yjit? = Lowering.run_named(lowering).yjit? && !in_ractors?
 
@@ -165,7 +168,7 @@ module VBlank
 
       def without_ractor(options) = (options.split - %w[--ractor]).join(" ")
 
-      # What the run is handed. A checked run's own copy of TESTOPTS loses --ractor
+      # What the run is handed. A run in processes has its own copy of TESTOPTS lose --ractor
       # too, since a test that starts a run of its own hands that copy on. YJIT as #yjit? returns.
       # The console is always set, as VBLANK_CONSOLE, and console is not handed on
       # (Lowering::PLAYED_AS_SETTING says why).
@@ -173,7 +176,7 @@ module VBlank
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
                    Lowering::CONSOLE_SETTING => nil, Lowering::FAIL_FAST_SETTING => nil,
                    Lowering::RESUME_SETTING => nil, Lowering::STOPS_AT_FAILURE_SETTING => ENV.fetch(Lowering::FAIL_FAST_SETTING, nil) }
-        return { Lowering::SETTING => "gba", **shared } unless checked?
+        return { Lowering::SETTING => lowering.to_s, **shared } unless in_processes?
 
         { Lowering::SETTING => lowering.to_s, "MT_RACTOR" => nil, "MT_CPU" => "1", **shared,
           "TESTOPTS" => ENV["TESTOPTS"] && without_ractor(ENV["TESTOPTS"]),

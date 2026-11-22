@@ -50,10 +50,10 @@ module VBlank
     # too (`rake test:lowering:native:gbc`). CONSOLE=gbc, before any of these or `rake test:all`,
     # plays only the runs that play games as that console, for a quicker look at one.
     #
-    # The GBA lowering's run is a plain test run, so a suite that puts its tests in Ractors
-    # (RactorSettings in the Rakefile, InRactors in the test helper) keeps doing so there. The native lowering's run cannot, and spreads
-    # its tests over several processes instead (TestTask says how). The runs go one after the
-    # other so they never compete for a core.
+    # A suite that puts its tests in Ractors (RactorSettings in the Rakefile, InRactors in the test
+    # helper) keeps doing so on each run whose record says so (Lowering::Run#ractors), the GBA
+    # lowering's among them. The others spread their tests over several processes instead
+    # (TestTask says how). The runs go one after the other so they never compete for a core.
     #
     # A test about one lowering's own output — the C the game is built as, say — goes in a folder
     # that lowering owns, and the other lowerings' runs never load it:

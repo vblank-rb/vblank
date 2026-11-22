@@ -21,8 +21,11 @@ module VBlank
     #   cannot be frozen or must stay with the core that made it (a file handle, a booted console).
     #
     # A file whose tests change the whole process on purpose (registering something, declaring a
-    # class) or start a child process, which hangs inside a Ractor, writes minitest-ractor's own
-    # `runs_on_the_main_ractor!` at the top, with a line saying why.
+    # class) writes minitest-ractor's own `runs_on_the_main_ractor!` at the top, with a line saying
+    # why. Starting a child process is not such a change: a test in a Ractor can start one, with
+    # standard output unbuffered (Testing sets it). What it cannot do is ask Ruby things only the
+    # main Ractor may read, such as RbConfig.ruby for the path of Ruby itself: read that once at
+    # load, into a constant.
     #
     # minitest-ractor makes most of minitest's own state shareable (Minitest::Ractor::
     # ShareableConstants), but not the diff program minitest shows a failing comparison with: see

@@ -389,7 +389,7 @@ game's own suite uses:
   the checked player on the native, JavaScript, Ruby and Game Boy Color ones. A checked player raises
   `IR::Backends::RunComparison::Disagreement` when it disagrees with the interpreter, which the
   testing kit turns into a failed test.
-- `Testing::TestTask` says how a run is started (every checked one in several processes, never in Ractors, since they start programs); `Testing::RakeTasks` makes `rake test:all` and a
+- `Testing::TestTask` says how a run is started (in Ractors or in several processes, as the record's `ractors` says; a new run starts in processes and moves once its tests pass in Ractors and it is measured there); `Testing::RakeTasks` makes `rake test:all` and a
   `test:lowering:<name>` task for each.
 - `TestSuites::LOWERING_FOLDERS` (test/support/suites.rb) names the folders only one lowering's
   run loads: put the new backend's own tests in `test/lowering/<name>/`. `TestSuites::CONSOLE_FOLDERS`

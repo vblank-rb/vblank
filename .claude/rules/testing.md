@@ -233,7 +233,8 @@ time; in a worktree set `VBLANK_SUITE_LOCK=checkout`.
 
 ## Ractors — fix what the runner reports
 
-The GBA run plays the suite through minitest-ractor, a Ractor per test, and reports every test
+The GBA run, and each run whose record says so (`Testing::Lowering::Run#ractors`), plays the suite
+through minitest-ractor, a Ractor per test, and reports every test
 that reached state the whole process shares. Those are order-dependent bugs, not noise; make the
 code Ractor-friendly rather than silencing the report.
 
@@ -247,9 +248,14 @@ code Ractor-friendly rather than silencing the report.
   plain Ruby with no `Ractor.make_shareable`
 
 A test that changes the whole process on purpose (registering a font or guardrail, stubbing a
-library method, declaring a class, asserting the process's output) or starts a child process
-(which hangs inside a Ractor) says `runs_on_the_main_ractor!` at the top, with a line saying why.
-It is not somewhere to park a test nobody has looked at.
+library method, declaring a class, asserting the process's output) says `runs_on_the_main_ractor!`
+at the top, with a line saying why. It is not somewhere to park a test nobody has looked at.
+
+Starting a child process is not a reason. A test in a Ractor can start one (zig, node, a program a
+build makes, many at once), since `vblank/testing` makes standard output unbuffered. What fails is
+reading something only the main Ractor may, such as `RbConfig.ruby`; read it once at load, into a
+constant. Older files say a child process "hangs inside a Ractor": that is stale, and such a file
+moves into the pool when it is next worked on.
 
 ## Which frame's numbers the picture was drawn from
 

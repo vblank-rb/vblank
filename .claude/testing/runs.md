@@ -45,15 +45,27 @@ The lowerings' runs inside `rake test:all` go one after the other, each with all
 ## A run in Ractors cannot hang the lock
 
 Ruby crashing in a Ractor can print `[BUG]` and never exit, which would hold the lock with nothing
-moving. So the GBA run is played through `Testing::WatchedRun`: 30 seconds after a crash report
+moving. So a run in Ractors is played through `Testing::WatchedRun`: 30 seconds after a crash report
 starts, or after 600 seconds with nothing printed, the run is ended by force and fails, naming the
 test file and the folder that keeps its last output and, on macOS, a sample of the stuck process.
 `rake test:all` goes on to the next lowering's run. The crash itself is a Ruby bug.
 
-## The native run uses processes, not Ractors
+## Which runs use Ractors, and which processes
 
-A Ractor cannot start the child processes a native test needs, so
-`lib/vblank/testing/processes.rb` starts `TEST_PROCESSES` processes (as many as the GBA run has
+Each run's record says which (`Testing::Lowering::Run#ractors`). The GBA run plays in Ractors, and
+a run in Ractors reports every test that reaches state the whole process shares. The other runs
+play in processes and check nothing of the kind, so code only their tests reach can leak between
+tests unseen.
+
+Starting programs is no reason to stay in processes. A test in a Ractor can start zig, node or the
+program a build makes, many Ractors at once (checked on Ruby 4.0 with `Open3.capture3`,
+`IO.popen` and `Process.spawn`), as long as standard output is unbuffered (below). A run moves to
+Ractors once its tests pass there and it is measured against processes. YJIT is off in Ractors,
+so measure with the run's heap settings too: Ruby's default heap collects so often under many
+Ractors that a run can be a third slower, and `RactorSettings.apply(env, roomy_heap: true)` closes
+most of that gap.
+
+A run in processes: `lib/vblank/testing/processes.rb` starts `TEST_PROCESSES` processes (as many as the GBA run has
 workers unless told) and hands them one test class at a time, the next to whichever process
 asks first. So what a class sets up once for its tests (a long recording in `@@runs ||= ...`) is
 made once in the run, and a slow class holds up one process only. Once no class is waiting, a
@@ -62,8 +74,7 @@ class at the end of a run is still spread over processes that would sit idle. Ea
 the same totals, failures and skips by reason a single process would. A process that dies under
 a test costs that test, reported as an error saying how it died, and a new one takes its place
 and the rest of that class. Not threads: a
-native test is nearly all Ruby work, and threads take turns at that. The native run never checks
-for shared state; the GBA run plays the same file and does.
+native test is nearly all Ruby work, and threads take turns at that.
 
 ## YJIT is on where it makes a run faster
 

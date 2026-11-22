@@ -28,9 +28,14 @@ module VBlank
       #            suite once for each console the game is for (Lowering.consoles_for); this is
       #            the one they play as when told nothing else
       #   checked  whether the run plays the game itself, built for another machine and checked
-      #            against the interpreter, rather than the interpreter alone. Such a run starts
-      #            programs, so it is played in processes rather than Ractors, and it has no
+      #            against the interpreter, rather than the interpreter alone. Such a run has no
       #            Advance cartridge to check
+      #   ractors  whether the run plays its tests in Ractors through minitest-ractor when the
+      #            suite asks for them (RactorSettings), so a test that reaches state the whole
+      #            process shares is reported. A run that does not spreads its tests over
+      #            processes instead (Processes), and never checks for shared state. A test in a
+      #            Ractor can start a program, so that is no reason to stay in processes; a run
+      #            moves once its tests pass in Ractors and it is measured no slower there
       #   does     what `rake -T` says the run does
       #   needs    the program it needs besides Ruby, or nil
       #   player   the class `game_player` makes one of on the run, by its name inside VBlank:
@@ -41,8 +46,9 @@ module VBlank
       #            faster, as measured: it does for the native and JavaScript runs and makes the
       #            Game Boy Color's slower. A run in Ractors is played without it whatever this
       #            holds (TestTask#yjit?)
-      Run = Data.define(:name, :title, :console, :checked, :does, :needs, :player, :yjit) do
+      Run = Data.define(:name, :title, :console, :checked, :ractors, :does, :needs, :player, :yjit) do
         alias_method :checked?, :checked
+        alias_method :ractors?, :ractors
         alias_method :yjit?, :yjit
 
         # The class `game_player` makes one of on this run.
@@ -61,31 +67,31 @@ module VBlank
 
       # In the order `rake test` plays them.
       RUNS = Ractor.make_shareable([
-                                     Run.new(name: :gba, title: "GBA", console: :gba, checked: false,
+                                     Run.new(name: :gba, title: "GBA", console: :gba, checked: false, ractors: true,
                                              does: "the game on the interpreter", needs: nil,
                                              player: "Testing::InterpreterPlayer", yjit: true),
-                                     Run.new(name: :native, title: "native", console: :gba, checked: true,
+                                     Run.new(name: :native, title: "native", console: :gba, checked: true, ractors: false,
                                              does: "the game built as C, checked against the interpreter",
                                              needs: "zig", player: "Testing::CheckedPlayer", yjit: true),
-                                     Run.new(name: :js, title: "JavaScript", console: :gba, checked: true,
+                                     Run.new(name: :js, title: "JavaScript", console: :gba, checked: true, ractors: false,
                                              does: "the game built as JavaScript, checked against the interpreter",
                                              needs: "node", player: "Testing::JSCheckedPlayer", yjit: true),
-                                     Run.new(name: :ruby, title: "Ruby", console: :gba, checked: true,
+                                     Run.new(name: :ruby, title: "Ruby", console: :gba, checked: true, ractors: false,
                                              does: "the game built as Ruby, checked against the interpreter",
                                              needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true),
-                                     Run.new(name: :gbc, title: "Game Boy Color", console: :gbc, checked: true,
+                                     Run.new(name: :gbc, title: "Game Boy Color", console: :gbc, checked: true, ractors: false,
                                              does: "the game built as a Game Boy Color cartridge, played in the " \
                                                    "emulator and checked against the interpreter",
                                              needs: nil, player: nil, yjit: false),
-                                     Run.new(name: :snes, title: "Super Nintendo", console: :snes, checked: true,
+                                     Run.new(name: :snes, title: "Super Nintendo", console: :snes, checked: true, ractors: false,
                                              does: "the game built as a Super Nintendo cartridge, played in bsnes " \
                                                    "and checked against the interpreter",
                                              needs: nil, player: nil, yjit: true),
-                                     Run.new(name: :genesis, title: "Sega Genesis", console: :genesis, checked: true,
+                                     Run.new(name: :genesis, title: "Sega Genesis", console: :genesis, checked: true, ractors: false,
                                              does: "the game built as a Sega Genesis cartridge, played in Genesis " \
                                                    "Plus GX and checked against the interpreter",
                                              needs: nil, player: nil, yjit: true),
-                                     Run.new(name: :ps1, title: "PlayStation", console: :ps1, checked: true,
+                                     Run.new(name: :ps1, title: "PlayStation", console: :ps1, checked: true, ractors: false,
                                              does: "the game built as a PlayStation program, played in Beetle PSX " \
                                                    "and checked against the interpreter",
                                              needs: nil, player: nil, yjit: true)
