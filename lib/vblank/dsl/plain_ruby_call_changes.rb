@@ -116,9 +116,9 @@ module VBlank
           return found.keys if found.key?(mod)
 
           found[mod] = true
+          # The library registers no autoloads, so every constant here is loaded. Asking autoload? from a
+          # Ractor while another loads a file can crash Ruby (https://bugs.ruby-lang.org/issues/22622).
           mod.constants(false).each do |name|
-            next if mod.autoload?(name)
-
             inner = constant_in(mod, name)
             vblank_modules(inner, found) if inner.is_a?(Module) && inner.name&.start_with?("VBlank::")
           end

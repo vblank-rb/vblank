@@ -116,7 +116,7 @@ module VBlank
       private_class_method :note_method_files
 
       # The files +mod+'s own constants are set in, noted in +files+, and each constant that is a
-      # module put in +waiting+. A constant still to be autoloaded is not loaded for this, and one
+      # module put in +waiting+. On the main Ractor a constant still to be autoloaded is not loaded for this, and one
       # set by Ruby or a gem is not looked into: no game's code is inside it, and reading some of
       # them prints that they are deprecated.
       def self.note_constant_files(mod, files, waiting)
@@ -125,16 +125,25 @@ module VBlank
           next unless file
 
           files[file] = true
-          next if mod.autoload?(name, false) || !(game_file?(file) || file.start_with?(VBLANK_FOLDER))
+          next if pending_autoload?(mod, name) || !(game_file?(file) || file.start_with?(VBLANK_FOLDER))
 
           value = mod.const_get(name, false)
           waiting << value if value.is_a?(Module)
-        rescue StandardError, Ractor::IsolationError
+        rescue StandardError, ScriptError, Ractor::IsolationError
           # Must pass over a constant this Ractor may not read, or one that is gone: neither is a module.
           next
         end
       end
       private_class_method :note_constant_files
+
+      # Whether +name+ is an autoload of the game's not yet loaded. Only the main Ractor asks: asking
+      # from another Ractor while a file loads can crash Ruby (https://bugs.ruby-lang.org/issues/22622).
+      # There the constant is read instead, and Ruby loads it on the main Ractor; a file it cannot load
+      # is passed over like any constant that cannot be read.
+      def self.pending_autoload?(mod, name)
+        Ractor.main? && mod.autoload?(name, false)
+      end
+      private_class_method :pending_autoload?
 
       # +digests+ is each file's digest by its full path, nil for a file that was not there.
       def initialize(digests)
