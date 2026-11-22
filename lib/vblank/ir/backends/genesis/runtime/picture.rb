@@ -13,11 +13,12 @@ module VBlank
 
             # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none. +sprites+ means a
             # painted screen shows sprites over its picture (`sprite ..., over_picture: true`). +scene_tiles+
-            # for a tiled game whose scenes each bring their own tiles in (Tiles#emit_scene_tiles).
-            def reserve(memory, picture: :none, colors: false, sprites: false, scene_tiles: false)
+            # for a tiled game whose scenes each bring their own tiles in (Tiles#emit_scene_tiles), and +bends+ for one
+            # that bends a background row by row (Lowering::Bends).
+            def reserve(memory, picture: :none, colors: false, sprites: false, scene_tiles: false, bends: false)
               Paint.reserve(memory) if picture == :painted
               Paint.reserve_sprites(memory) if picture == :painted && sprites
-              Tiles.reserve(memory, scene_tiles: scene_tiles) if picture == :tiled
+              Tiles.reserve(memory, scene_tiles: scene_tiles, bends: bends) if picture == :tiled
               Tint.reserve(memory) if colors && %i[painted tiled].include?(picture)
             end
 
@@ -29,12 +30,12 @@ module VBlank
             # +samples+ for a game that plays recordings, whose sound processor reads the cartridge while
             # the picture is copied (#emit_dma_started).
             def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false, backdrop: false, sprites: false,
-                     scene_tiles: false, scene_colors: false, samples: false, runs: false, poses: false, blocks: false)
+                     scene_tiles: false, scene_colors: false, samples: false, runs: false, poses: false, blocks: false, bends: false)
               case picture
               when :painted then Paint.emit(asm, memory, camera: camera, colors: colors, sprites: sprites, samples: samples)
               when :tiled
                 Tiles.emit(asm, memory, columns: columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs,
-                                        poses: poses, blocks: blocks)
+                                        poses: poses, blocks: blocks, bends: bends)
               else
                 asm.label("rt_picture_start")
                 asm.rts

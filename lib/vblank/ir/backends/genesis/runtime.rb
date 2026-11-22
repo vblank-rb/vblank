@@ -39,9 +39,9 @@ module VBlank
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
                       sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false,
-                      second_pad: false)
+                      second_pad: false, bends: false)
             Frame.reserve(memory, counted: counted, second_pad: second_pad)
-            Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles)
+            Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles, bends: bends)
             Sound.reserve(memory) if sound
             Recordings.reserve(memory, glides: glides, sides: recorded_sides) if samples
             return unless songs
@@ -65,6 +65,7 @@ module VBlank
           # +poses+ for a tiled game with a sprite kept to one pose in video memory, whose blank copies the
           # pose it changed to (Lowering::PoseRooms).
           # +blocks+ for a tiled game that changes a block of cells in one step (Tiles#emit_block_noted).
+          # +bends+ for a tiled game that bends a background row by row (Lowering::Bends), here and in #reserve.
           # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
           # count, which then counts setting up too (Boot#emit), and nil for any other.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
@@ -80,7 +81,7 @@ module VBlank
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
                          backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
-                         poses: false, blocks: false, count_at: nil)
+                         poses: false, blocks: false, bends: false, count_at: nil)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -91,7 +92,7 @@ module VBlank
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                      samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks)
+                                      samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks, bends: bends)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music

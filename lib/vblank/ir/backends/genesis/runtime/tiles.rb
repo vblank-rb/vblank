@@ -58,6 +58,14 @@ module VBlank
             DRAWN_BYTES = 8
 
             SCROLL = "rt scroll" # Each plane's left, then its top, a word each: plane A's, plane B's
+
+            # In a game that bends a background row by row (Lowering::Bends): the sideways scroll of every
+            # line, plane A's word then plane B's, as the chip's table holds it with a line each; and the
+            # bend table each plane shows, a long each, nought for none.
+            SCROLL_LINES = "rt scroll lines"
+            BENDS_SHOWN = "rt bends shown"
+            LINES = Console::GENESIS.screen_height
+            LINE_BYTES = 4
             PENDING = "rt pending maps" # Each plane's grid still to be copied, a long each, or nought
             CELL_COUNT = "rt cell count"
             CELLS = "rt cells"
@@ -84,8 +92,14 @@ module VBlank
             module_function
 
             # +scene_tiles+ for a game whose scenes each bring their own tiles in as they take over.
-            def reserve(memory, scene_tiles: false)
+            # +bends+ for one that bends a background row by row.
+            def reserve(memory, scene_tiles: false, bends: false)
               memory.reserve(SCROLL, 8)
+              if bends
+                memory.reserve(SCROLL_LINES, LINES * LINE_BYTES)
+                memory.reserve(BENDS_SHOWN, 8)
+                memory.reserve(SCROLL_LINES_KEPT, 16)
+              end
               memory.reserve(PENDING, 8)
               memory.reserve(CELL_COUNT, 2)
               memory.reserve(CELLS, MOST_CELLS * CELL_BYTES)
@@ -104,14 +118,18 @@ module VBlank
             # +samples+ for a game that plays recordings (Picture#emit_dma_started).
             # +poses+ for a game with a sprite kept to one pose in video memory (Lowering::PoseRooms).
             # +blocks+ for a game that changes a block of cells in one step (#emit_block_noted).
-            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false, poses: false, blocks: false)
+            # +bends+ for a game that bends a background row by row, whose scroll goes a line at a time
+            # (#emit_scroll_lines_worked_out).
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false, poses: false, blocks: false,
+                     bends: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_start(asm, colors: colors)
+              emit_start(asm, colors: colors, bends: bends)
+              emit_scroll_lines_worked_out(asm, memory, at) if bends
               emit_maps(asm, memory, at, columns, blocks: blocks)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
               emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs,
-                                                    poses: poses, blocks: blocks)
+                                                    poses: poses, blocks: blocks, bends: bends)
             end
 
             # A scene's own tiles, brought in as it takes over. rt_scene_tiles(table) notes the table of
@@ -163,7 +181,7 @@ module VBlank
 
             # rt_picture_start: the colours into the colour memory and the tiles into video RAM, with the
             # screen still off. The tiles are the long words of "art tiles", counted in "art tile bytes".
-            def emit_start(asm, colors: false)
+            def emit_start(asm, colors: false, bends: false)
               h = Console::GenesisHardware
               asm.label("rt_picture_start")
               asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, 0)), asm.abs_l(h::VDP_CONTROL))
@@ -186,8 +204,10 @@ module VBlank
               asm.label("rt_picture_start_done")
               asm.rts
 
-              asm.label("rt_picture_prepare")
-              asm.rts
+              unless bends # its own then (#emit_scroll_lines_worked_out)
+                asm.label("rt_picture_prepare")
+                asm.rts
+              end
               asm.label("rt_tint_prepare")
               asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
               asm.rts unless colors
@@ -689,7 +709,7 @@ module VBlank
             # shows the pose draws it from its own tiles. The copy is the video chip's, from the cartridge,
             # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms::MOST_TILES).
             def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false, poses: false,
-                            blocks: false)
+                            blocks: false, bends: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
@@ -697,7 +717,7 @@ module VBlank
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
               asm.jsr(asm.abs_l("art poses sent")) if poses
               emit_sprite_table_written(asm, memory, at)
-              emit_scroll_written(asm, memory)
+              emit_scroll_written(asm, memory, bends: bends)
               asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
               emit_screen_back_on(asm, at) if scene_tiles
               asm.rts
@@ -1004,14 +1024,25 @@ module VBlank
             # Where each plane's view is, into the horizontal scroll table (a plane moved right by the
             # distance the view moves left) and the vertical scroll memory (a plane moved up by the
             # distance the view moves down).
-            def emit_scroll_written(asm, memory)
+            #
+            # In a game that bends (+bends+), the chip reads a line of the table for every line of the screen,
+            # and the lines worked out as the pass ended (#emit_scroll_lines_worked_out) go in by the chip's
+            # own copy, as the console's own games send theirs.
+            def emit_scroll_written(asm, memory, bends: false)
               h = Console::GenesisHardware
-              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))
-              [0, 4].each do |plane|
-                asm.move(:w, asm.abs_l(memory[SCROLL], plane), asm.d(0))
-                asm.neg(:w, asm.d(0))
-                asm.and(:w, asm.imm(0x3FF), asm.d(0))
-                asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              if bends
+                asm.lea(asm.abs_l(memory[SCROLL_LINES]), asm.a(0))
+                asm.move(:l, asm.imm(HSCROLL_AT), asm.d(0))
+                asm.move(:l, asm.imm(LINES * LINE_BYTES / 2), asm.d(1))
+                asm.jsr(asm.abs_l("rt_vram_copy"))
+              else
+                asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))
+                [0, 4].each do |plane|
+                  asm.move(:w, asm.abs_l(memory[SCROLL], plane), asm.d(0))
+                  asm.neg(:w, asm.d(0))
+                  asm.and(:w, asm.imm(0x3FF), asm.d(0))
+                  asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+                end
               end
               asm.move(:l, asm.imm(h.command(h::WRITE_VSRAM, 0)), asm.abs_l(h::VDP_CONTROL))
               [2, 6].each do |plane|
@@ -1019,6 +1050,71 @@ module VBlank
                 asm.and(:w, asm.imm(0x3FF), asm.d(0))
                 asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
               end
+            end
+
+            # The lines a turn of the line table's loops works out: eight, a distance from A1 each, so a
+            # turn's count and its step on are shared by eight lines. The screen's lines are a whole
+            # number of turns.
+            LINES_A_TURN = 8
+
+            # rt_picture_prepare, in a game that bends a background row by row: every line of each plane's
+            # sideways scroll into the line table the blank sends (#emit_scroll_written). A line is the
+            # plane's own scroll and the offset its bend gave the row (Lowering::Bends), moved right by the
+            # distance the view moves left; a plane showing no bend has its scroll on every line. It runs
+            # as the wait ends the pass, after the timers, so the scroll is the one the blank would send.
+            #
+            # A plane showing no bend is written again only when its scroll or its bend changed since it
+            # was last written (SCROLL_LINES_KEPT): a still plane beside a bent one costs a comparison.
+            #
+            # The chip takes a line's low ten bits and leaves the rest (plutiedev, "Scrolling"), so the
+            # sum goes in as it is. A bent line is four instructions and a straight one one. D0, D1, D7,
+            # A0 and A1 are used.
+            def emit_scroll_lines_worked_out(asm, memory, at)
+              raise ArgumentError, "the screen's lines are a whole number of the loops' turns" unless (LINES % LINES_A_TURN).zero?
+
+              asm.label("rt_picture_prepare")
+              [0, 1].each { |plane| emit_plane_lines_worked_out(asm, at, plane) }
+              asm.rts
+            end
+
+            # Each plane's bend and scroll as its lines were last written, a long and a word, eight bytes a plane.
+            SCROLL_LINES_KEPT = "rt scroll lines kept"
+
+            def emit_plane_lines_worked_out(asm, at, plane)
+              bent = "rt_scroll_lines_bent_#{plane}"
+              straight = "rt_scroll_lines_straight_#{plane}"
+              done = "rt_scroll_lines_done_#{plane}"
+              asm.move(:w, at.call(SCROLL, plane * 4), asm.d(1))
+              asm.lea(at.call(SCROLL_LINES, plane * 2), asm.a(1))
+              asm.move(:w, asm.imm((LINES / LINES_A_TURN) - 1), asm.d(7))
+              asm.move(:l, at.call(BENDS_SHOWN, plane * 4), asm.d(0))
+              asm.branch(:ne, bent)
+              asm.tst(:l, at.call(SCROLL_LINES_KEPT, plane * 8))
+              asm.branch(:ne, straight) # bent until now
+              asm.cmp(:w, at.call(SCROLL_LINES_KEPT, (plane * 8) + 4), asm.d(1))
+              asm.branch(:eq, done)
+              asm.label(straight)
+              asm.clr(:l, at.call(SCROLL_LINES_KEPT, plane * 8))
+              asm.move(:w, asm.d(1), at.call(SCROLL_LINES_KEPT, (plane * 8) + 4))
+              asm.neg(:w, asm.d(1))
+              asm.label("#{straight}_turn")
+              LINES_A_TURN.times { |line| asm.move(:w, asm.d(1), asm.disp(1, line * LINE_BYTES)) }
+              asm.lea(asm.disp(1, LINES_A_TURN * LINE_BYTES), asm.a(1))
+              asm.dbra(asm.d(7), "#{straight}_turn")
+              asm.bra(done)
+              asm.label(bent)
+              asm.move(:l, asm.d(0), at.call(SCROLL_LINES_KEPT, plane * 8))
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.label("#{bent}_turn")
+              LINES_A_TURN.times do |line|
+                asm.move(:w, asm.post(0), asm.d(0))
+                asm.add(:w, asm.d(1), asm.d(0))
+                asm.neg(:w, asm.d(0))
+                asm.move(:w, asm.d(0), asm.disp(1, line * LINE_BYTES))
+              end
+              asm.lea(asm.disp(1, LINES_A_TURN * LINE_BYTES), asm.a(1))
+              asm.dbra(asm.d(7), "#{bent}_turn")
+              asm.label(done)
             end
           end
         end

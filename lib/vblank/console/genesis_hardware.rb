@@ -123,6 +123,7 @@ module VBlank
       BLANK_DMA_BYTES = 205 * 38
 
       MODE4_40_CELLS = 0x81 # 320 pixels across
+      MODE3_HSCROLL_LINES = 0x03 # Each line of the screen scrolled sideways by its own entry of the table
       INCREMENT_WORD = 2
 
       # What a command long word to the control port asks for: the kind of memory in bits 31-30 and
