@@ -15,6 +15,7 @@ require_relative "playthroughs/pass_stepper"                  # A game stepped i
 require_relative "playthroughs/tape"                          # The presses a playthrough made, written down to play again
 require_relative "playthroughs/tape_export"                   # A tape written out for another emulator
 require_relative "playthroughs/playthrough_picture_folder"    # The folder a playthrough's pictures go in
+require_relative "playthroughs/snapshot_cache"                # Consoles part way through a tape, kept on disk
 require_relative "playthroughs/comparison"                    # Two cartridges played side by side on the same presses
 require_relative "playthroughs/comparison_likeness"           # How alike two pictures have to be
 require_relative "playthroughs/comparison_looked_at"          # Which screen pixels a comparison looks at, frame by frame

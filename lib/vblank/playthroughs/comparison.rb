@@ -115,7 +115,13 @@ module VBlank
       # the first cartridge's frame and the second's. On the same tape those are the same
       # frame, and only the moments reached before the comparison stopped are there. On
       # the same script they are how long each took, and +frames+ is the first cartridge's.
-      Result = Data.define(:frames, :moments, :drifts) do
+      #
+      # +frames_stepped+ is how many frames the emulator stepped each cartridge through, the first's
+      # and then the second's: the work the comparison cost. A comparison started from a snapshot
+      # (`starting_after:`) steps only the frames after its start. Nil on the same script.
+      Result = Data.define(:frames, :moments, :drifts, :frames_stepped) do
+        def initialize(frames:, moments:, drifts:, frames_stepped: nil) = super
+
         def drift? = drifts.any?
 
         # Where the two first stopped being alike — nil when they never did.
@@ -196,10 +202,18 @@ module VBlank
       # shows it and its picture on the frame after (Passes, at the end of each pass). +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
       # cartridges whose frames that show the picture of the frame before are skipped (see
       # StillFrames). Nil for a comparison frame by frame.
+      #
+      # +starting_after+ is a frame of the tape, by its number or by the name of a moment, that the
+      # two are played to without being looked at, and compared from the frame after: nil to compare
+      # from the first frame. Each cartridge is put on that frame from a snapshot of its console kept
+      # in +snapshots+ (a SnapshotCache), made the first time and loaded every time after, so a
+      # comparison deep in a tape costs the frames it compares. Without +snapshots+ each is played
+      # there from power-on. Frames, moments and drifts are counted from power-on either way.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
                      same: :tape, frames_apart: nil, save: nil, saves: nil, lead_ins: nil, reports_in: nil, layers: nil,
                      ignoring_sprites: nil, forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil,
-                     skipping_still_frames_of: nil, reads_buttons_every_frame: false, passes_compared_at: nil, **how_alike)
+                     skipping_still_frames_of: nil, reads_buttons_every_frame: false, passes_compared_at: nil,
+                     starting_after: nil, snapshots: nil, **how_alike)
         refuse_unknown_settings!(how_alike.keys)
         @sprite_boxes = SpriteBoxes.from(ignoring_sprites)
         passes = Passes.from(by_passes, pass_count_wraps_at, every_frame: reads_buttons_every_frame,
@@ -229,6 +243,9 @@ module VBlank
         @frames_apart = frames_apart
         @reports_in = Report.place_for(reports_in)
         refuse_settings_wrong_for_same!(how_alike)
+        @starting_after = starting_after
+        @snapshots = snapshots
+        refuse_settings_wrong_for_start!
         @handed_over = [first, second]
       end
 
@@ -403,7 +420,8 @@ module VBlank
       # Play both on +tape+ and compare them, and say what was found.
       def run(tape)
         ignored = @ignored.frame_ranges_on(tape)
-        first_started, second_started = starts.map(&:power_on_and_lead_in)
+        start = start_frame_on(tape)
+        first_started, second_started = start.zero? ? starts.map(&:power_on_and_lead_in) : started_after(tape, start)
         consoles = [first_started.game, second_started.game]
         refuse_screens_not_described!(consoles)
         show_layers_asked_for(consoles)
@@ -424,15 +442,23 @@ module VBlank
         # tape is on after each step, so a step is past where the pair stopped when it is
         # due later than the pair has played — a moment after a hold that was cut short
         # included.
+        #
+        # The frames up to +start+ were played already, so the pair passes over them and is
+        # handed only what is after: a hold the start falls inside is cut there.
         due = 0
         tape.steps.each do |step|
           due += step.frames
           break if pair.stopped? && due > pair.frames
 
-          step.play(pair)
+          unseen = [start - (due - step.frames), step.frames].min
+          next step.play(pair) unless unseen.positive?
+
+          pair.pass_over(unseen)
+          pair.hold(step.buttons, step.frames - unseen) if step.frames > unseen
         end
         pair.end_playing
-        Result.new(frames: pair.frames, moments: pair.moments, drifts: pair.drifts)
+        Result.new(frames: pair.frames, moments: pair.moments, drifts: pair.drifts,
+                   frames_stepped: consoles.map(&:frames_played))
       rescue ReportNotWritten => e
         raise e.after(pair.drifts)
       end
@@ -581,7 +607,72 @@ module VBlank
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :ignoring_sprites, :forgiving_torn_frames_of, :readings, :comparing,
          :carrying_on, :same, :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :reads_buttons_every_frame,
-         :passes_compared_at, :skipping_still_frames_of]
+         :passes_compared_at, :skipping_still_frames_of, :starting_after, :snapshots]
+      end
+
+      # What a start after a frame of the tape cannot be given. A lead-in is a script that watches the
+      # game, whose presses are not known until it has played, so nothing can say which snapshot it
+      # reaches. Two lined up step by step count passes from power-on, which a snapshot does not hold.
+      # On the same script there is no tape to start part way through.
+      private def refuse_settings_wrong_for_start!
+        if @snapshots && !@snapshots.is_a?(SnapshotCache)
+          raise ArgumentError, "`snapshots:` was #{@snapshots.inspect}. It must be a SnapshotCache: " \
+                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
+        end
+        if @starting_after.nil?
+          return unless @snapshots
+
+          raise ArgumentError, "The comparison was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
+                               "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
+        end
+        unless @starting_after.is_a?(Symbol) || (@starting_after.is_a?(Integer) && @starting_after >= 1)
+          raise ArgumentError, "`starting_after:` was #{@starting_after.inspect}. It must be a frame of the tape, a whole " \
+                               "number 1 or more, or the name of one of its moments."
+        end
+        said = []
+        said << "`lead_ins:`" if @lead_ins.any?
+        said << @step_count.setting_name if @step_count
+        said << "`same: :script`" if same_script?
+        return if said.empty?
+
+        raise ArgumentError, "The comparison was given `starting_after:` and #{said.join(' and ')}. A comparison that " \
+                             "starts after a frame cannot use #{said.size == 1 ? 'that setting' : 'those settings'}. " \
+                             "Remove #{said.size == 1 ? 'it' : 'them'}, or remove `starting_after:`."
+      end
+
+      # The frame of +tape+ the comparison starts after, 0 for none: a number, or a moment's frame.
+      private def start_frame_on(tape)
+        return 0 if @starting_after.nil?
+
+        frame = if @starting_after.is_a?(Symbol)
+                  tape.moments.fetch(@starting_after) do
+                    raise ArgumentError, "`starting_after:` names the moment #{@starting_after.inspect}, and the tape has " \
+                                         "no moment of that name. Its moments are #{tape.moments.keys.map(&:inspect).join(', ')}."
+                  end
+                else
+                  @starting_after
+                end
+        return frame if frame < tape.frames
+
+        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{tape.frames} frames. Nothing is " \
+                             "left to compare after it. Give a frame before the tape's last."
+      end
+
+      # Each cartridge switched on and brought to the frame +start+ of +tape+ without being looked
+      # at: from a snapshot where the comparison was given +snapshots+, else played there.
+      private def started_after(tape, start)
+        presses = tape.presses_within(1..start).map do |stretch|
+          SnapshotCache::Presses.new(frames: stretch.frames.size, keys: Playthrough.key_mask(stretch.buttons))
+        end
+        starts.map do |side|
+          open = -> { Playthrough.power_on(side.cartridge, save: side.save) }
+          game = if @snapshots
+                   @snapshots.console_after(presses, side.cartridge, save: side.save, &open)
+                 else
+                   open.call.tap { |played| presses.each { |held| played.step(held.frames, keys: held.keys) } }
+                 end
+          Playthrough::Started.new(game: game, stepper: game, lead_in_keys: [])
+        end
       end
 
       # Passes and still frames are two counts of steps (see LinedUp), and a comparison lines the
@@ -884,6 +975,13 @@ module VBlank
               return if stopped?
             end
           end
+        end
+
+        # Count +frames+ the two consoles were brought past before the pair was made, which are not
+        # looked at: a comparison that starts after a frame of its tape.
+        def pass_over(frames)
+          @frames += frames
+          @decided_frame = @frames
         end
 
         def mark(name)

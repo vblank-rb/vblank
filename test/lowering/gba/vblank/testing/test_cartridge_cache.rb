@@ -42,6 +42,21 @@ class TestCartridgeCache < Minitest::Test
     end
   end
 
+  # The snapshots a comparison starts from are kept beside the builds, and storing a build, which
+  # prunes the folders of other libraries' builds, leaves them where they are.
+  def test_snapshots_are_kept_beside_the_builds
+    Dir.mktmpdir do |folder|
+      cache = VBlank::Testing::CartridgeCache.new(folder)
+      snapshots = cache.snapshots
+      FileUtils.mkdir_p(snapshots.folder)
+      File.write(File.join(snapshots.folder, "kept.state"), "a state")
+      ask(cache, dot_game(:red))
+
+      assert_equal File.join(File.expand_path(folder), "snapshots"), snapshots.folder
+      assert_path_exists File.join(snapshots.folder, "kept.state")
+    end
+  end
+
   # Two games whose programs say the same thing, one holding a picture's rows as one shared object
   # and one as two equal copies, as the same game does on a process that has shared some of its
   # pieces with tests before it and one that has not. Marshal writes those differently, so a key

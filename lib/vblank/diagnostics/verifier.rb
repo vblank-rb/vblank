@@ -170,6 +170,10 @@ module VBlank
         self
       end
 
+      # How many frames the emulator has stepped this cartridge through since this reader opened
+      # it: the work a run cost. A state loaded (#load_state) is not counted, since it played none.
+      def frames_played = @played
+
       # Whether the cartridge's rumble motor is running on the frame just played (`rumble`): never
       # on a cartridge without one.
       def motor_on?

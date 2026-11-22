@@ -46,6 +46,10 @@ module VBlank
     # `skipping_still_frames_of: :second`
     # (or `:first`, or `:both`) skips that cartridge's frames whose picture is the one before's, a
     # room loading, so the two are in step again after a load that is longer on one.
+    # `starting_after: 4194, snapshots: SNAPSHOTS` with a tape compares from the frame after 4194,
+    # each cartridge put there from a snapshot of its console kept on disk (Playthroughs::SnapshotCache),
+    # so a test of a moment deep in the game costs the frames it compares; a playthrough is played on
+    # the first cartridge to make its tape, so give the tape to save that too.
     #
     # A failure says where the two first part: the frame and the moment before it, what differed,
     # every reading on both, how many pixels differ, the box they lie in, the first of them and its

@@ -160,6 +160,10 @@ module VBlank
       def load_emulator! = Diagnostics::Emulator.load!
       def screen_questions = Diagnostics::Emulator.screen_questions
 
+      # Which build of that emulator is loaded, as a fingerprint: a snapshot of a console is that
+      # emulator's own, and is kept under it (Playthroughs::SnapshotCache).
+      def emulator_build = Diagnostics::Emulator.advance_build
+
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
       # cartridge, so only the Advance's).
       def dumps_ir? = false
@@ -352,6 +356,7 @@ module VBlank
       def open_probe(path, save_dir:, multitap: false) = Diagnostics::SNESProbe.new(path, save_dir: save_dir, multitap: multitap)
       def multitap_name = "Super Multitap"
       def load_emulator! = Diagnostics::Emulator.load_snes!
+      def emulator_build = Diagnostics::Emulator.snes_build
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
@@ -407,6 +412,7 @@ module VBlank
       def open_probe(path, save_dir:, multitap: false) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir, multitap: multitap)
       def multitap_name = "Team Player"
       def load_emulator! = Diagnostics::Emulator.load_genesis!
+      def emulator_build = Diagnostics::Emulator.genesis_build
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def compared_side_by_side? = true
@@ -430,6 +436,7 @@ module VBlank
       def open_probe(path, save_dir:, multitap: false) = Diagnostics::PS1Probe.new(path, save_dir: save_dir, multitap: multitap)
       def multitap_name = "Multitap"
       def load_emulator! = Diagnostics::Emulator.load_ps1!
+      def emulator_build = Diagnostics::Emulator.ps1_build
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
     end

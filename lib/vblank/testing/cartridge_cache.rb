@@ -52,6 +52,8 @@ module VBlank
       # The name of the folder a library's cartridges are kept in: the start of its digest. Only
       # folders named so are ever pruned, whatever else is in the folder the game names.
       LIBRARY_FOLDER = /\A\h{16}\z/
+      # The folder of #snapshots, inside +folder+.
+      SNAPSHOTS_FOLDER = "snapshots"
 
       # The files of the library and of the emulators that build and measure a cartridge.
       FRAMEWORK_GLOBS = ["lib/**/*", "ext/**/*", "core/**/*", "ruby-*-emulator/{lib,ext,core}/**/*"].freeze
@@ -146,6 +148,15 @@ module VBlank
         rom.write(path) unless File.file?(path)
         path
       end
+
+      # Snapshots of consoles part way through a tape (Playthroughs::SnapshotCache), kept in a folder
+      # beside the builds, for a comparison that starts after a frame:
+      #
+      #   SNAPSHOTS = BUILDS.snapshots
+      #   tape.compare(ours, original, starting_after: 4194, snapshots: SNAPSHOTS)
+      #
+      # The library's builds are pruned by their folders' names, which this one never has.
+      def snapshots(env: ENV) = Playthroughs::SnapshotCache.new(File.join(@base, SNAPSHOTS_FOLDER), env: env)
 
       private
 

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "tmpdir"
 
 module VBlank
@@ -208,6 +209,43 @@ module VBlank
         raise LoadError, "#{PS1_BIOS_SETTING} names #{named}, and there is no file there." unless File.file?(named)
 
         named
+      end
+
+      # ### Which build of each emulator is loaded
+      #
+      # A fingerprint of the emulator a console plays in, for what an emulator wrote and only the
+      # same emulator can read back as it was: a snapshot of a whole console. Each gem compiles the
+      # fingerprint of its C source into BUILT_FROM. The Super Nintendo, the Genesis and the
+      # PlayStation play in a libretro core built beside that, so the core's own file is part of it
+      # too. The Advance's libmgba is the system's library, which nothing here can fingerprint, so
+      # a libmgba installed again is not seen: a snapshot it will not take is played to again.
+      def advance_build
+        load!
+        ::RubyGBAEmulator.const_defined?(:BUILT_FROM) ? ::RubyGBAEmulator::BUILT_FROM : ::RubyGBAEmulator::VERSION
+      end
+
+      def snes_build
+        load_snes!
+        core_build(::RubySNESEmulator::BUILT_FROM, ::RubySNESEmulator::CoreLibrary.path)
+      end
+
+      def genesis_build
+        load_genesis!
+        core_build(::RubyGenesisEmulator::BUILT_FROM, ::RubyGenesisEmulator::CoreLibrary.path)
+      end
+
+      def ps1_build
+        load_ps1!
+        core_build(::RubyPS1Emulator::BUILT_FROM, ::RubyPS1Emulator::CoreLibrary.path)
+      end
+
+      # The C source's fingerprint and the core's file's, read once in each Ractor for each file as
+      # it is on disk now: a core built again is another file, by its size or its time.
+      def core_build(built_from, core_path)
+        stat = File.stat(core_path)
+        digests = (::Ractor.current[:vblank_core_digests] ||= {})
+        core = digests[[core_path, stat.size, stat.mtime.to_r]] ||= Digest::SHA256.file(core_path).hexdigest
+        "#{built_from} #{core}"
       end
 
       # Open an emulator core on a ROM file path.
