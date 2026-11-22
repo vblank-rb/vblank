@@ -15,8 +15,8 @@ require "heard_film"
 # is the console's blank white, before the game has painted anything, which is the second game's
 # first colour too; so a test that tells the two apart starts on the second frame.
 class TestFilm < Minitest::Test
-  # A film is made by ImageMagick and ffmpeg, and its MP4 read back by ffprobe and ffmpeg: child
-  # processes, which hang inside a Ractor.
+  # A film plays each side in a copy of this process (Diagnostics::Film#start_side_process forks),
+  # and only the main Ractor may fork. Its reel also reads $CHILD_STATUS, a main-Ractor global.
   runs_on_the_main_ractor!
   include HeardFilm
 

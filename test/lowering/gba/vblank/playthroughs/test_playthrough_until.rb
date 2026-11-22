@@ -7,18 +7,17 @@ require "all/vblank/playthroughs/test_tape_until"
 # each way that runs the game itself. Recorded on the build with the quick fade, it is played on the
 # build with the slow one, which none of its counts know about.
 class TestPlaythroughUntil < Minitest::Test
-  runs_on_the_main_ractor! # a run in another process hangs inside a Ractor
   include TapeUntilGames
 
   private def recorded = to_the_play.play(quick_fade, in_passes: :steps, on: "interpreter").tape
 
   VBlank::Playthroughs::LoweredGame.ways.each do |way|
-    define_method(:"test_a_tape_of_until_steps_plays_to_the_play_on_#{way}") do
+    define_method(:"test_a_tape_of_until_steps_plays_to_the_play_on_#{way}", &Ractor.shareable_proc {
       slow = way == VBlank::Playthroughs::LoweredGame::EMULATOR ? until_cartridge(fade_step: 3) : slow_fade
       game = recorded.play(slow, on: way).game
 
       assert_equal [PLAYING, 5], [game.var(:screen), game.var(:x)]
-    end
+    })
   end
 
   def test_a_recording_on_the_cartridge_plays_on_the_interpreter

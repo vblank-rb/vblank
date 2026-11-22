@@ -17,7 +17,7 @@ module VBlank
           # one way to build it, so the C's build +mode+ has no part here.
           def run_headless_program(program, _mode, args:, input:)
             script = Ruby.new.build_headless(program)
-            Computer::ProgramRun.run(RbConfig.ruby, args: ["--disable-gems", script, *args], input: input,
+            Computer::ProgramRun.run(RUBY_PROGRAM, args: ["--disable-gems", script, *args], input: input,
                                                     env: Ruby::PROGRAM_ENVIRONMENT)
           end
         end

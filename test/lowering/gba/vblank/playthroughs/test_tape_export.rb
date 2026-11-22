@@ -8,8 +8,6 @@ require "open3"
 # A tape written out for another emulator. Which buttons are down on which frame has to survive the
 # writing out exactly, since one frame of difference ruins a run.
 class TestTapeExport < Minitest::Test
-  runs_on_the_main_ractor! # a run in another process hangs inside a Ractor
-
   # mGBA's scripting as far as the script uses it: frames played one after another, each with the
   # keys the script had set when it began.
   FAKE_MGBA = <<~LUA

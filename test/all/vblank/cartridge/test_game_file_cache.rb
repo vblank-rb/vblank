@@ -7,8 +7,8 @@ require "open3"
 # The library's game-code files are rewritten once and the text kept on disk. These tests count
 # rewrites (a block the cache is handed) and never time a start.
 class TestGameFileCache < Minitest::Test
-  # Starts child processes, which hang inside a Ractor.
-  runs_on_the_main_ractor!
+  # The Ruby each test starts, read once here: only the main Ractor may read RbConfig.
+  RUBY = RbConfig.ruby.freeze
 
   Cache = VBlank::Cartridge::GameFileCache
 
@@ -118,7 +118,7 @@ class TestGameFileCache < Minitest::Test
   def start_library(cache_dir)
     lib = File.expand_path("../../../../lib", __dir__)
     _out, err, status = Open3.capture3({ "VBLANK_CACHE_DIR" => cache_dir, "VBLANK_NO_CACHE" => nil },
-                                       RbConfig.ruby, "-I", lib, "-e", 'require "vblank"; exit(VBlank::Builder.method_defined?(:sprite) ? 0 : 1)')
+                                       RUBY, "-I", lib, "-e", 'require "vblank"; exit(VBlank::Builder.method_defined?(:sprite) ? 0 : 1)')
     warn err unless status.success?
     status.success?
   end

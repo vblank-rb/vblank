@@ -64,6 +64,11 @@ module VBlank
                                                       "BUNDLER_SETUP" => nil, "BUNDLER_VERSION" => nil,
                                                       "RUBY_YJIT_ENABLE" => nil })
 
+        # The Ruby a program of this lowering is played by: the one running now. Read once as the
+        # library loads, since only the main Ractor may read RbConfig, and a test in a Ractor
+        # plays such a program too.
+        RUBY_PROGRAM = RbConfig.ruby.freeze
+
         # Raised when a program needs something the runtime cannot do yet, naming the +part+ it
         # needs: a test asks it as it asks a question the lowering cannot answer, and the Ruby
         # run skips it under that part's name (Testing::RubyCheckedPlayer).

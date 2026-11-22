@@ -12,8 +12,8 @@ require "vblank/live"
 # is written; or the refusal, on the terminal and in the window, in plain words. However the watch
 # ends, the helper does not outlive it.
 class TestBuildWatch < Minitest::Test
-  # Each test starts a helper process, which hangs inside a Ractor.
-  runs_on_the_main_ractor!
+  # The Ruby each test starts, read once here: only the main Ractor may read RbConfig.
+  RUBY = RbConfig.ruby.freeze
 
   BuildWatch = VBlank::Live::BuildWatch
   Headless = VBlank::Live::Headless
@@ -50,7 +50,7 @@ class TestBuildWatch < Minitest::Test
   private def watch(messages, device:, wait_seconds: 0, exit_status: 0, deaf: false, gap: 0, refusal_frames: nil, terminal: nil)
     lines = messages.map { |message| message.is_a?(String) ? message : BuildWatch.message_line(*message) }
     reader, writer = IO.pipe
-    pid = Process.spawn(RbConfig.ruby, "-e", HELPER, [Marshal.dump([lines, wait_seconds, exit_status, deaf, gap])].pack("m0"),
+    pid = Process.spawn(RUBY, "-e", HELPER, [Marshal.dump([lines, wait_seconds, exit_status, deaf, gap])].pack("m0"),
                         out: writer)
     writer.close
     watch = BuildWatch.new(reader, pid: pid, title: "DEMO")

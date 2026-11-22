@@ -17,6 +17,9 @@ require "tmpdir"
 # The two cartridges are a white box on a blue field that walks two pixels a frame while RIGHT is
 # down, from column +from+, with a background +columns+ cells wide.
 module ComparedWithoutAdvanceEmulator
+  # The Ruby the child is, read once here: only the main Ractor may read RbConfig.
+  RUBY = RbConfig.ruby.freeze
+
   CHILD = <<~'RUBY'
     module RefuseAdvanceEmulator
       def require(name)
@@ -57,7 +60,7 @@ module ComparedWithoutAdvanceEmulator
     said, status = Dir.mktmpdir("compared-without-advance") do |dir|
       script = File.join(dir, "compare.rb")
       File.write(script, CHILD)
-      Open3.capture2e(RbConfig.ruby, "-I", VBlank.root.join("lib").to_s, script, console.to_s, columns.to_s)
+      Open3.capture2e(RUBY, "-I", VBlank.root.join("lib").to_s, script, console.to_s, columns.to_s)
     end
 
     assert status.success?, said

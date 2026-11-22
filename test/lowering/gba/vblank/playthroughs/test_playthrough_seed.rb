@@ -9,8 +9,6 @@ require "stringio"
 # start the game's random numbers somewhere else, with no build for each seed: its seed is added to
 # them once the game has set itself up, as a match adds its seed (Reference#play_as_match).
 class TestPlaythroughSeed < Minitest::Test
-  runs_on_the_main_ractor! # a run in another process hangs inside a Ractor
-
   # The game picks `seed 7` for itself, and from its second pass draws a number each pass.
   private def dice
     VBlank.game("DICE", consoles: %i[gba]) do
