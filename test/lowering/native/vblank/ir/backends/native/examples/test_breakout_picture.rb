@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/breakout").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/breakout").to_s)
 
 # examples/breakout.rb built for the desktop shows the interpreter's picture pixel for pixel,
 # frame by frame, over a recorded game: the title, START, the paddle moved right and then left

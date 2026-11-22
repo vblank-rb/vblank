@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "stringio"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # A playthrough: a game driven with nobody at the controls, from a script that says what to
 # press. The script is a list of steps — tap, hold, wait, name a moment — and playing it on a

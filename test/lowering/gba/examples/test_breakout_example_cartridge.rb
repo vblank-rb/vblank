@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/breakout").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/breakout").to_s)
 
 # The Breakout example (examples/breakout.rb) on the Advance's cartridge: the picture really
 # renders, read from settled frames in the emulator. What the game does is in

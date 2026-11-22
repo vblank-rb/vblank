@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-require VBlank.root.join("examples/lake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lake").to_s)
 
 # The lake's colours and how one mixes over another, kept once for the console's picture of it
 # in test/lowering/gba/examples/test_lake_example_cartridge.rb.

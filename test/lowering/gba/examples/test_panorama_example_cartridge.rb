@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "differential"
-require VBlank.root.join("examples/panorama").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/panorama").to_s)
 
 # The Panorama example's cartridge (examples/panorama.rb), read back in the emulator: the Advance
 # keeps its own screen, so the picture pans across it as the interpreter pans it. What each build

@@ -3,7 +3,7 @@
 require "test_helper"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Two Ruby copies of a game playing one match through the stand-in relay: one makes a room and gets a
 # code, the other joins with it, and they play the match of test_lockstep.rb, speaking the network

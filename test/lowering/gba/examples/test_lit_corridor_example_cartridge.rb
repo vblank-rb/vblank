@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "differential"
-require VBlank.root.join("examples/lit_corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lit_corridor").to_s)
 
 # The Lit Corridor example (examples/lit_corridor.rb) on the Advance's own cartridge, read back in
 # the emulator: every lit pixel the colour the interpreter gives it, standing still as the lamp

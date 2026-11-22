@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/corridor").to_s)
 
 # The corridor example (examples/corridor.rb), the corpus's witness near the line, measured on
 # the Advance's own cartridge: how much of a frame it leaves idle, and which side of the line the

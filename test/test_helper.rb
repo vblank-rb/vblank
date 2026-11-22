@@ -14,6 +14,7 @@ end
 require_relative "../lib/vblank/testing"
 require_relative "../lib/vblank/testing/in_ractors"
 require "support/suites"
+require "support/shareable_constants"
 require "tmpdir"
 require "fileutils"
 

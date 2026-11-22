@@ -44,7 +44,7 @@ module TwoRooms
   ART
 
   # The four corners of a whole picture, top left first and round to the right.
-  WHOLE = Ractor.make_shareable([[0, 0], [16, 0], [16, 16], [0, 16]])
+  WHOLE = [[0, 0], [16, 0], [16, 16], [0, 16]]
 
   # Where the doorway's sides are, across and up. The doorway is in the wall between the rooms,
   # two wholes ahead of where you start.

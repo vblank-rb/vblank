@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # examples/buffered_bounce.rb on a Super Nintendo cartridge with a Super FX 2: the balls painted into
 # the chip's RAM every pass and copied to video RAM in the blank with the screen on, held to the

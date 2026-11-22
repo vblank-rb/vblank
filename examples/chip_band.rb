@@ -62,7 +62,7 @@
 require_relative "../lib/vblank"
 
 module ChipBand
-  TUNES = Ractor.make_shareable([
+  TUNES = [
     { name: :held, label: "HELD NOTES" },
     { name: :fading, label: "FADING NOTES" },
     { name: :sliding, label: "SLIDING NOTES" },
@@ -70,17 +70,17 @@ module ChipBand
     { name: :spread, label: "LEFT AND RIGHT" },
     { name: :shimmering, label: "SHIMMERING NOTES" },
     { name: :detuned, label: "DETUNED NOTES" },
-  ])
+  ]
 
   # The tune, as four bars of notes every version plays: the lead's [note, length] and the
   # chords under it, one a bar.
-  LEAD = Ractor.make_shareable([
+  LEAD = [
     [:E5, :eighth], [:G5, :eighth], [:A5, :quarter], [:G5, :eighth], [:E5, :eighth], [:D5, :quarter],
     [:C5, :eighth], [:D5, :eighth], [:E5, :eighth], [:G5, :eighth], [:A5, :half],
     [:A5, :eighth], [:G5, :eighth], [:E5, :quarter], [:D5, :eighth], [:C5, :eighth], [:D5, :quarter],
     [:E5, :quarter], [:D5, :quarter], [:C5, :half],
-  ])
-  CHORDS = Ractor.make_shareable(%i[C4 A3 F3 G3])
+  ]
+  CHORDS = %i[C4 A3 F3 G3]
 
   # One bar of drums, played four times: a kick on the beat, hats between, and a last hit high up.
   # A noise note's pitch is how high the hiss sits, so a lower one is a kick and a high one a hat —
@@ -88,15 +88,15 @@ module ChipBand
   # hit says how it fades when the tune lets it: a quick kick, a quicker hat, and the last hit
   # rising from almost nothing and cut off by the next bar, a cymbal played backwards.
   # (The note names stop at C6, so the hat's hiss is given in Hz.)
-  DRUMS = Ractor.make_shareable([
+  DRUMS = [
     [:C4, :quarter, { decay: :fast }],
     [4000, :eighth, { decay: :fast }],
     [4000, :eighth, { decay: :fast }],
     [:C4, :quarter, { decay: :fast }],
     [:C6, :quarter, { swell: 4, volume: 1 }],
-  ])
+  ]
 
-  GAME = Ractor.make_shareable(VBlank.game("CHIP BAND", consoles: %i[gba gbc]) do
+  GAME = VBlank.game("CHIP BAND", consoles: %i[gba gbc]) do
     screen :bitmap
     enable_sound
 
@@ -275,7 +275,7 @@ module ChipBand
         play_song tune[:name] if tunes.picked == i
       end
     end
-  end)
+  end
 
   def self.program(...) = GAME.program(...)
 end

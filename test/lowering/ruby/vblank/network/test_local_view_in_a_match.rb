@@ -3,7 +3,7 @@
 require "test_helper"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Which player i am, in a match. Each machine of a match is a different player, and the game may
 # draw that (examples/wanderers.rb puts an arrow over the machine's own walker) but may not keep it.

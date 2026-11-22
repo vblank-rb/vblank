@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # examples/hero.rb on a Super Nintendo: the file screen, a new walk, the signpost's words typed
 # into a box the sprites show, a walk north under the mist the console shows half see-through,

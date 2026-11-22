@@ -4,7 +4,7 @@ require "test_helper"
 require "mixed_sound"
 
 require "stringio"
-require VBlank.root.join("examples/jukebox").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/jukebox").to_s)
 
 # Somebody at the jukebox, and what the run's player and the Advance's cartridge are each held
 # to with them there, kept once for the cartridge's tests

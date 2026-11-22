@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/fonts").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/fonts").to_s)
 
 # The fonts example as the Advance's cartridge: what the GBA lowering emits for each font, and
 # both numbers drawn in the emulator. What the example draws on every run that plays the

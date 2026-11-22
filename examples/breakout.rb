@@ -135,7 +135,7 @@ module Breakout
   # The Advance's layout, which the tests read the game's places from.
   ADVANCE = Layout.new(width: 240, height: 160)
   SCREEN_W = ADVANCE.width
-  BRICKS = Ractor.make_shareable(ADVANCE.bricks)
+  BRICKS = ADVANCE.bricks
 
   # On a Game Boy Color the screen is painted into 8×8 squares of four colours each. Every
   # brick row keeps to its own squares but one: the orange and yellow rows meet in one row of

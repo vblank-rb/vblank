@@ -4,7 +4,7 @@ require "test_helper"
 require "socket"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Two Ruby builds sharing a room on the stand-in relay over a WebSocket: the relay listens on a port of this
 # computer (StandInRelayServer, in a thread), and each machine, in a thread of its own, connects to it with

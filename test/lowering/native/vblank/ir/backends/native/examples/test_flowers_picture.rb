@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/flowers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/flowers").to_s)
 
 # examples/flowers.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, through every picture of the flowers' sway and back to the first: the map never

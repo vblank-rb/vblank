@@ -72,7 +72,7 @@ module Meadow
 
   # THE CABIN: one screen, 30x20 cells. Walls round the edge, a rug in the middle, and the
   # door in the bottom wall at columns 14 and 15.
-  CABIN = Ractor.make_shareable((0...20).map do |r|
+  CABIN = (0...20).map do |r|
     (0...30).map do |c|
       if r == 19 && [14, 15].include?(c) then "D"
       elsif r.zero? || r == 19 || c.zero? || c == 29 then "#"
@@ -80,7 +80,7 @@ module Meadow
       else "."
       end
     end.join
-  end)
+  end
 
   # THE MEADOW: 120x100 cells. A ring of trees round the edge, trees and flowers scattered
   # through the grass, a pond in the north-east, a path crossing it, and the cabin seen
@@ -106,7 +106,7 @@ module Meadow
     end
   end
 
-  MEADOW = Ractor.make_shareable((0...ROWS).map { |r| (0...COLS).map { |c| meadow_cell(r, c) }.join })
+  MEADOW = (0...ROWS).map { |r| (0...COLS).map { |c| meadow_cell(r, c) }.join }
 
   # Where the hero stands on walking through each door, in the room's own pixels.
   INSIDE_DOOR = [(14 * 8), (19 * 8) - HERO - 12].freeze

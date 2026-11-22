@@ -32,14 +32,14 @@ module Parallax
   NEAR_SPEED = 2 # the near layer (trees/ground) slides twice as fast -> it reads as closer
 
   # FAR layer map (32x32 tiles): sky everywhere, with clouds scattered across the top.
-  SKY = Ractor.make_shareable((0...32).map do |r|
+  SKY = (0...32).map do |r|
     (0...32).map { |c| r.between?(2, 12) && ((r * 7) + (c * 3)) % 13 == 0 ? "c" : "." }.join
-  end)
+  end
 
   # NEAR layer map (32x32): see-through (spaces) up top so the sky shows, a row of
   # trees standing on the grass, then a grass line and dirt below. Only the bottom of
   # this reaches the 160px-tall screen; the rest sits below it.
-  GROUND = Ractor.make_shareable((0...32).map do |r|
+  GROUND = (0...32).map do |r|
     (0...32).map do |c|
       if    r >= 19 then "d"                    # dirt
       elsif r == 18 then "g"                    # the grass line
@@ -47,7 +47,7 @@ module Parallax
       else " "                                  # see-through — the far sky shows here
       end
     end.join
-  end)
+  end
 
   GAME = VBlank.game("PARALLAX", consoles: %i[gba snes genesis]) do
     screen :tiled # tile mode: two background layers, composited by the hardware

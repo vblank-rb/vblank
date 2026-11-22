@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/sprite_mover").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sprite_mover").to_s)
 
 # examples/sprite_mover.rb on a Genesis: a heart steered over a painted field, passing in front of
 # one post and behind the other because of the layers they are in, held to the interpreter — every

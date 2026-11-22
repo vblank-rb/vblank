@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 
 require "stringio"
-require VBlank.root.join("examples/dive").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/dive").to_s)
 
 # The places and moments in the Dive example the tests read, kept once for this file and for the
 # test of the dive on the Advance's cartridge (test/lowering/gba/examples/test_dive_example_cartridge.rb).

@@ -5,7 +5,7 @@ require "tmpdir"
 require "pathname"
 require "stringio"
 require "comparison_games"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # A cartridge the framework did not build, played from a script: any cartridge file. What the
 # build worked out about a cartridge — which variable is where, which sprite is which — is not

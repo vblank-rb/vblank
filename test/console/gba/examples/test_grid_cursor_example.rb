@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/grid_cursor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/grid_cursor").to_s)
 
 # Where the cursor starts, shared with the Advance cartridge's own tests of the example
 # (test/lowering/gba/examples/test_grid_cursor_example_cartridge.rb).

@@ -38,7 +38,7 @@ require_relative "../lib/vblank"
 
 module Raycaster
   MAP_W = 8 # an 8x8 maze: a solid border ring with a few inner walls
-  MAP = Ractor.make_shareable([
+  MAP = [
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 0, 0, 0, 0, 0, 0, 1,
     1, 0, 1, 1, 0, 0, 0, 1,
@@ -47,7 +47,7 @@ module Raycaster
     1, 0, 0, 1, 0, 0, 0, 1,
     1, 0, 0, 0, 0, 0, 0, 1,
     1, 1, 1, 1, 1, 1, 1, 1
-  ])
+  ]
 
   COL_W = 8 # each screen strip is 8 pixels wide
   STEPS_PER_CELL = 4          # a ray advances a quarter of a cell at a time...
@@ -59,7 +59,7 @@ module Raycaster
   # a quarter turn (128) later.
   TURN = 512
   QUARTER = TURN / 4
-  SIN = Ractor.make_shareable((0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) })
+  SIN = (0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) }
 
   SOFTEN = 0.5
   MIN_H = 8
@@ -79,11 +79,11 @@ module Raycaster
 
   # The palette. Sky and floor bracket the eye line, and the three wall shades are the
   # depth cue: a near wall catches the light, a far one falls into the gloom.
-  SKY = Ractor.make_shareable(VBlank::Graphics::Color.rgb(5, 7, 12))
+  SKY = VBlank::Graphics::Color.rgb(5, 7, 12)
   FLOOR = VBlank::Graphics::Color.rgb(11, 8, 5)
-  NEAR = Ractor.make_shareable(VBlank::Graphics::Color.rgb(29, 27, 23))
+  NEAR = VBlank::Graphics::Color.rgb(29, 27, 23)
   MID = VBlank::Graphics::Color.rgb(20, 18, 15)
-  FAR = Ractor.make_shareable(VBlank::Graphics::Color.rgb(11, 10, 9))
+  FAR = VBlank::Graphics::Color.rgb(11, 10, 9)
   WALL_SHADES = [NEAR, MID, FAR].freeze
 
   GAME = VBlank.game("RAYCAST", consoles: %i[gba snes]) do

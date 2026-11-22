@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "pathname"
 require "zlib"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # A playthrough and the cartridge's save memory: it can start holding a save, and it hands
 # back the save memory as it left it — to write to a file, or to start the next playthrough

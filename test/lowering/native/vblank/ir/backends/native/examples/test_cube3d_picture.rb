@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/cube3d").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/cube3d").to_s)
 
 # examples/cube3d.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, while the viewer turns round the crate, rolls, flies in, and holds START so the top

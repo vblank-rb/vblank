@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-require VBlank.root.join("examples/sparks").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
 
 # The sparks example: a pool of particles walked every frame on a bitmap screen — the one
 # example whose frame is a pool walk, so the corpus tools (rake cost:check, cost:ranking,

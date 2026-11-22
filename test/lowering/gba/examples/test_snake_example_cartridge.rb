@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/snake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake").to_s)
 
 # The Snake example (examples/snake.rb) on the Advance's cartridge: its first frames read back
 # in the emulator, so the classic silent-black-screen failure can't slip through. That the

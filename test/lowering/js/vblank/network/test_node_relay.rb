@@ -4,7 +4,7 @@ require "test_helper"
 require "node_copy"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Copies of a game built as JavaScript make and join a room on the stand-in relay (rg_relay.js): they speak the
 # relay's messages, get a code, give it to the others, and play, beside each other and beside a Ruby build of the

@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/tiles").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/tiles").to_s)
 
 # The points the tiles example's tests read, shared with its cartridge's own tests
 # (test/lowering/gba/examples/test_tiles_example_cartridge.rb).

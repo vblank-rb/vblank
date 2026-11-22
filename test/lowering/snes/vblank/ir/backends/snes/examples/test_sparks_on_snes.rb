@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/sparks").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
 
 # examples/sparks.rb on a Super Nintendo: a pool of sparks spawned at random across the whole
 # 256-pixel width, falling and given back off the bottom, held to the interpreter — every

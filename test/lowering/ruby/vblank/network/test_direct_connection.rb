@@ -5,7 +5,7 @@ require "socket"
 require "timeout"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Machines that connect to each other directly: one hosts (it is the room, and player 1) and the others
 # connect to it over a socket, in a test a UNIXSocket pair, and once a TCP port on this machine. Each machine

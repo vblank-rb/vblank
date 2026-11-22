@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pong").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
 
 # Where the title's rows are, shared with the cartridge's tests
 # (test/lowering/gba/examples/test_pong_title_cartridge.rb).

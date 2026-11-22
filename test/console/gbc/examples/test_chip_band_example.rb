@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/chip_band").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/chip_band").to_s)
 
 # The chip band example (examples/chip_band.rb): a list of tunes on the console's own voices, the
 # one the cursor is on playing. HELD NOTES holds every note; fading notes is the same notes,

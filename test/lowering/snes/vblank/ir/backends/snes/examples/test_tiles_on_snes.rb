@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/tiles").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/tiles").to_s)
 
 # examples/tiles.rb on a Super Nintendo: a room of tiles whose door opens and shuts and which is
 # walked between three maps, held to the interpreter — every variable and every pixel — after

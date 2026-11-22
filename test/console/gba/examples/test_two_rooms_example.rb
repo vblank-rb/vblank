@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/two_rooms").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/two_rooms").to_s)
 
 # The flight the Two Rooms example's tests fly, kept once for this file and the test of the
 # Advance's cartridge (test/lowering/gba/examples/test_two_rooms_example_cartridge.rb).

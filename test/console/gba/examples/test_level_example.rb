@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/level").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/level").to_s)
 require VBlank.root.join("tools/make_example_assets").to_s # the art's colors, so expectations track the source
 
 # The colours the Level example paints and the places to read them, kept once for this file

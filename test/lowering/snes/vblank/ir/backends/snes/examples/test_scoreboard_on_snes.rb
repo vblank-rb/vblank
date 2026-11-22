@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/scoreboard").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/scoreboard").to_s)
 
 # examples/scoreboard.rb on a Super Nintendo: the status bar over the drifting field, slid out of
 # the ball's way while the ball is low and back once it has gone, a pip lit each second, held to

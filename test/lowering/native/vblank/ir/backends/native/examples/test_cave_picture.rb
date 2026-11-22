@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/cave").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/cave").to_s)
 
 # examples/cave.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, while the hero walks the cave with the lantern on them, out of the cave mouth, through

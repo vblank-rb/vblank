@@ -2,9 +2,9 @@
 
 require "digest"
 require "test_helper"
-require VBlank.root.join("examples/sparks").to_s
-require VBlank.root.join("examples/tiles").to_s
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/tiles").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # A Super Nintendo cartridge with a Super FX 2 (`variants: { snes: :superfx }`): its header says
 # so, bsnes takes it as that board (the chip's RAM is there, at $70:0000, as the board table

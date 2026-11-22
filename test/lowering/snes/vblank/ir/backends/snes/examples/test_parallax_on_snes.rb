@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/parallax").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/parallax").to_s)
 
 # examples/parallax.rb on a Super Nintendo: the sky and the ground in two layers, the ground in
 # front with see-through cells over the sky, each scrolling at its own speed, held to the

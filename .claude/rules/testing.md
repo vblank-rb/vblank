@@ -242,6 +242,9 @@ code Ractor-friendly rather than silencing the report.
   `Ractor.store_if_absent(:key) { … }`
 - a fixture in a constant → nothing to do; `test_helper.rb` deep-freezes every constant a test
   class declares
+- an example's constants → require it with `ShareableConstants.require_file(VBlank.root.join("examples/<name>").to_s)`
+  (`test/support/shareable_constants.rb`), which freezes what the file defined, so `examples/` stays
+  plain Ruby with no `Ractor.make_shareable`
 
 A test that changes the whole process on purpose (registering a font or guardrail, stubbing a
 library method, declaring a class, asserting the process's output) or starts a child process

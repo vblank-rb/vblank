@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/sparks").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
 
 # examples/sparks.rb on a Super Nintendo cartridge with a Super FX 2: the pool of falling sparks, its
 # screen painted in the chip's RAM, held to the interpreter — every variable, every pool field and

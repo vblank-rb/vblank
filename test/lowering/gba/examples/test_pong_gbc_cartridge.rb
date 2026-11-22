@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "stringio"
-require VBlank.root.join("examples/pong_gbc").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong_gbc").to_s)
 
 # examples/pong_gbc.rb built for the Advance, in the border round the Color's screen.
 class TestPongGBCCartridge < Minitest::Test

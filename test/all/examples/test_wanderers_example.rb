@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # The Wanderers example (examples/wanderers.rb) as a cartridge builds it, on every run's player:
 # one seat on the Advance and the Color, four on the Super Nintendo and the Genesis. The first player walks the map

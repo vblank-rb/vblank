@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/everywhere").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/everywhere").to_s)
 
 # examples/everywhere.rb built for the desktop shows the interpreter's picture pixel for pixel,
 # frame by frame, while its ball bounces off the right wall with a click and the tune plays. Nobody

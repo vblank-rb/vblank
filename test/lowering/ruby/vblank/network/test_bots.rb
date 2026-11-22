@@ -3,7 +3,7 @@
 require "test_helper"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # A bot is a player with no window and no person (Bots): a script that reads its own copy of the game and
 # chooses its buttons each pass, and that joins a match like any machine. These play it through the

@@ -2,9 +2,9 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/pong").to_s
-require VBlank.root.join("examples/pacman").to_s
-require VBlank.root.join("examples/snake_buffered").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/snake_buffered").to_s)
 
 # Building one program twice must give the same bytes.
 #

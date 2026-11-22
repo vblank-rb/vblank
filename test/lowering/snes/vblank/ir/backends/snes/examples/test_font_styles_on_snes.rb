@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/font_styles").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/font_styles").to_s)
 
 # examples/font_styles.rb on a Super Nintendo: the built-in font and two the game draws itself,
 # held to the interpreter — every pixel — after every pass.

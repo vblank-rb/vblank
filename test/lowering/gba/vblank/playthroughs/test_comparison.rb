@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 require "comparison_games"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # A comparison: two cartridges played side by side on the same presses, and the first frame on
 # which their pictures differ. It is how somebody rebuilding a game learns where theirs has

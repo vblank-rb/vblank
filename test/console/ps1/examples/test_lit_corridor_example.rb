@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/lit_corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lit_corridor").to_s)
 
 # The Lit Corridor example (examples/lit_corridor.rb) on every run that plays games as the PlayStation:
 # a corridor lit from each face's corners through the game's shading, by a lamp that flickers, laid out

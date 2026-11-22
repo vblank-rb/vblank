@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/level").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/level").to_s)
 
 # examples/level.rb on a Genesis: a room read from a map editor's file and a walking hero
 # kept out of its walls, held to the interpreter — every variable and every pixel — after every

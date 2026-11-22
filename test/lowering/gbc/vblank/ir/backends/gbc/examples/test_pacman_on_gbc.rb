@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
 # examples/pacman.rb built for the Game Boy Color, held to the interpreter after every pass of a
 # recorded run: Pac walked about the smaller room, a pellet eaten, the ghost catching him and him

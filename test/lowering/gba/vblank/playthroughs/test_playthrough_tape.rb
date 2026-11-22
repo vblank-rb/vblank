@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 require "zlib"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # A tape: the presses of a playthrough, written down. A script says what to do; a tape says
 # what was done — which buttons were down on each frame, and the frame each named moment fell

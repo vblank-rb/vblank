@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "test_helper"
+# A plain require, not ShareableConstants.require_file: Pixels is a game written at the top of its
+# file, so its block belongs to Ruby's top-level object and cannot be shared. This run plays no
+# test in a Ractor, so nothing here needs it shared.
 require VBlank.root.join("examples/pixels").to_s
 
 # examples/pixels.rb on a Genesis: placed from the screen's own size, so the flag is in the middle of

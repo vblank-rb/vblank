@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # The buffered-bounce example (examples/buffered_bounce.rb): the worked demo that
 # the tear-proof double-buffered screen is usable today with the fill/clear verbs.

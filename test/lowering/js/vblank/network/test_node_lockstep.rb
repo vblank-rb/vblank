@@ -4,7 +4,7 @@ require "test_helper"
 require "node_copy"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Copies of a game built as JavaScript, played by Node, in a match (rg_lockstep.js, the same session as
 # Network::Lockstep): beside each other under every delay a test sets, and beside a Ruby build of the same game,

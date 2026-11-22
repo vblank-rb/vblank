@@ -31,7 +31,7 @@ module Sheet
 
   # A 30x20-tile room (the whole 240x160 screen): a wall border around open floor
   # with a few pillars. "#" is a wall, "." is floor.
-  ROOM = Ractor.make_shareable([
+  ROOM = [
     "##############################",
     "#............................#",
     "#............................#",
@@ -52,7 +52,7 @@ module Sheet
     "#............................#",
     "#............................#",
     "##############################",
-  ])
+  ]
 
   GAME = VBlank.game("SHEET", consoles: %i[gba snes]) do
     screen :tiled # tile mode: a background room + a hardware sprite over it

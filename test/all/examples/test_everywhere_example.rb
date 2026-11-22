@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/everywhere").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/everywhere").to_s)
 
 # The one-file-for-four-consoles example (examples/everywhere.rb): a ball bouncing round whatever
 # screen the build is for, under a title, to a tune, with the Super Nintendo's build titled super

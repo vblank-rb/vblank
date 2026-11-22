@@ -103,7 +103,7 @@ module Hero
 
   # A 32x32 world (256x256 pixels — far bigger than the screen): grass, the pond, and
   # trees scattered across it so there's plenty of scenery moving past as you walk.
-  MAP = Ractor.make_shareable((0...32).map do |r|
+  MAP = (0...32).map do |r|
     (0...32).map do |c|
       if POND_ROWS.cover?(r) && POND_COLS.cover?(c) then "~" # the pond
       elsif r == SIGN_ROW && c == SIGN_COL           then "S" # the signpost
@@ -111,7 +111,7 @@ module Hero
       else "."                                              # grass
       end
     end.join
-  end)
+  end
 
   GAME = VBlank.game("HERO", consoles: %i[gba snes]) do
     screen :tiled # tile mode: a scrolling background for the world + a hardware sprite on top

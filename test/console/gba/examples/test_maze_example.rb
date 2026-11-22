@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/maze").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/maze").to_s)
 
 # The colours these tests look for, shared with the Advance cartridge's own tests of the example
 # (test/lowering/gba/examples/test_maze_example_cartridge.rb).

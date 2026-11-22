@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/panorama").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/panorama").to_s)
 
 # The picture wider than the Advance's screen (examples/panorama.rb): shown whole where the build
 # gives a screen it fits, a computer's, and panned across where it does not, a console's. One file,

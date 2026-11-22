@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/animate").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/animate").to_s)
 
 # examples/animate.rb on a Super Nintendo: a spinning coin, a sprite painted onto the picture
 # with what it covers put back as it moves, started in the middle of the bigger screen and

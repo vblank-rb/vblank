@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/sprite_mover").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sprite_mover").to_s)
 
 # Where the example lays itself out, kept once for the cartridge's tests
 # (test/lowering/gba/examples/test_sprite_mover_example_cartridge.rb).

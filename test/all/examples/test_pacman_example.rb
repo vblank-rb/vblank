@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 require "differential"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
 # The Pac-Man example (examples/pacman.rb): the tiled-mode flagship. Pac, the
 # pellets, and the ghost are hardware sprites composited over a tiled room; Pac

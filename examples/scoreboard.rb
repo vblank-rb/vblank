@@ -45,15 +45,15 @@ module Scoreboard
 
   # The field: dark rows with a star now and then, and a lighter row every eighth one, 32 rows
   # down, which is the most either console holds whole, so the drift comes round on both.
-  FIELD = Ractor.make_shareable(Array.new(32) do |row|
+  FIELD = Array.new(32) do |row|
     next "=" * 32 if (row % 8).zero?
 
     (0...32).map { |col| ((row * 7) + (col * 3)) % 23 == 0 ? "*" : "." }.join
-  end)
+  end
 
   # The bar: a row of unlit pips between two edges, and a plain row under it.
   PIPS = 16
-  BAR = Ractor.make_shareable(["[#{'o' * PIPS}]".ljust(32, "_"), "_" * 32])
+  BAR = ["[#{'o' * PIPS}]".ljust(32, "_"), "_" * 32]
   BAR_HEIGHT = 16
 
   GAME = VBlank.game("SCOREBOARD", consoles: %i[gba gbc snes]) do

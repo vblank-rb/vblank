@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/snake_buffered").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake_buffered").to_s)
 
 # The buffered Snake example (examples/snake_buffered.rb) on the Advance's cartridge: its frame
 # rate measured by the profiler, and its title and playing board read in the emulator — through

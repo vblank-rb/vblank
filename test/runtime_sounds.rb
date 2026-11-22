@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require VBlank.root.join("examples/pong").to_s
-require VBlank.root.join("examples/jukebox").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/jukebox").to_s)
 
 # The sound a runtime written again makes, sample for sample: what would come out of the speaker,
 # played by a lowering's runtime and by the native one's, which is already held to the cartridge in

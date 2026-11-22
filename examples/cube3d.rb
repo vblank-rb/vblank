@@ -48,9 +48,9 @@ module Cube3D
   ART
 
   # The four corners of a whole picture, top left first and round to the right.
-  WHOLE = Ractor.make_shareable([[0, 0], [16, 0], [16, 16], [0, 16]])
+  WHOLE = [[0, 0], [16, 0], [16, 16], [0, 16]]
   # ...and the same reaching twice as far, so the picture repeats twice each way.
-  TWICE = Ractor.make_shareable([[0, 0], [32, 0], [32, 32], [0, 32]])
+  TWICE = [[0, 0], [32, 0], [32, 32], [0, 32]]
 
   GAME = VBlank.game("CUBE3D", consoles: %i[gba ps1]) do
     screen :bitmap, tear_free: true

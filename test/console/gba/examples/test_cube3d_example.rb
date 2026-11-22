@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/cube3d").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/cube3d").to_s)
 
 # The flight the Cube 3D example's tests fly, kept once for this file and the test of the
 # Advance's cartridge (test/lowering/gba/examples/test_cube3d_example_cartridge.rb).

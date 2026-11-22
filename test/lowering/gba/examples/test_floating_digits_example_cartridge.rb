@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/floating_digits").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/floating_digits").to_s)
 
 # The floating-digits example on the Advance's cartridge, read back in the emulator. What the
 # digits do on every run that plays the Advance's games is in

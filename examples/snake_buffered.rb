@@ -65,19 +65,19 @@ module BufferedSnake
 
   STEP = 6                     # frames between moves
   START_ROW   = (MIN_ROW + MAX_ROW) / 2
-  START_CELLS = Ractor.make_shareable([[5, START_ROW], [6, START_ROW], [7, START_ROW], [8, START_ROW]])
+  START_CELLS = [[5, START_ROW], [6, START_ROW], [7, START_ROW], [8, START_ROW]]
   FOOD_TRIES = 8
 
   # The snake on the title: a strip of skin 32 columns wide, each column drawn two pixels across,
   # with a diagonal stripe so that it reads as a body sliding along.
   SKIN_W = 32
-  SKIN = Ractor.make_shareable(Array.new(8) { |row| Array.new(SKIN_W) { |col| ((col + row) % 8) < 2 ? "o" : "#" }.join }.join("\n"))
+  SKIN = Array.new(8) { |row| Array.new(SKIN_W) { |col| ((col + row) % 8) < 2 ? "o" : "#" }.join }.join("\n")
   SKIN_X = (SCREEN_W - (SKIN_W * 2)) / 2
   SKIN_Y = 66
   SKIN_TALL = 12 # the strip is drawn 8 rows high and stretched to this
 
   # How far down each column hangs, one wave of it over 16 columns, 0 to 8 pixels.
-  SWAY = Ractor.make_shareable((0...16).map { |i| ((Math.sin(i * 2 * Math::PI / 16) + 1) * 4).round })
+  SWAY = (0...16).map { |i| ((Math.sin(i * 2 * Math::PI / 16) + 1) * 4).round }
 
   GAME = VBlank.game("SNAKEBUF", consoles: %i[gba]) do
     screen :bitmap, tear_free: true # <-- the whole difference. Remove it and it tears.

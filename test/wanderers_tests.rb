@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Four people wandering one map (examples/wanderers.rb), each in a colour the game picked when they
 # joined. A build that plays on a computer seats four, and so do the Super Nintendo's cartridge,

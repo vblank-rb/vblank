@@ -6,7 +6,7 @@ require "border_frame_tests"
 require "fileutils"
 require "open3"
 require "tmpdir"
-require VBlank.root.join("examples/pong").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
 
 # The program a player runs — pong with its window, built with SDL — is the same program the
 # tests drive, and it stands on its own.

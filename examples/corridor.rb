@@ -30,7 +30,7 @@ require_relative "../lib/vblank"
 
 module Corridor
   MAP_W = 8 # an 8x8 maze: a solid border ring with a few inner walls
-  MAP = Ractor.make_shareable([
+  MAP = [
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 0, 0, 0, 0, 0, 0, 1,
     1, 0, 1, 1, 0, 0, 0, 1,
@@ -39,7 +39,7 @@ module Corridor
     1, 0, 0, 1, 0, 0, 0, 1,
     1, 0, 0, 0, 0, 0, 0, 1,
     1, 1, 1, 1, 1, 1, 1, 1
-  ])
+  ]
 
   # The cells holding gold, as map indices. Walk onto one to take it.
   GOLD = [17, 22, 41, 46, 51, 54].freeze
@@ -60,7 +60,7 @@ module Corridor
   # a quarter turn (128) later.
   TURN = 512
   QUARTER = TURN / 4
-  SIN = Ractor.make_shareable((0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) })
+  SIN = (0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) }
 
   # How tall a wall one cell away stands in the view. The band keeps a wall you are
   # nose-to-nose with from filling the world, and one at the far end from vanishing.
@@ -69,11 +69,11 @@ module Corridor
   MAX_H = VIEW_H - 8
   MIN_H = 6
 
-  SKY = Ractor.make_shareable(VBlank::Graphics::Color.rgb(4, 6, 11))
+  SKY = VBlank::Graphics::Color.rgb(4, 6, 11)
   FLOOR = VBlank::Graphics::Color.rgb(10, 7, 4)
-  NEAR = Ractor.make_shareable(VBlank::Graphics::Color.rgb(29, 26, 20))
+  NEAR = VBlank::Graphics::Color.rgb(29, 26, 20)
   MID = VBlank::Graphics::Color.rgb(19, 17, 13)
-  FAR = Ractor.make_shareable(VBlank::Graphics::Color.rgb(10, 9, 8))
+  FAR = VBlank::Graphics::Color.rgb(10, 9, 8)
   BAR = VBlank::Graphics::Color.rgb(2, 2, 4)
   GOLD_C = VBlank::Graphics::Color.rgb(31, 27, 6)
   WALL_SHADES = [NEAR, MID, FAR].freeze
@@ -215,11 +215,11 @@ module Corridor
     end
   end
 
-  # The default corridor, built once per core rather than kept in a constant. `game` above
-  # takes how many columns and how wide, so its block reaches for those — and a block that
-  # reaches for anything around it belongs to the core that made it and cannot be shared.
-  # One per core costs a build each and can be used from anywhere.
-  def self.default = Ractor.store_if_absent(:corridor_game) { game }
+  # The default corridor, made afresh each time it is asked for rather than kept in a constant.
+  # The tests play games on several cores at once, so a constant they read must freeze all the
+  # way down. `game` above takes how many columns and how wide, and its block reaches for those,
+  # which a block that freezes cannot do.
+  def self.default = game
 
   def self.program = default.program
   def self.build_rom(**kwargs) = default.build_rom(**kwargs)

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/piano").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/piano").to_s)
 
 # examples/piano.rb — two hands playing "Mary Had a Little Lamb", animated: the
 # right hand plays the melody (a finger per note, the key lights) while the left

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pong_gbc").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong_gbc").to_s)
 
 # examples/pong_gbc.rb, Pong for the Game Boy Color: a cartridge that boots and plays in the
 # emulator, held to the interpreter — every variable and every pixel — after every pass of

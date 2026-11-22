@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "comparison_games"
 require "png_reading"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # One picture of one frame on two cartridges: the first cartridge's screen, the second's, and
 # where the two differ, left to right in one file at twice the console's size. It is what a

@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
 # The places on screen the Hero example's tests read, shared with its cartridge's own tests
 # (test/lowering/gba/examples/test_hero_example_cartridge.rb).

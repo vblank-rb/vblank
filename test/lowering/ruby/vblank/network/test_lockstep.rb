@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
 # Two and four copies of one game playing one match (examples/wanderers.rb built as Ruby), joined
 # by a simulated network that lives in this process and that the test controls: a message can be

@@ -52,7 +52,7 @@ module ClockFace
   # size each one is drawn in.
   BIG = 3
   SMALL = 2
-  SCALE_OF = Ractor.make_shareable({ big: BIG, small: SMALL })
+  SCALE_OF = { big: BIG, small: SMALL }
 
   # Where each line's top edge is. Every line is centered across the screen.
   TIME_ROW = 40
@@ -67,7 +67,7 @@ module ClockFace
   BACKGROUND = :black
 
   # The clock counts the days of the week from Sunday, as 0.
-  DAYS = Ractor.make_shareable(%w[SUNDAY MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY SATURDAY])
+  DAYS = %w[SUNDAY MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY SATURDAY]
 
   NO_CLOCK = "NO CLOCK"
   NOT_SET = "NOT SET"

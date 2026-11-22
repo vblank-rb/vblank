@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/grid_cursor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/grid_cursor").to_s)
 
 # examples/grid_cursor.rb on a Genesis: a board of 40×28 cells, the bigger screen's, and a cursor
 # stepped one cell a press and kept on it, held to the interpreter — every variable and every pixel —

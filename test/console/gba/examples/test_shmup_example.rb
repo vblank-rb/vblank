@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-require VBlank.root.join("examples/shmup").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/shmup").to_s)
 
 # When the boss is where, shared with the cartridge's tests
 # (test/lowering/gba/examples/test_shmup_example_cartridge.rb).
