@@ -63,6 +63,9 @@ module RubyGenesisEmulator
     RGB565 = 2
 
     JOYPAD = 1
+    # The core's "MD Joypad 3 Button + Teamplayer": Sega's Team Player with a three-button pad in
+    # each of its four plugs (RETRO_DEVICE_SUBCLASS of the joypad, in the core's libretro/libretro.c).
+    TEAM_PLAYER = 0x601
 
     # The picture of the usual setting: 320 pixels across and 224 lines down. A game that asks the
     # video chip for 256 across (H32) or 240 lines shows a different size, which #width and #height say.
@@ -98,12 +101,22 @@ module RubyGenesisEmulator
       load_cartridge(rom_path)
     end
 
-    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS).
+    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are
+    # read only through a Team Player (#plug_in_team_player); without one, nothing asks for them.
     def set_buttons(buttons, port: 0)
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a Genesis controller has no #{unknown.join(', ')} button" unless unknown.empty?
 
       @frontend.set_buttons(port, buttons.uniq.sum { |button| 1 << BUTTONS.fetch(button) })
+    end
+
+    # Sega's Team Player in the second port, in place of the pad there: four plugs, each a
+    # three-button pad of its own (ports 1 to 4 of #set_buttons). The core numbers the pads it asks
+    # libretro for one after another, so the first port's pad stays port 0 and the tap's plugs come
+    # next. A cartridge reads the tap through the port's TH and TR lines (plutiedev, "Sega multitap").
+    def plug_in_team_player
+      @frontend.set_controller_port_device(1, TEAM_PLAYER)
+      self
     end
 
     # Plays one frame: up to the moment the console starts its next picture.
