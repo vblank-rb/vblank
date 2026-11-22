@@ -58,11 +58,18 @@ module VBlank
             # (Genesis#build): those, and the group of sprites facing the same poses that gives the most tiles
             # back. Nil where no group left would give any back, or its rooms would be more than #most_room_tiles.
             # Asked of a try whose sprite pictures are cut already (Picture#make_sprite_art).
+            #
+            # A sprite drawn from copies of its poses in each list's colours (Picture#remapped?) is never one:
+            # a room holds the pose as the cartridge keeps it, so streamed it would go back to a palette for
+            # each list, which is what did not fit. Nor is a sprite facing any of the same poses, since the
+            # copied sprite keeps those poses whole and streaming the other gives none of their tiles back.
             public def streamed_after(streamed)
               return nil unless tiled?
 
               rooms = streamed.sum { |name| room_tiles(@objects.fetch(name).poses) }
-              groups = @objects.values.reject { |obj| streamed.include?(obj.name) }.select { |obj| pose_changes?(obj) }.group_by(&:poses)
+              copied = @objects.values.select { |obj| remapped?(obj) }.flat_map(&:poses)
+              groups = @objects.values.reject { |obj| streamed.include?(obj.name) || obj.poses.intersect?(copied) }
+                               .select { |obj| pose_changes?(obj) }.group_by(&:poses)
               freed = groups.filter_map do |poses, objects|
                 next unless poses.all? { |name| @art.cut_of(name) }
 

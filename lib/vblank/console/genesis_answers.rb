@@ -151,7 +151,10 @@ module VBlank
                        "A sprite whose pictures are drawn " \
                        "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
                        "A sprite drawn with several lists " \
-                       "(`draw_with [...], showing:`) takes one of the four for each list."),
+                       "(`draw_with [...], showing:`) takes one of the four for each list. " \
+                       "If those lists do not fit, and the game does not change them, the build makes a copy of the " \
+                       "sprite's pictures for each list instead. The copies use the video memory of more pictures, " \
+                       "and they use one of the four together when all their colours fit in fifteen."),
         color_walk: works,
         colors_in_use: works,
         colors_name_of: works,

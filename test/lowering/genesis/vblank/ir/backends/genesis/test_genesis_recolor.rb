@@ -178,12 +178,28 @@ class TestGenesisRecolor < Minitest::Test
     assert_equal word(RecolorGames::DUSK.first), late.first, "the backdrop"
   end
 
-  def test_more_lists_than_a_genesis_has_palettes_for_are_refused_in_words
+  # More lists than palettes, none of which the game changes: the sprite is drawn from copies of its
+  # picture in each list's colours (test_genesis_recolor_many_lists.rb).
+  def test_more_lists_than_a_genesis_has_palettes_for_play_as_the_interpreter
+    checked(frames: 4) do
+      ship = sprite :ship, at: [40, 40]
+      { a: :blue, b: :yellow, c: :cyan, d: :orange }.each { |name, color| colors name, [:transparent, color, :white] }
+      ship.draw_with %i[a b c d], showing: 1
+    end
+  end
+
+  # The same, but the game changes what each list holds: a copy cannot follow that, so the lists are
+  # refused in words.
+  def test_more_lists_the_game_changes_than_a_genesis_has_palettes_for_are_refused_in_words
     error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
       Genesis.new.build(program_of do
         ship = sprite :ship, at: [40, 40]
-        { a: :blue, b: :yellow, c: :cyan, d: :orange }.each { |name, color| colors name, [:transparent, color, :white] }
+        { a: :blue, b: :yellow, c: :cyan, d: :orange }.each do |name, color|
+          colors name, [:transparent, color, :white]
+          colors :"#{name}_dim", [:transparent, :black, color]
+        end
         ship.draw_with %i[a b c d], showing: 1
+        %i[a b c d].each { |name| recolor name, [:"#{name}_dim"], showing: 0 }
       end)
     end
 

@@ -181,41 +181,22 @@ module Wanderers
     # --- the walkers: one picture, worn in different colours ---
     # `colors:` is the walker's own list, see-through first. A list given to `draw_with` swaps
     # colours BY PLACE, so a list whose second colour is red draws the walker's body red and
-    # keeps its eyes black.
-    #
-    # A Genesis keeps every list of colours in one of its four palettes for the whole game, so the
-    # eight outfits do not fit there beside the meadow's. On it each outfit is a picture of its own
-    # instead, all eight drawn from one list that holds every colour, and a walker shows the one its
-    # colour number picks (`face ... showing:`). Same walkers, same colours, one palette.
-    one_list = built_for?(:genesis)
-    if one_list
-      colors :walkers, [:transparent, :black, *COLORS]
-      outfits = COLORS.map do |color|
-        image(:"walker_#{color}", "." => :transparent, "#" => color, "o" => :black, colors: :walkers) { WALKER_ART }
-        :"walker_#{color}"
-      end
-    else
-      image :walker, "." => :transparent, "#" => :gray, "o" => :black,
-                     colors: %i[transparent gray black] do
-        WALKER_ART
-      end
-      outfits = COLORS.map do |color|
-        colors :"walker_#{color}", [:transparent, color, :black]
-        :"walker_#{color}"
-      end
+    # keeps its eyes black. Eight lists are more than some consoles keep apart at once, and the
+    # build of each makes them fit its way: the game names the lists, and that is all.
+    image :walker, "." => :transparent, "#" => :gray, "o" => :black,
+                   colors: %i[transparent gray black] do
+      WALKER_ART
+    end
+    outfits = COLORS.map do |color|
+      colors :"walker_#{color}", [:transparent, color, :black]
+      :"walker_#{color}"
     end
 
     # One walker for each seat, hidden until its player joins, and one colour number for each,
     # holding NOT_PICKED until then. Each walker is named by its player's number and shows the one
-    # walker image (or, on the Genesis, any of the outfits), so a bot or a test reads the first
-    # player's as `game.sprite(:walker1)`.
+    # walker image, so a bot or a test reads the first player's as `game.sprite(:walker1)`.
     walkers = (1..seats).map do |player|
-      place = here.starts[player - 1]
-      if one_list
-        sprite :"walker#{player}", facing: outfits.to_h { |outfit| [outfit, outfit] }, at: place, shown: false
-      else
-        sprite :"walker#{player}", image: :walker, at: place, shown: false
-      end
+      sprite :"walker#{player}", image: :walker, at: here.starts[player - 1], shown: false
     end
     colors_picked = (1..seats).map { |player| var(:"hue#{player}", NOT_PICKED) }
 
@@ -242,11 +223,7 @@ module Wanderers
         if players_connected >= player
           # Just joined: pick a colour from the game's random numbers, once.
           picked.store!(rand(0...COLORS.size)) if picked < 0
-          if one_list
-            walker.face outfits, showing: picked
-          else
-            walker.draw_with outfits, showing: picked
-          end
+          walker.draw_with outfits, showing: picked
           walker.show
 
           # Walk with this player's own D-pad. Nobody blocks anybody: there is no test

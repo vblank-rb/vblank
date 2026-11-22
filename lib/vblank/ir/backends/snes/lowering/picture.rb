@@ -405,7 +405,7 @@ module VBlank
 
                 image = @cache.image(picture_named(pose))
                 held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
-                image = RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
+                image = Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
                 @art.reserve_shared_sprite_picture(image, mixed: mixed.include?(pose), held: held)
               end
               @tile_runs.each_with_index { |run, number| make_run_art(number) if @sprite_pictures.include?(run.picture) }
@@ -465,7 +465,7 @@ module VBlank
               each_recolored_picture do |pose, list, swapped|
                 image = @cache.image(picture_named(pose))
                 held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
-                image = RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
+                image = Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
                 @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held,
                                                             scene: colors_scene_of_recolored(pose, list),
                                                             tile_scene: tiles_scene_of_recolored(pose, list))
@@ -807,15 +807,6 @@ module VBlank
                   end
                 end
               end
-            end
-
-            # A picture drawn with another list: its colours swapped pixel by pixel.
-            RecoloredImage = Data.define(:image, :recolor) do
-              def width = image.width
-              def height = image.height
-              def drawn_at?(at) = image.drawn_at?(at)
-              def color_at(at) = recolor.color_for(at, image.color_at(at))
-              def pieces = nil # Cut from its swapped pixels, since its pieces name the first list's colours
             end
 
             def color_list_named(name)

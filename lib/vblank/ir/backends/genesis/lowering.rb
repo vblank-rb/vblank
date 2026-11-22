@@ -206,15 +206,19 @@ module VBlank
           # tiles alone, :sprites for its sprite pictures' too. +scene_colors+ the same for its colours,
           # each scene's own written into the palettes as it takes over (Art), for a game whose colours
           # together do not fit. +streamed+ names the sprites kept to one pose in video memory at a time
-          # (PoseRooms), for a game whose tiles do not fit even so. +cache+ is what the build works out
+          # (PoseRooms), for a game whose tiles do not fit even so. +remapped_lists+ draws a sprite drawn with
+          # lists of colours from copies of its poses in each list's colours (Picture#remapped?), for a game
+          # whose lists do not fit a palette each. +cache+ is what the build works out
           # from the program once for all its tries (BuildCache).
-          def initialize(program, memory:, scene_tiles: false, scene_colors: false, streamed: [], cache: BuildCache.for(Genesis, program))
+          def initialize(program, memory:, scene_tiles: false, scene_colors: false, streamed: [], remapped_lists: false,
+                         cache: BuildCache.for(Genesis, program))
             @program = program
             @cache = cache
             @memory = memory
             @scene_tiles = scene_tiles
             @scene_colors = scene_colors
             @streamed = streamed
+            @remapped_lists = remapped_lists
             # What the program is before any instruction is made, worked out as the Color's and the
             # Super Nintendo's are (LoweringPlan), once a build, and kept here under the names the
             # rest of the lowering reads.

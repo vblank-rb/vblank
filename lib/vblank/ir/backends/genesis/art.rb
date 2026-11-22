@@ -66,8 +66,9 @@ module VBlank
           Block = Data.define(:dx, :dy, :columns, :rows, :tiles, :palette)
 
           # A sprite's picture as its blocks, in the order the sprite table takes them (the one in front
-          # last). +pieced+ says the blocks are the pieces the picture was made of.
-          Cut = Data.define(:name, :width, :height, :blocks, :pieced)
+          # last). +pieced+ says the blocks are the pieces the picture was made of. +shows+ is the picture
+          # a reader of the drawn sprites sees: +name+ but for a copy of a picture in another list's colours.
+          Cut = Data.define(:name, :width, :height, :blocks, :pieced, :shows)
 
           # A grid of map cells, +columns+ by +rows+, as the console's video memory holds a cell: a word,
           # the tile and the palette.
@@ -274,11 +275,14 @@ module VBlank
           #
           # The picture is cut here and given its tiles' numbers later (#sprite_picture), so the pictures of
           # one screen can have their longest runs of tiles stored first (#store_piece_runs_longest_first).
-          def cut_sprite_picture(name, image, palette: nil)
+          #
+          # +shows+ is the picture a copy kept under +name+ stands for (Cut), where +name+ is not one.
+          def cut_sprite_picture(name, image, palette: nil, shows: name)
             @cuts[name] ||= begin
-              line = palette || palette_for(sprite_color_words(image), "sprites", taker: sprite_taker(name))
+              line = palette || palette_for(sprite_color_words(image), "sprites", taker: sprite_taker(shows))
               blocks = image.piece_groups ? piece_blocks(image, line, palette) : cover_blocks(image, line, palette)
-              Cut.new(name: name, width: image.width, height: image.height, blocks: blocks, pieced: !image.piece_groups.nil?)
+              Cut.new(name: name, width: image.width, height: image.height, blocks: blocks, pieced: !image.piece_groups.nil?,
+                      shows: shows)
             end
           end
 
@@ -303,11 +307,24 @@ module VBlank
               cut = @cuts.fetch(name)
               pieces = cut.blocks.map do |block|
                 Piece.new(dx: block.dx, dy: block.dy, palette: block.palette, columns: block.columns, rows: block.rows,
-                          tile: @tiles.word_of_run(block.tiles, block.columns, block.rows, sprite_taker(name)))
+                          tile: @tiles.word_of_run(block.tiles, block.columns, block.rows, sprite_taker(cut.shows)))
               end
-              SpritePicture.new(name: name, number: @sprite_pictures.length, width: cut.width, height: cut.height, pieces: pieces)
+              SpritePicture.new(name: cut.shows, number: @sprite_pictures.length, width: cut.width, height: cut.height, pieces: pieces)
             end
           end
+
+          # One palette for every colour +images+ draw (Assets::Image, or a copy of one in another list's
+          # colours), where they fit one: the copies of a sprite's picture in each list it is drawn with
+          # (Lowering::Picture#remapped?) then draw from one palette, each copy at its list's colours'
+          # places. Where they do not fit one, nothing is kept, and each picture finds a palette as it is cut.
+          # +taker+ names whose colours they are, for a refusal's words.
+          def reserve_sprite_colors(images, taker:)
+            words = drawn_color_words(images)
+            palette_for(words, "sprites", taker: taker) if words.length <= OWN_COLORS
+          end
+
+          # Every colour +images+ draw, as the places of a palette hold them, each once.
+          def drawn_color_words(images) = images.flat_map { |image| sprite_color_words(image) }.uniq
 
           # The sprite picture +name+ as cut (#cut_sprite_picture), or nil for one not cut yet.
           def cut_of(name) = @cuts[name]

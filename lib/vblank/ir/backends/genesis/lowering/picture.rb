@@ -189,9 +189,39 @@ module VBlank
               @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
             rescue Art::TooManyLists => e
-              raise if scene_colors_after(@scene_colors)
+              raise if scene_colors_after(@scene_colors) || remap_helps?
 
               raise NotMadeYet.new(too_many_lists_message(e), part: "the picture")
+            rescue Art::TooManyColors
+              raise unless @remapped_lists && !scene_colors_after(@scene_colors) && (words = remapped_colors_message)
+
+              raise Art::TooManyColors, words
+            end
+
+            # The words for sprites whose copies in each list's colours (#remapped?) did not fit beside the
+            # other pictures: the sprite whose copies found no palette, and how many colours its lists hold.
+            # Nil where the copies are not what overflowed, so the refusal keeps the words it was raised with.
+            def remapped_colors_message
+              obj = @copies_overflowed or return nil
+              count = @remap_reserved.fetch(obj)
+
+              name = obj.declared || obj.name
+              "The sprite :#{name} is drawn with #{obj.recolors.length} lists of colours (`draw_with`). The Genesis " \
+                "build makes a copy of the picture for each list, in the colours of that list. The copies and the " \
+                "other pictures use more colours than a Genesis can show. A Genesis holds #{Art::PALETTES} sets of " \
+                "#{Art::OWN_COLORS} colours for the backgrounds and sprites together. #{remapped_count_words(name, count)}"
+            end
+
+            # What the refusal (#remapped_colors_message) says of the +count+ colours of the sprite +name+'s lists.
+            def remapped_count_words(name, count)
+              if count > Art::OWN_COLORS
+                return "The lists and the picture of :#{name} hold #{count} different colours. If they hold " \
+                       "#{Art::OWN_COLORS} or fewer, all the copies use one set. To fix this, use fewer colours in " \
+                       "the lists, or draw the sprite with fewer lists."
+              end
+
+              "The lists and the picture of :#{name} hold #{count} different colours, and they use one set. The " \
+                "other pictures leave no set for them. To fix this, use fewer colours in the other pictures."
             end
 
             # The words for lists of colours that did not fit, the game's (+error+ names no scene) or one scene's.
@@ -216,19 +246,27 @@ module VBlank
             # first, in the order given, which is the order their colours take palettes in. Then, for the
             # pictures that share a room of video memory, the runs of tiles their pieces name go in the
             # longest first (Art#store_piece_runs_longest_first), and each picture is given its tiles.
+            #
+            # The copies of each in the colours of each list a sprite is drawn with (#remapped?) are made
+            # after them, from the same scene's tiles and colours.
             def make_sprite_pictures(names)
+              names += remapped_keys_of(names)
               names.each { |name| cut_sprite_picture(name) }
-              names.group_by { |name| tiles_scene_of_picture(name) }.each do |scene, together|
+              names.group_by { |name| tiles_scene_of_picture(pose_of(name)) }.each do |scene, together|
                 @art.with_tiles_of(scene) { @art.store_piece_runs_longest_first(together) }
               end
-              names.each { |name| @art.with_tiles_of(tiles_scene_of_picture(name)) { @art.sprite_picture(name) } }
+              names.each { |name| @art.with_tiles_of(tiles_scene_of_picture(pose_of(name))) { @art.sprite_picture(name) } }
             end
 
             # The sprite picture +name+ cut into pieces (Art#cut_sprite_picture), from the palette it is drawn from:
             # one of its scene's own, in a game whose sprite colours take turns (#colors_scene_of_picture).
+            # +name+ can be a Remapped copy of a picture too.
             def cut_sprite_picture(name)
+              return cut_remapped_picture(name) if name.is_a?(Remapped)
+
               image = @cache.image(picture_named(name))
               @art.with_colors_of(colors_scene_of_picture(name)) do
+                remapped_showing(name).each { |obj| reserve_remapped_colors(obj) }
                 if (list = followed_list_of(name))
                   @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
                 elsif recolored?(name) || follows_unchanging_list?(name)
@@ -617,7 +655,96 @@ module VBlank
             # name (Runtime::Tiles, rt_sprite_place). A list the game changes as it runs
             # (`recolor`) keeps a palette that is written over, as the colours it holds change; one that is
             # never changed shares a palette with any other list of the same colours.
-            def recolored?(name) = @objects.values.any? { |obj| obj.poses.include?(name) && !obj.recolors.empty? }
+            def recolored?(name)
+              @objects.values.any? { |obj| obj.poses.include?(name) && !obj.recolors.empty? && !remapped?(obj) }
+            end
+
+            # A copy of the picture +pose+ in the colours +colors+ of a list a sprite is drawn with (a list's
+            # whole colours, place 0 first), made ahead of time (#remapped?).
+            Remapped = Data.define(:pose, :colors)
+
+            # A palette for each list a sprite is drawn with is the way that costs no tiles, and a Genesis
+            # has four palettes (plutiedev, "Palettes"; Sega's Genesis Software Manual, "CRAM"). A sprite
+            # drawn with more lists than that, or beside pictures that leave too few, is drawn the other
+            # way the hardware allows: a sprite entry names a tile and a palette (Art::Piece), so a copy of
+            # the picture whose tiles name, at each pixel, where its list's colour is in some palette draws
+            # that list's colours from it. So the build makes such a copy of each of the sprite's poses for
+            # each list (Assets::RecoloredImage, Reference's rule: by place), and where the colours of every
+            # copy fit one palette, they share it (Art#reserve_sprite_colors). The sprite shows the copies of
+            # the list it is told, read from a table of its pose tables (#emit_remapped_pose_table), and a
+            # number naming none of its lists shows its own colours, as the interpreter draws it.
+            #
+            # Only a game that does not fit the first way is built this way (+remapped_lists+, Genesis#build):
+            # the copies cost tiles that a palette for each list does not.
+            def remapped?(obj) = @remapped_lists && remappable?(obj)
+
+            # Whether +obj+ can be drawn from copies (#remapped?): every list it is drawn with is one the game
+            # never changes, since a copy holds the colours as they are when the game is built. A sprite kept
+            # to one pose in video memory (#streamed?) copies its poses in from the cartridge itself, and a
+            # pose that follows a list keeps that list's palette.
+            def remappable?(obj)
+              return false if obj.recolors.empty? || streamed?(obj)
+              return false unless obj.recolors.all? { |entry| !entry.is_a?(Symbol) || color_list_named(entry).recolors.empty? }
+
+              obj.poses.none? { |name| followed_list_of(name) }
+            end
+
+            # Whether a build drawing sprites from copies (#remapped?) could fit where this one did not.
+            public def remap_helps? = !@remapped_lists && @objects.values.any? { |obj| remappable?(obj) }
+
+            # The colours, place 0 first, of a list a sprite is drawn with: +entry+ names a list or is the colours.
+            def colors_of_entry(entry) = entry.is_a?(Symbol) ? color_list_named(entry).colors : entry
+
+            # The picture a pose's copy is made from, or the pose itself.
+            def pose_of(name) = name.is_a?(Remapped) ? name.pose : name
+
+            # The sprites drawn from copies that show the picture +name+.
+            def remapped_showing(name) = @objects.values.select { |obj| obj.poses.include?(name) && remapped?(obj) }
+
+            # The copies (Remapped) of the pictures +names+ for each sprite drawn from copies.
+            def remapped_keys_of(names)
+              @objects.values.select { |obj| remapped?(obj) }.flat_map do |obj|
+                obj.recolors.flat_map do |entry|
+                  (obj.poses & names).map { |pose| Remapped.new(pose: pose, colors: colors_of_entry(entry)) }
+                end
+              end.uniq
+            end
+
+            def remapped_image(key)
+              image = @cache.image(picture_named(key.pose))
+              Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, key.colors))
+            end
+
+            # A copy cut, from the palette that holds its colours. A copy whose colours find no palette is
+            # noted with its sprite, so the refusal names the copies only when they are what overflowed
+            # (#remapped_colors_message).
+            def cut_remapped_picture(key)
+              @art.with_colors_of(colors_scene_of_picture(key.pose)) do
+                remapped_showing(key.pose).each { |obj| reserve_remapped_colors(obj) }
+                @art.cut_sprite_picture(key, remapped_image(key), shows: key.pose)
+              rescue Art::TooManyColors
+                @copies_overflowed ||= remapped_showing(key.pose).first
+                raise
+              end
+            end
+
+            # One palette for every colour the poses of +obj+ and all their copies draw, where those fit one
+            # (Art#reserve_sprite_colors), once for each sprite, before any of them is cut. How many colours
+            # those are is kept for a refusal's words (#remapped_colors_message).
+            def reserve_remapped_colors(obj)
+              @remap_reserved ||= {}
+              return if @remap_reserved.key?(obj)
+
+              images = obj.poses.flat_map do |pose|
+                copies = obj.recolors.map { |entry| remapped_image(Remapped.new(pose: pose, colors: colors_of_entry(entry))) }
+                [@cache.image(picture_named(pose)), *copies]
+              end
+              @remap_reserved[obj] = @art.drawn_color_words(images).length
+              @art.reserve_sprite_colors(images, taker: "the sprite :#{obj.declared || obj.name}")
+            rescue Art::TooManyColors
+              @copies_overflowed ||= obj
+              raise
+            end
 
             # A pose a sprite follows to a list the game never changes (Object#follows_unchanging) shows the
             # colours it was drawn in, and it is cut in its list's order all the same, as a pose of a sprite
@@ -667,7 +794,7 @@ module VBlank
             # sprite drawing with a list only its scene keeps has them worked out in that scene's copy of the
             # palettes (#allot_shared_colors).
             def recolor_palettes(obj)
-              return if obj.recolors.empty? || @recolor_lines&.key?(obj)
+              return if obj.recolors.empty? || @recolor_lines&.key?(obj) || remapped?(obj)
 
               @recolor_lines ||= {}
               @recolor_lines[obj] = obj.recolors.map { |entry| palette_of_list(entry) }
@@ -891,6 +1018,10 @@ module VBlank
               (@recolor_tables || []).each do |lines|
                 data.label(recolor_table_label(lines))
                 data.data_words(lines.length, *lines.map { |line| line << Art::PALETTE_SHIFT })
+              end
+              (@remapped_tables || {}).each do |tables, label|
+                data.label(label)
+                data.data_longs(tables)
               end
               scenes = scene_tile_sections(data)
               [data.section, *tile_section, *scenes]
@@ -1444,7 +1575,9 @@ module VBlank
               @asm.lea(@asm.abs_l(pose_table(obj)), @asm.a(0))
               emit_operand_load(@asm.imm(@sprite_names.name_number(obj.declared)), 0)
               routine = "rt_sprite_place"
-              unless obj.recolors.empty?
+              if remapped?(obj)
+                emit_remapped_pose_table(obj)
+              elsif !obj.recolors.empty?
                 @asm.move(:l, @asm.imm(recolor_table_label(@recolor_lines.fetch(obj))), @asm.d(6))
                 routine = "rt_sprite_place_recolored"
               end
@@ -1523,6 +1656,25 @@ module VBlank
             end
 
             def recolor_table_label(lines) = "art recolors #{@recolor_tables.index(lines)}"
+
+            # A0 from the pose table of the copies (#remapped?) in the list D5 names, read from a table of
+            # the sprite's pose tables, a long for each list; a D5 naming none, below nought or past the
+            # last, keeps A0 at the sprite's own (#emit_sprite_placing). Six instructions, once a sprite,
+            # and nothing more for each piece, where a sprite drawn from a palette for each list changes
+            # every piece's palette as it is placed (Runtime::Tiles, rt_sprite_place_recolored).
+            def emit_remapped_pose_table(obj)
+              own = fresh("sprite_own_colors")
+              tables = obj.recolors.map { |entry| pose_table(obj, colors_of_entry(entry)) }
+              @remapped_tables ||= {}
+              label = @remapped_tables[tables] ||= "art remapped poses #{@remapped_tables.length}"
+              tables.length < 128 ? @asm.moveq(tables.length, @asm.d(6)) : @asm.move(:l, @asm.imm(tables.length), @asm.d(6))
+              @asm.cmp(:l, @asm.d(6), @asm.d(5))
+              @asm.branch_near(:cc, own) # read with no sign, a list below nought is past the last
+              @asm.lsl(:w, 2, @asm.d(5))
+              @asm.lea(@asm.abs_l(label), @asm.a(1))
+              @asm.movea(:l, @asm.idx(1, 0, 5, :w), @asm.a(0))
+              @asm.label(own)
+            end
 
             # A run the game puts in order as it runs (Reference#names_in_draw_order): its list holds the
             # run's sprites back to front, each by its place in the run, so each entry in turn places
@@ -1631,8 +1783,14 @@ module VBlank
             # A sprite drawn in front (Nodes::Object#in_front) reads its pictures' pieces from copies
             # whose words have the priority bit set (#front_pose_sections), so a sprite that shows one
             # of them beside it, not in front, keeps its own.
-            def pose_table(obj)
-              pictures = streamed?(obj) ? obj.poses.map { |name| room_key(obj, name) } : obj.poses
+            #
+            # +colors+ (a list's colours, place 0 first) for the table of the sprite's copies in that list
+            # (#remapped?).
+            def pose_table(obj, colors = nil)
+              pictures = if colors then obj.poses.map { |name| Remapped.new(pose: name, colors: colors) }
+                         elsif streamed?(obj) then obj.poses.map { |name| room_key(obj, name) }
+                         else obj.poses
+                         end
               return @pose_tables[pictures] ||= "poses #{@pose_tables.length}" unless obj.in_front
 
               @front_pose_tables[pictures] ||= "poses in front #{@front_pose_tables.length}"

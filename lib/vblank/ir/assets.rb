@@ -274,6 +274,21 @@ module VBlank
         end
       end
 
+      # A picture drawn with another list, as a copy made ahead of time: its colours swapped pixel by
+      # pixel (Recolor). A console whose sprite is drawn from the places of one palette, and whose lists
+      # cannot each have a palette, draws such a copy instead. It answers what a lowering asks of a
+      # picture to cut it into tiles. It has no pieces: those name the first list's places, so a copy
+      # is cut from its swapped pixels.
+      RecoloredImage = Data.define(:image, :recolor) do
+        def width = image.width
+        def height = image.height
+        def drawn_at?(at) = image.drawn_at?(at)
+        def color_at(at) = recolor.color_for(at, image.color_at(at))
+        def place_at(_at) = nil
+        def pieces = nil
+        def piece_groups = nil
+      end
+
       # A recorded sound: how many samples a second it was recorded at, how many there are,
       # and the note it was played at when recorded (which is what playing it at another
       # pitch is measured from).

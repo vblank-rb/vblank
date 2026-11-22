@@ -126,6 +126,11 @@ module VBlank
         # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
         # a game carries that part of the runtime even if it never fades.
         #
+        # A game whose lists of colours a sprite is drawn with still do not fit a palette each is built
+        # again with each such sprite drawn from copies of its poses in each list's colours
+        # (+remapped_lists+, Lowering::Picture#remapped?), all in one palette where their colours fit
+        # one, and the steps of +scene_colors+ are tried again from the first with those copies.
+        #
         # A game whose tiles still do not fit once its scenes take turns, or that has no scenes to take
         # turns, is built again with the sprite whose poses give back the most kept to one pose in video
         # memory at a time, the pose it shows copied in from the cartridge as it changes to it (+streamed+,
@@ -148,10 +153,10 @@ module VBlank
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
         def tries = @build_tries&.count || 0
 
-        # The settings of one try (#build, BuildTries): +scene_tiles+, +scene_colors+ and +streamed+, each
-        # the Lowering's setting of the same name.
-        Tried = Data.define(:scene_tiles, :scene_colors, :streamed) do
-          def self.first = new(scene_tiles: false, scene_colors: false, streamed: [].freeze)
+        # The settings of one try (#build, BuildTries): +scene_tiles+, +scene_colors+, +streamed+ and
+        # +remapped_lists+, each the Lowering's setting of the same name.
+        Tried = Data.define(:scene_tiles, :scene_colors, :streamed, :remapped_lists) do
+          def self.first = new(scene_tiles: false, scene_colors: false, streamed: [].freeze, remapped_lists: false)
         end
 
         private
@@ -169,7 +174,9 @@ module VBlank
             settings.with(streamed: streamed) if streamed
           when Art::TooManyColors
             later = try.made.scene_colors_after(settings.scene_colors)
-            settings.with(scene_colors: later) if later
+            return settings.with(scene_colors: later) if later
+
+            settings.with(remapped_lists: true, scene_colors: false) if try.made.remap_helps?
           end
         end
 
@@ -200,7 +207,8 @@ module VBlank
                                   team_player: Runtime::Frame.reads_team_player?(program), bends: bends)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                                      streamed: try.settings.streamed, cache: cache)
+                                                      streamed: try.settings.streamed,
+                                                      remapped_lists: try.settings.remapped_lists, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
