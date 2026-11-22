@@ -235,6 +235,73 @@ module HeardAlikeTests
     end
   end
 
+  # The voices a song's first part and its second play on, in that order: the two square voices on
+  # the Advance, the Color and the Genesis.
+  private def part_voices = %i[square1 square2]
+
+  # What a test gives where one sound is heard on one voice of each and the voices are not the same
+  # one: the same, on a console whose voices of one kind sound alike.
+  private def moved_voice_settings = alike_settings
+
+  # A tune of two parts starting together, a short lead over a long bass, the lead the song's first
+  # part or its second (so on the first voice or the second), each part as loud as given.
+  private def two_part_game(lead_first: true, lead_loudness: 15, bass_loudness: 15)
+    VBlank.build("PARTS", console: console, out: nil, err: nil) do
+      enable_sound
+      song(:tune) do
+        lead = -> { voice(:lead) { volume lead_loudness; note :A4, :quarter; 8.times { rest :whole } } }
+        bass = -> { voice(:bass) { volume bass_loudness; note :C4, :whole; 8.times { rest :whole } } }
+        (lead_first ? [lead, bass] : [bass, lead]).each(&:call)
+      end
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        play_song :tune if pass == START
+      end
+    end
+  end
+
+  # The lead on another voice in the original, and the bass under it quieter: the mix is not alike,
+  # and the lead heard alone on each side's own voice is.
+  def test_one_voice_on_each_side_is_held_alike_where_the_rest_differs
+    ours = two_part_game
+    original = two_part_game(lead_first: false, bass_loudness: 7)
+    as_a_file(original) do |path|
+      assert_raises(Minitest::Assertion) { assert_heard_alike ours, path, listen, **alike_settings, each_voice: false }
+      assert_heard_alike ours, path, listen, **moved_voice_settings, hearing: [[part_voices.first], [part_voices.last]]
+    end
+  end
+
+  # The lead itself quieter in the original: held alone, it fails, and the failure says which voice
+  # was heard on each side.
+  def test_a_voice_held_alone_that_differs_names_the_voices_heard
+    original = two_part_game(lead_first: false, lead_loudness: 7)
+    as_a_file(original) do |path|
+      failure = assert_raises(Minitest::Assertion) do
+        assert_heard_alike two_part_game, path, listen, **alike_settings, hearing: [[part_voices.first], [part_voices.last]]
+      end
+
+      assert_match "Heard alone: the #{part_voices.first} voice on the first cartridge and the #{part_voices.last} voice " \
+                   "on the second", failure.message
+      assert_match "heard at different levels", failure.message
+    end
+  end
+
+  def test_a_voice_the_console_does_not_have_is_refused_naming_its_voices
+    as_a_file(tune_game) do |path|
+      error = assert_raises(ArgumentError) do
+        VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **alike_settings, hearing: [[:kazoo], [part_voices.first]])
+      end
+
+      assert_match "no voice kazoo", error.message
+      assert_match part_voices.first.to_s, error.message
+      shape = assert_raises(ArgumentError) do
+        VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **alike_settings, hearing: [part_voices.first])
+      end
+      assert_match "a list of two", shape.message
+    end
+  end
+
   def test_two_alike_play_no_voice_alone
     compared = as_a_file(tune_game) { |path| VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **alike_settings) }
 

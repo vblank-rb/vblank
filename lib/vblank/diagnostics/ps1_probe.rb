@@ -64,6 +64,14 @@ module VBlank
       # The pad the build reads has no motor.
       def motor_on? = false
 
+      # The emulator gem hands over no samples yet, so no voice is heard alone and none is named.
+      def channels = []
+
+      def hearing(**)
+        raise ArgumentError, "This reader cannot play one voice alone on a PlayStation program. Its emulator gives " \
+                             "no sound yet. To fix this, remove `only:` and `without:`."
+      end
+
       # When the program began (RubyPS1Emulator::Core#watch_program_start!, #blanks_before_program).
       def watch_program_start! = @core.watch_program_start!
       def blanks_before_program = @core.blanks_before_program

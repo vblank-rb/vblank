@@ -85,8 +85,11 @@ module VBlank
     # two are alike or it was not asked for.
     #
     # In a test this is Testing::HeardAlike#assert_heard_alike.
-    HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices) do
-      def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil) = super
+    #
+    # Chosen voices. +hearing+ is the voices heard on each side where the game chose them (the first
+    # cartridge's list, then the second's), and nil where every voice was heard.
+    HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices, :hearing) do
+      def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil, hearing: nil) = super
     end
 
     class HeardComparison
@@ -99,26 +102,52 @@ module VBlank
       # (Playthrough#play), for two cartridges that reach the first screen by different roads.
       # +each_speaker+ false compares the speakers mixed alone, for two that are meant to place
       # their sound differently; +each_voice+ false plays no voice alone after a difference.
+      #
+      # +hearing+ chooses the voices heard on each side, the first cartridge's list and then the
+      # second's, by the names Diagnostics::Verifier#channels gives: `hearing: [[:square1], [:square2]]`.
+      # Only those are heard from power-on, so one sound is held to the original's while the rest
+      # under it differs, on whichever voice each cartridge plays it. The two lists need not name the
+      # same voices, or as many. Every measure is taken of what is heard; no voice is played alone
+      # afterwards, since the game has chosen them.
       def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], each_speaker: true, each_voice: true,
-                    **tolerances)
+                    hearing: nil, **tolerances)
         tolerances = HeardTolerances.new(**tolerances)
         refuse_frames_not_count!(:heard_above, heard_above)
         refuse_lead_ins_not_pair!(lead_ins)
         refuse_unusable_presses!(presses, lead_ins)
-        played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0])
+        refuse_hearing_not_pair!(hearing)
+        replays = [first, second].zip(lead_ins).map { |cartridge, lead_in| VoiceReplay.new(cartridge, lead_in, heard_above) }
+        replays.zip(hearing) { |replay, voices| replay.refuse_unknown_voices!(voices) } if hearing
+        played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0]) unless hearing && presses.is_a?(Tape)
         tape = presses.is_a?(Tape) ? presses : played.tape
-        heard = [played, presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1])]
-        speakers = SPEAKERS.to_h { |speaker| [speaker, heard.map { |side| HeardSound.of(side, heard_above:, speaker:) }] }
-        compared = between(*heard.map { |side| HeardSound.of(side, heard_above: heard_above) }, tolerances,
-                           recordings: heard.map { |side| Diagnostics::SoundRecording.heard_in(side.game, frames: side.frames) },
-                           speakers: each_speaker ? speakers : nil)
-        return compared if compared.alike? || !each_voice
+        sides = if hearing
+                  replays.zip(hearing).map { |replay, voices| replay.side(tape, voices) }
+                else
+                  [Side.of(played, heard_above), Side.of(presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1]), heard_above)]
+                end
+        compared = between(*sides.map(&:mixed), tolerances, recordings: sides.map(&:recording),
+                                                            speakers: each_speaker ? Side.speakers(sides) : nil)
+                   .with(hearing: hearing)
+        return compared if compared.alike? || !each_voice || hearing
 
-        replays = [first, second].zip(lead_ins).map { |cartridge, lead_in| VoiceReplay.new(cartridge, tape, lead_in, heard_above) }
         compared.with(voices: replays.first.voices.to_h do |voice|
-          [voice, between(*replays.map { |replay| replay.heard(voice) }, tolerances)]
+          [voice, between(*replays.map { |replay| replay.side(tape, [voice]).mixed }, tolerances)]
         end)
       end
+
+      # What one cartridge put out over the tape: the two speakers mixed, each alone, and the sound.
+      Side = Data.define(:mixed, :left, :right, :recording) do
+        # The Side of +played+ (a played playthrough or tape: its +game+ and its +frames+).
+        def self.of(played, heard_above)
+          by_speaker = SPEAKERS.to_h { |speaker| [speaker, HeardSound.of(played, heard_above: heard_above, speaker: speaker)] }
+          new(mixed: HeardSound.of(played, heard_above: heard_above), **by_speaker,
+              recording: Diagnostics::SoundRecording.heard_in(played.game, frames: played.frames))
+        end
+
+        # Each speaker, :left and :right, to the two sides' HeardSounds on it.
+        def self.speakers(sides) = { left: sides.map(&:left), right: sides.map(&:right) }
+      end
+      private_constant :Side
 
       # The comparison of two HeardSounds, +first+ and +second+, by +tolerances+ (a HeardTolerances), and
       # of each speaker's where +speakers+ gives them (:left and :right to a pair of HeardSounds).
@@ -187,13 +216,25 @@ module VBlank
       end
       private_class_method :presses_led_in, :refuse_lead_ins_not_pair!, :refuse_unusable_presses!
 
-      # One cartridge's tape played again with one voice alone: switched on, told which voice to hear
-      # (Verifier#hearing) before its first frame, led in, and pressed through +tape+ a stretch of
-      # frames at a time, as a playthrough presses it.
+      # +hearing+ is nil, or each cartridge's voices as a pair of lists, the first's and then the second's.
+      def self.refuse_hearing_not_pair!(hearing)
+        return if hearing.nil?
+        return if hearing.is_a?(Array) && hearing.size == 2 && hearing.all? { |voices| voices.is_a?(Array) && !voices.empty? }
+
+        raise ArgumentError, "`hearing:` was #{hearing.inspect}. It must be a list of two lists of voices, the first " \
+                             "cartridge's and then the second's: `hearing: [[:square1], [:square2]]`."
+      end
+      private_class_method :refuse_hearing_not_pair!
+
+      # One cartridge's tape played again with only some voices heard: switched on, told which voices
+      # to hear (Verifier#hearing) before its first frame, led in, and pressed through the tape a
+      # stretch of frames at a time, as a playthrough presses it.
       class VoiceReplay
-        def initialize(cartridge, tape, lead_in, heard_above)
+        # A replay's reader and the frames it played: what Side.of reads of a playing.
+        Played = Data.define(:game, :frames)
+
+        def initialize(cartridge, lead_in, heard_above)
           @cartridge = cartridge
-          @tape = tape
           @lead_in = lead_in
           @heard_above = heard_above
         end
@@ -202,20 +243,35 @@ module VBlank
         # them all.
         def voices
           reader = Playthrough.power_on(@cartridge)
-          reader.channels
+          reader.respond_to?(:channels) ? reader.channels : []
         ensure
           reader&.close
         end
 
-        # The HeardSound of +voice+ alone over the tape's frames.
-        def heard(voice)
+        # +voices+ refused before anything is played where this cartridge's console has no voice by one
+        # of those names, or none can be heard alone.
+        def refuse_unknown_voices!(voices)
+          known = self.voices
+          if known.empty?
+            raise ArgumentError, "`hearing:` names voices, and this cartridge's emulator cannot play a voice alone. " \
+                                 "To fix this, remove `hearing:`."
+          end
+          unknown = voices - known
+          return if unknown.empty?
+
+          raise ArgumentError, "`hearing:` names #{unknown.map(&:inspect).join(', ')}, and this cartridge has no voice " \
+                               "#{unknown.join(', ')}. Its voices are #{known.map(&:inspect).join(', ')}."
+        end
+
+        # The Side of +voices+ alone over +tape+'s frames.
+        def side(tape, voices)
           reader = Playthrough.power_on(@cartridge)
-          reader.hearing(only: [voice])
+          reader.hearing(only: voices)
           @lead_in&.play_as_lead_in(reader)
-          @tape.presses_within(1..@tape.frames).each do |stretch|
+          tape.presses_within(1..tape.frames).each do |stretch|
             reader.step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons))
           end
-          HeardSound.new(loudest_by_frame: reader.loudest_by_frame.last(@tape.frames).freeze, heard_above: @heard_above)
+          Side.of(Played.new(game: reader, frames: tape.frames), @heard_above)
         ensure
           reader&.close
         end

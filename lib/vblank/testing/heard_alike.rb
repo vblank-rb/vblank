@@ -34,6 +34,10 @@ module VBlank
     #                              differently on purpose (each speaker is compared too unless set)
     #   each_voice: false          after a difference, do not play each voice alone to name the one
     #                              that differs (it plays the tape again twice for each voice)
+    #   hearing:                   the voices heard on each side, the first cartridge's and then the
+    #                              second's, by the names the console's reader gives them
+    #                              (`hearing: [[:square2], [:square1]]`), for one sound held to the
+    #                              original's on whichever voice each plays it, while the rest differs
     #   wav:                       a path to write both sounds to, for a person to hear (optional), with
     #   wav_layout:                :in_turn (the first, then the second) or :side_by_side (the first on
     #                              the left speaker, the second on the right); :in_turn if left out
@@ -147,7 +151,20 @@ module VBlank
           speaker = "On the #{difference.speaker} speaker alone: " if difference.speaker
           "#{speaker}#{[measure_words(difference, compared), frame_words(difference)].compact.join(' ')}"
         end
-        (lines + voice_lines(compared.voices)).join("\n")
+        (hearing_lines(compared.hearing) + lines + voice_lines(compared.voices)).join("\n")
+      end
+
+      # The voices the game chose to hear on each side (`hearing:`), first: every measure is of them.
+      def self.hearing_lines(hearing)
+        return [] if hearing.nil?
+
+        first, second = hearing.map { |voices| voice_list_words(voices) }
+        ["Heard alone: #{first} on the first cartridge and #{second} on the second."]
+      end
+
+      def self.voice_list_words(voices)
+        *most, last = voices
+        "the #{most.empty? ? last : "#{most.join(', ')} and #{last}"} #{voices.size == 1 ? 'voice' : 'voices'}"
       end
 
       # Each voice that differs played alone, by name, and the voices alike.
@@ -217,7 +234,7 @@ module VBlank
         "They first differ on frame #{difference.frame}: the loudest sample is #{difference.loudest[0]} on the first " \
           "and #{difference.loudest[1]} on the second."
       end
-      private_class_method :voice_lines, :measure_words, :level_words, :times_as_loud_words, :never_heard_words, :frame_words,
+      private_class_method :hearing_lines, :voice_list_words, :voice_lines, :measure_words, :level_words, :times_as_loud_words, :never_heard_words, :frame_words,
                            :recording_measure_words, :over_words, :recording_measures_words, :decibel_words
     end
   end

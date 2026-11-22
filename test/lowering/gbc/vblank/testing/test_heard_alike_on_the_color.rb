@@ -44,6 +44,10 @@ class TestHeardAlikeOnTheColor < Minitest::Test
   # though each note is as loud.
   private def moved_tune_settings = alike_settings.merge(level_share_apart: 0.1)
 
+  # The same note on the other square voice starts its wave at another place and falls silent from
+  # another, so its loudest samples and its ending move as a tune a frame later does.
+  private def moved_voice_settings = moved_tune_settings.merge(ending_frames_apart: frame_late_endings_apart)
+
   def test_from_power_on_the_click_is_the_first_sound_heard
     compared = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **STRICT)
 

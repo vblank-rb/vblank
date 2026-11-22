@@ -10,4 +10,7 @@ class TestHeardAlikeOnTheSuperNintendo < Minitest::Test
   include HeardAlikeTests
 
   private def console = :snes
+
+  # A song's parts take the sound chip's voices in order from the first.
+  private def part_voices = %i[voice0 voice1]
 end
