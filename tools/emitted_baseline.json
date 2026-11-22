@@ -260,6 +260,10 @@
     "wanderers@gbc": {
       "code": 8313,
       "data": 5616
+    },
+    "wanderers@genesis": {
+      "code": 6582,
+      "data": 3032
     }
   }
 }

@@ -27,13 +27,14 @@
 #   * WHICH ONE IS ME — in a match over a network, each machine shows an arrow over its own
 #     walker (`drawing_for_local_player` and `mark`), and the game stays the same on every machine.
 #
-# It is for the Game Boy Advance, the Game Boy Color and the Super Nintendo. The Advance and the
-# Color read one controller, so a cartridge for either is a one-player walk round the meadow. The
-# Super Nintendo seats four: the first controller, and three more in a Super Multitap plugged into
-# its second port. With no Multitap, the second port's own controller is the second player, and
-# the other two never join. `players: { computer: 1..4, snes: 1..4, else: 1 }` says four seats on
-# a computer and on the Super Nintendo and one on the other cartridges, and `most_players` makes
-# the matching number of walkers. A game played on a computer is still built AS a console — its
+# It is for the Game Boy Advance, the Game Boy Color, the Super Nintendo and the Sega Genesis. The
+# Advance and the Color read one controller, so a cartridge for either is a one-player walk round
+# the meadow. The Super Nintendo and the Genesis seat four: the first controller, and three more in
+# an adapter plugged into the second port (a Super Multitap, a Sega Team Player). With no adapter,
+# the second port's own controller is the second player, and the other two never join.
+# `players: { computer: 1..4, snes: 1..4, genesis: 1..4, else: 1 }` says four seats on a computer,
+# the Super Nintendo and the Genesis and one on the other cartridges, and `most_players` makes the
+# matching number of walkers. A game played on a computer is still built AS a console — its
 # screen size and its picture rules are that console's — so the computer builds of this game are
 # each console's, laid out for its screen.
 #
@@ -41,7 +42,7 @@
 # straight through another. Two players may also be given the same colour, as two dice can
 # land the same way.
 #
-# Run it to build examples/wanderers.gba, examples/wanderers.gbc and examples/wanderers.sfc:
+# Run it to build examples/wanderers.gba, .gbc, .sfc and .gen:
 #   ruby examples/wanderers.rb
 # or play four on a computer, with a controller each (the first controller is player 1, the next
 # player 2, and so on), or two at one keyboard: player 1 on the arrows, player 2 on I J K L:
@@ -50,8 +51,8 @@
 require_relative "../lib/vblank"
 
 module Wanderers
-  # The most players a computer build, or a Super Nintendo with a Multitap, seats. The other
-  # cartridges seat one.
+  # The most players a computer build seats, and a Super Nintendo or a Genesis with an adapter in
+  # its second port. The other cartridges seat one.
   SEATS_ON_A_COMPUTER = 4
   SPEED = 1 # pixels a frame
   SIZE  = 8 # a walker is one 8x8 tile
@@ -117,12 +118,13 @@ module Wanderers
     ........
   ART
 
-  GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc snes],
-                                  players: { computer: 1..SEATS_ON_A_COMPUTER, snes: 1..SEATS_ON_A_COMPUTER, else: 1 }) do
+  GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc snes genesis],
+                                  players: { computer: 1..SEATS_ON_A_COMPUTER, snes: 1..SEATS_ON_A_COMPUTER,
+                                             genesis: 1..SEATS_ON_A_COMPUTER, else: 1 }) do
     screen :tiled # a background for the meadow, and the console's own sprites for the walkers
     here = Layout.new(width: screen_width, height: screen_height)
 
-    # How many walkers this build makes: four on a computer or a Super Nintendo, one on the other
+    # How many walkers this build makes: four on a computer, a Super Nintendo or a Genesis, one on the other
     # cartridges. It is the number `players:` gives this build, so no line below reads a player
     # the build does not seat.
     seats = most_players
@@ -180,20 +182,40 @@ module Wanderers
     # `colors:` is the walker's own list, see-through first. A list given to `draw_with` swaps
     # colours BY PLACE, so a list whose second colour is red draws the walker's body red and
     # keeps its eyes black.
-    image :walker, "." => :transparent, "#" => :gray, "o" => :black,
-                   colors: %i[transparent gray black] do
-      WALKER_ART
-    end
-    outfits = COLORS.map do |color|
-      colors :"walker_#{color}", [:transparent, color, :black]
-      :"walker_#{color}"
+    #
+    # A Genesis keeps every list of colours in one of its four palettes for the whole game, so the
+    # eight outfits do not fit there beside the meadow's. On it each outfit is a picture of its own
+    # instead, all eight drawn from one list that holds every colour, and a walker shows the one its
+    # colour number picks (`face ... showing:`). Same walkers, same colours, one palette.
+    one_list = built_for?(:genesis)
+    if one_list
+      colors :walkers, [:transparent, :black, *COLORS]
+      outfits = COLORS.map do |color|
+        image(:"walker_#{color}", "." => :transparent, "#" => color, "o" => :black, colors: :walkers) { WALKER_ART }
+        :"walker_#{color}"
+      end
+    else
+      image :walker, "." => :transparent, "#" => :gray, "o" => :black,
+                     colors: %i[transparent gray black] do
+        WALKER_ART
+      end
+      outfits = COLORS.map do |color|
+        colors :"walker_#{color}", [:transparent, color, :black]
+        :"walker_#{color}"
+      end
     end
 
     # One walker for each seat, hidden until its player joins, and one colour number for each,
     # holding NOT_PICKED until then. Each walker is named by its player's number and shows the one
-    # walker image, so a bot or a test reads the first player's as `game.sprite(:walker1)`.
+    # walker image (or, on the Genesis, any of the outfits), so a bot or a test reads the first
+    # player's as `game.sprite(:walker1)`.
     walkers = (1..seats).map do |player|
-      sprite :"walker#{player}", image: :walker, at: here.starts[player - 1], shown: false
+      place = here.starts[player - 1]
+      if one_list
+        sprite :"walker#{player}", facing: outfits.to_h { |outfit| [outfit, outfit] }, at: place, shown: false
+      else
+        sprite :"walker#{player}", image: :walker, at: place, shown: false
+      end
     end
     colors_picked = (1..seats).map { |player| var(:"hue#{player}", NOT_PICKED) }
 
@@ -220,7 +242,11 @@ module Wanderers
         if players_connected >= player
           # Just joined: pick a colour from the game's random numbers, once.
           picked.store!(rand(0...COLORS.size)) if picked < 0
-          walker.draw_with outfits, showing: picked
+          if one_list
+            walker.face outfits, showing: picked
+          else
+            walker.draw_with outfits, showing: picked
+          end
           walker.show
 
           # Walk with this player's own D-pad. Nobody blocks anybody: there is no test
