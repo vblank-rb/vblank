@@ -47,7 +47,7 @@ module VBlank
 
       # Write the bytes to +path+ as a .sav file. The path is handed back.
       def write_sav(path)
-        Cartridge::ROM.write_bytes(path, to_sav)
+        File.binwrite(path, to_sav)
         path
       end
 

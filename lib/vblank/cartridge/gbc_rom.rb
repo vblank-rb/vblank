@@ -100,7 +100,7 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.delete("\0")
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
       # Where its frames went: the cartridge run in the emulator (Diagnostics::GBCProfiler), reported
       # for a person or as JSON. +keys+ are held from power-on, and +settle+ frames run before the

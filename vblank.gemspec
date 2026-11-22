@@ -30,7 +30,7 @@ Gem::Specification.new do |spec|
   spec.executables   = ["vblank"]
   spec.require_paths = ["lib"]
   spec.extensions    = ["ext/vblank/Rakefile"]
-  spec.required_ruby_version = ">= 4.0"
+  spec.required_ruby_version = ">= 4.0.10"
 
   # `vblank run` reaches SDL3 through Fiddle. It comes with Ruby, but a game's bundle can load only
   # what a gem names.

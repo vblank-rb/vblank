@@ -68,7 +68,7 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.delete("\0").rstrip
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
       # How many frames its passes took, and where the time went: the program run in the emulator
       # (Diagnostics::PS1Profiler), reported for a person or as JSON. +keys+ are held from power-on, and

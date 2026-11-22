@@ -110,10 +110,11 @@ class TestRomBuilderCartridge < Minitest::Test
   end
 
   # A cartridge shared between Ractors can be written by several of them at the same moment,
-  # and none of those writes may cost it its bytes. Ruby's ordinary file write re-points a
-  # frozen string at a temporary copy of itself the first time it is written; two Ractors
-  # doing that at once leave two owners of the same memory, and collecting the loser frees
-  # the cartridge out from under everyone still holding it.
+  # and none of those writes may cost it its bytes. Before Ruby 4.0.10, Ruby's ordinary file
+  # write re-pointed a frozen string at a temporary copy of itself the first time it was
+  # written; two Ractors doing that at once left two owners of the same memory, and collecting
+  # the loser freed the cartridge out from under everyone still holding it
+  # (https://bugs.ruby-lang.org/issues/22382).
   def test_writing_one_shared_cartridge_from_several_ractors_at_once_keeps_its_bytes
     rom = ROM.assemble(Random.bytes(300_000), title: "RACE", validate: false)
     want = rom.buffer.dup

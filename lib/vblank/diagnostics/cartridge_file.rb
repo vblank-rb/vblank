@@ -40,9 +40,8 @@ module VBlank
       def console = @kind.console
       def header_title = @kind.title_field_of(@buffer)
 
-      # Write the cartridge's bytes to +path+, the way a built cartridge writes its own (see
-      # Cartridge::ROM.write_bytes for why it is not an ordinary write).
-      def write(path) = Cartridge::ROM.write_bytes(path, @buffer)
+      # Write the cartridge's bytes to +path+.
+      def write(path) = File.binwrite(path, @buffer)
 
       private
 

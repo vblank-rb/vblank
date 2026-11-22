@@ -195,7 +195,7 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.rstrip
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
       # How many frames its passes took: the cartridge run in the emulator
       # (Diagnostics::SNESProfiler), reported for a person or as JSON. +keys+ are held from
