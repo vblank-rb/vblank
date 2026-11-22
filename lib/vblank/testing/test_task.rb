@@ -33,8 +33,9 @@ module VBlank
     #
     # A run is played in Ractors or in processes, as its record says (Lowering::Run#ractors). A run
     # in Ractors takes the game's Ractor settings as they are, so long as they give it --ractor; one
-    # not given it (a suite that never applies RactorSettings, or --no-ractor) is played as the
-    # rest are. Each other run is
+    # not given it (a suite that never applies RactorSettings, or --no-ractor) is played as it was
+    # before any run could choose: the GBA run plain in one process, a checked run as below. Each
+    # other checked run is
     # plain minitest's whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests
     # are spread over several processes instead (Processes) — TEST_PROCESSES of them, or as many
     # as the Ractor run has workers, or half the machine's cores — each playing one test at a time
@@ -163,10 +164,12 @@ module VBlank
       # run in processes.
       def in_ractors? = Lowering.run_named(lowering).ractors? && given_options.split.include?("--ractor")
 
-      # A run whose tests are spread over processes (Processes): every other run, a run whose record
-      # allows Ractors included when it is not given --ractor. A game's suite that never applies
-      # RactorSettings, or TESTOPTS=--no-ractor, would otherwise play the whole run in one process.
-      def in_processes? = !in_ractors?
+      # A run whose tests are spread over processes (Processes): a checked run not played in
+      # Ractors, one whose record allows them included when it is not given --ractor. A game's
+      # suite that never applies RactorSettings, or TESTOPTS=--no-ractor, would otherwise play a
+      # whole checked run in one process. The GBA run, which plays the interpreter alone, is plain
+      # minitest in one process outside Ractors, as it always was.
+      def in_processes? = Lowering.run_named(lowering).checked? && !in_ractors?
 
       # Is the run played with YJIT, Ruby's compiler of hot methods to machine code? Where its
       # record shows YJIT makes it faster (Lowering::Run#yjit), and never in Ractors: with several

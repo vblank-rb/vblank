@@ -76,6 +76,16 @@ class TestTestTask < Minitest::Test
     assert_equal "nil", played
   end
 
+  # The GBA run plays the interpreter alone, and outside Ractors it is plain minitest in one
+  # process, as it was before any run could choose: --no-ractor is how one failure is chased.
+  def test_a_gba_run_started_without_ractor_is_played_in_one_process
+    played = record_from_run(:gba, test_options: nil) do |record|
+      "File.write(#{record.inspect}, defined?(VBlank::Testing::Processes).inspect)\n"
+    end
+
+    assert_equal "nil", played
+  end
+
   # Every Ractor shares one heap, so a run in Ractors whose record asks for it is handed the roomy
   # heap, and no other run is.
   def test_a_run_in_ractors_that_asks_for_the_roomy_heap_is_given_it

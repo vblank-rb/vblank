@@ -61,8 +61,9 @@ tests unseen.
 
 A run in Ractors needs `--ractor` in its test options, which this Rakefile's
 `RactorSettings.apply` puts there. Without it (`TESTOPTS=--no-ractor`, or a game's suite that never
-applies the settings) the run is spread over processes like the others, never played in one
-process, and nothing is checked for shared state.
+applies the settings) nothing is checked for shared state, and the run plays as it did before runs
+could choose: the GBA run as plain minitest in one process (how one failure is chased), a checked
+run such as the Super Nintendo's spread over processes like the others.
 
 Starting programs is no reason to stay in processes. A test in a Ractor can start zig, node or the
 program a build makes, many Ractors at once (checked on Ruby 4.0 with `Open3.capture3`,
