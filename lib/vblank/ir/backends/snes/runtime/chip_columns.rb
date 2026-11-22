@@ -29,7 +29,7 @@ module VBlank
           #
           # Painting a batch. First the tiles it covers are made ready, as Paint's rt_paint_mark does
           # (READY, below). Then each slot's column is walked down the picture into a scratch column
-          # of bytes, a byte a pixel, one column of them for each slot (WALK). Then the chip's PLOT
+          # of bytes, a byte a pixel, one column of them for each slot (WALKS). Then the chip's PLOT
           # paints the batch's rows from those bytes, a row of eight at a time (rows): plot keeps the
           # pixels of a tile's row and writes the row's eight bytes once all eight are in, or reads
           # them first and writes back only its own when fewer are.
@@ -65,27 +65,35 @@ module VBlank
           # the last blank (Paint's DIRTY), which the console copies in before the run and back after.
           #
           # The chip's quick memory. Code the chip runs from its 512-byte cache takes a cycle a byte,
-          # and from the ROM five. PROCESS starts the cache where it begins, and the code comes in
-          # the order of how often it runs: for every pixel (walk, rows), every row of tiles (PLOT,
-          # READY), every column (DIVIDE, the queue); what runs once a batch comes last, and may be
-          # past the cache's end.
+          # and from the ROM five (fullsnes, "SNES Cart GSU-n Code-Cache"; bsnes,
+          # SuperFX::readOpcode). CACHE makes the 512 bytes from where it stands the quick ones, and
+          # marks them empty when they move (fullsnes: "All Code-Cache lines are marked as empty
+          # when executing CACHE"), so each byte is read from the ROM once and then runs quick.
+          # Nothing here fits in 512 bytes at once, so there are two stretches, each behind its own
+          # CACHE: the queue's code for a column (QUEUE_CACHED: DIVIDE, then what every column runs,
+          # then what runs once a batch or seldom), and the painting's (PAINT: the walks and the
+          # rows for every pixel, PLOT and READY for every row of tiles, then the batch's own). The
+          # queue asks for its stretch back after each batch it paints. Loops are kept as loops,
+          # not written out, so that each stretch fits.
           module ChipColumns
             PROCESS = "chip columns process"
             FINISH = "chip columns finish"
             START = "chip columns start"
             PAINT = "chip columns paint"
+            QUEUE_CACHED = "chip columns queue cached"
             READY = "chip columns ready"
-            WALK = "chip columns walk"
+            WALKS = "chip columns walks"
             ROWS = "chip columns rows"
             PLOT = "chip columns plot"
             DIVIDE = "chip columns divide"
 
-            # A column on the queue, as ChipCode writes it: the offset of each word.
-            X = 0
-            TOP = 4
-            HEIGHT = 8
-            TEXELS = 12
-            BANK = 14
+            # A column on the queue, as ChipCode writes it: the offset of each word. From TEXELS on
+            # it is in the order the record keeps it, so that it is copied in one loop.
+            TOP = 0
+            HEIGHT = 4
+            TEXELS = 8
+            BANK = 10
+            X = 12
             PICTURE_HEIGHT = 16
             ACROSS = 18
             SEE = 20
@@ -104,6 +112,15 @@ module VBlank
             SLOT_BANK = 14
             SLOT = 16
             SLOTS = 8
+            # The record goes on past a slot with the rest of the column at hand, copied from the
+            # queue: its x (32 bits), the picture's height, how many columns wide the strip is, and
+            # whether the picture has see-through pixels.
+            RECORD_X = SLOT_BANK + 2
+            RECORD_ACROSS = RECORD_X + (ACROSS - X)
+            RECORD_SEE = RECORD_X + (SEE - X)
+            RECORD = RECORD_X + (ENTRY - X)
+            # The words copied from the queue into the record.
+            RECORD_COPIED = (ENTRY - TEXELS) / 2
 
             # A scratch column of bytes for each slot, as tall as the screen.
             SCRATCH_COLUMN = Paint::HEIGHT
@@ -113,17 +130,20 @@ module VBlank
             # The 16-bit places in the chip's RAM it uses. +queue+ (QUEUE_ENTRIES of ENTRY bytes),
             # +queue_end+ where the next goes; +slots+ (SLOTS of SLOT bytes) and the batch's +mask+ of
             # slots taken, its tile +column+, its +top+ row and +bottom+ (just past), whether it is
-            # +ragged+ and whether it has +holes+ (see-through pixels); +record+ (SLOT bytes), +see+,
-            # +x+ (32 bits) and +across+ for the column at hand; +memo+, the last picture height,
+            # +ragged+ and whether it has +holes+ (see-through pixels); +record+ (RECORD bytes) for
+            # the column at hand, and in it its +see+, +x+ and +across+; +memo+, the last picture height,
             # column height (32 bits) and step (32 bits) worked out; +scratch+, the scratch columns;
             # +state+, words for the routines' own use; and what the console hands over of the
             # painted screen: the screen's +generation+, the clear colour's four words of planes
             # (+clear+), each row of tiles' leftmost and rightmost changed tile (+dirty+), the tiles
             # made ready (+readied+, after +readied_count+, the bytes of it in use), and the +area+
             # painting is held to (left, top, right, bottom, four bytes each).
-            Places = Data.define(:queue, :queue_end, :slots, :mask, :column, :top, :bottom, :ragged, :holes, :record, :see,
-                                 :x, :across, :memo, :scratch, :state, :generation, :clear, :dirty, :readied_count,
+            Places = Data.define(:queue, :queue_end, :slots, :mask, :column, :top, :bottom, :ragged, :holes, :record,
+                                 :memo, :scratch, :state, :generation, :clear, :dirty, :readied_count,
                                  :readied, :area) do
+              def see = record + RECORD_SEE
+              def x = record + RECORD_X
+              def across = record + RECORD_ACROSS
               def area_left = area[0]
               def area_top = area[1]
               def area_right = area[2]
@@ -140,7 +160,7 @@ module VBlank
 
             # The bytes of each of Places, for ChipCode to keep them.
             BYTES = { queue: QUEUE_ENTRIES * ENTRY, queue_end: 2, slots: SLOTS * SLOT, mask: 2, column: 2, top: 2,
-                      bottom: 2, ragged: 2, holes: 2, record: SLOT, see: 2, x: 4, across: 2, memo: 10,
+                      bottom: 2, ragged: 2, holes: 2, record: RECORD, memo: 10,
                       scratch: SLOTS * SCRATCH_COLUMN, state: STATE_BYTES }.freeze
 
             # The generations' place as the chip counts it, from the start of its RAM.
@@ -154,15 +174,34 @@ module VBlank
               emit_finish(gsu, places)
               gsu.label(PROCESS)
               gsu.sm(state(places, :process_back), 11)
+              emit_call(gsu, QUEUE_CACHED)
+              gsu.iwt(10, places.queue)
+              emit_jump(gsu, "chip columns next entry")
+              emit_queue_code(gsu, places, multiply)
+              emit_paint_code(gsu, places)
+            end
+
+            # The code for a column on the queue, behind QUEUE_CACHED, which puts it in the quick
+            # memory and returns. Every column runs it, and painting moves the quick memory to its
+            # own code, so the queue asks for it back after each batch.
+            def emit_queue_code(gsu, places, multiply)
+              gsu.label(QUEUE_CACHED)
               gsu.cache
-              gsu.iwt(15, "chip columns entries")
-              gsu.nop
-              emit_walk(gsu)
+              emit_return(gsu)
+              emit_divide(gsu)
+              emit_entries(gsu, places, multiply)
+            end
+
+            # The code that paints a batch, behind PAINT, which puts it in the quick memory: what
+            # runs for every pixel first, then every row of tiles, then the batch's own.
+            def emit_paint_code(gsu, places)
+              gsu.label(PAINT)
+              gsu.cache
+              emit_jump(gsu, "chip columns paint batch")
+              emit_walks(gsu, places)
               emit_rows(gsu)
               emit_plot(gsu, places)
               emit_ready(gsu, places)
-              emit_divide(gsu)
-              emit_entries(gsu, places, multiply)
               emit_paint(gsu, places)
             end
 
@@ -205,21 +244,22 @@ module VBlank
               emit_return(gsu)
             end
 
-            # Walk (link): R12 rows of the picture's column at R3 (in the bank ROMB has) into the
+            # The walk: R12 rows of the picture's column at R3 (in the bank ROMB has) into the
             # scratch bytes from R8 on, the walk standing at R5:R4 and stepping R7:R6 a row. Writing
-            # R14 starts the read of the cartridge that GETB takes, five cycles later.
+            # R14 starts the read of the cartridge that GETB takes, five cycles later, which the
+            # step fills. R5 is made the place in the cartridge first, the column's start added in,
+            # so that each row is a move rather than a sum.
             def emit_walk(gsu)
-              gsu.label(WALK)
+              gsu.with(5).add(3)
               gsu.iwt(13, "chip columns walk row")
               gsu.label("chip columns walk row")
-              gsu.from(3).to(14).add(5)
+              gsu.move(14, 5)
               gsu.with(4).add(6)
               gsu.with(5).adc(7)
               gsu.getb
               gsu.stb(8)
               gsu.loop
               gsu.inc(8)
-              emit_return(gsu)
             end
 
             # Rows (link): R12 rows of eight pixels plotted from the scratch columns, at R3 to R10, from
@@ -240,29 +280,32 @@ module VBlank
               emit_return(gsu)
             end
 
-            # The queue worked through, a column at a time (#emit_column), and emptied.
+            # The queue worked through from PROCESS's first, a column at a time (#emit_column), and
+            # emptied. What most columns run comes first, so that it stays inside the quick memory;
+            # what runs once a batch or seldom (+cold+, each a block of code that jumps back) comes
+            # after it all.
+            #
+            # R10 is the column on the queue throughout. What may change it (painting, a
+            # multiplication) keeps it in the state's +at+ and takes it back after.
             def emit_entries(gsu, places, multiply)
-              gsu.label("chip columns entries")
-              gsu.iwt(0, places.queue)
-              gsu.sm(state(places, :at), 0)
+              cold = []
               gsu.label("chip columns next entry")
-              gsu.lm(10, state(places, :at))
               gsu.lm(0, places.queue_end)
               gsu.from(10).cmp(0)
               gsu.bne("chip columns entry")
               gsu.nop
+              emit_jump(gsu, "chip columns queue done")
+              gsu.label("chip columns entry")
+              emit_column(gsu, places, multiply, cold)
+              gsu.ibt(0, ENTRY)
+              gsu.with(10).add(0)
+              emit_jump(gsu, "chip columns next entry")
+              cold.each(&:call)
+              gsu.label("chip columns queue done")
               gsu.iwt(0, places.queue)
               gsu.sm(places.queue_end, 0)
               gsu.lm(11, state(places, :process_back))
               emit_return(gsu)
-              gsu.label("chip columns entry")
-              emit_column(gsu, places, multiply)
-              gsu.lm(0, state(places, :at))
-              gsu.ibt(1, ENTRY)
-              gsu.add(1)
-              gsu.sm(state(places, :at), 0)
-              gsu.iwt(15, "chip columns next entry")
-              gsu.nop
             end
 
             # The column at R10 on the queue, as Lowering::Paint#emit_column_walk works it out: the
@@ -271,7 +314,7 @@ module VBlank
             # the first, that row times the step. Then each column of its strip inside the area
             # across goes into the batch (#emit_strip). Registers: R3:R4 the column's height, R6:R7
             # the step, R8:R9 its top, R1:R2 the first row of it shown, R12:R13 the last.
-            def emit_column(gsu, places, multiply)
+            def emit_column(gsu, places, multiply, cold)
               memo = places.memo
               gsu.move(9, 10)
               gsu.ibt(0, HEIGHT)
@@ -304,10 +347,11 @@ module VBlank
               gsu.sm(places.record + SLOT_STEP, 6)
               gsu.sm(places.record + SLOT_STEP + 2, 7)
               # The top, and the first row shown: the area's top less it, nought at least.
-              gsu.lm(10, state(places, :at))
               gsu.move(9, 10)
-              gsu.ibt(0, TOP)
-              gsu.with(9).add(0)
+              unless TOP.zero?
+                gsu.ibt(0, TOP)
+                gsu.with(9).add(0)
+              end
               gsu.to(8).ldw(9)
               2.times { gsu.inc(9) }
               gsu.to(9).ldw(9)
@@ -345,43 +389,48 @@ module VBlank
               gsu.sm(places.record + SLOT_Y, 0)
               # Where the walk stands at the first row: nought for a column whose top is shown.
               gsu.from(1).to(0).or_(2)
-              gsu.bne("chip columns walked in")
+              gsu.beq("chip columns top shown")
               gsu.nop
+              emit_jump(gsu, "chip columns walked in")
+              gsu.label("chip columns top shown")
               gsu.sm(places.record + SLOT_AT, 0)
               gsu.sm(places.record + SLOT_AT + 2, 0)
-              gsu.bra("chip columns at known")
-              gsu.nop
-              gsu.label("chip columns walked in")
-              gsu.move(ChipSums::RIGHT_LOW, 6)
-              gsu.move(ChipSums::RIGHT_HIGH, 7)
-              emit_call(gsu, multiply)
-              gsu.sm(places.record + SLOT_AT, ChipSums::LOW)
-              gsu.sm(places.record + SLOT_AT + 2, ChipSums::HIGH)
               gsu.label("chip columns at known")
-              # The rest of it, to the record: where the picture's column is, the strip's x and width,
-              # and whether the picture has see-through pixels.
-              gsu.lm(10, state(places, :at))
+              cold << lambda do
+                gsu.label("chip columns walked in")
+                gsu.move(ChipSums::RIGHT_LOW, 6)
+                gsu.move(ChipSums::RIGHT_HIGH, 7)
+                gsu.sm(state(places, :at), 10)
+                emit_call(gsu, multiply)
+                gsu.lm(10, state(places, :at))
+                gsu.sm(places.record + SLOT_AT, ChipSums::LOW)
+                gsu.sm(places.record + SLOT_AT + 2, ChipSums::HIGH)
+                emit_jump(gsu, "chip columns at known")
+              end
+              # The rest of it, copied to the record: where the picture's column is, the strip's x
+              # and width, and whether the picture has see-through pixels.
               gsu.move(9, 10)
-              [[X, places.x], [X + 2, places.x + 2]].each do |_, at|
-                gsu.ldw(9)
-                gsu.sm(at, 0)
-                2.times { gsu.inc(9) }
-              end
-              gsu.ibt(0, TEXELS - X - 4)
+              gsu.ibt(0, TEXELS)
               gsu.with(9).add(0)
-              [places.record + SLOT_TEXELS, places.record + SLOT_BANK].each do |at|
-                gsu.ldw(9)
-                gsu.sm(at, 0)
-                2.times { gsu.inc(9) }
-              end
-              2.times { gsu.inc(9) }
-              [places.across, places.see].each do |at|
-                gsu.ldw(9)
-                gsu.sm(at, 0)
-                2.times { gsu.inc(9) }
-              end
-              emit_strip(gsu, places)
+              gsu.iwt(6, places.record + SLOT_TEXELS)
+              emit_words_copied(gsu, from: 9, to: 6, count: RECORD_COPIED)
+              emit_strip(gsu, places, cold)
               gsu.label("chip columns entry done")
+            end
+
+            # +count+ words copied from where register +from+ points to where +to+ does, in a loop
+            # (R12 and R13), each register left past its last word.
+            def emit_words_copied(gsu, from:, to:, count:)
+              gsu.ibt(12, count)
+              label = "chip columns copy #{from} to #{to} at #{gsu.here}"
+              gsu.iwt(13, label)
+              gsu.label(label)
+              gsu.ldw(from)
+              2.times { gsu.inc(from) }
+              gsu.stw(to)
+              gsu.inc(to)
+              gsu.loop
+              gsu.inc(to)
             end
 
             # A jump anywhere, for where a branch may not reach.
@@ -393,7 +442,7 @@ module VBlank
             # Each column of the strip, x on from the record's, that is inside the area across, into
             # the batch: painted first when the column is of another tile than the batch's or of a
             # slot already taken.
-            def emit_strip(gsu, places)
+            def emit_strip(gsu, places, cold)
               gsu.label("chip columns strip")
               gsu.lm(1, places.x)
               gsu.lm(2, places.x + 2)
@@ -428,29 +477,37 @@ module VBlank
               gsu.label("chip columns bit found")
               gsu.lm(0, places.mask)
               gsu.moves(0, 0)
-              gsu.beq("chip columns new batch")
+              gsu.bne("chip columns batch begun")
               gsu.nop
+              emit_jump(gsu, "chip columns new batch")
+              gsu.label("chip columns batch begun")
               gsu.lm(0, places.column)
               gsu.cmp(3)
-              gsu.bne("chip columns painted first")
+              gsu.bne("chip columns another batch")
               gsu.nop
               gsu.lm(0, places.mask)
               gsu.and_(4)
               gsu.beq("chip columns join")
               gsu.nop
-              gsu.label("chip columns painted first")
-              emit_call(gsu, PAINT)
-              emit_jump(gsu, "chip columns strip")
+              gsu.label("chip columns another batch")
+              emit_jump(gsu, "chip columns painted first")
+              cold << lambda do
+                gsu.label("chip columns painted first")
+                gsu.sm(state(places, :at), 10)
+                emit_call(gsu, PAINT)
+                emit_call(gsu, QUEUE_CACHED)
+                gsu.lm(10, state(places, :at))
+                emit_jump(gsu, "chip columns strip")
 
-              gsu.label("chip columns new batch")
-              gsu.sm(places.column, 3)
-              gsu.lm(0, places.record + SLOT_Y)
-              gsu.sm(places.top, 0)
-              gsu.lm(1, places.record + SLOT_ROWS)
-              gsu.add(1)
-              gsu.sm(places.bottom, 0)
-              gsu.bra("chip columns slot")
-              gsu.nop
+                gsu.label("chip columns new batch")
+                gsu.sm(places.column, 3)
+                gsu.lm(0, places.record + SLOT_Y)
+                gsu.sm(places.top, 0)
+                gsu.lm(1, places.record + SLOT_ROWS)
+                gsu.add(1)
+                gsu.sm(places.bottom, 0)
+                emit_jump(gsu, "chip columns slot")
+              end
 
               # Another column of the batch: one with a top or a bottom of its own makes it ragged,
               # and the batch's top and bottom take it in.
@@ -487,11 +544,8 @@ module VBlank
               4.times { gsu.with(5).add(5) }
               gsu.iwt(0, places.slots)
               gsu.with(5).add(0)
-              (0...SLOT).step(2) do |word|
-                gsu.lm(0, places.record + word)
-                gsu.stw(5)
-                2.times { gsu.inc(5) }
-              end
+              gsu.iwt(6, places.record)
+              emit_words_copied(gsu, from: 6, to: 5, count: SLOT / 2)
               gsu.lm(0, places.mask)
               gsu.or_(4)
               gsu.sm(places.mask, 0)
@@ -500,23 +554,28 @@ module VBlank
               gsu.or_(1)
               gsu.sm(places.holes, 0)
 
+              # The next column of the strip, if there is one: most strips are one column wide.
               gsu.label("chip columns beside")
-              gsu.lm(1, places.x)
-              gsu.lm(2, places.x + 2)
-              gsu.inc(1)
-              gsu.bne("chip columns x on")
-              gsu.nop
-              gsu.inc(2)
-              gsu.label("chip columns x on")
-              gsu.sm(places.x, 1)
-              gsu.sm(places.x + 2, 2)
               gsu.lm(0, places.across)
               gsu.dec(0)
-              gsu.sm(places.across, 0)
               gsu.beq("chip columns strip done")
               gsu.nop
-              emit_jump(gsu, "chip columns strip")
+              emit_jump(gsu, "chip columns next across")
               gsu.label("chip columns strip done")
+              cold << lambda do
+                gsu.label("chip columns next across")
+                gsu.sm(places.across, 0)
+                gsu.lm(1, places.x)
+                gsu.lm(2, places.x + 2)
+                gsu.inc(1)
+                gsu.bne("chip columns x on")
+                gsu.nop
+                gsu.inc(2)
+                gsu.label("chip columns x on")
+                gsu.sm(places.x, 1)
+                gsu.sm(places.x + 2, 2)
+                emit_jump(gsu, "chip columns strip")
+              end
             end
 
             # Divide (link): R7:R6 = the picture's height R5 in 65536ths over the column's height R4:R3,
@@ -548,11 +607,11 @@ module VBlank
               gsu.with(6).add(6)
               [7, 8, 9].each { |register| gsu.with(register).rol }
               gsu.from(8).to(0).sub(3)
-              gsu.from(9).to(10).sbc(4)
+              gsu.from(9).to(1).sbc(4)
               gsu.bcc("chip columns divide short")
               gsu.nop
               gsu.move(8, 0)
-              gsu.move(9, 10)
+              gsu.move(9, 1)
               gsu.inc(6)
               gsu.label("chip columns divide short")
               gsu.loop
@@ -562,7 +621,7 @@ module VBlank
 
             # Paint (link): the batch painted, and emptied.
             def emit_paint(gsu, places)
-              gsu.label(PAINT)
+              gsu.label("chip columns paint batch")
               gsu.sm(state(places, :paint_back), 11)
               # Where PLOT's x and y start for the batch's tile column, and how many rows it has.
               gsu.lm(1, places.column)
@@ -588,7 +647,7 @@ module VBlank
               emit_whole_rows(gsu, places)
               emit_call(gsu, READY)
               emit_fill(gsu, places)
-              SLOTS.times { |slot| emit_slot_walk(gsu, places, slot) }
+              emit_call(gsu, WALKS)
               emit_call(gsu, PLOT)
               gsu.ibt(0, 0)
               gsu.sm(places.mask, 0)
@@ -646,20 +705,25 @@ module VBlank
               gsu.label("chip columns filled")
             end
 
-            # Slot +slot+'s column walked into its scratch column, if the slot is taken.
-            def emit_slot_walk(gsu, places, slot)
-              skip = "chip columns slot #{slot} empty"
+            # Walks (link): each taken slot's column walked into its scratch column (#emit_walk). A
+            # loop over the slots, not a copy of the code for each, so that it is small enough to
+            # stay in the quick memory. R10 is the slot, R1 its scratch column and R2 its bit in the
+            # mask, none of which the walk changes.
+            def emit_walks(gsu, places)
+              gsu.label(WALKS)
+              gsu.iwt(10, places.slots)
+              gsu.iwt(1, places.scratch)
+              gsu.ibt(2, 1)
+              gsu.label("chip columns slot walk")
               gsu.lm(0, places.mask)
-              gsu.iwt(1, 1 << slot)
-              gsu.and_(1)
-              gsu.beq(skip)
+              gsu.and_(2)
+              gsu.beq("chip columns slot walked")
               gsu.nop
-              gsu.iwt(9, places.slots + (slot * SLOT))
+              gsu.move(9, 10)
               gsu.ldw(9)
               2.times { gsu.inc(9) }
-              gsu.lm(1, places.top)
-              gsu.from(0).to(8).sub(1)
-              gsu.iwt(1, places.scratch + (slot * SCRATCH_COLUMN))
+              gsu.lm(8, places.top)
+              gsu.from(0).to(8).sub(8)
               gsu.with(8).add(1)
               [12, 4, 5, 6, 7, 3].each do |register|
                 gsu.to(register).ldw(9)
@@ -667,8 +731,18 @@ module VBlank
               end
               gsu.ldw(9)
               gsu.romb
-              emit_call(gsu, WALK)
-              gsu.label(skip)
+              emit_walk(gsu)
+              gsu.label("chip columns slot walked")
+              gsu.ibt(0, SLOT)
+              gsu.with(10).add(0)
+              gsu.iwt(0, SCRATCH_COLUMN)
+              gsu.with(1).add(0)
+              gsu.with(2).add(2)
+              gsu.iwt(0, 1 << SLOTS)
+              gsu.from(2).cmp(0)
+              gsu.bne("chip columns slot walk")
+              gsu.nop
+              emit_return(gsu)
             end
 
             # Plot (link): the batch's rows plotted, a band of a tile's rows at a time, and PLOT's last

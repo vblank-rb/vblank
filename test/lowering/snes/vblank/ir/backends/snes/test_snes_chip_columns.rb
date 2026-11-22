@@ -396,11 +396,17 @@ class TestSNESChipColumns < Minitest::Test
     [took.sum.fdiv(took.size), took.max]
   end
 
-  # The walls of a first-person view take no more frames a pass on the chip than these, 120 columns
-  # 120 high and 40 columns 40 high, every pass of them. The 120's are sent to video RAM in the
-  # lines above and below the view, where the screen is off (Runtime::Letterbox); the rest of its
-  # time is the chip's painting. The console's processor drawing the same walls takes many times as long.
-  MOST_FRAMES = { [120, 120] => 4, [40, 40] => 1 }.freeze
+  # The walls of a first-person view take no more frames a pass on the chip than these, every pass
+  # of them. The big views are sent to video RAM in the lines above and below the view, where the
+  # screen is off (Runtime::Letterbox); the rest of their time is the chip's painting. The
+  # console's processor drawing the same walls takes many times as long.
+  #
+  # 104 columns 120 high took four frames while the chip ran its code for each column and each
+  # batch from the cartridge, five cycles a byte, rather than from its 512-byte quick memory, one a
+  # byte (fullsnes, "SNES Cart GSU-n Code-Cache"). With that code in the quick memory it takes
+  # three: the 20 pictures a second reported of the console's own Super FX games, against DOOM's 15
+  # at best (docs/snes/super-fx-picture-to-screen.md).
+  MOST_FRAMES = { [120, 120] => 4, [104, 120] => 3, [40, 40] => 1 }.freeze
 
   MOST_FRAMES.each do |(columns, tall), most|
     define_method(:"test_#{columns}_columns_#{tall}_high_take_#{most}_frames_a_pass_on_the_chip") do
