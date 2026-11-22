@@ -32,7 +32,9 @@ module VBlank
     # the run `rake test:lowering:native` is, and how a native run is started lives here alone.
     #
     # A run is played in Ractors or in processes, as its record says (Lowering::Run#ractors). A run
-    # in Ractors takes the game's Ractor settings as they are. Each other run is
+    # in Ractors takes the game's Ractor settings as they are, so long as they give it --ractor; one
+    # not given it (a suite that never applies RactorSettings, or --no-ractor) is played as the
+    # rest are. Each other run is
     # plain minitest's whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests
     # are spread over several processes instead (Processes) — TEST_PROCESSES of them, or as many
     # as the Ractor run has workers, or half the machine's cores — each playing one test at a time
@@ -97,6 +99,11 @@ module VBlank
         super
       end
 
+      # The test options as rake reads them (TESTOPTS, or the task's own), before this task takes
+      # anything out.
+      alias_method :given_options, :option_list
+      private :given_options
+
       # The test options this run is played with. A run played in processes leaves out --ractor.
       def option_list(...)
         in_processes? ? without_ractor(super) : super
@@ -151,11 +158,15 @@ module VBlank
       # RUBYOPT names then loads nothing a second time.
       def bundler_setup_path = ENV.fetch("RUBYOPT", "")[%r{-r(\S*bundler/setup)(?:\.rb)?(?=\s|\z)}, 1]
 
-      # A run whose tests are spread over processes (Processes), as its record says.
-      def in_processes? = !Lowering.run_named(lowering).ractors?
+      # A run whose tests are played in Ractors: one whose record allows it (Lowering::Run#ractors),
+      # given --ractor. Asked of the options as given, since #option_list takes the flag out of a
+      # run in processes.
+      def in_ractors? = Lowering.run_named(lowering).ractors? && given_options.split.include?("--ractor")
 
-      # A run whose tests are played in Ractors: one whose record allows it, told --ractor.
-      def in_ractors? = !in_processes? && option_list.split.include?("--ractor")
+      # A run whose tests are spread over processes (Processes): every other run, a run whose record
+      # allows Ractors included when it is not given --ractor. A game's suite that never applies
+      # RactorSettings, or TESTOPTS=--no-ractor, would otherwise play the whole run in one process.
+      def in_processes? = !in_ractors?
 
       # Is the run played with YJIT, Ruby's compiler of hot methods to machine code? Where its
       # record shows YJIT makes it faster (Lowering::Run#yjit), and never in Ractors: with several

@@ -59,13 +59,18 @@ a run in Ractors reports every test that reaches state the whole process shares.
 play in processes and check nothing of the kind, so code only their tests reach can leak between
 tests unseen.
 
+A run in Ractors needs `--ractor` in its test options, which this Rakefile's
+`RactorSettings.apply` puts there. Without it (`TESTOPTS=--no-ractor`, or a game's suite that never
+applies the settings) the run is spread over processes like the others, never played in one
+process, and nothing is checked for shared state.
+
 Starting programs is no reason to stay in processes. A test in a Ractor can start zig, node or the
 program a build makes, many Ractors at once (checked on Ruby 4.0 with `Open3.capture3`,
 `IO.popen` and `Process.spawn`), as long as standard output is unbuffered (below). A run moves to
 Ractors once its tests pass there and it is measured against processes. YJIT is off in Ractors,
 so measure with the run's heap settings too: Ruby's default heap collects so often under many
-Ractors that a run can be a third slower, and `RactorSettings.apply(env, roomy_heap: true)` closes
-most of that gap.
+Ractors that a run can be much slower than in processes, and the roomy heap
+(`RactorSettings::ROOMY_HEAP`, a run's `roomy_heap`) closes most of that gap.
 
 A run in processes: `lib/vblank/testing/processes.rb` starts `TEST_PROCESSES` processes (as many as the GBA run has
 workers unless told) and hands them one test class at a time, the next to whichever process

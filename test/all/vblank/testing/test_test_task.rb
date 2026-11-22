@@ -58,6 +58,24 @@ class TestTestTask < Minitest::Test
     assert_equal "false", yjit_enabled_in_run(:gbc, test_options: nil, ruby_options: "--yjit")
   end
 
+  # A run whose record plays it in Ractors, started without --ractor (a suite that never applies
+  # RactorSettings, or TESTOPTS=--no-ractor), is spread over processes rather than played in one.
+  def test_a_ractor_run_started_without_ractor_is_played_in_processes
+    played = record_from_run(:snes, test_options: nil) do |record|
+      "File.write(#{record.inspect}, defined?(VBlank::Testing::Processes).inspect)\n"
+    end
+
+    assert_equal '"constant"', played
+  end
+
+  def test_a_ractor_run_started_with_ractor_is_not_played_in_processes
+    played = record_from_run(:snes, test_options: "--ractor") do |record|
+      "File.write(#{record.inspect}, defined?(VBlank::Testing::Processes).inspect)\n"
+    end
+
+    assert_equal "nil", played
+  end
+
   # Every Ractor shares one heap, so a run in Ractors whose record asks for it is handed the roomy
   # heap, and no other run is.
   def test_a_run_in_ractors_that_asks_for_the_roomy_heap_is_given_it
