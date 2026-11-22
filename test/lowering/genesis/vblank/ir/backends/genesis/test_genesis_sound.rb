@@ -168,7 +168,9 @@ class TestGenesisSound < Minitest::Test
     program = recordings.driver
     code = program.code
     loads = (0...code.size - 2).select { |at| code[at] == 0x21 && code[at + 2] == recordings::TIMERS }.map { |at| at + 1 }
-    named = (0...code.size - 5).select { |at| code[at, 3] == [0x3E, recordings::TIMERS, 0x77] }.map { |at| at + 4 }
+    # LD A,$27 ; LD (DE),A ; INC E ; LD A,value, and LD A,$27 ; LD ($4000),A ; LD A,value
+    named = (0...code.size - 6).select { |at| code[at, 4] == [0x3E, recordings::TIMERS, 0x12, 0x1C] }.map { |at| at + 5 } +
+            (0...code.size - 6).select { |at| code[at, 5] == [0x3E, recordings::TIMERS, 0x32, 0x00, 0x40] }.map { |at| at + 6 }
     patched = recordings::TIMER_WRITES.keys.map { |label| program.address_of(label) }
 
     assert_equal (loads + named).sort, patched.sort

@@ -93,10 +93,58 @@ module VBlank
             LOOP_BANK = 12
             Z80_STEP = 14 # 256ths, two bytes
             LOOPS = 16
-            BANK_NOW = 17
-            END_HIGH_NOW = 19 # END_AT's high byte, while the window is on the last bank; nought otherwise
+            # The two flags that keep the Z80 off the cartridge while the 68000 reads the controllers
+            # (#emit_z80_kept_off_for_pad): set by the 68000 while it reads, and set by the Z80 while it
+            # may be reading the cartridge.
+            BLOCK = 17
+            UNSAFE = 18
 
             QUEUE_READ = 20 # How far the Z80 has read the queue, the same way
+
+            # The Z80's own copy of what the play it is making reads, taken from the mailbox as the play
+            # starts, so a mailbox the 68000 has filled for the next play changes nothing of this one; and
+            # the bank the window shows.
+            PLAYING = 0x1F20
+            PLAYING_FIELDS = (END_AT..LOOPS) # Copied from the mailbox as they are
+            PLAYING_END_AT = 0
+            PLAYING_END_BANK = 2
+            PLAYING_LOOP_AT = 4
+            PLAYING_LOOP_BANK = 6
+            PLAYING_LOOPS = 10
+            PLAYING_BANK_NOW = 11
+            PLAYING_OWED = 13 # Samples a stop covered, not yet passed over
+            PLAYING_SILENCE_LEFT = 14 # Chunks of silence to copy before the reader is past the end
+            # PLAYING_LOOPS once a recording played once has ended and silence is copied after it.
+            LOOPS_SILENCE = 3
+
+            # The recording read ahead (#driver): 256 bytes of the Z80's memory on a page of their own, so
+            # one byte is where in them, and it goes round by itself. The Z80 copies more in from the
+            # cartridge while it holds fewer than FIFO_FULL not yet sounded, FIFO_CHUNK at a time, and
+            # FIFO_FIRST_CHUNKS of them before a play's first sample.
+            FIFO = 0x1B00
+            FIFO_FULL = 128
+            FIFO_CHUNK = 8
+            FIFO_FIRST_CHUNKS = 4
+            # Chunks of silence copied after a recording played once before the Z80 goes quiet: by then
+            # the reader is past the recording's end, since the copy is never more than FIFO_FULL and a
+            # chunk ahead of it.
+            SILENCE_CHUNKS = (FIFO_FULL / FIFO_CHUNK) + 2
+            # Passing over the samples a stop covered stops while the reader is this near what has been
+            # copied, so it never reads past it.
+            FIFO_KEPT_BEHIND = 8
+            # How long the 68000 waits before asking again when the Z80 was reading the cartridge as it
+            # asked it to keep off, in turns of a one-instruction loop: longer than the Z80 takes over a
+            # chunk.
+            UNSAFE_WAIT = 64
+            # The instruction the 68000 writes into the Z80's program when it has put an entry in the
+            # queue (RST 8, a call to the Z80's address 8, which goes on to where the queue's entry is
+            # taken), and the one the Z80 writes back once the queue is empty (NOP). The Z80 writes RST 16
+            # into its own ticks the same way while it owes samples a stop covered.
+            ENTRY_CALL = 0xCF
+            ENTRY_CALL_AT = 8
+            ENTRY_OWED = 0xD7
+            ENTRY_OWED_AT = 16
+            ENTRY_NONE = 0x00
 
             # The queue: what the Z80 is asked to do, in order, an entry at each of 256 places that go
             # round. An entry is three bytes, each on a page of its own so one count finds all three:
@@ -158,8 +206,8 @@ module VBlank
             # Z80 makes to it carries the mode the game last gave: the 68000 writes the mode into each
             # of the Z80's writes (TIMER_WRITES, the labels of their values in #driver) as it asks for it.
             MODE_BITS = 0xC0
-            TIMER_WRITES = { stopped: TIMERS_STOPPED, counting: TIMERS_COUNTING,
-                             sample_tick_seen: SAMPLE_TICK_SEEN, both_ticks_seen: BOTH_TICKS_SEEN }.freeze
+            TIMER_WRITES = { stopped: TIMERS_STOPPED, counting: TIMERS_COUNTING, sample_tick_seen: SAMPLE_TICK_SEEN,
+                             chunk_tick_seen: SAMPLE_TICK_SEEN, both_ticks_seen: BOTH_TICKS_SEEN }.freeze
 
             module_function
 
@@ -206,17 +254,18 @@ module VBlank
               emit_frame(asm, at)
               emit_mail(asm, at)
               emit_kept_for_pass(asm, memory, at)
-              emit_bus_for_pad(asm)
+              emit_z80_kept_off_for_pad(asm)
             end
 
-            # Stopping the Z80. The 68000 stops it for three things: a copy by the video chip, a write into
-            # the Z80's memory, and a read of the controller's port, which the console's maker says must
-            # not come just before a Z80 read of the cartridge (S3 in docs/genesis/dma-and-the-sound-processor.md).
-            # The controller is read in the blank's interrupt, so the interrupt asks for the bus too
-            # (rt_z80_bus_for_pad), and the same bulletins say a request made in an interrupt breaks one
-            # the main program has made (S4). So the main program holds interrupts off from asking for the
-            # bus until it lets go: the interrupt never comes inside one of its stops, and a stop of the
-            # interrupt's own is over before the main program runs again.
+            # Stopping the Z80. The 68000 stops it for two things: a copy by the video chip, and a write into
+            # the Z80's memory. A read of the controllers' ports, which the console's maker says must not
+            # come just before a Z80 read of the cartridge (S3 in docs/genesis/dma-and-the-sound-processor.md),
+            # does not stop it: the Z80 is asked to keep off the cartridge for the read, and plays on from
+            # what it has read ahead (rt_z80_kept_off_for_pad). The controllers are read in the blank's
+            # interrupt, which asks for the bus to ask that, and the same bulletins say a request made in
+            # an interrupt breaks one the main program has made (S4). So the main program holds
+            # interrupts off from asking for the bus until it lets go: the interrupt never comes inside one
+            # of its stops, and a stop of the interrupt's own is over before the main program runs again.
             #
             # A stop for each, not one for the whole blank. Sonic 3 & Knuckles stops its Z80 once in the
             # blank and makes every copy and the controller's read inside that one stop. That was tried
@@ -252,20 +301,49 @@ module VBlank
             # The Z80 let go, there and then.
             def emit_bus_released(asm) = asm.clr(:w, asm.abs_l(Console::GenesisHardware::Z80_BUS_REQUEST))
 
-            # rt_z80_bus_for_pad: in the blank's interrupt, the controller read (Frame's rt_pad_read) with the
-            # Z80 stopped.
-            def emit_bus_for_pad(asm)
-              asm.label("rt_z80_bus_for_pad")
+            # rt_z80_kept_off_for_pad: in the blank's interrupt, the controllers read (Frame's rt_pad_read)
+            # with the Z80 kept off the cartridge but still playing. D0 is used.
+            #
+            # A read of the Team Player takes several lines of the screen. Stopping the Z80 for all of it,
+            # as for the one pad, held the DAC still and then passed over what the stop covered, which was
+            # heard as a wobble in a recording. So the Z80 is not stopped. It keeps a few hundred samples
+            # of the recording in its own memory (#driver), and the 68000 asks it to read no more from the
+            # cartridge while the ports are read. That is how Sega's GEMS sound driver kept its samples
+            # playing (GEMS.A, _gemsdmastart and _gemsdmaend; its Z80 side is XFER68K), and how the X-Band
+            # modem's GameLib reads a Team Player (controls.c, _ControllerVBL).
+            #
+            # The handshake, in GEMS's order. With the bus held for a moment, the 68000 sets BLOCK and reads
+            # UNSAFE, which the Z80 sets before it looks at BLOCK and copies a chunk, and clears after. If
+            # UNSAFE was set, the Z80 may be in the middle of a chunk, so the 68000 lets go, waits a little
+            # longer than a chunk takes, and asks again. Once it reads UNSAFE clear, the Z80 will see BLOCK
+            # before it reads the cartridge again, so the ports are read. Then BLOCK is cleared.
+            def emit_z80_kept_off_for_pad(asm)
+              block = asm.abs_l(Z80_MEMORY + MAILBOX + BLOCK)
+              asm.label("rt_z80_kept_off_for_pad")
               emit_bus_requested(asm)
+              asm.move(:b, asm.imm(1), block)
+              asm.move(:b, asm.abs_l(Z80_MEMORY + MAILBOX + UNSAFE), asm.d(0))
+              emit_bus_released(asm)
+              asm.tst(:b, asm.d(0))
+              asm.branch(:eq, "rt_z80_kept_off_for_pad_read")
+              asm.move(:w, asm.imm(UNSAFE_WAIT), asm.d(0))
+              asm.label("rt_z80_kept_off_for_pad_wait")
+              asm.dbra(asm.d(0), "rt_z80_kept_off_for_pad_wait")
+              asm.bra("rt_z80_kept_off_for_pad")
+              asm.label("rt_z80_kept_off_for_pad_read")
               asm.jsr(asm.abs_l("rt_pad_read"))
+              emit_bus_requested(asm)
+              asm.clr(:b, block)
               emit_bus_released(asm)
               asm.rts
             end
 
             # rt_z80_queued(register, value, part in D3): an entry put in the Z80's queue, the bus held.
             # D2 and A1 are used. A full queue is let go of for a little while, the Z80 taking entries
-            # meanwhile, until there is a place.
-            def emit_queued(asm)
+            # meanwhile, until there is a place. The Z80's program is then told there is an entry: the
+            # instruction at +entry_at+ in it, where its sample loop looks, is made a call to where an
+            # entry is taken (ENTRY_CALL).
+            def emit_queued(asm, entry_at)
               mail = ->(field) { asm.abs_l(Z80_MEMORY + MAILBOX + field) }
               asm.label("rt_z80_queued")
               asm.move(:b, mail.call(QUEUE_READ), asm.d(2))
@@ -288,6 +366,7 @@ module VBlank
               asm.move(:b, asm.d(1), asm.disp(1, VALUE_PAGE))
               asm.addq(:b, 1, asm.d(2))
               asm.move(:b, asm.d(2), mail.call(QUEUE_WRITTEN))
+              asm.move(:b, asm.imm(ENTRY_CALL), asm.abs_l(Z80_MEMORY + entry_at))
               asm.rts
             end
 
@@ -309,7 +388,7 @@ module VBlank
               asm.label("rt_recordings_start_next")
               asm.move(:b, asm.post(0), asm.post(1))
               asm.dbra(asm.d(0), "rt_recordings_start_next")
-              [QUEUE_WRITTEN, QUEUE_READ, PLAYS].each { |field| asm.clr(:b, asm.abs_l(Z80_MEMORY + MAILBOX + field)) }
+              [QUEUE_WRITTEN, QUEUE_READ, PLAYS, BLOCK, UNSAFE].each { |field| asm.clr(:b, asm.abs_l(Z80_MEMORY + MAILBOX + field)) }
               asm.clr(:w, asm.abs_l(h::Z80_RESET))
               8.times { asm.nop }
               asm.move(:w, asm.imm(h::Z80_REQUEST), asm.abs_l(h::Z80_RESET))
@@ -328,7 +407,7 @@ module VBlank
               asm.label("rt_z80_program")
               asm.data_bytes(program.code)
               asm.data_bytes(0) if program.length.odd?
-              emit_queued(asm)
+              emit_queued(asm, program.address_of(:entry_looked_for))
             end
 
             # rt_recordings_play(row): the play's entry logged, and the recording in the place from its start
@@ -618,316 +697,588 @@ module VBlank
               asm.rts
             end
 
-            # The Z80's program, assembled, the mailbox and the chips by the numbers above. Its registers: HL
-            # where it reads in the window, DE its step, C the fraction of a sample, and B the samples a
-            # stop covered while it passes over them; and in its second set, HL and DE the FM chip's
-            # first two ports, B the samples sounded since the second timer last came round, and C how far
-            # it has read the queue.
+            # The Z80's program, assembled, the mailbox and the chips by the numbers above.
             #
-            #   start: the timers' lengths set, and the queue awaited with the DAC at the middle of its
-            #          range (quiet), each FM write made as it comes, until a play does
-            #   loop:  the next sample read, the first timer's tick awaited, the sample to the DAC, HL moved
-            #          on by DE, a new bank when it runs off the window, the end of the recording looked
-            #          for while on its last bank, the tick's flag cleared, and the queue looked at: one
-            #          entry taken, if there is one
+            # ### A sample on each tick of a timer
             #
             # A sample sounds on a tick of the FM chip's first timer, not after a counted wait. The Z80 is
             # stopped many times a frame: for every block the video chip copies (Picture#emit_dma_started),
-            # and for the queue. A program that counts its own cycles from one sample to the next loses
-            # the length of every stop, so the recording plays flat for as long as the stops go on. The
-            # timer is in the FM chip and counts whether the Z80 runs or not, so the gap between two
-            # samples no longer depends on how long the work between them took.
+            # and for each write into its queue. A program that counts its own cycles from one sample to
+            # the next loses the length of every stop, so the recording plays flat for as long as the
+            # stops go on. The timer is in the FM chip and counts whether the Z80 runs or not.
             #
             # The samples a stop covered are passed over, not sounded late. The timer's flag says a tick
-            # came, not how many, so ticks that came while the Z80 was stopped would be lost with it.
-            # The second timer is set to come round with every 256th tick of the first. The program
-            # counts the samples it sounds in a byte, and when the second timer's flag shows, what the
-            # byte is short of 256 is the number of ticks a stop covered: HL is moved on by that many
-            # samples with nothing written to the DAC, which holds its last sample meanwhile. So the
-            # recording is back where the clock says within 256 samples of any stop, a little over a
-            # frame. A stop longer than the second timer's round loses a whole round.
+            # came, not how many. The second timer is set to come round with every 256th tick of the
+            # first. The program counts the samples it sounds in a byte, and when the second timer's flag
+            # shows, what the byte is short of 256 is the number of ticks a stop covered: the reader is
+            # moved on by that many samples with nothing written to the DAC, which holds its last sample
+            # meanwhile. A stop longer than the second timer's round loses a whole round.
             #
-            # The FM chip is written here alone, so the register named is always one the program named
-            # itself, and it names the DAC's again after every other. A song's note is some thirty
-            # registers. The 68000 used to write them itself, stopping the Z80 for each and for the
-            # chip's waits round it, which held the DAC still for long enough to lose whole waves of a
-            # recording; now each is three bytes of the queue, and the Z80 writes one between two
-            # samples. A sample that writes one takes longer than a tick, and the tick it runs over is
-            # one of those the second timer finds missing: the recording is held one sample longer and
-            # then passes over one, which cannot be heard. The chip's busy flag is looked at before each
-            # entry is written, since the Z80 writes them back to back while no recording plays.
+            # ### The recording read ahead
+            #
+            # The Z80 does not read each sample from the cartridge as it sounds it. It copies the recording
+            # as it is into 256 bytes of its own memory (FIFO), a chunk of FIFO_CHUNK bytes at a time, while
+            # it waits for the next tick; and a sample is read from there. This is how Sega's GEMS driver
+            # plays a sample (its Z80.ASM: FILLDACFIFO keeps a FIFO of 256 bytes in two halves, XFER68K
+            # copies into it in short bursts, and DACME sends the next byte on each tick of timer A). Its
+            # use is that the Z80 can be asked to keep off the cartridge for a while and still play: the
+            # 68000 does that while it reads the controllers (#emit_z80_kept_off_for_pad), which on a Team
+            # Player takes several lines of the screen.
+            #
+            # Before each chunk the Z80 sets UNSAFE, then looks at BLOCK. If BLOCK is set, it clears UNSAFE
+            # and copies nothing until BLOCK is clear again, sounding samples from FIFO meanwhile. Setting
+            # UNSAFE before looking leaves no moment where the 68000 could set BLOCK and find UNSAFE clear
+            # while a chunk is under way. UNSAFE is cleared after each chunk.
+            #
+            # The reader steps through FIFO by the play's step, a whole part and a fraction in 256ths, so a
+            # recording plays at any pitch from the one copy. A copy that runs past the end of the window
+            # onto the cartridge, or past the end of the recording, is taken back to that end, and the next
+            # chunk starts in the next bank, or where the recording goes round to. A recording played once
+            # is followed by silence: the copying goes on from FIFO_CHUNK bytes at the middle of the DAC's
+            # range, which go round on themselves, until the next play.
+            #
+            # ### The FM chip is the Z80's
+            #
+            # The 68000's writes to the FM chip are entries of the queue, and the Z80 writes one between
+            # two samples, after the tick's flag is cleared. The sample loop does not look at the queue on
+            # each tick. There is a NOP where it would (:entry_looked_for), and the 68000 writes a call over
+            # it as it puts an entry in the queue (ENTRY_CALL, the one-byte call to address 8, which is where
+            # an entry is taken). The call puts the NOP back once the queue is empty, and leaves itself in
+            # while another entry waits. A sample that writes an entry takes longer than a tick, and the
+            # tick it runs over is one the second timer finds missing.
+            #
+            # ### Registers
+            #
+            # The first set: DE the FM chip's first port ($4000; $4001 for a value, by making E one), H the
+            # page FIFO is on and L the next sample's place in it, C how far past that the reader is in
+            # 256ths of a sample, and B the samples sounded since the second timer last came round. The step
+            # is written into the two instructions that add it (:step_fraction, :step_whole). The second
+            # set: HL where the next chunk is copied from, DE where in FIFO it goes, and BC the copy's count.
+            #
+            # ### What a sample costs the Z80
+            #
+            # A tick is four of the timer's, 576 cycles of the FM chip's clock: 269 of the Z80's. Counted by
+            # hand from the instructions' cycles, a tick with FIFO full is seen in 21 cycles, and its flag
+            # cleared, its sample sounded, the reader moved and how full FIFO is looked at in 171 more.
+            # A chunk of FIFO_CHUNK bytes is 334 cycles, three looks for the tick among them, and 47 more
+            # between two chunks; Genesis Plus GX adds three cycles to each read of the cartridge. So the
+            # Z80 copies in a little over two bytes a sample when FIFO is low, and a recording read faster
+            # than that, more than about two of its samples a sample, runs FIFO dry. A tick that comes
+            # while a chunk is copied is seen at the next look and sounds that much late, but not so late
+            # that the next tick is lost.
             def driver(glides: false)
               Z80Program.new.tap do |z|
-                mail = ->(field) { MAILBOX + field }
-                # The timers' register named, +value+ written to it with the third voice's mode (the
-                # value's label +patched+, TIMER_WRITES), and the DAC's named again. In the second set.
-                emit_timers_written = lambda do |value, patched|
-                  z.bytes(0x3E, TIMERS, 0x77) # LD A,timers ; LD (HL),A
-                  z.bytes(0x3E) # LD A,value
-                  z.label(patched)
-                  z.bytes(value)
-                  z.bytes(0x12) # LD (DE),A
-                  z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x77) # LD A,$2A ; LD (HL),A
-                end
-                # The queue's next entry looked at, in the second set, with DE pointing at its first
-                # byte: to +play+ for a new play, and on for an FM write, its part in A.
-                emit_entry_looked_at = lambda do |play|
-                  z.bytes(0x16, QUEUE >> 8, 0x59) # LD D,the queue's page ; LD E,C
-                  z.bytes(0x1A, 0xB7) # LD A,(DE) ; OR A
-                  z.jump(0xFA, play) # JP M
-                end
-                # The entry taken: C moved on and noted for the 68000, DE the chip's port again.
-                emit_entry_taken = lambda do
-                  z.bytes(0x0C, 0x79) # INC C ; LD A,C
-                  z.word(0x32, mail.call(QUEUE_READ)) # LD (queue read),A
-                  z.word(0x11, 0x4001) # LD DE,$4001
-                end
-                # The entry's register set to its value on its part of the chip, once the chip has taken
-                # the last value written to it, and the DAC's register named again.
-                emit_entry_written = lambda do |busy|
-                  z.label(busy)
-                  z.bytes(0xCB, 0x7E) # BIT 7,(HL): the chip busy
-                  z.jump(0xC2, busy) # JP NZ
-                  z.bytes(0x6F) # LD L,A: the part's ports
-                  z.bytes(0x14, 0x1A, 0x77) # INC D ; LD A,(DE) ; LD (HL),A: the register named
-                  z.bytes(0x14, 0x1A, 0x2C, 0x77) # INC D ; LD A,(DE) ; INC L ; LD (HL),A: its value
-                  emit_entry_taken.call
-                  z.bytes(0x2E, 0x00, 0x3E, ChipWrites::DAC_SAMPLE, 0x77) # LD L,0 ; LD A,$2A ; LD (HL),A
-                end
-                # HL moved on a sample: by DE, into a new bank when it runs off the window, and back to
-                # where the recording goes round, or to :idle, at its end. Then on to +done+.
-                #
-                # +patched+ for the one every sample runs, which has to fit between two ticks with
-                # the rest of the loop: the end it looks for is written into its two compares
-                # (:set_bank and :new_play write them), which is two reads of the mailbox fewer.
-                emit_sample_passed = lambda do |name, done, patched: false|
-                  same_window = DerivedNames.sub_label(name, :same_window)
-                  ended = DerivedNames.sub_label(name, :ended)
-                  same_bank = DerivedNames.sub_label(name, :same_bank)
-                  z.bytes(0x79, 0x83, 0x4F) # LD A,C ; ADD A,E ; LD C,A
-                  z.bytes(0x7D, 0x8A, 0x6F) # LD A,L ; ADC A,D ; LD L,A
-                  z.jump(0xD2, same_window) # JP NC
-                  z.bytes(0x24) # INC H
-                  z.jump(0xC2, same_window) # JP NZ
-                  z.bytes(0x26, 0x80) # LD H,$80
-                  z.bytes(0xE5) # PUSH HL
-                  z.word(0x2A, mail.call(BANK_NOW)) # LD HL,(bank now)
-                  z.bytes(0x23) # INC HL
-                  z.call_bank
-                  z.bytes(0xE1) # POP HL
-                  z.label(same_window)
-                  if patched
-                    z.bytes(0x7C, 0xFE) # LD A,H ; CP the end's high byte, on the last bank
-                    z.label(:end_high_patched)
-                    z.bytes(0x00)
-                    z.jump(0xC2, done) # JP NZ
-                    z.bytes(0x7D, 0xFE) # LD A,L ; CP the end's low byte
-                    z.label(:end_low_patched)
-                    z.bytes(0x00)
-                    z.jump(0xDA, done) # JP C: L is still below the end
-                  else
-                    z.word(0x3A, mail.call(END_HIGH_NOW)) # LD A,(end's high byte, on the last bank)
-                    z.bytes(0xBC) # CP H
-                    z.jump(0xC2, done) # JP NZ
-                    z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
-                    z.bytes(0xBD) # CP L
-                    z.jump(0xCA, ended) # JP Z
-                    z.jump(0xD2, done) # JP NC: the end is still above L
-                  end
-                  z.label(ended)
-                  z.word(0x3A, mail.call(LOOPS)) # LD A,(loops)
-                  z.bytes(0x3D) # DEC A
-                  z.jump(0xCA, same_bank) # JP Z
-                  z.jump(0xFA, :idle) # JP M: played once
-                  z.word(0x2A, mail.call(LOOP_BANK)) # LD HL,(loop bank)
-                  z.call_bank
-                  z.label(same_bank)
-                  z.word(0x2A, mail.call(LOOP_AT)) # LD HL,(loop at)
-                  z.jump(0xC3, done) # JP
-                end
-
                 z.bytes(0xF3) # DI
                 z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0
-                [[0x24, TIMER_A >> 2], [0x25, TIMER_A & 3], [0x26, TIMER_B]].each do |register, value|
-                  z.word(0x21, (register << 8) | value) # LD HL,register and value
-                  z.jump(0xCD, :set_fm) # CALL
+                z.jump(0xC3, :init) # JP
+                # The two one-byte calls' addresses, 8 and 16 (ENTRY_CALL and ENTRY_OWED).
+                [[ENTRY_CALL_AT, :entry], [ENTRY_OWED_AT, :owed]].each do |at, target|
+                  z.bytes(*Array.new(at - z.length, 0x00))
+                  z.jump(0xC3, target) # JP
                 end
-                z.bytes(0xD9) # EXX
-                z.bytes(0x21, 0x00, 0x40, 0x11, 0x01, 0x40) # LD HL,$4000 ; LD DE,$4001
-                z.bytes(0x0E, 0x00) # LD C,0: the queue read from its start
-                z.bytes(0xD9) # EXX
-                z.label(:idle)
-                z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x32, 0x00, 0x40) # LD A,$2A ; LD ($4000),A
-                z.bytes(0x3E, 0x80, 0x32, 0x01, 0x40) # LD A,$80 ; LD ($4001),A
-                z.bytes(0xD9) # EXX
-                # Nothing playing: every entry is taken as it comes.
-                z.label(:wait)
-                z.word(0x3A, mail.call(QUEUE_WRITTEN)) # LD A,(queue written)
-                z.bytes(0xB9) # CP C
-                z.jump(0xCA, :wait) # JP Z
-                emit_entry_looked_at.call(glides ? :wait_entry : :wait_play)
-                emit_entry_written.call(:wait_busy)
-                z.jump(0xC3, :wait) # JP
-                z.label(:wait_play)
-                emit_entry_taken.call
-                z.bytes(0xD9) # EXX
-
-                z.label(:new_play)
-                z.word(0x3A, mail.call(PLAYS)) # LD A,(plays)
-                z.bytes(0xB7) # OR A
-                z.jump(0xCA, :idle) # JP Z
-                # Both timers stopped and started again together, so the second comes round with the
-                # 256th sample of this play, and the count of them from nought.
-                z.bytes(0x21) # LD HL,timers and stopped
-                z.label(:stopped)
-                z.bytes(TIMERS_STOPPED, TIMERS)
-                z.jump(0xCD, :set_fm) # CALL
-                z.bytes(0x21) # LD HL,timers and counting
-                z.label(:counting)
-                z.bytes(TIMERS_COUNTING, TIMERS)
-                z.jump(0xCD, :set_fm) # CALL
-                # LOOPS made 1 for a recording that goes round inside the bank it ends on, which is
-                # nearly all of them, and 2 for one that goes back to another bank. Showing a bank
-                # takes longer than a tick, and a short loop comes round hundreds of times a second.
-                z.word(0x3A, mail.call(LOOPS)) # LD A,(loops)
-                z.bytes(0xB7) # OR A
-                z.jump(0xCA, :loop_known) # JP Z
-                z.word(0x2A, mail.call(LOOP_BANK)) # LD HL,(loop bank)
-                z.bytes(0xED)
-                z.word(0x5B, mail.call(END_BANK)) # LD DE,(end bank)
-                z.bytes(0xB7, 0xED, 0x52) # OR A ; SBC HL,DE
-                z.bytes(0x3E, 0x01) # LD A,1
-                z.jump(0xCA, :loop_noted) # JP Z
-                z.bytes(0x3C) # INC A
-                z.label(:loop_noted)
-                z.word(0x32, mail.call(LOOPS)) # LD (loops),A
-                z.label(:loop_known)
-                z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
-                z.jump(0x32, :end_low_patched) # LD (the compare),A
-                z.word(0x2A, mail.call(BANK)) # LD HL,(bank)
-                z.call_bank
-                z.word(0x2A, mail.call(AT)) # LD HL,(at)
-                z.bytes(0xED)
-                z.word(0x5B, mail.call(Z80_STEP)) # LD DE,(step)
-                z.bytes(0x0E, 0x00) # LD C,0
-                z.bytes(0xD9, 0x06, 0x00, 0xD9) # EXX ; LD B,0 ; EXX
-
-                # The sample is read before its tick is awaited, so it reaches the DAC as soon as the
-                # tick is seen: the read is the one thing here that can be made to wait.
-                z.label(:loop)
-                z.bytes(0x7E) # LD A,(HL)
-                z.bytes(0xD9) # EXX
-                z.label(:tick)
-                z.bytes(0xCB, 0x46) # BIT 0,(HL): the first timer's flag
-                z.jump(0xCA, :tick) # JP Z
-                z.bytes(0x12) # LD (DE),A: the sample to the DAC, whose register is the one named
-                z.bytes(0x04) # INC B
-                z.bytes(0xD9) # EXX
-                emit_sample_passed.call(:sounded, :sounded_passed, patched: true)
-                # The tick's flag is cleared after HL has moved on, not before. The chip takes a while
-                # over each value written to it, a third of a sample's time. Moving HL on first puts
-                # more than that while between the DAC's write and this one, and the rest of the
-                # loop and the wait for the tick put as much between this one and the DAC's next.
-                z.label(:sounded_passed)
-                z.bytes(0xD9) # EXX
-                z.bytes(0x7E, 0xE6, 0x02) # LD A,(HL) ; AND 2: the second timer's flag
-                z.jump(0xC2, :second_timer) # JP NZ
-                emit_timers_written.call(SAMPLE_TICK_SEEN, :sample_tick_seen)
-                z.label(:mail)
-                z.word(0x3A, mail.call(QUEUE_WRITTEN)) # LD A,(queue written)
-                z.bytes(0xB9, 0xD9) # CP C ; EXX, which leaves the flags as they are
-                z.jump(0xCA, :loop) # JP Z
-                z.bytes(0xD9) # EXX
-                emit_entry_looked_at.call(glides ? :loop_entry : :loop_play)
-                emit_entry_written.call(:loop_busy)
-                z.bytes(0xD9) # EXX
-                z.jump(0xC3, :loop) # JP
-                z.label(:loop_play)
-                emit_entry_taken.call
-                z.bytes(0xD9) # EXX
-                z.jump(0xC3, :new_play) # JP
-
-                # The second timer has come round: what the count of samples is short of 256 is the
-                # ticks a stop covered, and that many samples are passed over. More than half of 256
-                # short is not believed: it is what a tick counted twice would look like, and passing
-                # over most of a round for it would be heard.
-                z.label(:second_timer)
-                emit_timers_written.call(BOTH_TICKS_SEEN, :both_ticks_seen)
-                z.bytes(0xAF, 0x90) # XOR A ; SUB B
-                z.bytes(0x06, 0x00) # LD B,0
-                z.jump(0xCA, :mail) # JP Z
-                z.jump(0xFA, :mail) # JP M
-                z.bytes(0xD9, 0x47) # EXX ; LD B,A
-                z.label(:missed)
-                emit_sample_passed.call(:missed, :missed_passed)
-                z.label(:missed_passed)
-                z.bytes(0x05) # DEC B
-                z.jump(0xC2, :missed) # JP NZ
-                z.bytes(0xD9) # EXX
-                z.jump(0xC3, :mail) # JP
-
-                # FM register H set to L, and the DAC's named again. A is lost.
-                z.label(:set_fm)
-                z.word(0x3A, 0x4000) # LD A,($4000)
-                z.bytes(0x87) # ADD A,A
-                z.jump(0xDA, :set_fm) # JP C: the chip is still taking the last write
-                z.bytes(0x7C) # LD A,H
-                z.word(0x32, 0x4000) # LD ($4000),A
-                z.bytes(0x7D) # LD A,L
-                z.word(0x32, 0x4001) # LD ($4001),A
-                z.bytes(0x3E, ChipWrites::DAC_SAMPLE) # LD A,$2A
-                z.word(0x32, 0x4000) # LD ($4000),A
-                z.bytes(0xC9) # RET
-
-                # The bank in HL shown in the window and noted, END_HIGH_NOW set for it. HL is lost. The
-                # window's bank register is one bit wide and takes nine writes, the lowest bit first.
-                z.label(:set_bank)
-                z.word(0x22, mail.call(BANK_NOW)) # LD (bank now),HL
-                z.bytes(0x7D) # LD A,L
-                8.times { z.bytes(0x32, 0x00, 0x60, 0x0F) } # LD ($6000),A ; RRCA
-                z.bytes(0x7C, 0x32, 0x00, 0x60) # LD A,H ; LD ($6000),A
-                z.word(0x3A, mail.call(END_BANK)) # LD A,(end bank, low)
-                z.bytes(0xBD) # CP L
-                z.jump(0xC2, :not_last) # JP NZ
-                z.word(0x3A, mail.call(END_BANK + 1)) # LD A,(end bank, high)
-                z.bytes(0xBC) # CP H
-                z.jump(0xC2, :not_last) # JP NZ
-                z.word(0x3A, mail.call(END_AT + 1)) # LD A,(end's high byte)
-                z.jump(0xC3, :noted) # JP
-                z.label(:not_last)
-                z.bytes(0xAF) # XOR A
-                z.label(:noted)
-                z.word(0x32, mail.call(END_HIGH_NOW)) # LD (end high now),A
-                z.jump(0x32, :end_high_patched) # LD (the compare),A
-                z.bytes(0xC9) # RET
-                emit_glide_entries(z, mail, emit_entry_taken) if glides
+                emit_entry_taken(z, glides: glides)
+                emit_driver_idle(z)
+                emit_new_play(z)
+                emit_fifo_filled(z)
+                emit_sample_sounded(z)
+                emit_missed_passed_over(z)
+                emit_fm_set(z)
+                emit_bank_shown(z)
+                emit_copy_past_end(z)
+                emit_glide_entry(z) if glides
               end.assembled
             end
 
-            # A glide, in a game whose notes glide: an entry of the queue that is GLIDE_ENTRY gives the play
-            # the mailbox's step from here, where it has got to, and is taken at once with nothing playing.
-            # The two places that send an entry onward to a new play send it here first (#driver's
-            # :wait_play and :loop_play, reached by the jumps to :wait_entry and :loop_entry instead).
-            # Must be written after everything else in the program: every other label then sits where it
-            # does in a game with no glide, which builds the same bytes and whose labels Sound reads.
-            def emit_glide_entries(z, mail, emit_entry_taken)
-              z.label(:loop_entry) # in the second set, A the entry's first byte
-              z.bytes(0xFE, GLIDE_ENTRY) # CP glide
-              z.jump(0xC2, :loop_play) # JP NZ
-              emit_entry_taken.call
-              z.bytes(0xD9) # EXX
-              z.bytes(0xED)
-              z.word(0x5B, mail.call(Z80_STEP)) # LD DE,(step)
-              z.jump(0xC3, :loop) # JP
-              z.label(:wait_entry) # nothing playing: the glide has nothing to move
-              z.bytes(0xFE, GLIDE_ENTRY) # CP glide
-              z.jump(0xC2, :wait_play) # JP NZ
-              emit_entry_taken.call
+            # The labels of the mailbox's fields and the Z80's copy of them, in its memory.
+            def mailbox_at(field) = MAILBOX + field
+            def playing_at(field) = PLAYING + field
+
+            # The queue's entry at L taken: QUEUE_READ moved past it for the 68000, and the call left in
+            # the sample loop when another waits. +name+ names its one label.
+            def emit_queue_moved_on(z, name)
+              z.bytes(0x2C, 0x7D) # INC L ; LD A,L
+              z.word(0x32, mailbox_at(QUEUE_READ)) # LD (queue read),A
+              z.word(0x3A, mailbox_at(QUEUE_WRITTEN)) # LD A,(queue written)
+              z.bytes(0xBD) # CP L
+              z.jump(0xCA, name) # JP Z
+              z.bytes(0x3E, ENTRY_CALL) # LD A,the call
+              z.jump(0x32, :entry_looked_for) # LD (the sample loop's look),A
+              z.label(name)
+            end
+
+            # :entry, which ENTRY_CALL calls: the queue's next entry, if there is one, made. An FM write is
+            # written once the chip has taken the last value written to it, and the DAC's register named
+            # again; a new play starts it, afresh. Every register is kept, and the flags. DE must be the
+            # chip's first port.
+            def emit_entry_taken(z, glides:)
+              z.label(:entry)
+              z.bytes(0xF5, 0xE5) # PUSH AF ; PUSH HL
+              z.bytes(0xAF) # XOR A: NOP
+              z.jump(0x32, :entry_looked_for) # LD (the sample loop's look),A
+              z.word(0x2A, mailbox_at(QUEUE_READ)) # LD HL,(queue read): L the entry's place
+              z.word(0x3A, mailbox_at(QUEUE_WRITTEN)) # LD A,(queue written)
+              z.bytes(0xBD) # CP L
+              z.jump(0xCA, :entry_done) # JP Z: none
+              z.bytes(0x26, QUEUE >> 8) # LD H,the queue's page
+              z.bytes(0x7E, 0xB7) # LD A,(HL) ; OR A
+              z.jump(0xFA, glides ? :entry_kind : :entry_play) # JP M: a play
+              z.label(:entry_busy)
+              z.bytes(0x1A, 0x87) # LD A,(DE) ; ADD A,A
+              z.jump(0xDA, :entry_busy) # JP C: the chip is still taking the last value
+              z.bytes(0x5E) # LD E,(HL): the part's ports
+              z.bytes(0x24, 0x7E, 0x12) # INC H ; LD A,(HL) ; LD (DE),A: the register named
+              z.bytes(0x24, 0x7E, 0x1C, 0x12) # INC H ; LD A,(HL) ; INC E ; LD (DE),A: its value
+              z.bytes(0x1E, 0x00, 0x3E, ChipWrites::DAC_SAMPLE, 0x12) # LD E,0 ; LD A,$2A ; LD (DE),A
+              emit_queue_moved_on(z, :entry_written)
+              z.label(:entry_done)
+              z.bytes(0xE1, 0xF1, 0xC9) # POP HL ; POP AF ; RET
+              z.label(:entry_play)
+              emit_queue_moved_on(z, :entry_play_moved_on)
+              z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0: whatever was under way is dropped
+              z.jump(0xC3, :new_play) # JP
+            end
+
+            # :init, the timers' lengths set; then :idle, the DAC at the middle of its range (quiet), and
+            # every entry taken as it comes until a play does.
+            def emit_driver_idle(z)
+              z.label(:init)
+              [[0x24, TIMER_A >> 2], [0x25, TIMER_A & 3], [0x26, TIMER_B]].each do |register, value|
+                z.word(0x21, (register << 8) | value) # LD HL,register and value
+                z.jump(0xCD, :set_fm) # CALL
+              end
+              z.word(0x11, 0x4000) # LD DE,$4000
+              z.label(:idle)
+              z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x32, 0x00, 0x40) # LD A,$2A ; LD ($4000),A
+              z.bytes(0x3E, 0x80, 0x32, 0x01, 0x40) # LD A,$80 ; LD ($4001),A
+              z.bytes(0xAF) # XOR A: off the cartridge, if a chunk was dropped
+              z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
+              z.label(:wait)
+              z.word(0x3A, mailbox_at(QUEUE_READ)) # LD A,(queue read)
+              z.bytes(0x47) # LD B,A
+              z.word(0x3A, mailbox_at(QUEUE_WRITTEN)) # LD A,(queue written)
+              z.bytes(0xB8) # CP B
+              z.jump(0xCA, :wait) # JP Z
+              z.jump(0xCD, :entry) # CALL
               z.jump(0xC3, :wait) # JP
             end
 
+            # :new_play, the play in the mailbox started: the timers stopped, its fields copied, the step
+            # written in, the copying started at its start into FIFO from FIFO's start, and
+            # FIFO_FIRST_CHUNKS copied (:first_chunk_copied counts them) before both timers start again
+            # together, so the second comes round with the 256th sample of this play. Nought plays, quiet.
+            def emit_new_play(z)
+              z.label(:new_play)
+              z.word(0x3A, mailbox_at(PLAYS)) # LD A,(plays)
+              z.bytes(0xB7) # OR A
+              z.jump(0xCA, :idle) # JP Z
+              z.bytes(0x21) # LD HL,timers and stopped
+              z.label(:stopped)
+              z.bytes(TIMERS_STOPPED, TIMERS)
+              z.jump(0xCD, :set_fm) # CALL
+              z.word(0x21, mailbox_at(PLAYING_FIELDS.first)) # LD HL,the mailbox's fields
+              z.word(0x11, PLAYING) # LD DE,the Z80's copy
+              z.word(0x01, PLAYING_FIELDS.size) # LD BC,their length
+              z.bytes(0xED, 0xB0) # LDIR
+              # LOOPS made 1 for a recording that goes round inside the bank it ends on, which is nearly
+              # all of them, and 2 for one that goes back to another bank. Showing a bank takes longer than
+              # a tick, and a short loop comes round hundreds of times a second.
+              z.word(0x3A, playing_at(PLAYING_LOOPS)) # LD A,(loops)
+              z.bytes(0xB7) # OR A
+              z.jump(0xCA, :loop_known) # JP Z
+              z.word(0x2A, playing_at(PLAYING_LOOP_BANK)) # LD HL,(loop bank)
+              z.bytes(0xED)
+              z.word(0x5B, playing_at(PLAYING_END_BANK)) # LD DE,(end bank)
+              z.bytes(0xB7, 0xED, 0x52) # OR A ; SBC HL,DE
+              z.bytes(0x3E, 0x01) # LD A,1
+              z.jump(0xCA, :loop_noted) # JP Z
+              z.bytes(0x3C) # INC A
+              z.label(:loop_noted)
+              z.word(0x32, playing_at(PLAYING_LOOPS)) # LD (loops),A
+              z.label(:loop_known)
+              emit_step_written(z)
+              z.bytes(0xAF) # XOR A: nothing owed
+              z.word(0x32, playing_at(PLAYING_OWED)) # LD (owed),A
+              emit_owed_calls_written(z)
+              z.bytes(0xD9) # EXX
+              z.word(0x2A, mailbox_at(BANK)) # LD HL,(bank)
+              z.call_bank
+              z.word(0x2A, mailbox_at(AT)) # LD HL,(at)
+              z.word(0x11, FIFO) # LD DE,FIFO
+              z.bytes(0xD9) # EXX
+              z.word(0x11, 0x4000) # LD DE,$4000
+              z.bytes(0x06, FIFO_FIRST_CHUNKS) # LD B,chunks
+              z.jump(0x21, :first_chunk_copied) # LD HL,label
+              z.jump(0x22, :chunk_copied_then) # LD (the chunk's last jump),HL
+              z.jump(0xC3, :fill) # JP
+
+              z.label(:first_chunk_copied)
+              z.bytes(0x05) # DEC B
+              z.jump(0xC2, :fill) # JP NZ
+              z.jump(0x21, :fill_poll) # LD HL,label
+              z.jump(0x22, :chunk_copied_then) # LD (the chunk's last jump),HL
+              z.bytes(0x21) # LD HL,timers and counting
+              z.label(:counting)
+              z.bytes(TIMERS_COUNTING, TIMERS)
+              z.jump(0xCD, :set_fm) # CALL
+              z.word(0x21, FIFO) # LD HL,FIFO
+              z.word(0x01, 0x0000) # LD BC,0: no samples sounded, and no fraction
+              z.jump(0xC3, :fill_poll) # JP
+            end
+
+            # The mailbox's step written into the reader's two adds.
+            def emit_step_written(z)
+              z.word(0x3A, mailbox_at(Z80_STEP)) # LD A,(step's fraction)
+              z.jump(0x32, :step_fraction) # LD (the add),A
+              z.word(0x3A, mailbox_at(Z80_STEP + 1)) # LD A,(step's whole samples)
+              z.jump(0x32, :step_whole) # LD (the add),A
+            end
+
+            # Fewer than FIFO_FULL bytes in FIFO not sounded yet: carry set. In the first set; A is lost.
+            def emit_fill_looked_at(z)
+              z.bytes(0xD9, 0x7B, 0xD9, 0x95) # EXX ; LD A,E ; EXX ; SUB L
+              z.bytes(0xFE, FIFO_FULL) # CP full
+            end
+
+            # :fill_poll, between two chunks: the tick, if it has come, and the next chunk if FIFO is not
+            # full. :fill, a chunk copied, with the 68000's leave (UNSAFE, then BLOCK), the tick looked for
+            # twice on the way (#emit_chunk_tick_looked_for), and the copy taken back to the end it ran past
+            # (:end_low and :end_high hold that end, written by :set_bank, and :copy_past_end handles it);
+            # then on to :chunk_copied_then, which is :fill_poll but while a play's first chunks are copied.
+            # :blocked, the copy put off, the ticks still sounded, until BLOCK is clear. :full, waiting for
+            # the tick.
+            def emit_fifo_filled(z)
+              z.label(:fill_poll)
+              z.bytes(0x1A, 0x0F) # LD A,(DE) ; RRCA: the first timer's flag
+              z.jump(0xDA, :tick) # JP C
+              z.bytes(0xD9, 0x7B, 0xD9, 0x95) # EXX ; LD A,E ; EXX ; SUB L
+              z.jump(0xFA, :full) # JP M: FIFO_FULL or more
+              z.label(:fill)
+              z.bytes(0xD9) # EXX
+              z.bytes(0x7C) # LD A,H: never nought, in the window or in the silence
+              z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
+              z.word(0x3A, mailbox_at(BLOCK)) # LD A,(block)
+              z.bytes(0xB7) # OR A
+              z.jump(0xC2, :blocked) # JP NZ
+              CHUNK_TICKS_LOOKED_FOR_AFTER.each_cons(2) do |from, to|
+                (to - from).times { z.bytes(0xED, 0xA0) } # LDI
+                emit_chunk_tick_looked_for(z) if to < FIFO_CHUNK
+              end
+              # HL less the end, which is nought short of the last bank: no higher than nought, or past
+              # the end by less than a chunk.
+              z.bytes(0x7D, 0xD6) # LD A,L ; SUB end low
+              z.label(:end_low)
+              z.bytes(0x00)
+              z.bytes(0x7C, 0xDE) # LD A,H ; SBC A,end high
+              z.label(:end_high)
+              z.bytes(0x00)
+              z.jump(0xF4, :copy_past_end) # CALL P
+              z.bytes(0x16, FIFO >> 8) # LD D,FIFO's page: the chunk that ends it moves DE off it
+              z.bytes(0xAF) # XOR A
+              z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
+              z.bytes(0xD9) # EXX
+              z.bytes(0xC3) # JP
+              z.label(:chunk_copied_then)
+              z.address(:fill_poll)
+
+              z.label(:blocked)
+              z.bytes(0xAF) # XOR A
+              z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
+              z.bytes(0xD9) # EXX
+              z.label(:blocked_wait)
+              z.bytes(0x1A, 0x0F) # LD A,(DE) ; RRCA
+              z.jump(0xDA, :tick) # JP C
+              z.word(0x3A, mailbox_at(BLOCK)) # LD A,(block)
+              z.bytes(0xB7) # OR A
+              z.jump(0xC2, :blocked_wait) # JP NZ
+              z.jump(0xC3, :fill) # JP
+
+              # :chunk_tick, called in the second set with A the chip's status turned right once: the tick
+              # sounded as :tick sounds it, the chip's ports named by their addresses, since DE is the copy's.
+              z.label(:chunk_tick)
+              z.bytes(0x0F) # RRCA: the second timer's flag
+              z.jump(0xDA, :chunk_second_timer) # JP C
+              z.bytes(0x3E, TIMERS, 0x32, 0x00, 0x40) # LD A,timers ; LD ($4000),A
+              z.bytes(0x3E) # LD A,value
+              z.label(:chunk_tick_seen)
+              z.bytes(SAMPLE_TICK_SEEN)
+              z.bytes(0x32, 0x01, 0x40) # LD ($4001),A
+              z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x32, 0x00, 0x40) # LD A,$2A ; LD ($4000),A
+              z.bytes(0xD9) # EXX
+              emit_sample_to_dac(z)
+              emit_reader_moved(z)
+              z.bytes(0xD9, 0xC9) # EXX ; RET
+              z.label(:chunk_second_timer)
+              z.bytes(0xD9) # EXX
+              z.jump(0xCD, :second_timer) # CALL
+              z.bytes(0xD9, 0xC9) # EXX ; RET
+
+              z.label(:full)
+              z.bytes(0x1A, 0x0F) # LD A,(DE) ; RRCA
+              z.jump(0xD2, :full) # JP NC
+            end
+
+            # Where in a chunk the tick is looked for: after this many bytes of it. A tick that comes while
+            # a chunk is copied must be seen soon enough that its flag is cleared before the next tick
+            # comes, or that one is lost with it.
+            CHUNK_TICKS_LOOKED_FOR_AFTER = [0, 0, 3, 6, FIFO_CHUNK].freeze
+
+            # In the second set, partway through a chunk: the tick sounded (:chunk_tick) if it has come.
+            def emit_chunk_tick_looked_for(z)
+              z.word(0x3A, 0x4000) # LD A,($4000)
+              z.bytes(0x0F) # RRCA
+              z.jump(0xDC, :chunk_tick) # CALL C
+            end
+
+            # The timers' register named, +value+ written to it with the third voice's mode (the value's
+            # label +patched+, TIMER_WRITES), and the DAC's named again. In the first set, E nought.
+            def emit_timers_written(z, value, patched)
+              z.bytes(0x3E, TIMERS, 0x12, 0x1C) # LD A,timers ; LD (DE),A ; INC E
+              z.bytes(0x3E) # LD A,value
+              z.label(patched)
+              z.bytes(value)
+              z.bytes(0x12, 0x1D) # LD (DE),A ; DEC E
+              z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x12) # LD A,$2A ; LD (DE),A
+            end
+
+            # The sample at the reader sent to the DAC, and counted. In the first set, E nought.
+            def emit_sample_to_dac(z)
+              z.bytes(0x7E, 0x1C, 0x12, 0x1D) # LD A,(HL) ; INC E ; LD (DE),A ; DEC E
+              z.bytes(0x04) # INC B
+            end
+
+            # The reader moved on by the step, read from where :step_fraction and :step_whole hold it.
+            def emit_reader_moved(z)
+              z.jump(0x3A, :step_fraction) # LD A,(the step's fraction)
+              z.bytes(0x81, 0x4F) # ADD A,C ; LD C,A
+              z.jump(0x3A, :step_whole) # LD A,(the step's whole samples)
+              z.bytes(0x8D, 0x6F) # ADC A,L ; LD L,A
+            end
+
+            # :tick, in the first set with A the chip's status turned right once: the tick sounded, then
+            # the queue (:entry_looked_for), and a chunk; or, with FIFO full, a sample owed
+            # (:owed_looked_for) and the wait for the next tick.
+            #
+            # The tick's flag is cleared first, then its sample sent to the DAC, as GEMS's DACME does: the
+            # sooner the flag is cleared after the tick, the later the tick can be seen without the next
+            # one lost. Then the reader is moved on by the step, written into the instructions that add
+            # it. The second timer's flag, next to the first timer's, sends it to :second_timer first.
+            def emit_sample_sounded(z)
+              z.label(:tick)
+              z.bytes(0x0F) # RRCA: the second timer's flag
+              z.jump(0xDA, :tick_second_timer) # JP C
+              emit_timers_written(z, SAMPLE_TICK_SEEN, :sample_tick_seen)
+              emit_sample_to_dac(z)
+              z.bytes(0x79, 0xC6) # LD A,C ; ADD A,the step's fraction
+              z.label(:step_fraction)
+              z.bytes(0x00)
+              z.bytes(0x4F, 0x7D, 0xCE) # LD C,A ; LD A,L ; ADC A,the step's whole samples
+              z.label(:step_whole)
+              z.bytes(0x00)
+              z.bytes(0x6F) # LD L,A
+              z.label(:tick_sounded)
+              emit_fill_looked_at(z)
+              z.label(:entry_looked_for)
+              z.bytes(ENTRY_NONE)
+              z.jump(0xDA, :fill) # JP C
+              z.label(:owed_looked_for)
+              z.bytes(ENTRY_NONE)
+              z.jump(0xC3, :full) # JP
+              z.label(:tick_second_timer)
+              z.jump(0xCD, :second_timer) # CALL
+              z.jump(0xC3, :tick_sounded) # JP
+            end
+
+            # :second_timer, called in the first set: the second timer has come round. The tick is sounded
+            # as any other; then what the count of samples is short of 256 is the ticks a stop covered,
+            # and that many samples are owed (PLAYING_OWED). A tick that finds FIFO full, and so has the time
+            # to spare before the next, moves the reader on once more until they are paid (:owed, which
+            # ENTRY_OWED calls from :owed_looked_for), so the recording is back where the clock says a
+            # sample at a time, with no stop long enough to lose a tick of its own. More than half of 256
+            # short is not
+            # believed: it is what a tick counted twice would look like, and passing over most of a round
+            # for it would be heard.
+            def emit_missed_passed_over(z)
+              z.label(:second_timer)
+              emit_timers_written(z, BOTH_TICKS_SEEN, :both_ticks_seen)
+              emit_sample_to_dac(z)
+              emit_reader_moved(z)
+              z.bytes(0xAF, 0x90, 0x06, 0x00) # XOR A ; SUB B ; LD B,0
+              z.bytes(0xC8) # RET Z
+              z.bytes(0xF8) # RET M
+              z.word(0x32, playing_at(PLAYING_OWED)) # LD (owed),A
+              z.bytes(0x3E, ENTRY_OWED) # LD A,the call
+              emit_owed_calls_written(z)
+              z.bytes(0xC9) # RET
+
+              # :owed, which ENTRY_OWED calls: the reader moved on once more, unless it is FIFO_KEPT_BEHIND
+              # short of what is copied, which ends what is owed. Every register but the reader's is kept.
+              z.label(:owed)
+              z.bytes(0xF5) # PUSH AF
+              z.bytes(0xD9, 0x7B, 0xD9, 0x95) # EXX ; LD A,E ; EXX ; SUB L
+              z.bytes(0xFE, FIFO_KEPT_BEHIND) # CP kept behind
+              z.jump(0xDA, :owed_paid) # JP C
+              emit_reader_moved(z)
+              z.word(0x3A, playing_at(PLAYING_OWED)) # LD A,(owed)
+              z.bytes(0x3D) # DEC A
+              z.word(0x32, playing_at(PLAYING_OWED)) # LD (owed),A
+              z.jump(0xC2, :owed_kept) # JP NZ
+              z.label(:owed_paid)
+              z.bytes(0x3E, ENTRY_NONE) # LD A,NOP
+              emit_owed_calls_written(z)
+              z.label(:owed_kept)
+              z.bytes(0xF1, 0xC9) # POP AF ; RET
+            end
+
+            # A written into :owed_looked_for.
+            def emit_owed_calls_written(z) = z.jump(0x32, :owed_looked_for) # LD (owed looked for),A
+
+            # :set_fm, FM register H set to L, and the DAC's named again. A is lost.
+            def emit_fm_set(z)
+              z.label(:set_fm)
+              z.word(0x3A, 0x4000) # LD A,($4000)
+              z.bytes(0x87) # ADD A,A
+              z.jump(0xDA, :set_fm) # JP C: the chip is still taking the last write
+              z.bytes(0x7C) # LD A,H
+              z.word(0x32, 0x4000) # LD ($4000),A
+              z.bytes(0x7D) # LD A,L
+              z.word(0x32, 0x4001) # LD ($4001),A
+              z.bytes(0x3E, ChipWrites::DAC_SAMPLE) # LD A,$2A
+              z.word(0x32, 0x4000) # LD ($4000),A
+              z.bytes(0xC9) # RET
+            end
+
+            # :set_bank, the bank in HL shown in the window and noted, and the end a chunk is held to
+            # written into the chunk: the recording's end on its last bank, and nought, the window's end,
+            # on any other. HL and A are lost. The window's bank register is one bit wide and takes nine
+            # writes, the lowest bit first.
+            def emit_bank_shown(z)
+              z.label(:set_bank)
+              z.word(0x22, playing_at(PLAYING_BANK_NOW)) # LD (bank now),HL
+              z.bytes(0x7D) # LD A,L
+              8.times { z.bytes(0x32, 0x00, 0x60, 0x0F) } # LD ($6000),A ; RRCA
+              z.bytes(0x7C, 0x32, 0x00, 0x60) # LD A,H ; LD ($6000),A
+              emit_chunk_tick_looked_for(z)
+              z.word(0x3A, playing_at(PLAYING_END_BANK)) # LD A,(end bank, low)
+              z.bytes(0xBD) # CP L
+              z.jump(0xC2, :not_last) # JP NZ
+              z.word(0x3A, playing_at(PLAYING_END_BANK + 1)) # LD A,(end bank, high)
+              z.bytes(0xBC) # CP H
+              z.jump(0xC2, :not_last) # JP NZ
+              z.word(0x2A, playing_at(PLAYING_END_AT)) # LD HL,(end at)
+              z.jump(0xC3, :end_noted) # JP
+              z.label(:not_last)
+              z.word(0x21, 0x0000) # LD HL,0
+              z.label(:end_noted)
+              emit_end_written(z)
+              z.bytes(0xC9) # RET
+            end
+
+            # HL written into the chunk as the end it is held to. A is lost.
+            def emit_end_written(z)
+              z.bytes(0x7D) # LD A,L
+              z.jump(0x32, :end_low) # LD (end low),A
+              z.bytes(0x7C) # LD A,H
+              z.jump(0x32, :end_high) # LD (end high),A
+            end
+
+            # :copy_past_end, in the second set, called from a chunk that ran past its end: the bytes past
+            # it taken back off FIFO, HL moved to where the copy goes on, and as many copied from there, so
+            # the chunk is whole. Past the window's end, the next bank from the window's start; past the
+            # recording's, where it goes round to, in its bank; and after one played once, the silence
+            # (:silence), which goes round on itself. A copy that runs past its end again (a recording that
+            # ends on a bank's edge, or goes round in less than a chunk) is moved on again. BC is lost.
+            #
+            # Each chunk starts a whole number of chunks into FIFO, so none runs off FIFO's page partway:
+            # the copy moves DE on as one number, and a chunk that ran off the page would write into the
+            # queue's.
+            def emit_copy_past_end(z)
+              z.label(:copy_past_end)
+              z.bytes(0x16, FIFO >> 8) # LD D,FIFO's page
+              emit_chunk_tick_looked_for(z)
+              z.jump(0x3A, :end_low) # LD A,(end low)
+              z.bytes(0x47, 0x7D, 0x90, 0x4F) # LD B,A ; LD A,L ; SUB B ; LD C,A: how far past
+              z.bytes(0x7B, 0x91, 0x5F) # LD A,E ; SUB C ; LD E,A
+              z.jump(0x3A, :end_high) # LD A,(end high)
+              z.bytes(0xB7) # OR A
+              z.jump(0xC2, :recording_ended) # JP NZ: the recording's end, not the window's
+              z.word(0x2A, playing_at(PLAYING_BANK_NOW)) # LD HL,(bank now)
+              z.bytes(0x23) # INC HL
+              z.call_bank
+              z.word(0x21, WINDOW) # LD HL,the window's start
+              z.jump(0xC3, :copy_moved_on) # JP
+              z.label(:recording_ended)
+              z.word(0x3A, playing_at(PLAYING_LOOPS)) # LD A,(loops)
+              z.bytes(0x3D) # DEC A
+              z.jump(0xCA, :loop_in_bank) # JP Z
+              z.jump(0xFA, :played_once) # JP M
+              z.bytes(0x3D) # DEC A
+              z.jump(0xC2, :silence_counted) # JP NZ: LOOPS_SILENCE
+              z.word(0x2A, playing_at(PLAYING_LOOP_BANK)) # LD HL,(loop bank)
+              z.call_bank
+              z.label(:loop_in_bank)
+              z.word(0x2A, playing_at(PLAYING_LOOP_AT)) # LD HL,(loop at)
+              z.label(:copy_moved_on)
+              emit_chunk_tick_looked_for(z)
+              z.bytes(0x79, 0xB7) # LD A,C ; OR A
+              z.jump(0xCA, :copy_whole) # JP Z
+              z.bytes(0x06, 0x00) # LD B,0
+              # Two bytes at a time, the tick looked for between.
+              z.label(:copy_rest)
+              z.bytes(0xED, 0xA0) # LDI
+              z.jump(0xE2, :copy_rest_done) # JP PO: BC is nought
+              z.bytes(0xED, 0xA0) # LDI
+              z.jump(0xE2, :copy_rest_done) # JP PO
+              emit_chunk_tick_looked_for(z)
+              z.jump(0xC3, :copy_rest) # JP
+              z.label(:copy_rest_done)
+              z.bytes(0x16, FIFO >> 8) # LD D,FIFO's page
+              z.label(:copy_whole)
+              z.jump(0x3A, :end_low) # LD A,(end low)
+              z.bytes(0x47, 0x7D, 0x90) # LD B,A ; LD A,L ; SUB B
+              z.jump(0x3A, :end_high) # LD A,(end high)
+              z.bytes(0x47, 0x7C, 0x98) # LD B,A ; LD A,H ; SBC A,B
+              z.jump(0xF2, :copy_past_end) # JP P
+              z.bytes(0xC9) # RET
+              z.label(:played_once)
+              z.jump(0x21, :silence_end) # LD HL,the silence's end
+              emit_end_written(z)
+              z.bytes(0x3E, LOOPS_SILENCE) # LD A,silence
+              z.word(0x32, playing_at(PLAYING_LOOPS)) # LD (loops),A
+              z.bytes(0x3E, SILENCE_CHUNKS) # LD A,chunks
+              z.word(0x32, playing_at(PLAYING_SILENCE_LEFT)) # LD (silence left),A
+              z.label(:silence_counted)
+              z.jump(0x21, :silence) # LD HL,the silence
+              z.word(0x3A, playing_at(PLAYING_SILENCE_LEFT)) # LD A,(silence left)
+              z.bytes(0x3D) # DEC A
+              z.word(0x32, playing_at(PLAYING_SILENCE_LEFT)) # LD (silence left),A
+              z.jump(0xC2, :copy_moved_on) # JP NZ
+              # The reader is past the recording's end: nothing more to sound.
+              z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0: the chunk under way dropped
+              z.bytes(0xD9) # EXX: the first set, whose DE is the chip's port
+              z.jump(0xC3, :idle) # JP
+              z.label(:silence)
+              z.bytes(*Array.new(FIFO_CHUNK, 0x80))
+              z.label(:silence_end)
+            end
+
+            # A glide, in a game whose notes glide: an entry of the queue that is GLIDE_ENTRY gives the play
+            # the mailbox's step from here, where it has got to, and with nothing playing it changes nothing.
+            # :entry sends an entry that is not an FM write here before :entry_play.
+            # Must be written after everything else in the program: every other label then sits where it
+            # does in a game with no glide, which builds the same bytes and whose labels Sound and
+            # #emit_queued read.
+            def emit_glide_entry(z)
+              z.label(:entry_kind) # A the entry's first byte
+              z.bytes(0xFE, GLIDE_ENTRY) # CP glide
+              z.jump(0xC2, :entry_play) # JP NZ
+              emit_queue_moved_on(z, :glide_moved_on)
+              emit_step_written(z)
+              z.jump(0xC3, :entry_done) # JP
+            end
+
             # A very small Z80 assembler, as much of one as the program above takes: bytes, an instruction
-            # with a 16-bit number low byte first, and a jump to a label. Assembled, it is the program's
+            # with a 16-bit number low byte first, and an instruction naming a label's address (a jump, a
+            # call, or a load or store at a place in the program itself). Assembled, it is the program's
             # bytes (#code) and where each label is in them (#address_of), for the 68000 to write into.
             class Z80Program
               attr_reader :code
@@ -945,21 +1296,27 @@ module VBlank
               def length = @code.length
 
               def jump(opcode, target)
-                @jumps[@code.length + 1] = target
-                @code.push(opcode, 0, 0)
+                @code.push(opcode)
+                address(target)
+              end
+
+              # +target+'s address, two bytes, low first, with no instruction before it.
+              def address(target)
+                @jumps[@code.length] = target
+                @code.push(0, 0)
               end
 
               def call_bank = jump(0xCD, :set_bank)
 
-              # The jumps filled in. The program must end below the queue, which is the Z80's memory
-              # from QUEUE on.
+              # The jumps filled in. The program must end below what it reads ahead into, which is the
+              # Z80's memory from FIFO on.
               def assembled
                 @jumps.each do |at, target|
                   place = @labels.fetch(target)
                   @code[at] = place & 0xFF
                   @code[at + 1] = place >> 8
                 end
-                raise ArgumentError, "the Z80's program is #{length} bytes, past its queue at #{QUEUE}" if length > QUEUE
+                raise ArgumentError, "the Z80's program is #{length} bytes, past its read-ahead at #{FIFO}" if length > FIFO
 
                 @code.freeze
                 @labels.freeze

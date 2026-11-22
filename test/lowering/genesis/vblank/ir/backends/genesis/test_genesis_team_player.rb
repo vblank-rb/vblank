@@ -107,6 +107,47 @@ class TestGenesisTeamPlayer < Minitest::Test
     assert_equal 2, reader.var(:connected)
   end
 
+  # Thirty samples of a square wave, up then down: 433 waves a second at 13000 samples a second.
+  CLIP = ([100] * 15) + ([-100] * 15)
+  # The emulator's sound runs at this many samples a second.
+  SAMPLE_RATE = 44_100
+
+  # A game for +players+ looping CLIP, the Team Player plugged in for four, and how far apart the
+  # recording's upward crossings of its middle are over the last three seconds of four, in the
+  # emulator's samples: the shortest gap and the longest.
+  private def wave_lengths(players)
+    run = VBlank::IR::Backends::Genesis::HeadlessRun.new(keep_sound: true)
+    game = VBlank.game("TAP SOUND #{players}", consoles: %i[genesis], players: players) do
+      enable_sound
+      sample(:clip, pcm: CLIP, rate: 13_000).play(loop: true)
+      connected = var :connected, 0
+      game_loop { connected.store!(players_connected) }
+    end
+    run.run(game.program(console: :genesis), frames: 240)
+    left = run.sound_made.each_slice(2).map(&:first).last(SAMPLE_RATE * 3)
+    middle = (left.max + left.min) / 2.0
+    crossings = left.each_cons(2).with_index.filter_map do |(before, after), i|
+      i + ((middle - before) / (after - before).to_f) if before < middle && after >= middle
+    end
+    crossings.each_cons(2).map { |before, after| after - before }.minmax
+  end
+
+  # The Team Player's read takes several lines of the screen a frame. The sound processor plays a
+  # recording from a few hundred samples it has read ahead into its own memory, and the 68000 keeps
+  # it off the cartridge for the read rather than stopping it (Sega's GEMS driver, _gemsdmastart),
+  # so four players hear it as two do. Before, the sound processor was stopped for the whole read:
+  # waves from 90.2 to 111.0 samples long with two pads, a spread of 20.8, and 68.7 to 124.2 with
+  # the tap, 55.5. One wave is 101.8 of the emulator's samples.
+  def test_a_recording_plays_as_evenly_with_four_players_as_with_two
+    two = wave_lengths(2)
+    four = wave_lengths(4)
+    two_spread = two.last - two.first
+    four_spread = four.last - four.first
+
+    assert_operator two_spread, :<=, 20.8, "two pads: waves #{two}"
+    assert_operator four_spread, :<=, two_spread + 4, "four players: waves #{four}, two pads #{two}"
+  end
+
   def test_with_no_team_player_and_nobody_at_the_second_pad_one_player_is_connected
     rom = built(4)
     reader = VBlank::Diagnostics::Verifier.new(rom, frames: 4, vars: rom.var_addresses)

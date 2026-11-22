@@ -35,8 +35,9 @@ module VBlank
       RECORDING_LOUDNESS = "A recording plays at full loudness, whatever its volume: the DAC has no volume of " \
                            "its own. To play it more quietly, the sound processor must scale each sample, about " \
                            "13300 times a second, through a table for each volume. This build does not do that " \
-                           "yet. Its sample loop takes about 204 of the 269 cycles it has for each sample, so the " \
-                           "look-up fits, and 16 tables take 4 KB of its 8 KB of memory. Until then, the music " \
+                           "yet. Its sample loop takes about 192 of the 269 cycles it has for each sample, and " \
+                           "copies the recording ahead in the rest, so the look-up fits, and 16 tables take 4 KB " \
+                           "of its 8 KB of memory. Until then, the music " \
                            "volume and a sound's volume are only in the sound log."
 
       ANSWERS = Ractor.make_shareable({
