@@ -156,7 +156,6 @@ An answer above is what the Genesis does with a verb. The build for it is still 
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
 - the status bar: `place_bar`
-- backgrounds bent row by row: `scroll_rows`
 - sprite tiles the game loads: `load_sprite_tiles`
 - layers see-through: `see_through`
 - the picture: `draw_column_at`
