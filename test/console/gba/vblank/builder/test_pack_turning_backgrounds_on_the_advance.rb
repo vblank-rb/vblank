@@ -91,7 +91,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
 
   def test_turned_about_a_point_it_shows_as_the_drawn_one
     pictures = assert_shows_as_the_drawn_one("turned") do |layer|
-      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate(90)
+      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate!(90)
       game_loop { wait_vblank }
     end
 
@@ -209,7 +209,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
 
   def test_read_at_start_a_map_that_is_a_run_of_a_slot_over_tiles_from_a_tile_on_shows_as_the_drawn_one
     assert_read_at_start_shows_as_the_drawn_one("from runs", from_runs: true) do |layer|
-      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate(30)
+      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate!(30)
       game_loop { wait_vblank }
     end
   end

@@ -83,7 +83,7 @@ module BackgroundLayersGames
       image :black, width: 8, height: 8, places: [2] * 64, colors: :inks
       tiles :blacks, "b" => :black
       angle = var :angle, 0
-      background(:front, tiles: :blacks, map: Array.new(16) { "b" * 16 }).rotate(angle)
+      background(:front, tiles: :blacks, map: Array.new(16) { "b" * 16 }).rotate!(angle)
     end
   end
 

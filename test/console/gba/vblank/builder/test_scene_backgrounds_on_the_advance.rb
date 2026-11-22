@@ -447,7 +447,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_backends_agree(a_sword_that_flies_at_the_player, frames: 20)
   end
 
-  # ...and a second turn written on the same line — `.scale(16.0).rotate(90)` — is part of
+  # ...and a second turn written on the same line — `.scale(16.0).rotate!(90)` — is part of
   # declaring it too, so the angle can be eased the same way the size can. It is one line
   # and it says one thing: this is how the picture starts.
   def test_a_turn_chained_onto_the_declaration_starts_the_picture_too
