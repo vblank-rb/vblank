@@ -80,12 +80,14 @@ module RubyPS1Emulator
     WIDTHS = [256, 320, 512, 640].freeze
     WIDTH_368 = 1 << 6
 
-    # The settings the core asks for, as libretro names them: none, so it keeps its own.
-    SETTINGS = Ractor.make_shareable({})
-
-    # ...and the one that plugs a Multitap into the second port (#plug_in_multitap). The core reads it
-    # as it loads a program and makes its ports then, so it cannot be changed while one plays.
-    MULTITAP_SETTINGS = Ractor.make_shareable({ "beetle_psx_enable_multitap_port2" => "enabled" })
+    # The settings the core asks for, as libretro names them: its own for everything but the second port,
+    # which holds a pad unless a Multitap is plugged in (#plug_in_multitap). The core reads that one as it
+    # loads a program and makes its ports then, so it cannot be changed while one plays. It is always
+    # given: the core keeps what it read last in the library's own memory, and a copy of the library a
+    # console with a Multitap gave back (KeptCopy) would otherwise keep the tap for the next.
+    MULTITAP_SETTING = "beetle_psx_enable_multitap_port2"
+    SETTINGS = Ractor.make_shareable({ MULTITAP_SETTING => "disabled" })
+    MULTITAP_SETTINGS = Ractor.make_shareable({ MULTITAP_SETTING => "enabled" })
 
     # The picture format the core is let draw in: whichever it asks for, since the picture is read
     # from video RAM and never from what the core hands over.
@@ -138,6 +140,18 @@ module RubyPS1Emulator
 
     # Whether a Multitap is in the second port (#plug_in_multitap).
     def multitap? = @multitap == true
+
+    # What can be in a port (#plug), as libretro names its devices: Sony's digital pad, its Dual Analog
+    # pad (SCPH-1180, which answers as an analog pad, kind 73h, its sticks after its buttons), or nothing
+    # (Beetle's RETRO_DEVICE_PS_ANALOG and RETRO_DEVICE_NONE, in its input.h).
+    PLUGGED = { pad: JOYPAD, analog: 0x105, nothing: 0 }.freeze
+
+    # +kind+ (PLUGGED) in controller +port+ (0 for the first, 1 to 4 a Multitap's plugs), in place of
+    # what was there.
+    def plug(port, kind)
+      @frontend.set_controller_port_device(port, PLUGGED.fetch(kind))
+      self
+    end
 
     # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are read
     # only through a Multitap (#plug_in_multitap); without one, nothing asks for them.
