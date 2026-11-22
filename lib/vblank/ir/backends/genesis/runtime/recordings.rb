@@ -113,9 +113,14 @@ module VBlank
             PLAYING_LOOPS = 10
             PLAYING_BANK_NOW = 11
             PLAYING_OWED = 13 # Samples a stop covered, not yet passed over
+            # A sample owed is paid on one tick in this many, a power of two, so a round's shortfall is
+            # spread over several waves of a recording rather than heard as one short wave. Only a tick
+            # that finds FIFO full pays, so the count is kept low enough to pay a round's stops.
+            OWED_PAID_EVERY = 4
             PLAYING_SILENCE_LEFT = 14 # Chunks of silence to copy before the reader is past the end
             PLAYING_MODE = 15 # MODE_COPIED, MODE_DIRECT or MODE_IDLE
             PLAYING_BACK = 16 # How far back the recording goes round, two bytes: END_AT less LOOP_AT
+            PLAYING_LOOPED = 18 # One once the copy has gone round at least once, nought before
             # How the play under way is read: copied ahead into FIFO, read from the cartridge sample by
             # sample (a play of DIRECT_STEP whole samples a step or more), or none.
             MODE_COPIED = 0
@@ -149,8 +154,12 @@ module VBlank
             FIFO_KEPT_BEHIND = 8
             # How long the 68000 waits before asking again when the Z80 was reading the cartridge as it
             # asked it to keep off, in turns of a one-instruction loop: longer than the Z80 takes over a
-            # chunk.
-            UNSAFE_WAIT = 64
+            # chunk with a tick sounded inside it. A turn of DBRA is 10 of the 68000's cycles, 7/15 of
+            # which are the Z80's: 192 turns are about 900 of the Z80's, against a chunk's 381 and a
+            # tick's 167.
+            UNSAFE_WAIT = 192
+            # UNSAFE while the Z80 may be copying a chunk from the cartridge.
+            UNSAFE_COPYING = 1
             # The instruction the 68000 writes into the Z80's program when it has put an entry in the
             # queue (RST 8, a call to the Z80's address 8, which goes on to where the queue's entry is
             # taken), and the one the Z80 writes back once the queue is empty (NOP). The Z80 writes RST 16
@@ -284,8 +293,10 @@ module VBlank
             # interrupts off from asking for the bus until it lets go: the interrupt never comes inside one
             # of its stops, and a stop of the interrupt's own is over before the main program runs again.
             #
-            # A stop for each, not one for the whole blank. Sonic 3 & Knuckles stops its Z80 once in the
-            # blank and makes every copy and the controller's read inside that one stop. That was tried
+            # A stop for each, not one for the whole blank. The plainest way to keep Sega's two rules, a bus
+            # request round every copy and round every read of the ports (S1 and S3 in
+            # docs/genesis/dma-and-the-sound-processor.md), is to stop the Z80 once in the blank and make
+            # every copy and the controller's read inside that one stop. That was tried
             # here and measured: the blank's work here is mostly the 68000 writing the picture's maps and
             # tiles itself and playing the music, not copies, so one stop for all of it held the DAC still
             # for some sixty samples a frame and lost waves of a recording playing alone. Each copy and
@@ -934,8 +945,9 @@ module VBlank
               z.bytes(0xB7, 0xED, 0x52) # OR A ; SBC HL,DE
               z.word(0x22, playing_at(PLAYING_BACK)) # LD (back),HL
               emit_step_written(z)
-              z.bytes(0xAF) # XOR A: nothing owed
+              z.bytes(0xAF) # XOR A: nothing owed, and not gone round
               z.word(0x32, playing_at(PLAYING_OWED)) # LD (owed),A
+              z.word(0x32, playing_at(PLAYING_LOOPED)) # LD (looped),A
               emit_owed_calls_written(z)
               z.word(0x3A, mailbox_at(Z80_STEP + 1)) # LD A,(step's whole samples)
               z.bytes(0xFE, DIRECT_STEP) # CP direct
@@ -1108,7 +1120,7 @@ module VBlank
               z.jump(0xFA, :full) # JP M: FIFO_FULL or more
               z.label(:fill)
               z.bytes(0xD9) # EXX
-              z.bytes(0x7C) # LD A,H: never nought, in the window or in the silence
+              z.bytes(0x3E, UNSAFE_COPYING) # LD A,copying
               z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
               z.word(0x3A, mailbox_at(BLOCK)) # LD A,(block)
               z.bytes(0xB7) # OR A
@@ -1259,7 +1271,14 @@ module VBlank
               z.bytes(0xAF, 0x90, 0x06, 0x00) # XOR A ; SUB B ; LD B,0
               z.bytes(0xC8) # RET Z
               z.bytes(0xF8) # RET M
-              z.word(0x32, playing_at(PLAYING_OWED)) # LD (owed),A
+              # Added to what is still owed from rounds before, and held at 255.
+              z.bytes(0xE5) # PUSH HL
+              z.word(0x21, playing_at(PLAYING_OWED)) # LD HL,owed
+              z.bytes(0x86) # ADD A,(HL)
+              z.jump(0xD2, :owed_added) # JP NC
+              z.bytes(0x3E, 0xFF) # LD A,255
+              z.label(:owed_added)
+              z.bytes(0x77, 0xE1) # LD (HL),A ; POP HL
               z.bytes(0x3E, ENTRY_OWED) # LD A,the call
               emit_owed_calls_written(z)
               z.bytes(0xC9) # RET
@@ -1268,6 +1287,8 @@ module VBlank
               # short of what is copied, which ends what is owed. Every register but the reader's is kept.
               z.label(:owed)
               z.bytes(0xF5) # PUSH AF
+              z.bytes(0x78, 0xE6, OWED_PAID_EVERY - 1) # LD A,B ; AND every less one
+              z.jump(0xC2, :owed_kept) # JP NZ: not this tick
               z.bytes(0xD9, 0x7B, 0xD9, 0x95) # EXX ; LD A,E ; EXX ; SUB L
               z.bytes(0xFE, FIFO_KEPT_BEHIND) # CP kept behind
               z.jump(0xDA, :owed_paid) # JP C
@@ -1305,12 +1326,20 @@ module VBlank
             # written into the chunk: the recording's end on its last bank, and nought, the window's end,
             # on any other. HL and A are lost. The window's bank register is one bit wide and takes nine
             # writes, the lowest bit first.
+            #
+            # Its two halves are called apart from inside a chunk (#emit_bank_shown_in_chunk):
+            # :bank_registered shows the bank and keeps HL, and :bank_end_noted writes the end.
             def emit_bank_shown(z)
               z.label(:set_bank)
+              z.jump(0xCD, :bank_registered) # CALL
+              z.jump(0xC3, :bank_end_noted) # JP
+              z.label(:bank_registered)
               z.word(0x22, playing_at(PLAYING_BANK_NOW)) # LD (bank now),HL
               z.bytes(0x7D) # LD A,L
               8.times { z.bytes(0x32, 0x00, 0x60, 0x0F) } # LD ($6000),A ; RRCA
               z.bytes(0x7C, 0x32, 0x00, 0x60) # LD A,H ; LD ($6000),A
+              z.bytes(0xC9) # RET
+              z.label(:bank_end_noted)
               z.word(0x3A, playing_at(PLAYING_END_BANK)) # LD A,(end bank, low)
               z.bytes(0xBD) # CP L
               z.jump(0xC2, :not_last) # JP NZ
@@ -1324,6 +1353,14 @@ module VBlank
               z.label(:end_noted)
               emit_end_written(z)
               z.bytes(0xC9) # RET
+            end
+
+            # The bank in HL shown, in the second set inside a chunk: the tick looked for between the
+            # bank's nine writes and the end's, which together take longer than a tick may wait.
+            def emit_bank_shown_in_chunk(z)
+              z.jump(0xCD, :bank_registered) # CALL
+              emit_chunk_tick_looked_for(z)
+              z.jump(0xCD, :bank_end_noted) # CALL
             end
 
             # HL written into the chunk and the direct reader as the end they are held to. A is lost.
@@ -1358,7 +1395,7 @@ module VBlank
               z.jump(0xC2, :recording_ended) # JP NZ: the recording's end, not the window's
               z.word(0x2A, playing_at(PLAYING_BANK_NOW)) # LD HL,(bank now)
               z.bytes(0x23) # INC HL
-              z.call_bank
+              emit_bank_shown_in_chunk(z)
               z.word(0x21, WINDOW) # LD HL,the window's start
               z.jump(0xC3, :copy_moved_on) # JP
               z.label(:recording_ended)
@@ -1369,8 +1406,10 @@ module VBlank
               z.bytes(0x3D) # DEC A
               z.jump(0xC2, :silence_counted) # JP NZ: LOOPS_SILENCE
               z.word(0x2A, playing_at(PLAYING_LOOP_BANK)) # LD HL,(loop bank)
-              z.call_bank
+              emit_bank_shown_in_chunk(z)
               z.label(:loop_in_bank)
+              z.bytes(0x3E, 0x01) # LD A,1
+              z.word(0x32, playing_at(PLAYING_LOOPED)) # LD (looped),A
               z.word(0x2A, playing_at(PLAYING_LOOP_AT)) # LD HL,(loop at)
               z.label(:copy_moved_on)
               emit_chunk_tick_looked_for(z)
@@ -1445,26 +1484,75 @@ module VBlank
               z.bytes(0xD9, 0x7B, 0xD9, 0x95) # EXX ; LD A,E ; EXX ; SUB L: read ahead of the reader
               z.bytes(0xD9, 0x4F, 0x06, 0x00) # EXX ; LD C,A ; LD B,0
               z.bytes(0xB7, 0xED, 0x42) # OR A ; SBC HL,BC
+              emit_glide_place_banked(z)
+              # Behind where the recording goes round, once the copy has gone round: as far before the end.
+              z.word(0x3A, playing_at(PLAYING_LOOPED)) # LD A,(looped)
+              z.bytes(0xB7) # OR A
+              z.jump(0xCA, :glide_placed) # JP Z
+              z.bytes(0xE5) # PUSH HL
+              z.word(0x2A, playing_at(PLAYING_BANK_NOW)) # LD HL,(bank now)
+              z.bytes(0xED)
+              z.word(0x5B, playing_at(PLAYING_LOOP_BANK)) # LD DE,(loop bank)
+              z.bytes(0xB7, 0xED, 0x52, 0xE1) # OR A ; SBC HL,DE ; POP HL
+              z.jump(0xDA, :glide_bank_before) # JP C: a bank before the loop's
+              z.jump(0xC2, :glide_placed) # JP NZ: a bank after it
+              z.bytes(0xED)
+              z.word(0x5B, playing_at(PLAYING_LOOP_AT)) # LD DE,(loop at)
+              z.bytes(0xEB, 0xB7, 0xED, 0x52) # EX DE,HL ; OR A ; SBC HL,DE: the loop's start less the place
+              z.jump(0xDA, :glide_after_loop) # JP C: not before it
+              z.jump(0xC3, :glide_short) # JP
+              z.label(:glide_after_loop)
+              z.bytes(0xEB) # EX DE,HL: the place back
+              z.jump(0xC3, :glide_placed) # JP
+              z.label(:glide_bank_before)
+              z.bytes(0xED)
+              z.word(0x5B, playing_at(PLAYING_LOOP_AT)) # LD DE,(loop at)
+              z.bytes(0xEB, 0xB7, 0xED, 0x52) # EX DE,HL ; OR A ; SBC HL,DE
+              z.word(0x11, WINDOW) # LD DE,the window's size
+              z.bytes(0x19) # ADD HL,DE: and the bank between
+              z.label(:glide_short) # HL how far before the loop's start, under a read-ahead
               z.word(0x3A, playing_at(PLAYING_LOOPS)) # LD A,(loops)
               z.bytes(0x3D) # DEC A
-              z.jump(0xC2, :glide_placed) # JP NZ: no loop in this bank
-              z.label(:glide_back)
-              z.bytes(0xE5, 0xED) # PUSH HL ; LD DE,(loop at)
-              z.word(0x5B, playing_at(PLAYING_LOOP_AT))
-              z.bytes(0xB7, 0xED, 0x52, 0xE1) # OR A ; SBC HL,DE ; POP HL
-              z.jump(0xD2, :glide_placed) # JP NC
+              z.jump(0xC2, :glide_from_end) # JP NZ: a loop in another bank is longer than a read-ahead
+              z.label(:glide_round_again)
               z.bytes(0xED)
               z.word(0x5B, playing_at(PLAYING_BACK)) # LD DE,(back)
-              z.bytes(0x19) # ADD HL,DE
-              z.jump(0xC3, :glide_back) # JP
+              z.bytes(0xE5, 0x37, 0xED, 0x52) # PUSH HL ; SCF ; SBC HL,DE: less a loop and one more
+              z.jump(0xDA, :glide_round_done) # JP C: no more than one loop
+              z.bytes(0x23, 0xE3, 0xE1) # INC HL ; EX (SP),HL ; POP HL: less a loop
+              z.jump(0xC3, :glide_round_again) # JP
+              z.label(:glide_round_done)
+              z.bytes(0xE1) # POP HL
+              z.label(:glide_from_end)
+              z.bytes(0xEB) # EX DE,HL
+              z.word(0x2A, playing_at(PLAYING_END_BANK)) # LD HL,(end bank)
+              z.word(0x22, playing_at(PLAYING_BANK_NOW)) # LD (bank now),HL
+              z.word(0x2A, playing_at(PLAYING_END_AT)) # LD HL,(end at)
+              z.bytes(0xB7, 0xED, 0x52) # OR A ; SBC HL,DE
+              emit_glide_place_banked(z)
               z.label(:glide_placed)
-              z.bytes(0x7C, 0xB7) # LD A,H ; OR A
-              z.jump(0xFA, :glide_in_window) # JP M
-              z.bytes(0x26, WINDOW >> 8) # LD H,the window's start: the bank's start was passed back over
-              z.label(:glide_in_window)
+              z.bytes(0xE5) # PUSH HL
+              z.word(0x2A, playing_at(PLAYING_BANK_NOW)) # LD HL,(bank now)
+              z.call_bank
+              z.bytes(0xE1) # POP HL
               z.bytes(0xE5, 0xD9, 0xE1) # PUSH HL ; EXX ; POP HL
               z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0
               z.jump(0xC3, :direct_loop) # JP
+            end
+
+            # HL, a place counted back from one in the bank PLAYING_BANK_NOW, made a place in the window
+            # again: a place before the window's start is in the bank before. DE and A are lost.
+            def emit_glide_place_banked(z)
+              label = :"glide_banked_#{z.length}"
+              z.bytes(0x7C, 0xB7) # LD A,H ; OR A
+              z.jump(0xFA, label) # JP M: in the window
+              z.word(0x11, WINDOW) # LD DE,the window's size
+              z.bytes(0x19, 0xE5) # ADD HL,DE ; PUSH HL
+              z.word(0x2A, playing_at(PLAYING_BANK_NOW)) # LD HL,(bank now)
+              z.bytes(0x2B) # DEC HL
+              z.word(0x22, playing_at(PLAYING_BANK_NOW)) # LD (bank now),HL
+              z.bytes(0xE1) # POP HL
+              z.label(label)
             end
 
             # A very small Z80 assembler, as much of one as the program above takes: bytes, an instruction

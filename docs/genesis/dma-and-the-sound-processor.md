@@ -430,8 +430,8 @@ inside the same pair of calls (`controls.c`, `_ControllerVBL`).
 
 | | before | after |
 |---|---|---|
-| waves, two pads | 90.2 to 111.0 | 91.9 to 110.1 |
-| waves, a Team Player of three | 68.7 to 124.2 | 91.9 to 109.2 |
+| waves, two pads | 90.2 to 111.0 | 91.9 to 107.7 |
+| waves, a Team Player of three | 68.7 to 124.2 | 91.9 to 107.7 |
 | the Z80's program | 490 bytes | 1047 bytes, of 8192 |
 | the Z80's memory besides | | 256 bytes read ahead, 18 bytes of its own copy of the play |
 | the Z80 stopped for the controllers, a frame | the whole read | two moments of a few instructions |
