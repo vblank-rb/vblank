@@ -24,7 +24,11 @@ class TestExamplesUseEveryVerb < Minitest::Test
   # data pack left out, so it needs one too.
   # colors_name_of gives the name of the list a picture is drawn from, which a game needs only
   # for a pose that takes its colours from a data pack's frame; elsewhere the game wrote the name.
-  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?].freeze
+  # `pulled` reads a trigger pulled part of the way, which varies only on a computer's gamepad, and
+  # L2 and R2 are on no console's pad but the PlayStation's, so an example built for several
+  # consoles could call it only behind a branch for one console. .claude/dsl/input.md shows it.
+  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?
+                          pulled].freeze
 
   def test_every_verb_is_called_in_an_example
     called = Dir[VBlank.root.join("examples/**/*.rb").to_s].each_with_object(Set.new) do |path, names|
