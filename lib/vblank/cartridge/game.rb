@@ -552,17 +552,36 @@ module VBlank
     # file already brought in, as `require` does. Compiled on its own, the file's locals are its
     # own too, and its constants and methods reach every other file. Saying no real path keeps
     # its blocks from being rewritten a second time (DSL::PlainRuby.rewritable?).
+    #
+    # A file of VBlank's own library has its rewritten text kept on disk (Cartridge::GameFileCache),
+    # since the rewrite is most of what loading it costs. A game's file is checked as well as
+    # rewritten, and that depends on the game, so it is always rewritten.
     def require_game_file(name)
       from = caller_locations(1, 1).first.path
       path = File.expand_path("#{name}.rb", File.dirname(from))
       return false if $LOADED_FEATURES.include?(path)
 
-      RubyVM::InstructionSequence.compile(DSL::PlainRuby.rewritten_file(path, loaded_from: File.dirname(from)), path, nil, 1).eval
+      RubyVM::InstructionSequence.compile(rewritten_game_file(path, File.dirname(from)), path, nil, 1).eval
       $LOADED_FEATURES << path
       true
     end
 
     private
+
+    def rewritten_game_file(path, loaded_from)
+      cache = game_file_cache if DSL::PlainRuby.library_file?(path)
+      return DSL::PlainRuby.rewritten_file(path, loaded_from: loaded_from) unless cache
+
+      cache.rewritten(path) { DSL::PlainRuby.rewritten_file(path, loaded_from: loaded_from) }
+    end
+
+    # Nil in a Ractor other than the main one, which cannot share the cache, and when it is off.
+    def game_file_cache
+      return nil unless Ractor.current == Ractor.main
+
+      @game_file_cache = Cartridge::GameFileCache.for_this_process unless defined?(@game_file_cache)
+      @game_file_cache
+    end
 
     def refuse_unsaid_consoles!(title)
       raise ArgumentError, "#{title} does not say which consoles it is for. Add consoles: where the game is " \

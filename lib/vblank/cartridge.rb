@@ -22,5 +22,6 @@ require_relative "cartridge/evaluated_game"  # The one place a game's block beco
 require_relative "cartridge/build_request"   # What a console's build is handed once the game is checked
 require_relative "cartridge/advance_build"   # The Game Boy Advance's build, which lowers to ARM
 require_relative "cartridge/lowered_build"   # The Game Boy Color's and Super Nintendo's builds
+require_relative "cartridge/game_file_cache" # The rewritten text of the library's game-code files, kept on disk
 require_relative "cartridge/game"
 require_relative "cartridge/test_patterns"
