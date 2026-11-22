@@ -94,6 +94,8 @@ module VBlank
 
     class HeardComparison
       SPEAKERS = %i[left right].freeze
+      # What a side of +hearing+ names for a cartridge's sound effects alone, on whichever voices they are.
+      SOUND_EFFECTS = :sound_effects
 
       # Play +presses+ (a Tape, or a Playthrough, whose script is played on +first+ and the presses
       # it made on +second+) on both cartridges from power-on, and compare what each put out.
@@ -109,6 +111,19 @@ module VBlank
       # under it differs, on whichever voice each cartridge plays it. The two lists need not name the
       # same voices, or as many. Every measure is taken of what is heard; no voice is played alone
       # afterwards, since the game has chosen them.
+      #
+      # A side can be +:sound_effects+ in place of its list: that cartridge's sound effects alone,
+      # on whichever voices its sound player put their notes, frame by frame
+      # (`hearing: [:sound_effects, [:voice0]]`). It is for a build whose player moves an effect's
+      # notes between voices the tune also plays on, so no list of voices hears the effect without
+      # some of the tune. Each frame is heard on the voices the effects hold at its end
+      # (Verifier#sound_effect_voices), read off a second console playing a frame ahead, and no
+      # other (VoiceReplay#effects_side says why). The sound chip runs a little behind the
+      # processor, so a frame a voice changes hands on starts with a few samples of whoever had it
+      # before, inside that one frame: an effect alone is heard from the frame it starts on to the
+      # frame it ends on. It needs a cartridge built here, whose build says where its player keeps
+      # who holds each voice, for a console whose player moves an effect's notes between voices:
+      # the Super Nintendo's. Heard so, it plays the tape twice.
       def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], each_speaker: true, each_voice: true,
                     hearing: nil, **tolerances)
         tolerances = HeardTolerances.new(**tolerances)
@@ -216,13 +231,16 @@ module VBlank
       end
       private_class_method :presses_led_in, :refuse_lead_ins_not_pair!, :refuse_unusable_presses!
 
-      # +hearing+ is nil, or each cartridge's voices as a pair of lists, the first's and then the second's.
+      # +hearing+ is nil, or each cartridge's voices as a pair, the first's and then the second's: each
+      # a list of voices or SOUND_EFFECTS.
       def self.refuse_hearing_not_pair!(hearing)
         return if hearing.nil?
-        return if hearing.is_a?(Array) && hearing.size == 2 && hearing.all? { |voices| voices.is_a?(Array) && !voices.empty? }
+        return if hearing.is_a?(Array) && hearing.size == 2 &&
+                  hearing.all? { |voices| voices == SOUND_EFFECTS || (voices.is_a?(Array) && !voices.empty?) }
 
-        raise ArgumentError, "`hearing:` was #{hearing.inspect}. It must be a list of two lists of voices, the first " \
-                             "cartridge's and then the second's: `hearing: [[:square1], [:square2]]`."
+        raise ArgumentError, "`hearing:` was #{hearing.inspect}. It must be a list of two, the first cartridge's voices " \
+                             "and then the second's. Each is a list of voices or :sound_effects: " \
+                             "`hearing: [[:square1], [:square2]]` or `hearing: [:sound_effects, [:voice0]]`."
       end
       private_class_method :refuse_hearing_not_pair!
 
@@ -256,6 +274,8 @@ module VBlank
             raise ArgumentError, "`hearing:` names voices, and this cartridge's emulator cannot play a voice alone. " \
                                  "To fix this, remove `hearing:`."
           end
+          return refuse_unfollowable_effects! if voices == SOUND_EFFECTS
+
           unknown = voices - known
           return if unknown.empty?
 
@@ -263,8 +283,29 @@ module VBlank
                                "#{unknown.join(', ')}. Its voices are #{known.map(&:inspect).join(', ')}."
         end
 
-        # The Side of +voices+ alone over +tape+'s frames.
+        # :sound_effects refused where nothing can say which voices the effects hold on each frame: a
+        # console whose player keeps each part of an effect on one voice, which a list can name, or a
+        # cartridge not built here, whose build record would say where its player keeps that.
+        def refuse_unfollowable_effects!
+          reader = Playthrough.power_on(@cartridge)
+          unless reader.respond_to?(:sound_effect_voices)
+            raise ArgumentError, "`hearing:` asks for :sound_effects, and on this console each part of a sound effect " \
+                                 "plays on one voice. To fix this, name the voices of the effect: " \
+                                 "`hearing: [[:square2], [:square2]]`."
+          end
+          return if Playthrough.cartridge_from(@cartridge).built
+
+          raise ArgumentError, "`hearing:` asks for :sound_effects of a cartridge that was not built here. Nothing " \
+                               "says which voices its sound player gives its effects. To fix this, name the voices " \
+                               "of that cartridge: `hearing: [:sound_effects, [:voice0]]`."
+        ensure
+          reader&.close
+        end
+
+        # The Side of +voices+ alone over +tape+'s frames, or of the sound effects alone (SOUND_EFFECTS).
         def side(tape, voices)
+          return effects_side(tape) if voices == SOUND_EFFECTS
+
           reader = Playthrough.power_on(@cartridge)
           reader.hearing(only: voices)
           @lead_in&.play_as_lead_in(reader)
@@ -274,6 +315,36 @@ module VBlank
           Side.of(Played.new(game: reader, frames: tape.frames), @heard_above)
         ensure
           reader&.close
+        end
+
+        # The Side of the sound effects alone over +tape+'s frames.
+        #
+        # ### Why a second console plays a frame ahead
+        #
+        # The sound player decides who holds each voice as a frame is played, and the chip sounds
+        # that frame's notes before it ends. So which voices to hear on a frame is known only once
+        # it has been played. A second console, +ahead+, plays each frame first, on the same
+        # presses, and the console heard then plays it with the voices the effects held at its end.
+        # Heard with the voices held at the end of the frame before, an effect's first frame would
+        # be silent; and with those as well, the frame after each of its notes would carry the
+        # tune's next note there, since a recording's place stays held for a frame after its last
+        # sample. What is left is the few samples of a frame the chip plays before a change reaches
+        # it, inside the frame either way.
+        def effects_side(tape)
+          heard = Playthrough.power_on(@cartridge)
+          ahead = Playthrough.power_on(@cartridge)
+          heard.hearing(only: [])
+          [heard, ahead].each { |reader| @lead_in&.play_as_lead_in(reader) }
+          tape.presses_within(1..tape.frames).each do |stretch|
+            keys = IR::Buttons.mask(stretch.buttons)
+            stretch.frames.size.times do
+              heard.hearing(only: ahead.step(1, keys: keys).sound_effect_voices).step(1, keys: keys)
+            end
+          end
+          Side.of(Played.new(game: heard, frames: tape.frames), @heard_above)
+        ensure
+          heard&.close
+          ahead&.close
         end
       end
       private_constant :VoiceReplay

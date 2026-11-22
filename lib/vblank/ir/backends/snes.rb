@@ -74,9 +74,16 @@ module VBlank
         # sign spread upward; +unsigned_lists+ the lists kept in two-byte slots read back with no sign.
         # +bytes+ gives what the cartridge's sections come to, as :code (what the processor runs) and
         # :data (what it only reads or sends on), for the size check (tools/emitted_snes_probe.rb).
+        # +sound_effect_voicing+ says how to read which voices the sound effects hold as it runs
+        # (Runtime::Effects::HeldVoices).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
-                             :sound_memory, :slot_places, :half_variables, :unsigned_lists, :bytes) do
+                             :sound_memory, :slot_places, :half_variables, :unsigned_lists, :bytes,
+                             :sound_effect_voicing) do
+          # The voices, by number, the game's sound effects hold now, read through +read16+ (a word of
+          # work RAM at an address).
+          def sound_effect_voices(&read16) = sound_effect_voicing.voices(runtime, &read16)
+
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -269,7 +276,7 @@ module VBlank
                              console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
                              sound_memory: runtime.sound_memory, slot_places: lowering.slot_places,
                              half_variables: lowering.half_variables_kept, unsigned_lists: lowering.unsigned_lists,
-                             bytes: byte_counts(linked))
+                             bytes: byte_counts(linked), sound_effect_voicing: lowering.sound_effect_voicing)
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }

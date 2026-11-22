@@ -37,7 +37,10 @@ module VBlank
     #   hearing:                   the voices heard on each side, the first cartridge's and then the
     #                              second's, by the names the console's reader gives them
     #                              (`hearing: [[:square2], [:square1]]`), for one sound held to the
-    #                              original's on whichever voice each plays it, while the rest differs
+    #                              original's on whichever voice each plays it, while the rest differs;
+    #                              a side can be :sound_effects, that cartridge's effects alone on
+    #                              whichever voices its player put them each frame
+    #                              (`hearing: [:sound_effects, [:voice0]]`)
     #   wav:                       a path to write both sounds to, for a person to hear (optional), with
     #   wav_layout:                :in_turn (the first, then the second) or :side_by_side (the first on
     #                              the left speaker, the second on the right); :in_turn if left out
@@ -163,6 +166,8 @@ module VBlank
       end
 
       def self.voice_list_words(voices)
+        return "the sound effects, on the voices they held" if voices == Playthroughs::HeardComparison::SOUND_EFFECTS
+
         *most, last = voices
         "the #{most.empty? ? last : "#{most.join(', ')} and #{last}"} #{voices.size == 1 ? 'voice' : 'voices'}"
       end

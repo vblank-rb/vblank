@@ -77,6 +77,44 @@ module VBlank
 
             CHANNELS = (1..4).freeze
 
+            # Which of the sound chip's voices the game's sound effects hold, read off a running
+            # cartridge by a reader that has the build's record (Diagnostics::SNESReading#sound_effect_voices).
+            #
+            # An effect's notes do not keep to one voice. A part of the console's own kind (a square,
+            # the wave, the noise) plays on its channel's voice (DSPWrites::CHANNEL_VOICES) while the
+            # effect holds that channel, which HOLDERS says by rank: +effect_ranks+ is the places in
+            # the rank order that are effects' (SongTable#effect_rank_places). A part that plays a
+            # recording takes a place of Recordings each note, whichever is free or ranks lowest, and
+            # the place sounds on its voice (+recording_voices+, the first place's first): an effect
+            # holds the place while it is not free and its owner is an effect's (Recordings::OWNER,
+            # EFFECT_OWNER and over), its note's fall included.
+            #
+            # Nothing here is in the cartridge: it is worked out from the build, so a game's bytes are
+            # the same whether or not a test asks.
+            HeldVoices = Data.define(:effect_ranks, :recording_voices) do
+              # The voices, by number, the effects hold as +runtime+ (the build's runtime places) and
+              # +read16+ (a word of work RAM at an address) show them now, lowest first.
+              def voices(runtime, &read16)
+                (console_voices(runtime, &read16) + recorded_voices(runtime, &read16)).uniq.sort
+              end
+
+              private
+
+              def console_voices(runtime)
+                at = runtime[HOLDERS] or return []
+                CHANNELS.select { |channel| effect_ranks.include?(yield(at + ((channel - 1) * 2))) }
+                        .map { |channel| DSPWrites::CHANNEL_VOICES.fetch(channel) }
+              end
+
+              def recorded_voices(runtime)
+                at = runtime[Recordings::PLACES_STATE] or return []
+                recording_voices.each_with_index.select do |_, place|
+                  state = at + (place * Recordings::PLACE_BYTES)
+                  yield(state + Recordings::HELD).nonzero? && yield(state + Recordings::OWNER) >= Recordings::EFFECT_OWNER
+                end.map(&:first)
+              end
+            end
+
             module_function
 
             def reserve(memory, effects)

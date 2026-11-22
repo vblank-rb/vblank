@@ -233,6 +233,11 @@ module VBlank
         # The sound effects' names (#song_writes' Voicing).
         def effect_names = @effect_names.dup
 
+        # The places in the rank order (#ranks) that are sound effects' ranks rather than a song's or
+        # nobody's: what the table's rank kinds mark 1 (RANK_KINDS_AT). A player keeps who holds a
+        # voice as a place, so a reader tells an effect's voice from the tune's by these.
+        def effect_rank_places = ranks.each_index.reject { |place| (ranks[place] & IR::Tunes::ORDER_MASK).zero? }
+
         # Each song's parts, effects' included, by [the song's name, its channel] (#song_writes' Voicing).
         def parts
           @songs.each_with_object({}) do |song, held|
@@ -308,7 +313,7 @@ module VBlank
           table[BY_RANK_AT / 2] = table.size * 2
           table.concat([effects.size, *effects.each_index.sort_by { |e| -effects[e][:rank] }])
           table[RANK_KINDS_AT / 2] = table.size * 2
-          table.concat(ranks.map { |full| (full & IR::Tunes::ORDER_MASK).zero? ? 0 : 1 })
+          table.concat(ranks.each_index.map { |place| effect_rank_places.include?(place) ? 1 : 0 })
           lay_out_lists(table, EFFECT_LISTS_AT, @effect_lists.map { |list| list.effects.map { |name| @effect_names.index(name) } })
           refuse_table_too_long!(table)
           table

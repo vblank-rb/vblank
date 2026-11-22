@@ -169,6 +169,12 @@ module VBlank
             # What the DSP writes for this game's sound-log entries are worked out with.
             def sound_voicing = DSPWrites::Voicing.new(waves: @sound_waves, parts: @music.parts, effects: @music.effect_names)
 
+            # What a reader needs to tell which voices the sound effects hold as the game runs.
+            def sound_effect_voicing
+              Runtime::Effects::HeldVoices.new(effect_ranks: @music.effect_rank_places,
+                                               recording_voices: SNES::Music.recording_voices(@program))
+            end
+
             # The sections of the game's songs (SNES::Music), each note's sound-log entries numbered
             # among the rest, over as many banks as they need (SongBanks::Laid).
             def songs_laid_out

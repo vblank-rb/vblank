@@ -44,6 +44,10 @@ module HeardAlikeTests
   # Whether this console's emulator can play one voice alone, so a failure names the voice.
   private def voices_heard_alone? = true
 
+  # Whether this console's build moves a sound effect's notes between voices, so `hearing:` can
+  # follow them (:sound_effects).
+  private def sound_effects_followed? = false
+
   # +plays+ :wave puts the tune on the wave voice, which every console here can place on one speaker
   # (a Genesis's square voices sound from both).
   private def tune_game(starts: START, loudness: 15, last: :quarter, second_note: :C5, speaker: nil, plays: nil)
@@ -284,6 +288,23 @@ module HeardAlikeTests
       assert_match "Heard alone: the #{part_voices.first} voice on the first cartridge and the #{part_voices.last} voice " \
                    "on the second", failure.message
       assert_match "heard at different levels", failure.message
+    end
+  end
+
+  # A side heard as :sound_effects follows the voices a build's effects hold, which only a console
+  # whose build moves an effect's notes between voices needs. Elsewhere each part of an effect keeps
+  # one voice, which a list names, and it is refused saying so. Where it is followed, a tune with no
+  # sound effects is silent.
+  def test_sound_effects_alone_are_followed_only_where_they_move
+    hearing = [:sound_effects, [part_voices.first]]
+    if sound_effects_followed?
+      compared = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **alike_settings, hearing: hearing)
+      refute_predicate compared.first, :heard?
+    else
+      error = assert_raises(ArgumentError) do
+        VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **alike_settings, hearing: hearing)
+      end
+      assert_match "each part of a sound effect plays on one voice", error.message
     end
   end
 

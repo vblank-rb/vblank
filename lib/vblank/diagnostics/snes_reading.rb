@@ -117,6 +117,21 @@ module VBlank
         place = @rom.built.runtime[IR::Backends::SNES::Runtime::Music::PLAYING] or return nil
         IR::Tunes.song_numbered(@rom.source_program, mem16(place))
       end
+
+      # The voices the game's sound effects hold now, by the names #channels gives them, as the
+      # frames played so far left the sound player (IR::Backends::SNES::Runtime::Effects::HeldVoices):
+      # empty when no effect sounds. The player puts an effect's notes on whichever voice is free or
+      # ranks lowest, so they move from note to note, and the tune's notes take the voices between.
+      # The player runs on the main processor, which hands each note to the sound unit through its
+      # four ports (fullsnes, "SNES APU Main CPU Communication Port"), so the chip sounds it a few
+      # samples after the player decided it.
+      #
+      # @return [Array<Symbol>]
+      def sound_effect_voices
+        refuse_missing_build_record!("which voices its sound effects hold")
+        ensure_rendered!
+        @rom.built.sound_effect_voices { |address| mem16(address) }.map { |voice| channels.fetch(voice) }
+      end
     end
   end
 end

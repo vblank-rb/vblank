@@ -13,4 +13,7 @@ class TestHeardAlikeOnTheSuperNintendo < Minitest::Test
 
   # A song's parts take the sound chip's voices in order from the first.
   private def part_voices = %i[voice0 voice1]
+
+  # The build puts a recorded note of an effect in whichever place is free or ranks lowest.
+  private def sound_effects_followed? = true
 end
