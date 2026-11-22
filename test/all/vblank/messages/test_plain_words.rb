@@ -234,28 +234,12 @@ class TestPlainWords < Minitest::Test
   # Give PlainWords a different answer for the length of the block. A reader that really asks
   # it says the new word; one that kept a copy of its own carries on saying the old one, which
   # is the drift this file exists to catch.
-  # Put back by name, not by handing the old method back to be defined again. A method
-  # defined from a block or from another method's handle carries that block with it, and
-  # Ruby will not let a method like that be called from another core — so restoring it that
-  # way left the real one permanently unusable, for the whole run, in every other file that
-  # builds anything. Keeping the original under a second name and aliasing it back leaves a
-  # real method behind.
-  #
   # The stand-in answers only on the main Ractor. This class runs there, but the workers playing the
-  # other files run beside it, and a build in one of them asks PlainWords too. A method defined from
-  # a block nobody made shareable stops such a call with "defined with an un-shareable Proc in a
-  # different Ractor", so the stand-in is made shareable (SwappedWords), and a worker asking while it
-  # is in place is handed the real answer.
-  def while_it_says(method, said)
-    kept = :"__real_#{method}"
-    PlainWords.singleton_class.alias_method(kept, method)
-    PlainWords.singleton_class.remove_method(method)
-    PlainWords.define_singleton_method(method, SwappedWords.stand_in(method, said))
-    yield
-  ensure
-    PlainWords.singleton_class.remove_method(method)
-    PlainWords.singleton_class.alias_method(method, kept)
-    PlainWords.singleton_class.remove_method(kept)
+  # other files run beside it, and a build in one of them asks PlainWords too, so a worker asking
+  # while it is in place is handed the real answer (SwappedWords). RactorWorkers#while_swapped says
+  # how the swap keeps the method callable from every Ractor.
+  def while_it_says(method, said, &)
+    while_swapped(PlainWords, method, SwappedWords.stand_in(method, said), &)
   end
 
   def checks
