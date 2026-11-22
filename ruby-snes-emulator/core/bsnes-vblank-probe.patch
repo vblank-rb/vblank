@@ -159,7 +159,7 @@ diff --git a/bsnes/target-libretro/libretro.cpp b/bsnes/target-libretro/libretro
 index fc7f32118..afb26a717 100644
 --- a/bsnes/target-libretro/libretro.cpp
 +++ b/bsnes/target-libretro/libretro.cpp
-@@ -9,24 +9,31 @@ static retro_input_poll_t input_poll;
+@@ -9,24 +9,32 @@ static retro_input_poll_t input_poll;
  static retro_input_state_t input_state;
  static retro_log_printf_t libretro_print;
  
@@ -167,7 +167,8 @@ index fc7f32118..afb26a717 100644
 +// and the buttons are asked for from those stacks. A frontend written in a language with a garbage
 +// collector that scans the stack (Ruby through Fiddle) must not be called from there, so the sound
 +// is kept here and handed over once retro_run is back on the frontend's own stack, and the buttons
-+// are asked of the frontend there before the frame runs, and answered from that copy.
++// are asked of the frontend there before the frame runs, and answered from that copy. A Super
++// Multitap in the second port asks for libretro's ports 1 to 4 (pollInputDevices), so five are kept.
  #define SAMPLERATE 48000
 -#define AUDIOBUFSIZE (SAMPLERATE/50) * 2
 +#define AUDIOBUFSIZE SAMPLERATE * 2
@@ -176,7 +177,7 @@ index fc7f32118..afb26a717 100644
 -static uint16_t audio_buffer_max = AUDIOBUFSIZE;
 +static uint32_t audio_buffer_index = 0;
 +static uint32_t audio_buffer_max = AUDIOBUFSIZE;
-+static int16_t vblank_joypad[2][16];
++static int16_t vblank_joypad[5][16];
  
  static int run_ahead_frames = 0;
  
@@ -199,17 +200,17 @@ index fc7f32118..afb26a717 100644
  }
  
  #include "program.cpp"
-@@ -624,6 +631,9 @@ RETRO_API void retro_run()
+@@ -624,6 +632,9 @@ RETRO_API void retro_run()
  {
  	check_variables();
  	input_poll();
-+	for (unsigned port = 0; port < 2; port++)
++	for (unsigned port = 0; port < 5; port++)
 +		for (unsigned id = 0; id < 16; id++)
 +			vblank_joypad[port][id] = input_state(port, RETRO_DEVICE_JOYPAD, 0, id);
  
  	bool is_fast_forwarding = false;
  	environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &is_fast_forwarding);
-@@ -631,6 +641,7 @@ RETRO_API void retro_run()
+@@ -631,6 +642,7 @@ RETRO_API void retro_run()
  		emulator->run();
  	else
  		run_with_runahead(run_ahead_frames);
@@ -217,7 +218,7 @@ index fc7f32118..afb26a717 100644
  }
  
  RETRO_API size_t retro_serialize_size()
-@@ -769,14 +780,62 @@ RETRO_API unsigned retro_get_region()
+@@ -769,14 +781,62 @@ RETRO_API unsigned retro_get_region()
  	return program->superFamicom.region == "NTSC" ? RETRO_REGION_NTSC : RETRO_REGION_PAL;
  }
  
@@ -305,7 +306,7 @@ index 9a5b12b98..084692faf 100644
  
 -	return input_state(libretro_port, libretro_device, libretro_index, libretro_id);
 +	//VBlank probe: answered from the copy retro_run took (see libretro.cpp), a joypad's alone.
-+	if (libretro_device == RETRO_DEVICE_JOYPAD && libretro_port < 2 && libretro_id < 16)
++	if (libretro_device == RETRO_DEVICE_JOYPAD && libretro_port < 5 && libretro_id < 16)
 +		return vblank_joypad[libretro_port][libretro_id];
 +	return 0;
  }

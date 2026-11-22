@@ -166,6 +166,52 @@ class TestCore < Minitest::Test
     refute_equal [0x5A], @core.save_ram.bytes.uniq, "the new console started from the dropped console's save"
   end
 
+  # Reads the second port as a program for a Super Multitap does (fullsnes, "SNES Controllers
+  # Multiplayer 5"): JOYSER1 ($4017) with the latch held high, then low with WRIO's top bit set,
+  # then with it clear, each read's byte stored at $0100, $0101 and $0102.
+  MULTITAP_READ = [
+    0x78,             # SEI
+    0xA9, 0x01,       # LDA #$01
+    0x8D, 0x16, 0x40, # STA $4016    latch high
+    0xAD, 0x17, 0x40, # LDA $4017    a tap answers 1 on its second line while latched
+    0x8D, 0x00, 0x01, # STA $0100
+    0x9C, 0x16, 0x40, # STZ $4016    latch low: the buttons are held
+    0xAD, 0x17, 0x40, # LDA $4017    B of the controllers on its first two plugs
+    0x8D, 0x01, 0x01, # STA $0101
+    0xA9, 0x7F,       # LDA #$7F
+    0x8D, 0x01, 0x42, # STA $4201    WRIO: the top bit clear picks the other two plugs
+    0xAD, 0x17, 0x40, # LDA $4017    B of the controllers on its last two plugs
+    0x8D, 0x02, 0x01, # STA $0102
+    0x80, 0xFE        # BRA -2
+  ].freeze
+
+  # Ports 1 to 4 are the four plugs of a tap in the second port: B held on the second plug and on
+  # the third, which a program reads on JOYSER1's second line, then on its first.
+  def test_a_multitap_in_the_second_port_hands_over_four_controllers
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, MULTITAP_READ))
+    core.plug_in_multitap
+    core.set_buttons(%i[b], port: 2)
+    core.set_buttons(%i[b], port: 3)
+    core.run_frame
+
+    assert_equal 0b10, core.wram_read8(0x0100) & 0b11, "the tap is seen"
+    assert_equal 0b10, core.wram_read8(0x0101) & 0b11, "the second plug's B, and not the first's"
+    assert_equal 0b01, core.wram_read8(0x0102) & 0b01, "the third plug's B"
+  ensure
+    core&.destroy
+  end
+
+  def test_a_plain_controller_in_the_second_port_is_not_a_multitap
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, MULTITAP_READ))
+    core.set_buttons(%i[b], port: 2)
+    core.run_frame
+
+    assert_equal 0, core.wram_read8(0x0100) & 0b10
+    assert_equal 0, core.wram_read8(0x0101) & 0b10, "nothing answers on the second line"
+  ensure
+    core&.destroy
+  end
+
   # Opened on a thread of its own and let go of there: Ruby looks for what is still held on every
   # stack, and a word left on the test's own could keep the console from being collected. Hands
   # back a weak reference, which says whether the console is still alive without keeping it so.

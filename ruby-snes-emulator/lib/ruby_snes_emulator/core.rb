@@ -57,6 +57,9 @@ module RubySNESEmulator
     XRGB8888 = 1
 
     JOYPAD = 1
+    # libretro's joypad with a subclass of bsnes's own: a Super Multitap (RETRO_DEVICE_SUBCLASS of
+    # the joypad, in bsnes's target-libretro/libretro.cpp).
+    MULTITAP = 0x101
 
     # The console's picture: 256 pixels across and 224 lines down, the lines a television showed
     # of a game that does not ask for the taller 239.
@@ -82,12 +85,22 @@ module RubySNESEmulator
       load_cartridge(rom_path)
     end
 
-    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS).
+    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are
+    # read only through a Super Multitap (#plug_in_multitap); without one, nothing asks for them.
     def set_buttons(buttons, port: 0)
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a Super Nintendo controller has no #{unknown.join(', ')} button" unless unknown.empty?
 
       @frontend.set_buttons(port, buttons.sum { |button| 1 << BUTTONS.fetch(button) })
+    end
+
+    # A Super Multitap in the second port, in place of the controller there: four plugs, each a
+    # controller of its own (ports 1 to 4 of #set_buttons). The console reads two of them at a
+    # time, picked by its I/O port's top bit (WRIO, $4201), and a game finds the tap by reading
+    # the port while the latch is high (fullsnes, "SNES Controllers Multiplayer 5").
+    def plug_in_multitap
+      @frontend.set_controller_port_device(1, MULTITAP)
+      self
     end
 
     # Plays one frame: up to the moment the console starts its next picture.
