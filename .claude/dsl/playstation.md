@@ -36,7 +36,6 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `timer` — works: a timer ticks by the frame, as the interpreter counts it.
 - `pixel` — works: the same as on the Advance.
 - `fill_rect` — works: the same as on the Advance.
-- `dma_fill_rect` — works: the same as on the Advance.
 - `draw_rect_at` — works: the same as on the Advance.
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the program.

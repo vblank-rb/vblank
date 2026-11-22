@@ -15,7 +15,7 @@ module VBlank
           # game runs is one of two.
           module Paint
             STATEMENT_KINDS = %i[
-              screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
+              screen clear_screen fill_rect draw_rect_at pixel inside blit blit_pose draw_text
               draw_digit save_region restore_region
             ].freeze
 
@@ -24,7 +24,6 @@ module VBlank
               when :screen then emit_screen(node)
               when :clear_screen then emit_clear_screen(node)
               when :fill_rect then emit_fill_rect(node)
-              when :dma_fill_rect then emit_fill_rect(node)
               when :draw_rect_at then emit_fill_rect(node)
               when :pixel then emit_pixel(node)
               when :inside then emit_inside(node)
@@ -197,7 +196,7 @@ module VBlank
             # Reference#exec_clear_screen: the whole area drawing is held to, the whole screen outside any.
             def emit_clear_screen(node) = runtime_call("rt_paint_clear", [rectangle_command(node.color)])
 
-            # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
+            # Reference#exec_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
               runtime_call("rt_paint_fill", [*[node.x, node.y, node.w, node.h].map { |edge| build_value_node(edge) },
                                              rectangle_command(node.color)])

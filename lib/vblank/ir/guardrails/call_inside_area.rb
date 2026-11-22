@@ -52,7 +52,7 @@ module VBlank
           # feeds. Kept apart from TiledDisplay::BITMAP_DRAWS, which means a different
           # thing (what a tiled screen never shows), though today the two hold the same
           # draws.
-          CLIPPED_DRAWS = %i[pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
+          CLIPPED_DRAWS = %i[pixel fill_rect draw_rect_at draw_column_at
                               blit blit_pose clear_screen draw_text draw_digit].freeze
 
           # The two ways of calling a routine: by its name, and picked by number from a list.

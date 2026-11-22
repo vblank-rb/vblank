@@ -223,7 +223,7 @@ class TestCopyEngine < Minitest::Test
       hero = sprite :dot, at: [20, 20]
       game_loop do
         clear_screen :black
-        dma_fill_rect 10, 10, 40, 3, :green
+        fill_rect 10, 10, 40, 3, :green
         draw_rect_at x, 40, 9, 6, :white
         blit :dot, x, 60
         hero.move :right

@@ -17,7 +17,7 @@ class TestWholeScreen < Minitest::Test
 
   def test_a_fill_from_the_corner_as_big_as_the_screen_covers_it
     assert WholeScreen.covers_screen?(fill_rect(0, 0, 240, 160, :blue), SCREEN)
-    assert WholeScreen.covers_screen?(dma_fill_rect(0, 0, 240, 160, :blue), SCREEN)
+    assert WholeScreen.covers_screen?(fill_rect(0, 0, 240, 160, :blue), SCREEN)
     assert WholeScreen.covers_screen?(draw_rect_at(0, 0, 240, 160, :blue), SCREEN), "numbers written as values"
   end
 

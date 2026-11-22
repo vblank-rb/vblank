@@ -831,7 +831,7 @@ module VBlank
           program set add sub copy negate abs negate_abs clamp save_init save_store save_write save_erase
           save_load_list save_store_list if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy list_pack
           list_sort blit blit_pose save_region restore_region call call_one_of case halt wait_vblank
-          hide_sprites rumble screen clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
+          hide_sprites rumble screen clear_screen pixel fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
           affine_background background_colors color_list_holds show_picture_group scroll_rows shade_outside
           show_light_now camera fade tint pixelate see_through present_objects set_tile set_tile_block show_held_tiles
@@ -888,7 +888,6 @@ module VBlank
           when :clear_screen then exec_clear_screen(node)
           when :pixel then exec_pixel(node)
           when :fill_rect then exec_fill_rect(node)
-          when :dma_fill_rect then exec_dma_fill_rect(node)
           when :draw_rect_at then exec_draw_rect_at(node)
           when :draw_column_at then exec_draw_column_at(node)
           when :draw_place then exec_draw_place(node)
@@ -1199,14 +1198,6 @@ module VBlank
         end
 
         def exec_fill_rect(node)
-          @screen.fill_rect(eval_value(node.x), eval_value(node.y),
-                            eval_value(node.w), eval_value(node.h),
-                            resolve_color(node.color))
-        end
-
-        def exec_dma_fill_rect(node)
-          # Same picture as fill_rect — the "DMA" is only how a console fills it
-          # fast; the pixels that land are identical.
           @screen.fill_rect(eval_value(node.x), eval_value(node.y),
                             eval_value(node.w), eval_value(node.h),
                             resolve_color(node.color))

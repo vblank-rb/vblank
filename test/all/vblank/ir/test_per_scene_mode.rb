@@ -30,7 +30,7 @@ module PerSceneModeGames
       scene :play do
         screen :bitmap, tear_free: true # this scene is double-buffered
         clear_screen :blue
-        dma_fill_rect 100, 76, 8, 8, :green
+        fill_rect 100, 76, 8, 8, :green
       end
       game_loop do
         wait_vblank

@@ -59,14 +59,6 @@ class TestIRBackendReferenceHardware < Minitest::Test
     assert_equal 0, i.screen.pixel(8, 5)                      # just outside
   end
 
-  def test_dma_fill_rect_paints_a_block
-    # Same picture as fill_rect — the "DMA" is only how a console fills it fast.
-    i = run_ir(program(dma_fill_rect(4, 6, 4, 2, :red)))
-    assert_equal Color.resolve(:red), i.screen.pixel(4, 6)
-    assert_equal Color.resolve(:red), i.screen.pixel(7, 7) # bottom-right (4+4-1, 6+2-1)
-    assert_equal 0, i.screen.pixel(8, 6)                    # just outside
-  end
-
   def test_draw_rect_at_positions_the_block_from_variables
     # The moving-object draw: its position comes from variables at run time.
     i = run_ir(program(

@@ -42,7 +42,7 @@ class TestPerSceneModeCartridge < Minitest::Test
       Build.func(:_scene_gallery, *(1..250).map { |c| Build.pixel(0, 0, c) }),
       # The buffered scene uses just a few colors.
       Build.func(:_scene_play, Build.screen(:bitmap, buffered: true),
-                 Build.clear_screen(:blue), Build.dma_fill_rect(0, 0, 8, 8, :green)),
+                 Build.clear_screen(:blue), Build.fill_rect(0, 0, 8, 8, :green)),
       Build.loop_(Build.wait_vblank,
                   Build.case_(:state, [[0, :_scene_gallery], [1, :_scene_play]])),
     )

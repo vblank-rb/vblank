@@ -40,7 +40,7 @@ class TestRubyGBAEmulatorTiming < Minitest::Test
       screen :bitmap
       clear_screen :black
       b = self
-      game_loop { b.dma_fill_rect 0, 0, 200, 100, :red }
+      game_loop { b.fill_rect 0, 0, 200, 100, :red }
     end
   end
 

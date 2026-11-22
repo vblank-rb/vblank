@@ -47,7 +47,7 @@ class TestSpriteGuardrails < Minitest::Test
   end
 
   def test_flags_a_full_screen_fill_over_a_sprite
-    prog = a_heart { |hero| dma_fill_rect 0, 0, 240, 160, :black; hero.x += 1 }
+    prog = a_heart { |hero| fill_rect 0, 0, 240, 160, :black; hero.x += 1 }
     assert_equal 1, Cleared.new.detect(prog).length, "a full-screen fill is a clear too"
   end
 

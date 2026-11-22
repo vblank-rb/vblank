@@ -62,7 +62,6 @@ module VBlank
         # painted — these happen where the call happens
         pixel: :painted,
         fill_rect: :painted,
-        dma_fill_rect: :painted,
         draw_rect_at: :painted,
         draw_column_at: :painted,
         fill_face: :painted,

@@ -69,10 +69,6 @@ class TestIRGuardrailOffScreenDraw < Minitest::Test
     assert_equal 1, off_screen_warnings(program(pixel(W + 5, 40, :red))).size
   end
 
-  def test_an_off_screen_dma_fill_warns
-    assert_equal 1, off_screen_warnings(program(dma_fill_rect(40, H + 4, 8, 8, :blue))).size
-  end
-
   def test_an_off_screen_draw_rect_at_with_constant_position_warns
     assert_equal 1, off_screen_warnings(program(draw_rect_at(-40, 40, 8, 8, :green))).size
   end

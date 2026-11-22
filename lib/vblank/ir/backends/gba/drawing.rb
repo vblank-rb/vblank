@@ -31,7 +31,7 @@ module VBlank
         class Drawing
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[
-            screen pixel fill_rect clear_screen dma_fill_rect draw_rect_at draw_column_at draw_text draw_digit
+            screen pixel fill_rect clear_screen draw_rect_at draw_column_at draw_text draw_digit
             blit blit_pose background save_region restore_region
           ].freeze
 
@@ -41,7 +41,6 @@ module VBlank
             when :pixel then emit_pixel(node)
             when :fill_rect then emit_fill_rect(node)
             when :clear_screen then emit_clear_screen(node)
-            when :dma_fill_rect then emit_fill_rect(node)
             when :draw_rect_at then emit_draw_rect_at(node)
             when :draw_column_at then emit_draw_column_at(node)
             when :draw_text then emit_draw_text(node)

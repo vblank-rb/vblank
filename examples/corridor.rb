@@ -119,13 +119,13 @@ module Corridor
 
       game_loop do
         # The status bar first, so the view is painted over a clean strip either way.
-        dma_fill_rect 0, VIEW_H, 240, BAR_H, BAR
+        fill_rect 0, VIEW_H, 240, BAR_H, BAR
 
         inside 0, 0, 240, VIEW_H do
           # The room: sky down to the eye line, boards below it. Two block fills, so the
           # backdrop costs the same however much of it a wall ends up covering.
-          dma_fill_rect 0, 0, 240, HORIZON, SKY
-          dma_fill_rect 0, HORIZON, 240, VIEW_H - HORIZON, FLOOR
+          fill_rect 0, 0, 240, HORIZON, SKY
+          fill_rect 0, HORIZON, 240, VIEW_H - HORIZON, FLOOR
 
           repeat(cols) do |col|
             # Fan the rays across the view: this column looks a little left or right of center,

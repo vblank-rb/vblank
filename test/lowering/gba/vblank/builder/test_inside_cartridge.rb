@@ -37,7 +37,7 @@ class TestInsideCartridge < Minitest::Test
         clear_screen :black
         tall = 90
         inside(*AREA) do
-          dma_fill_rect 0, 0, 240, 160, :green
+          fill_rect 0, 0, 240, 160, :green
           (0...240).step(20) { |x| draw_column_at :bars, slice: 0, x: x, top: -20, height: tall }
           draw_column_at :bars, slice: 1, x: 38, top: 0, height: 60, width: 4
           draw_column_at :bars, slice: 1, x: 156, top: 0, height: 60, width: 4
@@ -45,7 +45,7 @@ class TestInsideCartridge < Minitest::Test
           pixel 10, 10, :blue
           pixel 100, 100, :blue
         end
-        dma_fill_rect 0, 150, 240, 10, :blue
+        fill_rect 0, 150, 240, 10, :blue
       end
     end
 
@@ -60,12 +60,12 @@ class TestInsideCartridge < Minitest::Test
       game_loop do
         tall = 240
         inside(*AREA) do
-          dma_fill_rect 0, 0, 240, 160, :green
+          fill_rect 0, 0, 240, 160, :green
           (0...240).step(6) { |x| draw_column_at :bars, slice: 0, x: x, top: -40, height: tall }
           draw_column_at :bars, slice: 1, x: 38, top: 0, height: 60, width: 4
           draw_column_at :bars, slice: 1, x: 156, top: 0, height: 60, width: 4
         end
-        dma_fill_rect 0, 150, 240, 10, :blue
+        fill_rect 0, 150, 240, 10, :blue
       end
     end
 

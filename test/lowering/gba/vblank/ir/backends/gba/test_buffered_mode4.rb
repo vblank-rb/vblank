@@ -24,8 +24,8 @@ class TestBufferedMode4 < Minitest::Test
     program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(0, 0, 8, 8, :red),      # top-left
-      dma_fill_rect(232, 8, 8, 8, :green),  # top-right area
+      fill_rect(0, 0, 8, 8, :red),      # top-left
+      fill_rect(232, 8, 8, 8, :green),  # top-right area
       draw_rect_at(100, 80, 8, 8, :white),  # a run-time-positioned square, center-ish
       wait_vblank,                          # flip: show the page we just drew
       halt,
@@ -78,9 +78,9 @@ class TestBufferedMode4 < Minitest::Test
       program(
         screen(:bitmap, buffered: true, colors: given.map { |c| VBlank::Graphics::Color.resolve(c) }),
         clear_screen(:green),
-        dma_fill_rect(0, 0, 40, 40, :yellow),
-        dma_fill_rect(40, 0, 40, 40, :cyan),
-        dma_fill_rect(80, 0, 40, 40, :magenta),
+        fill_rect(0, 0, 40, 40, :yellow),
+        fill_rect(40, 0, 40, 40, :cyan),
+        fill_rect(80, 0, 40, 40, :magenta),
         wait_vblank,
         halt
       ), name: "PAL4"
@@ -115,7 +115,7 @@ class TestBufferedMode4 < Minitest::Test
   # --- the palette limit surfaces as a friendly build error, not a black screen ---
 
   def test_too_many_colors_in_a_buffered_program_is_a_friendly_build_error
-    many = (1..300).map { |c| dma_fill_rect(0, 0, 2, 2, c) } # 300 distinct raw colors
+    many = (1..300).map { |c| fill_rect(0, 0, 2, 2, c) } # 300 distinct raw colors
     prog = program(screen(:bitmap, buffered: true), *many, halt)
     err = assert_raises(VBlank::IR::Palette::Overflow) { GBA.new.lower(prog) }
     assert_match(/300/, err.message)
@@ -206,13 +206,13 @@ class TestBufferedMode4 < Minitest::Test
 
   # A fill moves two side-by-side pixels at once here, so an odd start column is
   # the hard case: the rect's first and last pixel each share a two-pixel unit with
-  # a pixel outside the rect, which has to survive. dma_fill_rect(3, ...) must span
+  # a pixel outside the rect, which has to survive. fill_rect(3, ...) must span
   # 3..10 exactly, leaving 2 and 11 as they were.
   def test_a_fill_at_an_odd_start_column_lands_on_that_column
     prog = program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(3, 0, 8, 8, :red),
+      fill_rect(3, 0, 8, 8, :red),
       wait_vblank, # present the drawn page
       halt,
     )
@@ -230,7 +230,7 @@ class TestBufferedMode4 < Minitest::Test
     prog = program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(5, 0, 2, 4, :red),
+      fill_rect(5, 0, 2, 4, :red),
       wait_vblank,
       halt,
     )
@@ -251,7 +251,7 @@ class TestBufferedMode4 < Minitest::Test
     prog = program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(0, 40, 240, 40, :red),
+      fill_rect(0, 40, 240, 40, :red),
       wait_vblank,
       halt,
     )
@@ -269,8 +269,8 @@ class TestBufferedMode4 < Minitest::Test
   def test_two_full_width_bands_meet_without_overlapping
     prog = program(
       screen(:bitmap, buffered: true),
-      dma_fill_rect(0, 0, 240, 80, :blue),
-      dma_fill_rect(0, 80, 240, 80, :red),
+      fill_rect(0, 0, 240, 80, :blue),
+      fill_rect(0, 80, 240, 80, :red),
       wait_vblank,
       halt,
     )

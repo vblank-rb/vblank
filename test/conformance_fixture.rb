@@ -190,7 +190,7 @@ module ConformanceFixture
       B.clear_screen(:black),
       B.pixel(1, 1, :red),
       B.fill_rect(2, 2, 4, 4, :green),
-      B.dma_fill_rect(8, 8, 4, 4, :blue),
+      B.fill_rect(8, 8, 4, 4, :blue),
       B.draw_rect_at(:x, :y, 4, 4, :white),
       # ...and one whose height the program works out, which a backend fills with a
       # counted loop rather than unrolled rows. :x is 7 here, so it draws seven rows —
@@ -215,7 +215,7 @@ module ConformanceFixture
       # point is that they cost nothing.
       B.inside(80, 30, 8, 4,
                B.draw_column_at(:sprite, B.int(1), B.int(82), B.int(28), B.int(12)),
-               B.dma_fill_rect(78, 28, 12, 8, :white)),
+               B.fill_rect(78, 28, 12, 8, :white)),
       # A place drawn as a viewer sees it: here the statements under it are one face of five
       # corners filled with a picture, as a place's routine fills a face the near limit cut. The
       # corners are in sixteenths of a pixel and lean, so every row starts and ends somewhere new,

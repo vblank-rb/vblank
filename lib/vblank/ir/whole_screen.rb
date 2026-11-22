@@ -17,7 +17,7 @@ module VBlank
     module WholeScreen
       # The fills whose place and size can say they cover the screen. A `draw_rect_at` reads its
       # numbers as the game runs, but a number written in the program is still known.
-      RECT_FILLS = %i[fill_rect dma_fill_rect draw_rect_at].freeze
+      RECT_FILLS = %i[fill_rect draw_rect_at].freeze
 
       # Whether +node+ provably paints every pixel of a screen +width+ by +height+: a clear, or a
       # fill whose place and size are written in the program, from the top left corner (or past

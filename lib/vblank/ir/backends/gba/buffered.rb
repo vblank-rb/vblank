@@ -80,8 +80,7 @@ module VBlank
           end
 
           # A rectangle at a constant position/size, filled per row into the hidden
-          # page. fill_rect and dma_fill_rect share this — in Mode 4 both are the same
-          # packed block fill.
+          # page, in Mode 4's packed block fill.
           #
           # A fill moves whole 16-bit units, so it can only START on an even column.
           # Asked for an odd one, the rect's first and last pixel each share a unit

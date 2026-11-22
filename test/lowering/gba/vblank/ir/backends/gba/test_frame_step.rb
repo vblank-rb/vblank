@@ -29,7 +29,7 @@ class TestFrameStep < Minitest::Test
       step = VBlank::DSL::Value.new(self, VBlank::IR::Build.var_ref(Frames::STEP))
       spin = 0
       game_loop do
-        dma_fill_rect 0, 0, 240, 8, :black
+        fill_rect 0, 0, 240, 8, :black
         draw_rect_at 0, 0, step * WIDE, 8, :white
         repeat(busy) { spin += 1 } if busy.positive?
       end
@@ -88,7 +88,7 @@ class TestFrameStep < Minitest::Test
       once_a_frame { ticks += 1 }
       game_loop do
         loops += 1 # ...which the loop body does once a PASS, however many frames that took
-        dma_fill_rect 0, 0, 240, 24, :black
+        fill_rect 0, 0, 240, 24, :black
         draw_rect_at 0, 0, step * WIDE, 8, :white
         draw_rect_at 0, 12, (ticks - last) * WIDE, 8, :white
         last = ticks
@@ -190,7 +190,7 @@ class TestFrameStep < Minitest::Test
       spin = 0
       game_loop do
         every(period) { beats += 1 }
-        dma_fill_rect 0, 0, 240, 24, :black
+        fill_rect 0, 0, 240, 24, :black
         draw_rect_at 0, 0, step * WIDE, 8, :white
         draw_rect_at 0, 12, beats * WIDE, 8, :white
         repeat(busy) { spin += 1 } if busy.positive?
@@ -228,7 +228,7 @@ class TestFrameStep < Minitest::Test
       spin = 0
       game_loop do
         after(wait) { fired = 1 }
-        dma_fill_rect 0, 0, 240, 24, :black
+        fill_rect 0, 0, 240, 24, :black
         draw_rect_at 0, 12, fired * WIDE, 8, :white
         repeat(busy) { spin += 1 } if busy.positive?
       end

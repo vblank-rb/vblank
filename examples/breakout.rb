@@ -365,7 +365,7 @@ module Breakout
       # Repaint the whole picture. Each standing brick draws itself; broken ones
       # simply aren't drawn. Safe to do wholesale every frame because we're buffered.
       bricks.each do |b|
-        dma_fill_rect b[:x], b[:y], layout.brick_w, BRICK_H, b[:color] if alive[b[:name]] == 1
+        fill_rect b[:x], b[:y], layout.brick_w, BRICK_H, b[:color] if alive[b[:name]] == 1
       end
       draw_rect_at :paddle_x, layout.paddle_y, PADDLE_W, PADDLE_H, :white
       draw_rect_at :ball_x, :ball_y, BALL_SIZE, BALL_SIZE, :white

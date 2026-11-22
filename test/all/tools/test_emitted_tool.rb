@@ -268,9 +268,9 @@ class TestEmittedTool < Minitest::Test
   # Something that appears on only one side counts as zero on the other, rather
   # than being skipped for having nothing to compare against.
   def test_an_operation_that_only_appears_on_one_side_still_shows
-    report = drilldown(detail(kinds: {}), detail(kinds: { dma_fill_rect: 96 }))
+    report = drilldown(detail(kinds: {}), detail(kinds: { fill_rect: 96 }))
 
-    assert_match(/dma_fill_rect/, report)
+    assert_match(/fill_rect/, report)
     assert_match(/\+24 instr/, report)
   end
 

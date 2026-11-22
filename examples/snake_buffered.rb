@@ -135,10 +135,10 @@ module BufferedSnake
     func :draw_all do
       clear_screen :black
       draw_text "SCORE", SCORE_LABEL_X, SCORE_Y, :gray
-      dma_fill_rect 0, TOP_WALL_Y, SCREEN_W, CELL, :gray            # top wall
-      dma_fill_rect 0, BOTTOM_WALL_Y, SCREEN_W, CELL, :gray         # bottom wall
-      dma_fill_rect 0, TOP_WALL_Y, CELL, WALL_H, :gray             # left wall
-      dma_fill_rect RIGHT_WALL_X, TOP_WALL_Y, CELL, WALL_H, :gray  # right wall
+      fill_rect 0, TOP_WALL_Y, SCREEN_W, CELL, :gray            # top wall
+      fill_rect 0, BOTTOM_WALL_Y, SCREEN_W, CELL, :gray         # bottom wall
+      fill_rect 0, TOP_WALL_Y, CELL, WALL_H, :gray             # left wall
+      fill_rect RIGHT_WALL_X, TOP_WALL_Y, CELL, WALL_H, :gray  # right wall
       draw_number score, score_num_x, SCORE_Y, :white, digits: 3
       draw_rect_at food_x * CELL, food_y * CELL, CELL, CELL, :red
       repeat(xs.length) do |i|

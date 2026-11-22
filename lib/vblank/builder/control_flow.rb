@@ -187,7 +187,7 @@ module VBlank
       # drive a position or pick an item from a list.
       #
       # ```ruby
-      # repeat(8) { |i| dma_fill_rect 119, i * 20 + 2, 2, 12, :gray }
+      # repeat(8) { |i| fill_rect 119, i * 20 + 2, 2, 12, :gray }
       # ```
       #
       # It is the counterpart of Ruby's `8.times { |i| ... }`. Use `times` when the count is known

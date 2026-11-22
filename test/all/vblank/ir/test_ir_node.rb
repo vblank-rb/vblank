@@ -260,7 +260,7 @@ class TestIRNode < Minitest::Test
   def test_draw_ops_are_draw_category
     assert_equal :draw, draw_text("HI", 0, 0, :white).category
     assert_equal :draw, draw_rect_at(:x, :y, 4, 4, :white).category
-    assert_equal :draw, dma_fill_rect(0, 0, 4, 4, :white).category
+    assert_equal :draw, fill_rect(0, 0, 4, 4, :white).category
   end
 
   def test_draw_rect_at_wraps_its_runtime_position_and_size

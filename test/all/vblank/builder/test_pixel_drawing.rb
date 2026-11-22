@@ -151,19 +151,17 @@ class TestPixelDrawing < Minitest::Test
     assert_equal Color.resolve(:blue), picture.pixel(10, 30), "the first place is painted over"
   end
 
-  def test_dma_fill_rect_takes_numbers_the_game_works_out
-    program = build_program do
-      screen :bitmap
-      y = var :y, 50
-      clear_screen :blue
-      dma_fill_rect 30, y + 10, 6, 2, :red
-      halt
+  def test_dma_fill_rect_is_refused_naming_fill_rect
+    err = assert_raises(ArgumentError) do
+      build_program do
+        screen :bitmap
+        dma_fill_rect 30, 10, 6, 2, :red
+        halt
+      end
     end
 
-    picture = game_player.run(program).screen
-    assert_equal Color.resolve(:red), picture.pixel(30, 60), "the top is at y + 10 = 60"
-    assert_equal Color.resolve(:blue), picture.pixel(30, 59)
-    assert_equal Color.resolve(:blue), picture.pixel(30, 62), "it is 2 tall"
+    assert_match(/not a verb now/, err.message)
+    assert_match(/write `fill_rect`/, err.message)
   end
 
   def test_halt_produces_loop

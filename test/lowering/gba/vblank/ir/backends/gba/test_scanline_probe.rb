@@ -22,7 +22,7 @@ class TestScanlineProbe < Minitest::Test
       screen :bitmap
       sample = var :sample, 0
       wait_vblank
-      fills.times { |i| dma_fill_rect 0, i % 100, 240, 1, :red }
+      fills.times { |i| fill_rect 0, i % 100, 240, 1, :red }
       sample = read_scanline
       halt
     end

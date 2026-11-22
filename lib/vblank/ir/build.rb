@@ -259,13 +259,6 @@ module VBlank
                                 **%i[left top right bottom].zip(edges).to_h { |side, edge| [side, to_value_node(edge)] })
       end
 
-      # Fill a rectangle at a fixed position and size — same picture as
-      # +fill_rect+, but a backend is free to blast it in with a block transfer.
-      # Everything (+x+/+y+/+w+/+h+) is a compile-time constant.
-      def dma_fill_rect(x, y, w, h, color)
-        Nodes.build(:dma_fill_rect, x: x, y: y, w: w, h: h, color: color)
-      end
-
       # --- audio ---
       #
       # +define_sound+ and +song+ are definitions: they name a sound effect or a

@@ -44,7 +44,7 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
             case halt wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
-            list_set list_fill list_copy list_sort list_pack screen clear_screen fill_rect dma_fill_rect draw_rect_at
+            list_set list_fill list_copy list_sort list_pack screen clear_screen fill_rect draw_rect_at
             pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
             save_region restore_region background affine_background scroll_background place_bar box_background
             scroll_rows shade_outside show_light_now set_tile set_tile_block show_map show_held_tiles background_colors
@@ -90,7 +90,6 @@ module VBlank
             when :screen then lower_screen(node)
             when :clear_screen then lower_clear_screen(node)
             when :fill_rect then lower_fill_rect(node)
-            when :dma_fill_rect then lower_dma_fill_rect(node)
             when :draw_rect_at then lower_draw_rect_at(node)
             when :pixel then lower_pixel(node)
             when :draw_text then lower_draw_text(node)

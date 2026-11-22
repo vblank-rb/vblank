@@ -166,11 +166,11 @@
       "data": 44
     },
     "pong": {
-      "code": 44108,
+      "code": 42576,
       "data": 0
     },
     "pong_gbc": {
-      "code": 43128,
+      "code": 41620,
       "data": 0
     },
     "pong_gbc@gbc": {

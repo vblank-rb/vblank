@@ -43,7 +43,7 @@ module VBlank
 
           # The pixel-drawing ops (draw is a category, but it also covers `screen`,
           # a mode-set, which isn't painting).
-          PAINTS = %i[pixel fill_rect clear_screen draw_rect_at draw_text dma_fill_rect blit].freeze
+          PAINTS = %i[pixel fill_rect clear_screen draw_rect_at draw_text blit].freeze
 
           PROBLEM =
             "This game clears the whole screen every frame. It then draws a list that grows as the game plays " \

@@ -85,7 +85,7 @@ module Snake
     def min_row = HEADER_ROWS + 1     # just below the top wall
     def max_row = rows - 2            # just above the bottom wall
 
-    # Pixel geometry of the wall frame (all fixed, so it draws with dma_fill_rect).
+    # Pixel geometry of the wall frame (all fixed, so it draws with fill_rect).
     def top_wall_y = HEADER_ROWS * CELL       # top wall sits just under the header
     def bottom_wall_y = (rows - 1) * CELL     # bottom wall on the last row
     def right_wall_x = (cols - 1) * CELL      # right wall on the last column
@@ -184,7 +184,7 @@ module Snake
     # Repaint the score field: erase the old digits, then draw the new number. Only
     # called when the score changes (a round start, an eat), so it's cheap.
     func :draw_score do
-      dma_fill_rect score_num_x, SCORE_Y, SCORE_NUM_W, 7, :black
+      fill_rect score_num_x, SCORE_Y, SCORE_NUM_W, 7, :black
       draw_number score, score_num_x, SCORE_Y, :white, digits: 3
     end
 
@@ -194,10 +194,10 @@ module Snake
     func :draw_board do
       clear_screen :black
       draw_text "SCORE", SCORE_LABEL_X, SCORE_Y, :gray
-      dma_fill_rect 0, here.top_wall_y, here.width, CELL, :gray                  # top wall
-      dma_fill_rect 0, here.bottom_wall_y, here.width, CELL, :gray               # bottom wall
-      dma_fill_rect 0, here.top_wall_y, CELL, here.wall_h, :gray                 # left wall
-      dma_fill_rect here.right_wall_x, here.top_wall_y, CELL, here.wall_h, :gray # right wall
+      fill_rect 0, here.top_wall_y, here.width, CELL, :gray                  # top wall
+      fill_rect 0, here.bottom_wall_y, here.width, CELL, :gray               # bottom wall
+      fill_rect 0, here.top_wall_y, CELL, here.wall_h, :gray                 # left wall
+      fill_rect here.right_wall_x, here.top_wall_y, CELL, here.wall_h, :gray # right wall
       call :draw_score
       call :draw_food
       repeat(xs.length) do |i|
@@ -287,7 +287,7 @@ module Snake
     prompt_w = (text_width("PRESS START") + 1) & ~1
     { title_prompt: 96, game_over_prompt: 110 }.each do |name, y|
       func name do
-        dma_fill_rect (here.width - prompt_w) / 2, y, prompt_w, PROMPT_H, :black
+        fill_rect (here.width - prompt_w) / 2, y, prompt_w, PROMPT_H, :black
         draw_text "PRESS START", :center, y, :gray if blink
       end
     end

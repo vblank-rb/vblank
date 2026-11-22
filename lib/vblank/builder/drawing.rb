@@ -568,7 +568,8 @@ module VBlank
 
       # Fills a rectangle with one colour on a bitmap screen.
       #
-      # A place and size written in the game are drawn by a fill made for them. Any of the four that
+      # A place and size written in the game are drawn by a fill made for them, and a rectangle wide
+      # enough uses the console's fast fill, so a big one costs little. Any of the four that
       # the game works out as it runs, such as a variable or a calculation, makes it the rectangle
       # `draw_rect_at` draws. A game need not know which verb is which.
       #
@@ -1067,21 +1068,12 @@ module VBlank
         record(Build.show_light_now)
       end
 
-      # Fills a rectangle at a fixed place and size, with the console's fast fill.
-      #
-      # A number that the game works out makes it the rectangle `draw_rect_at` draws, as for
-      # `fill_rect`.
-      #
-      # ```ruby
-      # dma_fill_rect 119, 2, 2, 12, :gray
-      # ```
-      #
-      # * `x` and `y` - the top left corner.
-      # * `w` - the width in pixels. It must be even for the fast fill.
-      # * `h` - the height in pixels.
-      # * `c` - the fill colour.
-      def dma_fill_rect(x, y, w, h, c)
-        record_fixed_or_runtime_rect(:dma_fill_rect, x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
+      # Refusal for a game written when the fast fill was a verb of its own: `fill_rect` picks the
+      # console's fast fill itself now.
+      def dma_fill_rect(*)  # :nodoc:
+        raise ArgumentError,
+              "`dma_fill_rect` is not a verb now. To fix this, write `fill_rect` with the same numbers " \
+              "and colour. `fill_rect` uses the fast fill of the console for you."
       end
 
       # Draws one column of a picture, stretched to a height the game works out.

@@ -902,13 +902,6 @@ module VBlank
         operands lhs: :value, rhs: :value, fraction_bits: :int
       end
 
-      class DmaFillRect
-        include Node
-        kind :dma_fill_rect
-        category :draw
-        operands x: :int, y: :int, w: :int, h: :int, color: :color
-      end
-
       class DrawDigit
         include Node
         kind :draw_digit

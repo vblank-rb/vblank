@@ -44,7 +44,7 @@ module VBlank
         every: works, after: works, repeat: works, timer: works,
 
         # --- drawing on a painted screen ---
-        pixel: works, fill_rect: works, dma_fill_rect: works, draw_rect_at: works, draw_column_at: works,
+        pixel: works, fill_rect: works, draw_rect_at: works, draw_column_at: works,
         clear_screen: works, inside: works, grid: works, camera: works, keep_showing: works,
         place: works, viewer: works, screen_spot: works, change_picture: works,
         draw_place: works("on `screen :bitmap, tear_free: true` only. The processor turns each point and " \

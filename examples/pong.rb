@@ -224,7 +224,7 @@ module PongGame
     func :draw_field do
       # Dashed center line
       8.times do |i|
-        dma_fill_rect 119, i * 20 + 2, 2, 12, :gray
+        fill_rect 119, i * 20 + 2, 2, 12, :gray
       end
     end
 

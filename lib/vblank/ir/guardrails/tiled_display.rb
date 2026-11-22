@@ -28,7 +28,7 @@ module VBlank
         # `sprite` on a tiled screen record `object` nodes (little hardware-sprite
         # glyphs the console composites), never these. So one of these kinds
         # sitting in a tiled scope is a draw the author wrote for the other screen.
-        BITMAP_DRAWS = %i[pixel fill_rect dma_fill_rect clear_screen draw_rect_at
+        BITMAP_DRAWS = %i[pixel fill_rect clear_screen draw_rect_at
                           draw_column_at blit blit_pose draw_text draw_digit].freeze
 
         # Does the program give the tile hardware anything to paint?

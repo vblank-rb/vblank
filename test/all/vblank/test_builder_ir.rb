@@ -72,7 +72,7 @@ class TestBuilderIR < Minitest::Test
       clear_screen :black
       pixel 10, 20, :red
       fill_rect 5, 5, 4, 3, :green
-      dma_fill_rect 100, 50, 2, 12, :gray
+      fill_rect 100, 50, 2, 12, :gray
       draw_rect_at :ball_x, 40, 4, 4, :white # variable x position
       draw_text "HI", 40, 30, :white
     end
@@ -82,7 +82,7 @@ class TestBuilderIR < Minitest::Test
       clear_screen(:black),
       pixel(10, 20, :red),
       fill_rect(5, 5, 4, 3, :green),
-      dma_fill_rect(100, 50, 2, 12, :gray),
+      fill_rect(100, 50, 2, 12, :gray),
       draw_rect_at(:ball_x, 40, 4, 4, :white),
       draw_text("HI", 40, 30, :white),
     ), got

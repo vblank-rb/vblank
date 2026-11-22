@@ -1103,7 +1103,6 @@ module VBlank
             [eval_call("rg_screen_fill_rect", *[node.x, node.y, node.w, node.h].map { |n| value(n) }, color(node.color))]
           end
 
-          alias lower_dma_fill_rect lower_fill_rect
           alias lower_draw_rect_at lower_fill_rect
 
           def lower_pixel(node) = [eval_call("rg_screen_pixel", value(node.x), value(node.y), color(node.color))]

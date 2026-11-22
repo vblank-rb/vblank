@@ -328,7 +328,6 @@ class TestLayerGuardrails < Minitest::Test
   PAINTING = {
     "pixel" => "pixel 10, 10, :red",
     "fill_rect" => "fill_rect 0, 0, 10, 10, :red",
-    "dma_fill_rect" => "dma_fill_rect 0, 0, 10, 10, :red",
     "draw_rect_at" => "draw_rect_at 0, 0, 10, 10, :red",
     "clear_screen" => "clear_screen :red",
     "blit" => "blit :red_guy, 4, 4",

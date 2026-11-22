@@ -104,7 +104,7 @@ class TestDifferential < Minitest::Test
       assert_backends_agree(build do
         screen :bitmap
         clear_screen :black
-        dma_fill_rect x, 40, 8, 8, Color.resolve(:white)
+        fill_rect x, 40, 8, 8, Color.resolve(:white)
         halt
       end, name: "DMAFILL")
 

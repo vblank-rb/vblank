@@ -106,7 +106,7 @@ class TestSpriteClearedField < Minitest::Test
   def test_a_sprite_moved_after_a_whole_screen_fill_leaves_none_of_the_old_field
     width, height = whole_screen_fill_size
     prog = field_program do |hero, step|
-      dma_fill_rect 0, 0, width, height, :blue if step == 3
+      fill_rect 0, 0, width, height, :blue if step == 3
       hero.move :right, by: 8 if step > 3
     end
 
@@ -120,7 +120,7 @@ class TestSpriteClearedField < Minitest::Test
   def test_a_sprite_hidden_after_a_whole_screen_fill_leaves_none_of_the_old_field
     width, height = whole_screen_fill_size
     prog = field_program do |hero, step|
-      dma_fill_rect 0, 0, width, height, :blue if step == 3
+      fill_rect 0, 0, width, height, :blue if step == 3
       hero.hide if step == 5
     end
 
@@ -134,7 +134,7 @@ class TestSpriteClearedField < Minitest::Test
   def test_a_fill_short_of_the_whole_screen_leaves_a_sprite_outside_it_alone
     width, height = VBlank::Console.described(game_console).screen_size
     prog = field_program do |hero, step|
-      dma_fill_rect 120, 0, width - 120, height, :blue if step == 3
+      fill_rect 120, 0, width - 120, height, :blue if step == 3
       hero.move :down, by: 8 if step > 3
     end
 

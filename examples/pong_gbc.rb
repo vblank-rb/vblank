@@ -270,7 +270,7 @@ module PongGBC
     func :draw_field do
       # Dashed center line, a dash every 20 pixels down the screen
       (height / 20.0).ceil.times do |i|
-        dma_fill_rect net_x - 1, i * 20 + 2, 2, 12, :gray
+        fill_rect net_x - 1, i * 20 + 2, 2, 12, :gray
       end
     end
 

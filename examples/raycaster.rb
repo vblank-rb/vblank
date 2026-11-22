@@ -124,8 +124,8 @@ module Raycaster
       # pixels and is SLOWER. Measured: 20 frames a second against 30. Setting up a
       # transfer costs about what a short one moves, so ninety small fills lose to two
       # big ones.
-      dma_fill_rect 0, 0, screen_width, horizon, SKY
-      dma_fill_rect 0, horizon, screen_width, screen_height - horizon, FLOOR
+      fill_rect 0, 0, screen_width, horizon, SKY
+      fill_rect 0, horizon, screen_width, screen_height - horizon, FLOOR
 
       view -= 4 if held(:left)
       view += 4 if held(:right)

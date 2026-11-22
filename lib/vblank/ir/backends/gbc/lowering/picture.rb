@@ -16,7 +16,7 @@ module VBlank
           # into (Runtime::Paint).
           module Picture
             STATEMENT_KINDS = %i[
-              screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel draw_text draw_digit inside blit
+              screen clear_screen fill_rect draw_rect_at pixel draw_text draw_digit inside blit
               blit_pose draw_column_at save_region restore_region background scroll_background place_bar
               show_map set_tile set_tile_block background_colors scroll_rows camera present_objects hide_sprites
               show_picture_group color_list_holds fade tint
@@ -27,7 +27,6 @@ module VBlank
               when :screen then emit_screen(node)
               when :clear_screen then emit_clear_screen(node)
               when :fill_rect then emit_fill_rect(node)
-              when :dma_fill_rect then emit_fill_rect(node)
               when :draw_rect_at then emit_fill_rect(node)
               when :pixel then emit_pixel(node)
               when :draw_text then emit_draw_text(node)

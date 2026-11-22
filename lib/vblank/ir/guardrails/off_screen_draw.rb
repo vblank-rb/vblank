@@ -69,7 +69,7 @@ module VBlank
             case node.kind
             when :pixel
               with_constant_position(node) { |x, y| [x, y, 1, 1] }
-            when :fill_rect, :dma_fill_rect, :draw_rect_at
+            when :fill_rect, :draw_rect_at
               rect_bounds(node)
             when :draw_text
               with_constant_position(node) { |x, y| font = node.fonts.get(node.font); [x, y, font.text_width(node.text), font.height] }
@@ -132,7 +132,7 @@ module VBlank
           def describe(node)
             case node.kind
             when :pixel then "A pixel"
-            when :fill_rect, :dma_fill_rect then "A filled rectangle"
+            when :fill_rect then "A filled rectangle"
             when :draw_rect_at then "A rectangle"
             when :draw_text then "The text #{node.text.inspect}"
             when :draw_digit then "A digit"
