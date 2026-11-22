@@ -35,7 +35,7 @@ module VBlank
     #
     # ### When one will not load
     #
-    # A snapshot the emulator refuses (a libmgba installed again, a file cut short) is played to
+    # A snapshot the emulator refuses (a file cut short or written over) is played to
     # again from power-on and written again, and the logger says so once for that snapshot
     # (VBlank.logger, under "snapshots").
     #
@@ -48,6 +48,7 @@ module VBlank
       SECONDS_A_DAY = 86_400
       SKIP_SETTING = "NO_SNAPSHOT_CACHE"
       EXTENSION = ".state"
+      LOCK = ".lock"
       # The version of what goes into a key: a change to how a snapshot is made changes it.
       KEY_VERSION = 1
 
@@ -72,7 +73,7 @@ module VBlank
       def console_after(presses, cartridge, save: nil, &open)
         path = File.join(@folder, "#{key_for(presses, cartridge, save)}#{EXTENSION}")
         FileUtils.mkdir_p(@folder)
-        File.open("#{path}.lock", File::RDWR | File::CREAT) do |lock|
+        File.open("#{path}#{LOCK}", File::RDWR | File::CREAT) do |lock|
           lock.flock(File::LOCK_EX)
           kept = loaded_from(path, &open) unless @fresh
           kept || played_and_stored(path, presses, &open)
@@ -121,10 +122,24 @@ module VBlank
       def prune
         expired_before = Time.now - (EXPIRE_DAYS * SECONDS_A_DAY)
         Dir.glob(File.join(@folder, "*#{EXTENSION}")).each do |kept|
-          FileUtils.rm_f(kept) if modified_before?(kept, expired_before)
+          next unless modified_before?(kept, expired_before)
+
+          FileUtils.rm_f(kept)
+          remove_unheld_lock("#{kept}#{LOCK}")
         end
         stale_before = Time.now - SECONDS_A_DAY
         Dir.glob(File.join(@folder, "*#{EXTENSION}.*.*")).each { |left| FileUtils.rm_f(left) if modified_before?(left, stale_before) }
+        # A lock whose snapshot is gone, removed with it by another run or never written.
+        Dir.glob(File.join(@folder, "*#{EXTENSION}#{LOCK}")).each do |lock|
+          remove_unheld_lock(lock) if !File.file?(lock.delete_suffix(LOCK)) && modified_before?(lock, stale_before)
+        end
+      end
+
+      # A lock nobody holds, so nobody waiting on it makes the snapshot a second time.
+      def remove_unheld_lock(path)
+        File.open(path, File::RDWR) { |lock| File.delete(path) if lock.flock(File::LOCK_EX | File::LOCK_NB) }
+      rescue Errno::ENOENT
+        nil
       end
 
       # Another process can remove a file between the glob that found it and this read.

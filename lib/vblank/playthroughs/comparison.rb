@@ -118,7 +118,8 @@ module VBlank
       #
       # +frames_stepped+ is how many frames the emulator stepped each cartridge through, the first's
       # and then the second's: the work the comparison cost. A comparison started from a snapshot
-      # (`starting_after:`) steps only the frames after its start. Nil on the same script.
+      # (`starting_after:`) steps only the frames after its start; the run that makes the snapshot
+      # steps every frame from power-on on that cartridge. Nil on the same script.
       Result = Data.define(:frames, :moments, :drifts, :frames_stepped) do
         def initialize(frames:, moments:, drifts:, frames_stepped: nil) = super
 
@@ -613,7 +614,9 @@ module VBlank
       # What a start after a frame of the tape cannot be given. A lead-in is a script that watches the
       # game, whose presses are not known until it has played, so nothing can say which snapshot it
       # reaches. Two lined up step by step count passes from power-on, which a snapshot does not hold.
-      # On the same script there is no tape to start part way through.
+      # On the same script there is no tape to start part way through. The strict rule for torn
+      # frames, and a block that works out a part of the screen, look at the frames before one to
+      # decide it, and the frames before the start are not looked at.
       private def refuse_settings_wrong_for_start!
         if @snapshots && !@snapshots.is_a?(SnapshotCache)
           raise ArgumentError, "`snapshots:` was #{@snapshots.inspect}. It must be a SnapshotCache: " \
@@ -633,6 +636,8 @@ module VBlank
         said << "`lead_ins:`" if @lead_ins.any?
         said << @step_count.setting_name if @step_count
         said << "`same: :script`" if same_script?
+        said << "`forgiving_torn_frames_of:`" if @torn_side
+        said << "a block for `looking_at:` or `ignoring_rectangles:`" if @likeness.looked_at.chosen_by_block?
         return if said.empty?
 
         raise ArgumentError, "The comparison was given `starting_after:` and #{said.join(' and ')}. A comparison that " \
@@ -658,12 +663,24 @@ module VBlank
                              "left to compare after it. Give a frame before the tape's last."
       end
 
+      # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
+      # holding the save it was switched on with (Console::Kit#snapshot_leaves_out_save_memory?).
+      private def refuse_snapshot_without_save_memory!(side)
+        kit = Console.for(side.cartridge.console)
+        return unless @snapshots && kit.snapshot_leaves_out_save_memory?(side.cartridge)
+
+        raise ArgumentError, "The #{side.which} cartridge keeps a save, and a snapshot of a #{kit.title} does not hold " \
+                             "what it saved. A start from a snapshot would play with the save it had at power-on. " \
+                             "To fix this, remove `snapshots:`, and the cartridge is played to the start."
+      end
+
       # Each cartridge switched on and brought to the frame +start+ of +tape+ without being looked
       # at: from a snapshot where the comparison was given +snapshots+, else played there.
       private def started_after(tape, start)
         presses = tape.presses_within(1..start).map do |stretch|
           SnapshotCache::Presses.new(frames: stretch.frames.size, keys: Playthrough.key_mask(stretch.buttons))
         end
+        starts.each { |side| refuse_snapshot_without_save_memory!(side) }
         starts.map do |side|
           open = -> { Playthrough.power_on(side.cartridge, save: side.save) }
           game = if @snapshots

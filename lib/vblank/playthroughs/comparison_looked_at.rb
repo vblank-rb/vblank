@@ -100,6 +100,10 @@ module VBlank
         # block. Only a comparison frame by frame has frames to give it for.
         def changes_with_frame? = choices.any?(&:changes_with_frame?)
 
+        # Whether a block works out a part of the screen on each frame: it is asked from the first
+        # frame on, and may keep what it saw on the frame before.
+        def chosen_by_block? = choices.any?(&:chosen_by_block?)
+
         # Whether every pixel is looked at on every frame.
         def whole_screen? = !changes_with_frame? && fixed_part.count == pixels
 
@@ -203,6 +207,9 @@ module VBlank
           def rectangles = @list
 
           def changes_with_frame? = @list.nil?
+
+          # Whether a block works the rectangles out, frame by frame.
+          def chosen_by_block? = !@block.nil?
 
           # Each stretch's frames on +tape+, beside its rectangles.
           def frame_ranges_on(tape)

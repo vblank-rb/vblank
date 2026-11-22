@@ -160,6 +160,20 @@ module SnapshotStartTests
     assert_match "starting_after", error.message
   end
 
+  # The strict rule for torn frames, and a block that works out a part of the screen, look at the
+  # frames before one, which a start does not.
+  def test_a_start_with_settings_that_look_back_is_refused
+    torn = assert_raises(ArgumentError) do
+      tape.compare(walker, walker, starting_after: START_AFTER, forgiving_torn_frames_of: :second)
+    end
+    by_block = assert_raises(ArgumentError) do
+      tape.compare(walker, walker, starting_after: START_AFTER, ignoring_rectangles: ->(_first, _second) { [] })
+    end
+
+    assert_match "forgiving_torn_frames_of", torn.message
+    assert_match "ignoring_rectangles", by_block.message
+  end
+
   def test_a_start_with_lead_ins_is_refused
     lead_in = VBlank.playthrough("wait") { wait frames: 2 }
     error = assert_raises(ArgumentError) do

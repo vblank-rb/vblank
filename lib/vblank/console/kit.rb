@@ -164,6 +164,11 @@ module VBlank
       # emulator's own, and is kept under it (Playthroughs::SnapshotCache).
       def emulator_build = Diagnostics::Emulator.advance_build
 
+      # Whether a snapshot of the console would leave out save memory +cartridge+ keeps, so a
+      # console put back from one holds the save it was switched on with, not what the game wrote
+      # since. libmgba's and bsnes's states hold the cartridge's save memory.
+      def snapshot_leaves_out_save_memory?(_cartridge) = false
+
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
       # cartridge, so only the Advance's).
       def dumps_ir? = false
@@ -413,6 +418,18 @@ module VBlank
       def multitap_name = "Team Player"
       def load_emulator! = Diagnostics::Emulator.load_genesis!
       def emulator_build = Diagnostics::Emulator.genesis_build
+
+      # Genesis Plus GX's state (state_save in its core/state.c) holds the work RAM, the Z80's, the
+      # video and sound chips, both processors and the cartridge's mapper, and not the battery-backed
+      # RAM, which the frontend reads apart. So a cartridge that keeps a save is one whose header
+      # names that RAM ("RA" at 0x1B0, as Sega's own header lays it out) or, built here, one whose
+      # game names save memory.
+      def snapshot_leaves_out_save_memory?(cartridge)
+        return true if cartridge.buffer.byteslice(0x1B0, 2) == "RA"
+
+        program = cartridge.respond_to?(:source_program) && cartridge.source_program
+        program ? IR::SaveLayout.named_by?(program) : false
+      end
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def compared_side_by_side? = true
