@@ -48,8 +48,10 @@ class TestPlayerOption < Minitest::Test
   end
 
   def test_the_super_nintendo_reads_the_third_and_fourth_players
-    built_for(:snes) { game_loop { halt if pressed(:a, player: 3) || held(:left, player: 4) } }
-    VBlank.build("PLAYERS", console: :snes, players: 4, out: StringIO.new, err: StringIO.new) { game_loop { halt } }
+    said = StringIO.new
+    refute_nil built_for(:snes, err: said) { game_loop { halt if pressed(:a, player: 3) || held(:left, player: 4) } }
+    refute_nil VBlank.build("PLAYERS", console: :snes, players: 4, out: StringIO.new, err: said) { game_loop { halt } }
+    refute_match(/controller/, said.string, "nothing is said about the controllers")
   end
 
   def test_a_game_for_more_players_than_a_console_seats_is_refused_there

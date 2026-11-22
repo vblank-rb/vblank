@@ -140,10 +140,18 @@ module VBlank
             TAP_LAST_PLUGS = 0x00
 
             # The ports the controllers are read through (fullsnes, "SNES Controllers I/O Ports").
-            JOYSER0 = 0x4016
-            JOYSER1 = 0x4017
+            JOYSER0 = Console::SNESHardware::JOYSER0
+            JOYSER1 = Console::SNESHardware::JOYSER1
+
+            # Where in a Super Multitap's four words of the direct page (#emit_tap_bits) each part
+            # is: controllers 2, 3 and 4 as read, then whether the tap answered.
+            TAP_WORDS = { 2 => 0, 3 => 2, 4 => 4 }.freeze
+            TAP_ANSWERED = 6
 
             module_function
+
+            # The controllers past the first of a game that reads +controllers+.
+            def other_controllers(controllers) = CONTROLLERS.drop(1).first(controllers - 1)
 
             # Whether +program+ reads X or Y, by name or as any button at all.
             def reads_extra_buttons?(program)
@@ -208,7 +216,7 @@ module VBlank
               memory.reserve(DISPLAY_ON, 2)
               memory.reserve(SETTING_UP, 2)
               memory.reserve(SETTING_UP_UNCOUNTED, 2)
-              CONTROLLERS.drop(1).first(controllers - 1).each do |controller|
+              other_controllers(controllers).each do |controller|
                 controller.to_h.each_value { |name| memory.reserve(name, 2) }
               end
               memory.reserve(PLAYERS_PAST_FIRST, 2) if counts_players
@@ -356,13 +364,14 @@ module VBlank
                 end
                 if controllers == MULTITAP_CONTROLLERS
                   emit_tap_bits(asm, tap, "rt_whole_tap")
-                  CONTROLLERS.drop(1).first(controllers - 1).each_with_index do |controller, index|
+                  other_controllers(controllers).each_with_index do |controller, index|
                     emit_controller_update(asm, at, pad, controller) do
-                      asm.lda(asm.direct(tap + (index * 2)))
+                      asm.lda(asm.direct(tap + TAP_WORDS.fetch(index + 2)))
                       asm.sta(asm.direct(pad))
-                      emit_bits_remapped(asm, pad, "rt_whole_tap_#{index}", extra_buttons)
+                      emit_buttons_remapped_in_place(asm, pad, "rt_whole_tap_#{index}", extra_buttons)
                     end
                   end
+                  emit_line_latched_again(asm)
                 elsif controllers == 2
                   emit_controller_update(asm, at, pad, CONTROLLERS[1]) do
                     emit_controller_bits(asm, pad, "rt_whole_second_buttons", JOYSER1, extra_buttons)
@@ -554,11 +563,11 @@ module VBlank
                 asm.label("rt_tap_read")
                 emit_tap_bits(asm, reading.tap, "rt_tap_read")
                 asm.rts
-                emit_buttons_remapped(asm, pad, reading.extra_buttons)
+                emit_buttons_remapped_by_table(asm, pad, reading.extra_buttons)
               elsif reading.controllers == 2
                 emit_controller_read(asm, pad, "rt_second_buttons_now", JOYSER1, reading.extra_buttons)
               end
-              others = CONTROLLERS.drop(1).first(reading.controllers - 1)
+              others = other_controllers(reading.controllers)
 
               # In the interrupt, every frame: the buttons held now, and every one that went down
               # since the frame before added to those pressed during the pass.
@@ -568,6 +577,7 @@ module VBlank
               others.each.with_index(2) do |controller, player|
                 emit_controller_update(asm, at, pad, controller) { emit_buttons_now(asm, reading, player) }
               end
+              emit_line_latched_again(asm) if reading.multitap?
               asm.rts
 
               # Where a pass's wait ends: the buttons for the pass about to start, from every frame
@@ -642,7 +652,7 @@ module VBlank
             def emit_buttons_now(asm, reading, player)
               return asm.jsr(asm.abs("rt_second_buttons_now")) unless reading.multitap?
 
-              asm.lda(asm.direct(reading.tap + ((player - 2) * 2)))
+              asm.lda(asm.direct(reading.tap + TAP_WORDS.fetch(player)))
               asm.jsr(asm.abs("rt_buttons_remapped"))
             end
 
@@ -663,7 +673,9 @@ module VBlank
               end
             end
 
-            # THE SUPER MULTITAP. It plugs into the second port and has four plugs of its own, the
+            # ### The Super Multitap
+            #
+            # It plugs into the second port and has four plugs of its own, the
             # console's controllers 2 to 5. Both its lines are read at once: each read of JOYSER1
             # hands over a bit of one plug in bit 0 and of another in bit 1, and WRIO's top bit
             # picks which two (TAP_FIRST_PLUGS: controllers 2 and 3; TAP_LAST_PLUGS: 4 and 5). It
@@ -679,11 +691,18 @@ module VBlank
             # sixteen reads are never made: a plain controller would hand over sixteen bits of 1
             # past its own, which a game would read as every button down.
             #
+            # WRIO's top bit going from 1 to 0 also latches the picture's line counters, as a read of
+            # SLHV does (fullsnes, "SNES PPU Timers and Status"). So a line asked for by
+            # Blank#emit_line_now that this interrupt lands in the middle of would read the line
+            # the tap was read on, with the rest of the interrupt still to run: lines of the blank
+            # counted as left that are gone. The interrupt latches the line again as it ends
+            # (#emit_line_latched_again), so such a reading is the line the interrupt ended on.
+            #
             # +tap+ is four words of the direct page: controllers 2, 3 and 4 as read, B at the top
             # (JOYPAD_BITS), then whether the tap answered. A is 16 bits wide after, X is used.
             def emit_tap_bits(asm, tap, label)
               h = Console::SNESHardware
-              answered = tap + 6
+              answered = tap + TAP_ANSWERED
               asm.sep(0x20)
               asm.lda(TAP_FIRST_PLUGS)
               asm.sta(asm.abs(h::WRIO))
@@ -700,22 +719,22 @@ module VBlank
               asm.bne("#{label}_seen")
               asm.stz(asm.abs(JOYSER0))
               asm.rep(0x20)
-              asm.stz(asm.direct(tap))
-              asm.stz(asm.direct(tap + 2))
-              asm.stz(asm.direct(tap + 4))
+              asm.stz(asm.direct(tap + TAP_WORDS.fetch(2)))
+              asm.stz(asm.direct(tap + TAP_WORDS.fetch(3)))
+              asm.stz(asm.direct(tap + TAP_WORDS.fetch(4)))
               asm.ldx(16)
               asm.label("#{label}_first_plugs")
               asm.lda(asm.abs(JOYSER1))
               asm.lsr
-              asm.rol(asm.direct(tap))
+              asm.rol(asm.direct(tap + TAP_WORDS.fetch(2)))
               asm.lsr
-              asm.rol(asm.direct(tap + 2))
+              asm.rol(asm.direct(tap + TAP_WORDS.fetch(3)))
               asm.dex
               asm.bne("#{label}_first_plugs")
               asm.lda(asm.direct(answered))
               asm.and_a(0b10)
               asm.beq("#{label}_none")
-              asm.lda(asm.direct(tap + 2))
+              asm.lda(asm.direct(tap + TAP_WORDS.fetch(3)))
               asm.and_a(0xFF00)
               asm.cmp(0xFF00)
               asm.beq("#{label}_none")
@@ -727,7 +746,7 @@ module VBlank
               asm.label("#{label}_last_plugs")
               asm.lda(asm.abs(JOYSER1))
               asm.lsr
-              asm.rol(asm.direct(tap + 4))
+              asm.rol(asm.direct(tap + TAP_WORDS.fetch(4)))
               asm.dex
               asm.bne("#{label}_last_plugs")
               asm.sep(0x20)
@@ -736,15 +755,24 @@ module VBlank
               asm.rep(0x20)
               asm.bra("#{label}_done")
               asm.label("#{label}_none")
-              asm.stz(asm.direct(tap + 2))
+              asm.stz(asm.direct(tap + TAP_WORDS.fetch(3)))
               asm.label("#{label}_done")
+            end
+
+            # The picture's line counters latched now, by a read of SLHV a byte wide (two would read
+            # the sprite table's port next to it, which moves its address on). A is 16 bits wide
+            # before and after.
+            def emit_line_latched_again(asm)
+              asm.sep(0x20)
+              asm.lda(asm.abs(Console::SNESHardware::SLHV))
+              asm.rep(0x20)
             end
 
             # rt_buttons_remapped (JSR): A = the buttons in A as a controller hands them over
             # (JOYPAD_BITS), a bit each in IR::Buttons's order, X used. The top byte (B to Right)
             # and the next four bits (A, X, L and R) are each looked up in a table worked out as the
             # cartridge is built, a few instructions in place of a test of each button.
-            def emit_buttons_remapped(asm, pad, extra_buttons)
+            def emit_buttons_remapped_by_table(asm, pad, extra_buttons)
               asm.label("rt_buttons_remapped")
               asm.sta(asm.direct(pad))
               asm.xba
@@ -800,12 +828,12 @@ module VBlank
               asm.rol(asm.direct(pad))
               asm.dex
               asm.bne("#{label}_bit")
-              emit_bits_remapped(asm, pad, label, extra_buttons)
+              emit_buttons_remapped_in_place(asm, pad, label, extra_buttons)
             end
 
             # The word at +pad+, as a controller hands it over, turned into IR::Buttons's order a
             # button at a time: A = the buttons, and the word at +pad+ + 2 too.
-            def emit_bits_remapped(asm, pad, label, extra_buttons)
+            def emit_buttons_remapped_in_place(asm, pad, label, extra_buttons)
               asm.stz(asm.direct(pad + 2))
               BUTTON_BITS.each do |name, (from, to)|
                 next if EXTRA_BUTTONS.include?(name) && !extra_buttons

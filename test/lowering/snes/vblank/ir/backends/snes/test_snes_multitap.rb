@@ -64,6 +64,32 @@ class TestSNESMultitap < Minitest::Test
     assert_equal 3, run[:connected]
   end
 
+  # On a Super FX cartridge the interrupt that lands while the chip runs a routine is the copy in
+  # work RAM (Runtime::Chip), which reads the tap with no table. Each pass runs a routine on the chip
+  # for frames on end, and the third player's taps and the fourth's right fall in those frames.
+  def test_the_tap_is_read_while_a_super_fx_routine_runs
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes, variant: :superfx))
+    b.instance_eval do
+      total = var :total, 0
+      taps = var :taps, 0
+      rights = var :rights, 0
+      func(:heavy, on_chip: true) { repeat(30) { repeat(1000) { |i| total.store!(total + (i * 3) - (total >> 2)) } } }
+      game_loop do
+        call :heavy
+        taps.store!(taps + 1) if pressed(:a, player: 3)
+        rights.store!(rights + 1) if held(:right, player: 4)
+      end
+    end
+    b.finalize_program
+    presses = ->(frame) { [(:p3_a if (frame % 4).zero?), (:p4_right if frame > 10)].compact }
+    run = game_player.input_each_frame(&presses).run(b.program, frames: 30)
+
+    assert_operator run[:taps], :>, 1
+    # Right is held from frame 11. A pass of one frame would see it on 20 of the 30; more means
+    # each pass took several frames, so the chip was running as their blanks came.
+    assert_operator run[:rights], :>, 20
+  end
+
   # The Verifier plugs no tap in: bsnes has a plain controller in the second port, which hands over
   # bits of 1 once its sixteen are read. The game believes no tap is there and reads none of them.
   def test_with_no_multitap_the_third_and_fourth_players_hold_nothing

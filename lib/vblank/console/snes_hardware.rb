@@ -128,9 +128,13 @@ module VBlank
       WMDATA = 0x2180
       WMADDL = 0x2181
 
+      # --- the controller ports, read a bit at a time ---
+      JOYSER0 = 0x4016 # Bit 0 written: the latch for both ports; read: the first port's next bit
+      JOYSER1 = 0x4017 # Read: the second port's next bit on each of its two lines, bits 0 and 1
+
       # --- the processor's own registers ---
       NMITIMEN = 0x4200 # Bit 7: the vertical blank's interrupt; bit 0: read the buttons for us
-      WRIO = 0x4201
+      WRIO = 0x4201 # Bit 7 drives the second port's I/O line, which picks a Super Multitap's plugs
       WRMPYA = 0x4202 # The 8×8 multiplier: write one byte here
       WRMPYB = 0x4203 # Write the other byte here; 16 bits come out at RDMPYL, eight cycles later
       WRDIVL = 0x4204 # The 16÷8 divider: write the 16-bit number here

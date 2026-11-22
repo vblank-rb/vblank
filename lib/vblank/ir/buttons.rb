@@ -48,9 +48,6 @@ module VBlank
       # Each player's button names, the first player's first.
       PLAYERS_NAMES = (1..MOST_PLAYERS).map { |player| NAMES.map { |name| name_for(name, player) }.freeze }.freeze
 
-      # The second player's button names by the button each is.
-      SECOND_PLAYER = NAMES.zip(PLAYERS_NAMES[1]).to_h.freeze
-
       # Every button a player can hold, on any controller, in player order.
       HOLDABLE = PLAYERS_NAMES.flatten.freeze
 
