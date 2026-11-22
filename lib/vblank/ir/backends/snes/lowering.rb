@@ -2400,6 +2400,7 @@ module VBlank
               emit_carry_for(node.op)
               return emit_half_sum(node.op, right)
             end
+            return emit_low_half_with_slot_last(node) if slot_read_last?(node, bits)
 
             # The left side kept on the stack while the right is worked out; a subtraction is then
             # the left plus the right turned round, plus one.
@@ -2415,6 +2416,34 @@ module VBlank
               emit_half_sum(node.op, @asm.stack(1))
             end
             @asm.ply # the left side off the stack, A kept
+          end
+
+          # The sums whose two sides can be taken in either order.
+          SIDES_EITHER_WAY = %i[+ & | ^].freeze
+
+          # Whether +node+, a sum whose left side is a list's slot of two bytes, can work its right
+          # side out first and then add the slot where it is: the place stepped by a table,
+          # `e.x + steps[e.dir]`. Neither side may change anything or stop the game, so the order
+          # they are worked out in cannot be told.
+          def slot_read_last?(node, bits)
+            left = node.lhs
+            SIDES_EITHER_WAY.include?(node.op) && plain_slot_read?(left) && slot_read_at_variable?(left) &&
+              list_placed(left)[2] == 2 && bits == 16 && unchanging?(left) && unchanging?(node.rhs)
+          end
+
+          # A = +node+'s low half, its right side worked out first and kept in Y while X is set to the
+          # left side's slot, which is then added where it is. TAY and TYA take two cycles each, where
+          # keeping the left side on the stack takes a PHA, an ADC of the stack and a PLY, and X then
+          # holds the slot, so a store of the sum back to it needs no X of its own (fullsnes, "CPU
+          # 65XX Microprocessor").
+          def emit_low_half_with_slot_last(node)
+            left = node.lhs
+            emit_low_half(node.rhs, 16)
+            @asm.tay
+            emit_slot_of_index_into_x(list_placed(left)[0], list_slots(left).stride, left)
+            @asm.tya
+            emit_carry_for(node.op)
+            emit_half_sum(node.op, @asm.long_x(list_slots(left).base))
           end
 
           # Where +node+'s low half can be read from as it is: a number written in the program, a
@@ -3691,7 +3720,16 @@ module VBlank
             return unless unsigned || ranges.all? { |range| within_half?(range) }
 
             operand = low_half_operand(right, 16)
-            emit_low_half(left, 16)
+            if !operand && (left_operand = low_half_operand(left, 16)) && unchanging?(right)
+              # The right side worked out first where the left is a variable or a number, and the
+              # left loaded after it: the order cannot be told, and no PHA or PLA is made.
+              emit_low_half(right, 16)
+              @asm.sta(@asm.direct(R0))
+              @asm.lda(left_operand)
+              operand = @asm.direct(R0)
+            else
+              emit_low_half(left, 16)
+            end
             unless operand
               # The left side kept on the stack while the right is worked out, as the interpreter
               # works the left out first.
