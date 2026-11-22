@@ -60,7 +60,9 @@ module VBlank
               "RG_VOICES_READ_SOUND_MEMORY" => console.voices_read_sound_memory,
               "RG_CONSOLE_PLAYS_BIOS_START_UP" => start_up && console.plays_bios_start_up,
               "RG_ONE_PLAYERS_BUTTONS" => IR::Buttons::EVERY_BUTTON_MASK, "RG_MOST_PLAYERS" => IR::Buttons::MOST_PLAYERS,
-              "RG_CONSOLE_BUTTONS" => console_buttons_mask(console) }
+              "RG_CONSOLE_BUTTONS" => console_buttons_mask(console),
+              "RG_PULL_SHIFT" => IR::Buttons::PULL_SHIFT, "RG_PULL_BITS" => IR::Buttons::PULL_BITS,
+              "RG_TRIGGER_HELD_FROM" => IR::Buttons::HELD_FROM }
           end
 
           # The buttons +console+ has, a bit each in IR::Buttons::NAMES's order: the ones a window

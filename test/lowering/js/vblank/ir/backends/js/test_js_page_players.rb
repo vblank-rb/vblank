@@ -103,6 +103,17 @@ class TestJSPagePlayers < Minitest::Test
                          "with the left trigger pulled 40 in 100 and the right 5")
   end
 
+  # A key and a controller, or two controllers, pulling one trigger: the furthest counts, and a key
+  # counts all the way (IR::Buttons.pulls).
+  def test_a_key_pulls_its_trigger_all_the_way_whatever_a_controller_says
+    assert_triggers_page(["pad 0 connect", "pad 0 pull 6 0.3", "down KeyE"], [:l2, { l2: 30 }], "with E held and the trigger at 30")
+  end
+
+  def test_two_controllers_pulling_one_trigger_give_the_furthest
+    assert_triggers_page(["pad 0 connect", "pad 1 connect", "pad 0 pull 7 0.6", "pad 1 pull 7 0.3"], [{ r2: 60 }, { r2: 30 }],
+                         "with one controller's right trigger at 60 and the other's at 30")
+  end
+
   # A game that names no players plays as before: every controller is player 1's, and player 2's
   # keys are nobody's.
   def test_a_game_for_one_player_has_every_controller_as_player_one

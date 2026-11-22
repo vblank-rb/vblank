@@ -229,8 +229,8 @@ module VBlank
       # Every connected player's buttons for the pass that starts, this machine's +held+ among them.
       def exchange_buttons(held)
         # Every gamepad and key at this machine is its one player in a match, whichever player the
-        # window seated it as.
-        local_mask = IR::Buttons.masks(held).reduce(0, :|)
+        # window seated it as: their buttons together, and each trigger's furthest pull.
+        local_mask = IR::Buttons.merged_number(IR::Buttons.masks(held))
         masks = @network.exchange(pass: @passes, local_mask: local_mask, game: @game)
         announce_new_events
         masks

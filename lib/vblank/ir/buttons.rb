@@ -104,22 +104,46 @@ module VBlank
       end
 
       # The part pulls in a list of buttons held, by name: what a Hash in it gives, each a whole
-      # number from 0 to FULL_PULL, or a friendly error.
+      # number from 0 to FULL_PULL, or a friendly error. Where more than one thing pulls a button (a
+      # key and a gamepad, two gamepads of one player), the furthest is kept, and a button held as
+      # a plain name, as a key holds it, is pulled all the way. Every window keeps the same rule.
       def pulls(held)
-        Array(held).grep(Hash).reduce({}, :merge).each do |name, pull|
-          next if pull.is_a?(Integer) && pull.between?(0, FULL_PULL)
-
-          raise ArgumentError, "#{name.inspect} is held #{pull.inspect} of the way. To fix this, give a whole number " \
-                               "from 0 (let go) to #{FULL_PULL} (pulled all the way)."
+        given = Array(held).grep(Hash).each_with_object({}) do |pulls, furthest|
+          pulls.each do |name, pull|
+            refuse_pull!(name, pull)
+            furthest[name] = [furthest.fetch(name, 0), pull].max
+          end
         end
+        Array(held).each { |name| given[name] = FULL_PULL if name.is_a?(Symbol) && given.key?(name) }
+        given
       end
 
+      def refuse_pull!(name, pull)
+        return if pull.is_a?(Integer) && pull.between?(0, FULL_PULL)
+
+        raise ArgumentError, "#{name.inspect} is held #{pull.inspect} of the way. To fix this, give a whole number " \
+                             "from 0 (let go) to #{FULL_PULL} (pulled all the way)."
+      end
+      private_class_method :refuse_pull!
+
       # How far +button+ of +player+ is pulled, in percent, among +held+ (a list of buttons held,
-      # part pulls among them): the part pull a test gave, else FULL_PULL while it is held and 0
-      # when it is not.
+      # part pulls among them): the furthest part pull given (#pulls), else FULL_PULL while it is
+      # held and 0 when it is not.
       def pull_among(held, button, player)
         name = name_for(button, player)
         pulls(held).fetch(name) { held_names(held).include?(name) ? FULL_PULL : 0 }
+      end
+
+      # Several players' numbers (#player_mask) made one, as a machine of a match sends all its own
+      # players as its one: every button held in any, and each trigger's furthest pull, rather than
+      # the bits of two pulls run together.
+      def merged_number(numbers)
+        buttons = numbers.reduce(0) { |bits, number| bits | (number & EVERY_BUTTON_MASK) }
+        field = (1 << PULL_BITS) - 1
+        PULLED_BUTTONS.reduce(buttons) do |bits, button|
+          shift = pull_shift(button)
+          bits | (numbers.map { |number| (number >> shift) & field }.max.to_i << shift)
+        end
       end
 
       # Whether +name+ is a button a program can read.

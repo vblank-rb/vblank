@@ -4449,7 +4449,8 @@ module VBlank
         def value_of_pulled(node)
           check_button!(node.button)
           if read_program&.for_computer && IR::Buttons::PULLED_BUTTONS.include?(node.button)
-            return IR::Buttons.pull_among([*@held, @pulls], node.button, node.player)
+            name = IR::Buttons.name_for(node.button, node.player)
+            return @pulls.fetch(name) { @held.include?(name) ? IR::Buttons::FULL_PULL : 0 }
           end
 
           flag_int(button_down_among?(@held, node.button, node.player)) * IR::Buttons::FULL_PULL

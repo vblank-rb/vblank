@@ -486,7 +486,7 @@ int32_t rg_pressed_by(int32_t player, int32_t mask) { return down_by(pressed, pl
  * all or nothing as the button is held (Reference#value_of_pulled). */
 int32_t rg_pulled(int32_t button, int32_t shift, int32_t player) {
   if (player < 1 || player > RG_MOST_PLAYERS) return 0;
-  int32_t part = (int32_t)((pulls[player - 1] >> (uint32_t)shift) & 127u);
+  int32_t part = (int32_t)((pulls[player - 1] >> (uint32_t)shift) & ((1u << RG_PULL_BITS) - 1u));
   if (part) return part;
   return button_down(held[player - 1], button) ? 100 : 0;
 }

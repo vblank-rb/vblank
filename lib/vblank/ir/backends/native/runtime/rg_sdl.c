@@ -255,12 +255,14 @@ static int trigger_percent(SDL_Gamepad *pad, int pad_button) {
   return value <= 0 ? 0 : value * 100 / 32767;
 }
 
-/* How far L2 or R2 (+button+) is pulled kept in a player's number, above the buttons' bits, seven bits
- * a trigger (IR::Buttons.pull_shift): the furthest of any gamepad of the player's. */
+/* How far L2 or R2 (+button+) is pulled kept in a player's number, above the buttons' bits,
+ * RG_PULL_BITS a trigger from RG_PULL_SHIFT (IR::Buttons.pull_shift): the furthest given, of any key or
+ * gamepad of the player's (IR::Buttons.pulls). */
 static void keep_pull(uint32_t *number, int button, int percent) {
-  uint32_t shift = 16u + 7u * (uint32_t)(button - FIRST_TRIGGER_BUTTON);
-  uint32_t had = (*number >> shift) & 127u;
-  if ((uint32_t)percent > had) *number = (*number & ~(127u << shift)) | ((uint32_t)percent << shift);
+  uint32_t shift = (uint32_t)RG_PULL_SHIFT + (uint32_t)RG_PULL_BITS * (uint32_t)(button - FIRST_TRIGGER_BUTTON);
+  uint32_t field = (1u << RG_PULL_BITS) - 1u;
+  uint32_t had = (*number >> shift) & field;
+  if ((uint32_t)percent > had) *number = (*number & ~(field << shift)) | ((uint32_t)percent << shift);
 }
 
 static SDL_Window *window;
@@ -1726,7 +1728,8 @@ static int32_t players_held(uint32_t *masks) {
   memset(masks, 0, RG_MOST_PLAYERS * sizeof *masks);
   for (uint32_t i = FIRST_TRIGGER_BUTTON; i < BUTTONS; i++)
     if (rg_window_console_has((int)i)) masks[0] |= keyboard & (1u << i); /* a key is all or nothing */
-  masks[1] = second_keys_down | second_keys_tapped;
+  uint32_t second_keys = second_keys_down | second_keys_tapped;
+  masks[1] = second_keys;
   second_keys_tapped = 0;
   for (int pad = 0; pad < MOST_PADS; pad++) {
     if (!pads[pad]) continue;
@@ -1756,9 +1759,12 @@ static int32_t players_held(uint32_t *masks) {
       }
     }
   }
-  /* A key for L2 or R2 is pulled all the way, whatever a gamepad of player 1's says. */
-  for (uint32_t i = FIRST_TRIGGER_BUTTON; i < BUTTONS; i++)
-    if (rg_window_console_has((int)i) && ((keyboard >> i) & 1u)) keep_pull(&masks[0], (int)i, 100);
+  /* A key for L2 or R2 is pulled all the way, whatever a gamepad says: player 1's keys and player 2's. */
+  for (uint32_t i = FIRST_TRIGGER_BUTTON; i < BUTTONS; i++) {
+    if (!rg_window_console_has((int)i)) continue;
+    if ((keyboard >> i) & 1u) keep_pull(&masks[0], (int)i, 100);
+    if ((second_keys >> i) & 1u) keep_pull(&masks[1], (int)i, 100);
+  }
   return rg_seats_players_holding(masks, RG_MOST_PLAYERS);
 }
 

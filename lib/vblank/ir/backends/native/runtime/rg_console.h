@@ -154,6 +154,20 @@
 #define RG_ONE_PLAYERS_BUTTONS 32767
 #endif
 
+/* How far L2 and R2 are pulled, kept above the buttons' bits in a player's number: RG_PULL_BITS bits
+ * a trigger, L2's from RG_PULL_SHIFT and R2's after it (IR::Buttons.pull_shift); and how far a
+ * trigger must be pulled, in percent, to count as held (IR::Buttons::HELD_FROM). Every build writes
+ * them; these are the same numbers for a file of the runtime read on its own. */
+#ifndef RG_PULL_SHIFT
+#define RG_PULL_SHIFT 16
+#endif
+#ifndef RG_PULL_BITS
+#define RG_PULL_BITS 7
+#endif
+#ifndef RG_TRIGGER_HELD_FROM
+#define RG_TRIGGER_HELD_FROM 12
+#endif
+
 /* The buttons the console has, a bit each in the same order (Computer::ConsoleNumbers): the ones
  * the window gives keys and gamepad buttons to and lists in its menu. Every build writes it; this is
  * the Advance's ten, for a file of the runtime read on its own. */

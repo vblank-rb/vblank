@@ -133,7 +133,7 @@ end
 def rg_pulled(button, shift, player)
   return 0 if player < 1 || player > RG_MOST_PLAYERS
 
-  part = ((@rg_pulls[player - 1] || 0) >> shift) & 127
+  part = ((@rg_pulls[player - 1] || 0) >> shift) & ((1 << RG_PULL_BITS) - 1)
   return part unless part.zero?
 
   rg_button_down(@rg_held[player - 1] || 0, button) == 1 ? 100 : 0

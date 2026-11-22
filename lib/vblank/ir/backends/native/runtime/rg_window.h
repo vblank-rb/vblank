@@ -69,12 +69,11 @@ const char *rg_window_button_setting(int button);
 const char *rg_window_hotkey_setting(int hotkey);
 /* The ones a standard gamepad has: face, back, start, sticks, shoulders, d-pad, and then its two
  * triggers. A trigger is an axis to SDL, not a button, so the window gives each a number after SDL's
- * fifteen (IR::ComputerControls::PADS): it is down from RG_TRIGGER_HELD_FROM percent pulled. */
+ * fifteen (IR::ComputerControls::PADS): it is down from RG_TRIGGER_HELD_FROM percent pulled
+ * (rg_console.h). */
 #define RG_WINDOW_PAD_BUTTONS 17
 #define RG_PAD_LEFT_TRIGGER 15
 #define RG_PAD_RIGHT_TRIGGER 16
-/* How far a trigger must be pulled, in percent, to count as held (IR::Buttons::HELD_FROM). */
-#define RG_TRIGGER_HELD_FROM 12
 
 /* --- pause, step and fast forward --- */
 

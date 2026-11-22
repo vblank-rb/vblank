@@ -56,6 +56,9 @@ class TestNativeCheckerFlags < Minitest::Test
     assert_equal VBlank::IR::Buttons::EVERY_BUTTON_MASK, defined["RG_ONE_PLAYERS_BUTTONS"], "the buttons a player's number keeps"
     assert_equal VBlank::IR::Backends::Computer::ConsoleNumbers.console_buttons_mask(VBlank::Console::ADVANCE),
                  defined["RG_CONSOLE_BUTTONS"], "the Advance's buttons, for a file read alone"
+    buttons = VBlank::IR::Buttons
+    assert_equal [buttons::PULL_SHIFT, buttons::PULL_BITS, buttons::HELD_FROM],
+                 defined.values_at("RG_PULL_SHIFT", "RG_PULL_BITS", "RG_TRIGGER_HELD_FROM"), "how a trigger's pull is kept"
   end
 
   # rg_driver.h gives the players a file read on its own has room for, and it must be the build's.
