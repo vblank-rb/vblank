@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# `clear_screen` and `dma_fill_rect` on the Advance's cartridge: the copy engine's registers the
+# `clear_screen` and `fill_rect` on the Advance's cartridge: the copy engine's registers the
 # ARM writes, how small that keeps the cartridge, and the picture it draws in the emulator. Every
 # test here reads the cartridge itself, so the whole file is the gba run's.
 class TestDMA < Minitest::Test
@@ -61,30 +61,51 @@ class TestDMA < Minitest::Test
   end
 
   # ========================================================================
-  # dma_fill_rect
+  # fill_rect: the copy engine a row at a time, where that is cheaper
   # ========================================================================
 
-  def test_dma_fill_rect_builds
+  def test_a_wide_fill_rect_fills_each_row_with_one_transfer
     rom = build do
       screen :bitmap
-      dma_fill_rect 10, 10, 40, 30, :blue
-      halt
-    end
-
-    assert_operator rom.size, :>, 0
-  end
-
-  def test_dma_fill_rect_emits_multiple_transfers
-    rom = build do
-      screen :bitmap
-      dma_fill_rect 10, 10, 40, 3, :green
+      fill_rect 10, 10, 40, 3, :green
       halt
     end
 
     # 3 rows = 3 DMA transfers, each writing to DMA3CNT
-    addresses = find_store_targets(rom)
-    cnt_count = addresses.count(REG_DMA3CNT)
-    assert_equal 3, cnt_count, "3-row fill should emit 3 DMA3CNT writes"
+    assert_equal 3, find_store_targets(rom).count(REG_DMA3CNT), "3-row fill should emit 3 DMA3CNT writes"
+  end
+
+  def test_an_odd_edge_or_width_still_fills_each_row_with_one_transfer
+    rom = build do
+      screen :bitmap
+      fill_rect 11, 10, 41, 3, :green
+      halt
+    end
+
+    assert_equal 3, find_store_targets(rom).count(REG_DMA3CNT)
+  end
+
+  # A row is one start of the copy engine: its address built once, then three stores
+  # (GBATEK, "DMA Transfers"), with the row's own destination built between them. So a
+  # row costs a dozen instructions however wide it is, where a store per pixel costs four
+  # instructions a pixel.
+  def test_a_big_fill_rect_costs_a_dozen_instructions_a_row
+    shorter = code_bytes(VBlank::IR::Build.fill_rect(10, 10, 40, 29, :blue))
+    taller = code_bytes(VBlank::IR::Build.fill_rect(10, 10, 40, 30, :blue))
+
+    assert_operator taller - shorter, :<=, 12 * 4
+  end
+
+  # Below four pixels across, a row of stores is no dearer than a start of the copy engine
+  # (four instructions a pixel against eleven a row), and has no set-up, so it stays stores.
+  def test_a_narrow_fill_rect_stays_stores
+    rom = build do
+      screen :bitmap
+      fill_rect 10, 10, 3, 3, :green
+      halt
+    end
+
+    assert_equal 0, find_store_targets(rom).count(REG_DMA3CNT)
   end
 
   # ========================================================================
@@ -106,11 +127,11 @@ class TestDMA < Minitest::Test
     assert verifier.red?(239, 159), "bottom-right should be red"
   end
 
-  def test_dma_fill_rect_renders_in_mgba
+  def test_fill_rect_renders_in_mgba
     rom = build do
       screen :bitmap
       clear_screen :black
-      dma_fill_rect 100, 60, 40, 40, :green
+      fill_rect 100, 60, 40, 40, :green
       halt
     end
 
@@ -121,12 +142,30 @@ class TestDMA < Minitest::Test
     assert verifier.black?(10, 10), "outside rect should be black"
   end
 
+  # A two-pixel transfer lands only on an even column, so an odd edge goes a pixel at a time.
+  # Each edge pixel is in, and the one beside it, which a shifted fill would cover, is not.
+  def test_an_odd_edged_fill_rect_lands_where_it_was_asked
+    rom = build do
+      screen :bitmap
+      clear_screen :black
+      fill_rect 11, 10, 41, 3, :green
+      halt
+    end
+
+    verifier = assert_emulator_loads_rom(rom, frames: 5)
+    assert verifier.green?(11, 10)
+    assert verifier.green?(51, 12)
+    assert verifier.black?(10, 10)
+    assert verifier.black?(52, 12)
+    assert verifier.black?(11, 13)
+  end
+
   def test_game_loop_with_clear_screen_runs
     rom = build do
       screen :bitmap
       game_loop do
         clear_screen :black
-        dma_fill_rect 100, 60, 40, 40, :white
+        fill_rect 100, 60, 40, 40, :white
       end
     end
 
@@ -134,6 +173,12 @@ class TestDMA < Minitest::Test
   end
 
   private
+
+  # The bytes of ARM a program of +statement+ lowers to, before the cartridge is padded out.
+  def code_bytes(statement)
+    b = VBlank::IR::Build
+    VBlank::IR::Backends::GBA.new.lower(b.program(b.screen(:bitmap), statement, b.halt, console: :gba)).bytesize
+  end
 
   # Scan the instruction stream for load_immediate sequences that put an address in r1,
   # then look for the stores made through it.

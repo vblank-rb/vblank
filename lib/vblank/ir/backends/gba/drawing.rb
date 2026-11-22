@@ -41,7 +41,7 @@ module VBlank
             when :pixel then emit_pixel(node)
             when :fill_rect then emit_fill_rect(node)
             when :clear_screen then emit_clear_screen(node)
-            when :dma_fill_rect then emit_dma_fill_rect(node)
+            when :dma_fill_rect then emit_fill_rect(node)
             when :draw_rect_at then emit_draw_rect_at(node)
             when :draw_column_at then emit_draw_column_at(node)
             when :draw_text then emit_draw_text(node)
@@ -138,22 +138,16 @@ module VBlank
           end
 
           # Fill the area itself, which is what clearing means when only part of the picture may
-          # be painted: a row-at-a-time block fill over exactly those edges. It does not go
-          # through the rectangle verb because that one holds authors to an even width, and an
-          # area's width is whatever the author set.
+          # be painted: a row-at-a-time block fill over exactly those edges, whatever width the
+          # author set, with no narrow-row stores (an area is seldom that narrow).
           #
           # An area of no width fills nothing, and must copy nothing: the copy engine reads a count
           # of nought as its biggest count, and would fill all of video memory.
           def emit_fill_area(color)
-            width = @framebuffer.clip_right - @framebuffer.clip_left
-            return unless width.positive?
+            return unless @framebuffer.clip_right > @framebuffer.clip_left
 
-            scratch = @framebuffer.emit_color_fill_word(color)
-            control = @framebuffer.fill_control_for_column(@framebuffer.clip_left, width)
-            (@framebuffer.clip_top...@framebuffer.clip_bottom).each do |row|
-              @framebuffer.emit_dma_fill_row(scratch, VRAM_START + ((row * SCREEN_WIDTH) + @framebuffer.clip_left) * 2,
-                                         control)
-            end
+            emit_rows_filled(@framebuffer.clip_left, @framebuffer.clip_right,
+                             (@framebuffer.clip_top...@framebuffer.clip_bottom), color)
           end
 
           # Turn the screen on by writing the chosen mode to the display-control
@@ -1309,22 +1303,66 @@ module VBlank
             end
           end
 
-          # Fill a rectangle of constant size. Load the color once, then write each
-          # on-screen pixel (off-screen pixels are clipped).
+          # From this many pixels across, a row of a rectangle is filled by the copy engine
+          # rather than a store per pixel.
+          #
+          # Counted off the emitted code, which a fixed rectangle unrolls, so the instructions
+          # written are the instructions run. A pixel stored is four instructions: three to
+          # build its address and the store. A row the copy engine fills is eleven, whatever
+          # its width: the engine's address, the fill word's address, the row's own address
+          # and the control word, each stored into the engine's three registers (GBATEK,
+          # "DMA Transfers"). The rectangle also pays three instructions more, once, to put its
+          # colour where the engine reads it. So from four pixels a row the engine is the
+          # smaller.
+          #
+          # It is the quicker from four pixels too, played from the cartridge, where most of
+          # a game's code runs: the processor waits while the engine copies, but the engine
+          # moves a pixel in a cycle or two, where four instructions fetched from the
+          # cartridge take several times that. Measured in the emulator, a row of four stored
+          # pixels takes longer than a transfer and a row of three a little less. Code placed
+          # in fast memory runs its stores quicker, and there they win a pixel or two further, but
+          # at four instructions a pixel they spend that small memory fastest of all.
+          ENGINE_FILL_MIN_WIDTH = 4
+
+          # Fill a rectangle of constant size, held to the area (off-screen pixels are
+          # clipped). A wide one fills each row with one transfer of the copy engine; a narrow
+          # one loads the colour once and stores each pixel.
           def emit_fill_rect(node)
             return @buffered.emit_fill_rect_buffered(node) if @lowering.mode == :buffered
 
             x, y, w, h = constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
-            color = Graphics::Color.resolve(node.color)
-            emit_number(ACC, color)
-            h.times do |dy|
-              row = y + dy
-              next unless (@framebuffer.clip_top...@framebuffer.clip_bottom).cover?(row)
+            # Every row of a rectangle spans the same columns, so where it starts and how far it
+            # reaches is one answer, settled before a single row is emitted.
+            left = [x, @framebuffer.clip_left].max
+            right = [x + w, @framebuffer.clip_right].min
+            top = [y, @framebuffer.clip_top].max
+            bottom = [y + h, @framebuffer.clip_bottom].min
+            return if right <= left || bottom <= top
 
-              w.times do |dx|
-                col = x + dx
-                next unless (@framebuffer.clip_left...@framebuffer.clip_right).cover?(col)
+            if right - left >= ENGINE_FILL_MIN_WIDTH
+              emit_rows_filled(left, right, (top...bottom), node.color)
+            else
+              emit_pixels_stored(left, right, (top...bottom), node.color)
+            end
+          end
 
+          # Fill each of +rows+ from column +left+ up to +right+ with one transfer of the copy
+          # engine, repeating one fixed word of the colour. Two pixels a transfer needs an even
+          # left column and an even width; any other row goes a pixel a transfer, which still
+          # lands where it was asked (Framebuffer#fill_control_for_column).
+          def emit_rows_filled(left, right, rows, color)
+            scratch = @framebuffer.emit_color_fill_word(color)
+            control = @framebuffer.fill_control_for_column(left, right - left)
+            rows.each do |row|
+              @framebuffer.emit_dma_fill_row(scratch, VRAM_START + ((row * SCREEN_WIDTH) + left) * 2, control)
+            end
+          end
+
+          # Store each pixel of +rows+ from column +left+ up to +right+, the colour loaded once.
+          def emit_pixels_stored(left, right, rows, color)
+            emit_number(ACC, Graphics::Color.resolve(color))
+            rows.each do |row|
+              (left...right).each do |col|
                 emit_number(TMP, VRAM_START + ((row * SCREEN_WIDTH) + col) * 2)
                 emit(ASM.store_halfword(ACC, TMP))
               end
@@ -1353,42 +1391,6 @@ module VBlank
             emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
           end
 
-          # A rectangle at a fixed position and size, filled fast with per-row DMA:
-          # each row is one block transfer of a repeated two-pixel word. Rows off the
-          # top/bottom of the screen are skipped.
-          def emit_dma_fill_rect(node)
-            return @buffered.emit_fill_rect_buffered(node) if @lowering.mode == :buffered
-
-            x, y, w, h = constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
-            @framebuffer.refuse_odd_width!(w, :dma_fill_rect)
-            # Held to the area sideways before a single row is emitted: every row of a rectangle
-            # spans the same columns, so where it starts and how far it reaches is one answer.
-            left = [x, @framebuffer.clip_left].max
-            right = [x + w, @framebuffer.clip_right].min
-            return if right <= left
-
-            scratch = @framebuffer.emit_color_fill_word(node.color)
-            control = @framebuffer.fill_control_for_column(left, right - left)
-
-            h.times do |dy|
-              row = y + dy
-              next unless (@framebuffer.clip_top...@framebuffer.clip_bottom).cover?(row)
-
-              row_addr = VRAM_START + ((row * SCREEN_WIDTH) + left) * 2
-              @framebuffer.emit_dma_fill_row(scratch, row_addr, control)
-            end
-          end
-
-          # A rectangle whose position and size are all computed at run time. Same
-          # per-row DMA fill as dma_fill_rect, but each row's destination address is
-          # built from the live x/y instead of known up front. r2/r3 hold x/y across the
-          # loop, r6 the rows left, r7 the fill's control word; r4/r5 are address
-          # scratch. (No run-time bounds clip yet — the caller is expected to keep it
-          # on-screen, as pong does by clamping.)
-          #
-          # A size settled while building is unrolled with an immediate control word,
-          # exactly as it always was, so a paddle or a ball costs what it did before.
-          # Only a size the game works out pays for a counter and a computed word.
           # One column of a picture, stretched to a height worked out as the game runs. The
           # whole of a first-person view is this, once per strip across the screen.
           #
