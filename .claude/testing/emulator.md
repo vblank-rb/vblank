@@ -86,7 +86,11 @@ the mix steps and drifts back over about half a second — so step well past tha
 whether it went quiet. Sound readers cover the whole run, so inside a block use
 `audio_energy_by_frame.last(n)`. On a Genesis cartridge `hearing` takes no block and must come before
 the first frame (Genesis Plus GX reads its voices as it loads the cartridge); `v.channels` names the
-voices on each console, and a Super Nintendo reader names none and refuses.
+voices on each console. A Super Nintendo reader names the sound chip's eight, `:voice0` to `:voice7`,
+and changes them at any frame, with or without a block: the others are left out where the chip adds
+each voice into the mix and go on running, so a voice heard again sounds as if never left out. The
+chip runs a little behind the processor, so the first few samples of the frame after a change are
+from before it.
 
 ## Long runs of sound
 

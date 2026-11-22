@@ -14,7 +14,7 @@ module VBlank
       # read this as they read any console's.
       #
       # +multitap+ plugs a Super Multitap into the second port before the first frame, as a person
-      # playing with four would have (RubySnesEmulator::Core#plug_in_multitap).
+      # playing with four would have (RubySNESEmulator::Core#plug_in_multitap).
       def initialize(path, save_dir: nil, multitap: false)
         @core = Emulator.open_snes(path, save_dir: save_dir)
         @core.plug_in_multitap if multitap
@@ -76,13 +76,37 @@ module VBlank
       # and right by turns, at SoundRecording's rate for this console.
       def audio_by_frame = @last_audio.dup
 
-      # This probe takes the mix bsnes hands over, with no way to leave one of the eight voices out.
-      # No voice can be heard alone here (#hearing), so none is named.
-      def channels = []
+      # The sound chip's eight voices, by the numbers its registers give them (fullsnes, "SNES APU
+      # DSP Voices"): :voice0 to :voice7.
+      VOICE_NAMES = Ractor.make_shareable((0..7).map { |voice| :"voice#{voice}" })
 
-      def hearing(**)
-        raise ArgumentError, "This reader cannot play one voice alone on a Super Nintendo cartridge. It records all " \
-                             "eight voices together. To fix this, remove `only:` and `without:`."
+      def channels = VOICE_NAMES
+
+      # Hear only the voices +only+ names, or every voice but those +without+ names, from the next
+      # sample on, with a block for the length of the block. The others are left out where the chip
+      # adds each voice into the mix, and go on running (RubySNESEmulator::Core#silence_voices), so
+      # this can change at any frame, and a voice heard again sounds as if it had never been left out.
+      def hearing(only: nil, without: nil)
+        if only.nil? == without.nil?
+          raise ArgumentError, "hearing must have only: or without:. only: keeps the voices you name and leaves out " \
+                               "the rest. without: leaves out the voices you name."
+        end
+        named = Array(only || without)
+        unknown = named - channels
+        unless unknown.empty?
+          raise ArgumentError, "A Super Nintendo has no voice #{unknown.join(', ')}. Its voices are #{channels.join(', ')}."
+        end
+
+        before = @core.silent_voices
+        silent = only ? channels - named : named
+        @core.silence_voices(silent.map { |voice| channels.index(voice) })
+        return self unless block_given?
+
+        begin
+          yield
+        ensure
+          @core.silence_voices(before)
+        end
       end
 
       def read8(address) = SNESMemory.read8(@core, address)

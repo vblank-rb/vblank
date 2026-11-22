@@ -4,12 +4,10 @@ require "test_helper"
 require "heard_alike_tests"
 
 # A port's heard sound held to its original's, on the Super Nintendo: both cartridges in bsnes,
-# whose samples the probe hands out as it does the Advance's.
+# whose samples the probe hands out as it does the Advance's, and whose eight voices it can hear one
+# at a time (test_heard_voices_on_the_super_nintendo.rb).
 class TestHeardAlikeOnTheSuperNintendo < Minitest::Test
   include HeardAlikeTests
 
   private def console = :snes
-
-  # bsnes here mixes the sound chip's eight voices together and takes no setting to leave one out.
-  private def voices_heard_alone? = false
 end

@@ -161,12 +161,13 @@ class TestSNESVerifier < Minitest::Test
     assert_operator heard.frames.last.loudest, :>, 0
   end
 
-  # The eight voices are not the other consoles' four, so one voice alone is refused in plain
-  # words rather than heard as the wrong thing.
-  def test_hearing_one_voice_alone_says_it_cannot
+  # The eight voices are not the other consoles' four, so a voice named as another console names
+  # it is refused in plain words, naming the Super Nintendo's own.
+  def test_hearing_a_voice_of_another_console_names_the_voices_it_has
     error = assert_raises(ArgumentError) { Verifier.new(beeper, frames: 2).hearing(only: :noise) }
 
-    assert_match(/one voice alone/, error.message)
+    assert_match "no voice noise", error.message
+    assert_match "voice0", error.message
   end
 
   private def beeper

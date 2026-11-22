@@ -78,7 +78,7 @@ module VBlank
     #
     # Each voice. Where the two are not alike and the console's emulator can play one voice alone
     # (the Advance's and the Color's four, the Genesis's six FM voices and four square and noise
-    # voices; not the Super Nintendo's eight), the tape is played again on both once for each voice,
+    # voices, the Super Nintendo's eight), the tape is played again on both once for each voice,
     # that voice alone, and compared the same way: +voices+ is each voice's name to its own
     # HeardComparison, so a failure names the voice that differs. It only explains: whether the two
     # are alike is the mixed sound's answer. Empty where no voice can be played alone; nil where the
