@@ -251,10 +251,13 @@ module VBlank
         end
 
         # The emulator hands both speakers over a moment at a time, the left's first.
+        # The console's own emulator is the one loaded, so a Super Nintendo cartridge is heard without
+        # the Advance's.
         def cartridge_samples(program, frames, buttons, only, side)
-          Emulator.load!
+          kit = Console.for(program.described_console.name)
+          kit.load_emulator!
           keys = ->(frame) { IR::Buttons.mask(buttons.fetch(frame + 1, [])) }
-          cartridge = Console.for(program.described_console.name).builder.cartridge_for(program, title: "HEARD")
+          cartridge = kit.builder.cartridge_for(program, title: "HEARD")
           verifier = Verifier.new(cartridge, frames: 0, keys: keys)
           verifier.hearing(only: only) if only
           verifier.step(frames)
