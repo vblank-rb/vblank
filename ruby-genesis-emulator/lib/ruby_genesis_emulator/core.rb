@@ -66,6 +66,8 @@ module RubyGenesisEmulator
     # The core's "MD Joypad 3 Button + Teamplayer": Sega's Team Player with a three-button pad in
     # each of its four plugs (RETRO_DEVICE_SUBCLASS of the joypad, in the core's libretro/libretro.c).
     TEAM_PLAYER = 0x601
+    # ...and "MD Joypad 6 Button + Teamplayer", a six-button pad in each plug.
+    TEAM_PLAYER_OF_SIX_BUTTON_PADS = 0x701
 
     # The picture of the usual setting: 320 pixels across and 224 lines down. A game that asks the
     # video chip for 256 across (H32) or 240 lines shows a different size, which #width and #height say.
@@ -114,8 +116,9 @@ module RubyGenesisEmulator
     # three-button pad of its own (ports 1 to 4 of #set_buttons). The core numbers the pads it asks
     # libretro for one after another, so the first port's pad stays port 0 and the tap's plugs come
     # next. A cartridge reads the tap through the port's TH and TR lines (plutiedev, "Sega multitap").
-    def plug_in_team_player
-      @frontend.set_controller_port_device(1, TEAM_PLAYER)
+    # +six_buttons+ fills its plugs with six-button pads, which hand over a nibble more each.
+    def plug_in_team_player(six_buttons: false)
+      @frontend.set_controller_port_device(1, six_buttons ? TEAM_PLAYER_OF_SIX_BUTTON_PADS : TEAM_PLAYER)
       self
     end
 

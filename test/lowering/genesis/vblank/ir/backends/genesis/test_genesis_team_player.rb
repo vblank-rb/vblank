@@ -75,6 +75,26 @@ class TestGenesisTeamPlayer < Minitest::Test
     assert_equal 4, run[:connected]
   end
 
+  # A Team Player of six-button pads hands over a third nibble for each (mode, X, Y, Z), which the
+  # read takes and passes over, so each player is still the plug they are in.
+  def test_a_team_player_of_six_button_pads_reads_each_player
+    rom = built(4)
+    steps = (2..4).to_h { |player| [player, rom.var_addresses.fetch(:"steps#{player}")] }
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "tap.gen")
+      rom.write(path)
+      core = VBlank::Diagnostics::Emulator.open_genesis(path)
+      core.plug_in_team_player(six_buttons: true)
+      core.set_buttons(%i[right], port: 2)
+      30.times { core.run_frame }
+
+      assert_operator core.wram_read32(steps.fetch(3)), :>, 0, "the third player, on the tap's second plug"
+      assert_equal [0, 0], [core.wram_read32(steps.fetch(2)), core.wram_read32(steps.fetch(4))]
+    ensure
+      core&.destroy
+    end
+  end
+
   # The Verifier plugs no tap in: Genesis Plus GX has a plain pad in the second port. The game
   # finds no tap and reads none of the third and fourth players.
   def test_with_no_team_player_the_third_and_fourth_players_hold_nothing

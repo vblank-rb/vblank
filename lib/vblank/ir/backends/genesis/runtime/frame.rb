@@ -142,13 +142,21 @@ module VBlank
             # which the tap sets to match once the nibble is there.
             TAP_TR = 0x20
             TAP_TL_BIT = 4
+            # TR and TL's bits together: the console keeps the TR it drives in both, so one EOR of a
+            # read leaves TL's bit clear when the tap has matched it. TL is an input, so its bit
+            # written to the port changes nothing.
+            TAP_TR_AND_TL = 0x30
             # The kinds of pad a plug can hold, in the header's nibbles (plutiedev): three buttons, six,
             # and nothing. Anything else ends the read, its plug and the ones after it read as empty.
+            # Genesis Plus GX fills every plug with a pad, so the empty plug's way rests on plutiedev
+            # alone and is played by no test.
             TAP_THREE_BUTTONS = 0b0000
             TAP_SIX_BUTTONS = 0b0001
             TAP_EMPTY = 0b1111
-            # How many reads of the port a nibble is waited for before the tap is taken as gone. The tap
-            # answers within a few of them; a tap pulled out mid-read would otherwise hang the game.
+            # How many reads of the port a nibble is waited for before the tap is taken as gone, so a
+            # tap pulled out mid-read cannot hang the game (plutiedev asks for a timeout and gives no
+            # length). This one has no source: Genesis Plus GX answers on the first read, and the
+            # number is a guard of ours, far more than an adapter on the hardware is known to need.
             TAP_WAIT_READS = 16
 
             module_function
@@ -433,8 +441,8 @@ module VBlank
             # Two adapters let four people play: Sega's Team Player, which plugs into one port and has
             # four plugs of its own, and EA's 4 Way Play, which takes both ports. The Team Player is the
             # one read here: the first port's pad stays the first player, as on a console with no
-            # adapter, the adapter in the second port gives the console's pads 2 to 5, and it is the
-            # one Sega documented and most games read. Genesis Plus GX emulates both.
+            # adapter, the adapter in the second port gives the console's pads 2 to 5, and the Super
+            # Nintendo's Multitap is read the same way round. Genesis Plus GX emulates both adapters.
             #
             # It is read the way plutiedev's "Sega multitap" gives. Read as a pad is (TH high, then
             # low), it answers %0011 and %1111, its peripheral ID; a pad never does, nor an empty port.
@@ -538,22 +546,21 @@ module VBlank
             end
 
             # One nibble of the Team Player, written in place, its labels named from +label+: TR set to
-            # D3's bit 5 and D3 turned for the next, then D0 = the nibble once TL matches, with the flags
-            # on it. If TL never does, to rt_tap_read_lost. A2 is the port; D1 and D2 are used.
+            # D3's bit 5 (D3 holds it in bit 4 too, TAP_TR_AND_TL), then D0 = the nibble once TL
+            # matches, with the flags on it, and D3 turned for the next. If TL never does, to
+            # rt_tap_read_lost. A2 is the port; D1 is used.
             def emit_tap_nibble(asm, label)
               asm.move(:b, asm.d(3), asm.ind(2))
-              asm.eor(:b, asm.imm(TAP_TR), asm.d(3))
               asm.moveq(TAP_WAIT_READS - 1, asm.d(1))
               asm.label("#{label}_wait")
               asm.move(:b, asm.ind(2), asm.d(0))
-              asm.move(:b, asm.d(0), asm.d(2))
-              asm.add(:b, asm.d(2), asm.d(2)) # TL up to where TR is
-              asm.eor(:b, asm.d(3), asm.d(2)) # D3 is TR turned, so TL matching TR leaves the bit set
-              asm.and(:b, asm.imm(TAP_TR), asm.d(2))
-              asm.branch(:ne, "#{label}_there")
+              asm.eor(:b, asm.d(3), asm.d(0)) # TL matching TR leaves bit 4 clear; the nibble is untouched
+              asm.btst(TAP_TL_BIT, asm.d(0))
+              asm.branch(:eq, "#{label}_there")
               asm.dbra(asm.d(1), "#{label}_wait")
               asm.bra("rt_tap_read_lost")
               asm.label("#{label}_there")
+              asm.eor(:b, asm.imm(TAP_TR_AND_TL), asm.d(3))
               asm.and(:w, asm.imm(0x0F), asm.d(0))
             end
 
@@ -574,14 +581,14 @@ module VBlank
               OTHER_CONTROLLERS.each_with_index do |controller, index|
                 asm.move(:w, at.call(TAP_BUTTONS, index * 2), at.call(controller.held))
               end
-              emit_players_counted(asm, at, OTHER_CONTROLLERS.map(&:held), "rt_tap_held_joined")
+              emit_players_past_first_raised(asm, at, OTHER_CONTROLLERS.map(&:held), "rt_tap_held_joined")
               asm.rts
             end
 
             # PLAYERS_PAST_FIRST raised to each player past the first whose word at +names+ (theirs in
             # order, the second player's first) holds a button: the highest such player less one, which
             # never falls. +label+ names the branches.
-            def emit_players_counted(asm, at, names, label)
+            def emit_players_past_first_raised(asm, at, names, label)
               names.each.with_index(1) do |name, past_first|
                 skip = "#{label}_#{past_first}"
                 asm.tst(:w, at.call(name))
@@ -637,7 +644,7 @@ module VBlank
               asm.clr(:w, at.call(PAD_PRESSED))
               asm.move(:w, at.call(PAD_HELD), at.call(HELD))
               if team_player?(memory)
-                emit_tap_pads_taken(asm, at)
+                emit_tap_buttons_for_pass(asm, at)
               elsif second_pad?(memory)
                 emit_second_pad_taken(asm, at)
               end
@@ -679,13 +686,13 @@ module VBlank
             # The second, third and fourth players' buttons for the pass about to start, as the first's
             # are taken; and each connected from the first pass a button of theirs went down in the
             # frames the last one took (Reference#count_connected_players).
-            def emit_tap_pads_taken(asm, at)
+            def emit_tap_buttons_for_pass(asm, at)
               OTHER_CONTROLLERS.each do |controller|
                 asm.move(:w, at.call(controller.pad_pressed), at.call(controller.pressed))
                 asm.clr(:w, at.call(controller.pad_pressed))
                 asm.move(:w, at.call(controller.pad_held), at.call(controller.held))
               end
-              emit_players_counted(asm, at, OTHER_CONTROLLERS.map(&:pressed), "rt_read_buttons_joined")
+              emit_players_past_first_raised(asm, at, OTHER_CONTROLLERS.map(&:pressed), "rt_read_buttons_joined")
             end
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
