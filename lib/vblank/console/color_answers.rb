@@ -92,8 +92,8 @@ module VBlank
                       "view over it shows black past the picture's edge. To move over a bigger world, " \
                       "use a tiled background and `scroll_to`. On a tiled screen the camera moves the " \
                       "background and the sprites together."),
-        keep_showing: works("a painted screen on a Game Boy Color is always shown whole, so a picture " \
-                            "kept showing never tears."),
+        redraw_on_change: works("a painted screen on a Game Boy Color is always shown whole, so a picture " \
+                                "painted only on a change never tears."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture, as on " \

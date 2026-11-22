@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# The test of test_keep_showing.rb about a tear-free screen's two pages, which only the Advance
+# The test of test_redraw_on_change.rb about a tear-free screen's two pages, which only the Advance
 # keeps: a Game Boy Color shows a painted picture whole, so one page is all it has, and a single
 # paint is on every frame there.
-class TestKeepShowingOnTheAdvance < Minitest::Test
+class TestRedrawOnChangeOnTheAdvance < Minitest::Test
   # Written by hand without the verb, a single paint lands on one page only — the
   # bug the verb exists to remove. This is the control: same program, same frames,
   # one paint instead of two, and the picture is there on one parity and gone on

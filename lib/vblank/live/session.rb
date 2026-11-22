@@ -111,7 +111,7 @@ module VBlank
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
                         stopped_itself: !stopped_on.nil?, lateness: @uncapped ? nil : @lateness.lateness,
                         setup_passes: @setup.passes, setup_frames: @setup.frames, setup_seconds: @setup.seconds)
-        keep_showing(stopped_on) if stopped_on && @keep_last_picture
+        hold_last_picture(stopped_on) if stopped_on && @keep_last_picture
         rate
       ensure
         write_save_file_if_unwritten
@@ -295,7 +295,7 @@ module VBlank
       # and pause and its menu still working, until the device asks to stop. A play told how many
       # passes to go on for counts each picture shown here as one of them, so it still ends. The
       # game runs no pass, so none of this is in the play's rate.
-      def keep_showing(pixels)
+      def hold_last_picture(pixels)
         shown = 0
         loop do
           @device.show(pixels, @game.width, @game.height)

@@ -97,7 +97,7 @@ module VBlank
         inside: works,
         grid: works,
         camera: works,
-        keep_showing: works,
+        redraw_on_change: works,
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows. On a screen drawn from tiles every " \

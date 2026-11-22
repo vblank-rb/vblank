@@ -19,7 +19,7 @@ number the game keeps works too.
 - A `:byte`/`:half` slot keeps the low bits: 200 in a `:byte` reads -56. (lists)
 - `pressed` inside `once_a_frame` fires once per caught-up frame; test presses in the loop. (control-flow)
 - `pixelate_size == 16` and `iris_shut?` hold two frames running; keep a flag of your own. (drawing)
-- A picture painted once on a tear-free screen flickers between pages (one page on the Color); use `keep_showing`. (drawing)
+- A picture painted once on a tear-free screen flickers between pages (one page on the Color); use `redraw_on_change`. (drawing)
 
 ## The pages, under `.claude/dsl/`
 
@@ -36,7 +36,7 @@ number the game keeps works too.
 **The screen**
 
 - `screen.md` — `VBlank.game` options, `screen` kinds, `setting`, `built_for?`.
-- `drawing.md` — painting, `inside`, `camera`, fades, tints, pixelation, lights, `keep_showing`.
+- `drawing.md` — painting, `inside`, `camera`, fades, tints, pixelation, lights, `redraw_on_change`.
 - `sprites.md` — `image`, `sprite`, `blit`, colours and recolouring, sprite tiles.
 - `backgrounds.md` — `tiles`, `canvas`, `background`, `status_bar`.
 - `layers.md` — the stack, and the order sprites are drawn in.

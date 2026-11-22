@@ -78,7 +78,8 @@ module VBlank
                       "black past the picture's edge. To move over a bigger world, use a tiled " \
                       "background and `scroll_to`. On a tiled screen the camera moves the backgrounds " \
                       "and the sprites together."),
-        keep_showing: works("a painted screen is always shown whole, so a picture kept showing never tears."),
+        redraw_on_change: works("a painted screen is always shown whole, so a picture painted only on a change " \
+                                "never tears."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` to black is the display's own brightness, in sixteen levels, and costs no time. " \

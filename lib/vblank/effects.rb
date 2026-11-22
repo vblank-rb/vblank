@@ -10,7 +10,7 @@ VBlank.require_game_file "effects/packs/music_fade"
 VBlank.require_game_file "effects/packs/follow_camera"
 VBlank.require_game_file "effects/packs/pulse"
 VBlank.require_game_file "effects/packs/menu"
-VBlank.require_game_file "effects/packs/keep_showing"
+VBlank.require_game_file "effects/packs/redraw_on_change"
 
 module VBlank
   # The effect registry: how a verb gets added to the DSL from outside the
@@ -255,7 +255,7 @@ module VBlank
       Packs::FollowCamera,  # camera_follows — built on a background's own scrolling
       Packs::Pulse,         # pulse — a sprite that breathes, built on `sprite.scale`
       Packs::Menus,         # menu — a list, a selector and what each row does, built on `draw_text`
-      Packs::KeepShowing,   # keep_showing — a picture drawn when it changes, on every page of the screen
+      Packs::RedrawOnChange, # redraw_on_change — a picture drawn when it changes, on every page of the screen
     ].freeze
   end
 

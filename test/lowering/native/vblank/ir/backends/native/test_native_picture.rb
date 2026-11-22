@@ -691,14 +691,14 @@ class TestNativePicture < Minitest::Test
 
   # A picture drawn when it changes and then left alone, on one page and on two: the tear-free
   # screen has to be painted once for each of its pages, or the two show different scores.
-  def test_a_picture_kept_showing_on_one_page_and_on_two
+  def test_a_picture_redrawn_on_change_on_one_page_and_on_two
     [false, true].each do |tear_free|
       program = program_of do
         screen :bitmap, tear_free: tear_free
         score = 0
         n = 0
         clear_screen :black
-        bar = keep_showing(:bar) { draw_rect_at 10, 10, score * 4, 6, :green }
+        bar = redraw_on_change(:bar) { draw_rect_at 10, 10, score * 4, 6, :green }
         game_loop do
           score = 5 if n == 2
           bar.changed if n == 2
@@ -1863,7 +1863,8 @@ class TestNativePicture < Minitest::Test
     assert_native_matches_reference program, frames: 14
 
     # The sky, the sea and the sand, each read at one pixel, as they change over the run.
-    seen = moments.map { |moment| [[4, 4], [4, 60], [4, 150]].map { |x, y| moment.picture[(y * WIDTH) + x] } }
+    spots = [[4, 4], [4, 60], [4, 150]]
+    seen = moments.map { |moment| spots.map { |x, y| moment.picture[(y * WIDTH) + x] } }
     as_named = ->(*names) { names.map { |name| Color.resolve(name) } }
     darkened = ->(*names) { as_named.(*names).map { |color| half_way_to_black(color) } }
     assert_equal [as_named.(:cyan, :blue, :yellow), as_named.(:orange, :red, :yellow),

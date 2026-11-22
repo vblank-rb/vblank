@@ -30,8 +30,8 @@
 # that asks the player; this one never asks, and on a Color would only ever say it was not set.
 #
 # It paints only when the time changes. The time moves on once a second, so the face is painted once a second
-# and left alone in between, through `keep_showing`. The screen here keeps two pictures and
-# shows them in turn, so that nobody ever sees one half drawn; `keep_showing` is what paints a
+# and left alone in between, through `redraw_on_change`. The screen here keeps two pictures and
+# shows them in turn, so that nobody ever sees one half drawn; `redraw_on_change` is what paints a
 # change into both, where painting it once would flicker between the new second and the old.
 #
 # How long it has been running is the one thing the console does know, clock chip or no clock
@@ -107,7 +107,7 @@ module ClockFace
       draw_number number % 10, column + (LETTERS.cell_w * SCALE_OF[font]), row, INK, digits: 1, font: font
     end
 
-    face = keep_showing :face do
+    face = redraw_on_change :face do
       clear_screen BACKGROUND
 
       if now.present? && now.set?

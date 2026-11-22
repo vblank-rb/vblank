@@ -1362,7 +1362,7 @@ module VBlank
         printer.puts("  this screen keeps two pictures and shows them in turn, so drawing that " \
                      "ADDS to what is already there reaches only one of them")
         printer.puts("  to fix this, draw the whole picture every frame — or, for a part that " \
-                     "changes now and then, use `keep_showing`")
+                     "changes now and then, use `redraw_on_change`")
       end
 
       def self.held_keys_suffix(keys) = keys.empty? ? "" : ", holding #{keys.map(&:to_s).join(' + ').upcase}"

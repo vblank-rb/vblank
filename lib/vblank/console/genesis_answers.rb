@@ -91,9 +91,9 @@ module VBlank
                       "down, either way. If a game moves it further, the game stops and says so. To move " \
                       "over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the " \
                       "camera moves the backgrounds and the sprites together, with no such limit."),
-        keep_showing: works("a painted screen is copied to the console in the blank between frames, and only " \
-                            "the squares that changed. A blank holds about a tenth of the screen, so a pass " \
-                            "that changes all of it takes about eleven frames to show."),
+        redraw_on_change: works("a painted screen is copied to the console in the blank between frames, and " \
+                                "only the squares that changed. A blank holds about a tenth of the screen, so " \
+                                "a pass that changes all of it takes about eleven frames to show."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture: the colour " \

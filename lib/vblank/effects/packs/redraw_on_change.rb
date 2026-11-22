@@ -10,13 +10,13 @@ module VBlank
       # alone between changes is much cheaper, and on the tear-free screen (`screen :bitmap,
       # tear_free: true`) leaving it alone needs care. That screen keeps two pictures and shows them
       # in turn, so a change painted a single time reaches one of the two, and the screen flickers
-      # between the new figure and the old one. `keep_showing` paints a change once for each picture
+      # between the new figure and the old one. `redraw_on_change` paints a change once for each picture
       # the screen keeps, so a game never writes the number down. On a plain screen the same game
       # code costs one paint. A game moved from `screen :bitmap` to `screen :bitmap, tear_free:
       # true` keeps working, and the flicker that would have appeared never does.
       #
       # ```ruby
-      # bar = keep_showing(:status_bar) { paint_the_bar }
+      # bar = redraw_on_change(:status_bar) { paint_the_bar }
       # bar.changed if health != last
       # bar.draw
       # ```
@@ -38,7 +38,7 @@ module VBlank
       # the picture changed; how many paints that takes is read off the screen the game
       # declared, and no game writes the number down.
       #
-      #   bar = keep_showing(:status_bar) { paint_the_bar }
+      #   bar = redraw_on_change(:status_bar) { paint_the_bar }
       #
       #   # ...somewhere a change happens:
       #   bar.changed if health != last
@@ -55,9 +55,9 @@ module VBlank
       # A pack, by {Effects}'s own test: every line is written in `var`, `func`,
       # `call` and `if`, and no backend knows this file exists.
       #++
-      module KeepShowing
-        # Draws something once and leaves it there, and works out how many times "once" really is
-        # on this screen.
+      module RedrawOnChange
+        # Redraws a picture when the game marks it changed, and leaves it there in between. It works
+        # out how many paints a change takes on this screen: one for each picture the screen keeps.
         #
         # The block is the drawing. It is built into a routine of its own and not written out at
         # each place that needs it, so a picture painted from three places costs its code once.
@@ -66,7 +66,7 @@ module VBlank
         # in the drawing order.
         #
         # ```ruby
-        # bar = keep_showing(:status_bar) { paint_the_bar }
+        # bar = redraw_on_change(:status_bar) { paint_the_bar }
         #
         # bar.changed if health != last   # somewhere a change happens
         # bar.draw                        # in the frame, where the picture belongs in the drawing order
@@ -74,30 +74,38 @@ module VBlank
         #
         # * `name` - what to call the picture, as a symbol. Each picture needs its own name.
         # * The block - the drawing.
-        def keep_showing(name, &drawing)
+        def redraw_on_change(name, &drawing)
           unless name.is_a?(Symbol)
             raise ArgumentError,
-                  "keep_showing needs a name for the picture, as a symbol: " \
-                  "keep_showing(:status_bar) { ... }. You gave #{name.inspect}."
+                  "redraw_on_change needs a name for the picture, as a symbol: " \
+                  "redraw_on_change(:status_bar) { ... }. You gave #{name.inspect}."
           end
           unless drawing
             raise ArgumentError,
-                  "keep_showing needs a block saying what to draw: " \
-                  "keep_showing(:#{name}) { draw_text \"GAME OVER\", :center, 80, :white }."
+                  "redraw_on_change needs a block saying what to draw: " \
+                  "redraw_on_change(:#{name}) { draw_text \"GAME OVER\", :center, 80, :white }."
           end
-          if keep_showing_pictures.key?(name)
+          if redraw_on_change_pictures.key?(name)
             raise ArgumentError,
-                  "keep_showing(:#{name}) was declared twice. Each picture needs its own " \
+                  "redraw_on_change(:#{name}) was declared twice. Each picture needs its own " \
                   "name. Declare it once and keep the handle it gives back."
           end
 
-          keep_showing_pictures[name] = Shown.new(self, name, &drawing)
+          redraw_on_change_pictures[name] = Shown.new(self, name, &drawing)
+        end
+
+        #--
+        # The verb's old name, kept only to say the new one. Private, so it is no verb of the DSL's:
+        # a game's block still reaches it, since it runs as the builder.
+        #++
+        private def keep_showing(*, &)
+          raise ArgumentError, "`keep_showing` is now `redraw_on_change`. To fix this, write `redraw_on_change`."
         end
 
         # The pictures declared so far, by name — so a double declaration is caught
         # and the guardrail can see what was asked for.
-        # Introspection behind `keep_showing`: the pictures declared so far. A game reads none of this.
-        def keep_showing_pictures = @keep_showing_pictures ||= {}  # :nodoc:
+        # Introspection behind `redraw_on_change`: the pictures declared so far. A game reads none of this.
+        def redraw_on_change_pictures = @redraw_on_change_pictures ||= {}  # :nodoc:
 
         # One such picture: a routine that draws it, and a count of how many pages
         # still want it.
@@ -158,9 +166,9 @@ module VBlank
         # The guardrails this pack brings with it.
         def self.checks = CHECKS
 
-        # A warning about a picture declared with `keep_showing` that the game never draws:
+        # A warning about a picture declared with `redraw_on_change` that the game never draws:
         #
-        # > This game declares `keep_showing(:<picture>)`, but it never draws that picture. The
+        # > This game declares `redraw_on_change(:<picture>)`, but it never draws that picture. The
         # > block says what to draw. A call to `draw` on the handle is what puts it on screen.
         # > With no such call the picture never appears. To fix this, call `<picture>.draw` in the
         # > frame, where the picture belongs in the drawing order.
@@ -178,7 +186,7 @@ module VBlank
         # places a call to it. A declared routine with no call is exactly this bug.
         #++
         class NeverDrawn
-          NAME = :keep_showing_never_drawn  # :nodoc:
+          NAME = :redraw_on_change_never_drawn  # :nodoc:
           PLAIN_NAME = "a picture that is never drawn"  # :nodoc:
 
           def detect(program)
@@ -206,7 +214,7 @@ module VBlank
 
           def message_for(routine)
             picture = routine.to_s.delete_prefix(PREFIX)
-            "This game declares `keep_showing(:#{picture})`, but it never draws that " \
+            "This game declares `redraw_on_change(:#{picture})`, but it never draws that " \
               "picture. The block says what to draw. A call to `draw` on the handle is " \
               "what puts it on screen. With no such call the picture never appears. To " \
               "fix this, call `#{picture}.draw` in the frame, where the picture belongs " \

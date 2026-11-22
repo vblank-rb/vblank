@@ -188,7 +188,7 @@ class TestFlickerMeasured < Minitest::Test
 
     assert_match(/pixels flicker/, said)
     assert_match(/keeps two pictures/, said)
-    assert_match(/keep_showing/, said)
+    assert_match(/redraw_on_change/, said)
     refute_match(/\bpage\b/i, said, "the author is never made to learn the word")
   end
 

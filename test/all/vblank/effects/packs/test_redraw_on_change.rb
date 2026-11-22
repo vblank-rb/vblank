@@ -3,13 +3,13 @@
 require "test_helper"
 require "differential"
 
-# `keep_showing` — a picture drawn when it changes and then left there.
+# `redraw_on_change` — a picture drawn when it changes and then left there.
 #
 # The whole point of the verb is that the game never says how many times to paint.
 # A tear-free screen keeps two pictures and shows them in turn, so a change drawn
 # once flickers; a plain screen keeps one, so a change drawn once is done. The same
 # game code has to be right on both, which is what these tests pin.
-class TestKeepShowing < Minitest::Test
+class TestRedrawOnChange < Minitest::Test
   include Differential
   include EmulatorSupport
 
@@ -28,7 +28,7 @@ class TestKeepShowing < Minitest::Test
 
       n = var :n, 0
       shown = var :shown, 0
-      bar = keep_showing(:bar) do
+      bar = redraw_on_change(:bar) do
         fill_rect 0, 0, 240, 40, :black
         draw_rect_at 10, 10, 20, 20, :red
       end
@@ -68,7 +68,7 @@ class TestKeepShowing < Minitest::Test
   end
 
   # Without the verb, a single paint lands on one page only: that control is the
-  # Advance's (test_keep_showing_on_the_advance.rb), since a Color keeps one page.
+  # Advance's (test_redraw_on_change_on_the_advance.rb), since a Color keeps one page.
 
   # The same game code on a plain screen: one page, so one paint, and the picture
   # is there on every frame. Nothing in the program said which screen it was on.
@@ -88,8 +88,8 @@ class TestKeepShowing < Minitest::Test
     _, tear_free = counter_program(tear_free: true)
     _, plain = counter_program(tear_free: false)
 
-    assert_equal 2, tear_free.keep_showing_pictures[:bar].pages
-    assert_equal 1, plain.keep_showing_pictures[:bar].pages
+    assert_equal 2, tear_free.redraw_on_change_pictures[:bar].pages
+    assert_equal 1, plain.redraw_on_change_pictures[:bar].pages
   end
 
   # A frame where nothing changed does no drawing at all. Asserted through the
@@ -101,7 +101,7 @@ class TestKeepShowing < Minitest::Test
       screen :bitmap
       clear_screen :black
       n = var :n, 0
-      bar = keep_showing(:bar) { fill_rect 0, 0, 240, 40, :red }
+      bar = redraw_on_change(:bar) { fill_rect 0, 0, 240, 40, :red }
       game_loop do
         n += 1
         bar.changed if n == 1
@@ -124,8 +124,8 @@ class TestKeepShowing < Minitest::Test
     error = assert_raises(ArgumentError) do
       b.instance_eval do
         screen :bitmap
-        keep_showing(:bar) { fill_rect 0, 0, 10, 10, :red }
-        keep_showing(:bar) { fill_rect 0, 0, 10, 10, :blue }
+        redraw_on_change(:bar) { fill_rect 0, 0, 10, 10, :red }
+        redraw_on_change(:bar) { fill_rect 0, 0, 10, 10, :blue }
       end
     end
     assert_match(/declared twice/, error.message)
@@ -136,7 +136,7 @@ class TestKeepShowing < Minitest::Test
     error = assert_raises(ArgumentError) do
       b.instance_eval do
         screen :bitmap
-        keep_showing(:bar)
+        redraw_on_change(:bar)
       end
     end
     assert_match(/needs a block/, error.message)
@@ -147,10 +147,22 @@ class TestKeepShowing < Minitest::Test
     error = assert_raises(ArgumentError) do
       b.instance_eval do
         screen :bitmap
-        keep_showing("bar") { fill_rect 0, 0, 10, 10, :red }
+        redraw_on_change("bar") { fill_rect 0, 0, 10, 10, :red }
       end
     end
     assert_match(/needs a name/, error.message)
+  end
+
+  # The verb's old name is gone, and a game that still calls it is told the new one.
+  def test_a_game_that_calls_the_old_name_is_told_the_new_one
+    b = Builder.new
+    error = assert_raises(ArgumentError) do
+      b.instance_eval do
+        screen :bitmap
+        keep_showing(:bar) { fill_rect 0, 0, 10, 10, :red }
+      end
+    end
+    assert_match(/redraw_on_change/, error.message)
   end
 
   # Declared and told when it changes, but never drawn — the half-written shape,
@@ -160,12 +172,12 @@ class TestKeepShowing < Minitest::Test
     b.instance_eval do
       screen :bitmap
       clear_screen :black
-      bar = keep_showing(:bar) { fill_rect 0, 0, 240, 40, :red }
+      bar = redraw_on_change(:bar) { fill_rect 0, 0, 240, 40, :red }
       game_loop { bar.changed }
     end
     b.finalize_program
 
-    findings = VBlank::Effects::Packs::KeepShowing::NeverDrawn.new.detect(b.program)
+    findings = VBlank::Effects::Packs::RedrawOnChange::NeverDrawn.new.detect(b.program)
     assert_equal 1, findings.length
     assert_match(/never draws that picture/, findings.first.message)
     assert_equal :warning, findings.first.severity
@@ -173,6 +185,6 @@ class TestKeepShowing < Minitest::Test
 
   def test_a_picture_that_is_drawn_raises_no_warning
     prog, = counter_program(tear_free: true)
-    assert_empty VBlank::Effects::Packs::KeepShowing::NeverDrawn.new.detect(prog)
+    assert_empty VBlank::Effects::Packs::RedrawOnChange::NeverDrawn.new.detect(prog)
   end
 end

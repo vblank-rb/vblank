@@ -40,7 +40,7 @@ module VBlank
     #   - a game that repaints every frame: each picture changes, so nothing is flagged;
     #   - a game whose picture is still: the two pictures agree, so nothing is flagged;
     #   - a game that repaints only part of the screen and handles the rest properly —
-    #     `keep_showing` paints a change into both pictures, so they converge and nothing
+    #     `redraw_on_change` paints a change into both pictures, so they converge and nothing
     #     is flagged. A build-time check cannot tell that apart from the broken version,
     #     because the difference is how many frames an op runs on.
     #

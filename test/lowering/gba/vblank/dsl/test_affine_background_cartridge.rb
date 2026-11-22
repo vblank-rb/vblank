@@ -222,7 +222,7 @@ class TestAffineBackgroundCartridge < Minitest::Test
 
   # A scene that turns a background, a scene that does not, and a game that goes back and
   # forth between them. Leaving the turning one puts the display back to no-turn-no-zoom,
-  # because whatever comes next must not keep showing this scene's zoom — so coming back
+  # because whatever comes next must not go on showing this scene's zoom — so coming back
   # has to say the zoom again, though the program has not mentioned it since the line that
   # declared it. Zoomed 2x the sampled point shows the red mark at column 20; left as
   # drawn it shows the white one at column 25, so the two tell each other apart.

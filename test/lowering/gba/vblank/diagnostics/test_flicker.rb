@@ -51,7 +51,7 @@ class TestFlickerRule < Minitest::Test
   end
 
   # The one a build-time check cannot do. A change painted into both pictures —
-  # what `keep_showing` does, and what wolf3d's fizzle does with two walkers —
+  # what `redraw_on_change` does, and what wolf3d's fizzle does with two walkers —
   # converges. The second snapshot has them agreeing, so nothing is reported.
   def test_a_change_painted_into_both_pictures_is_not_reported
     behind = marked(40)

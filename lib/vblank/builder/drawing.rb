@@ -498,10 +498,10 @@ module VBlank
       # How many pictures this screen keeps. A tear-free screen keeps two and shows
       # them in turn, so a change drawn once reaches only one of them; a plain screen
       # keeps one, so a change drawn once is done. This is the number of times a
-      # picture that is drawn and then left alone has to be painted (Packs::KeepShowing).
+      # picture that is drawn and then left alone has to be painted (Packs::RedrawOnChange).
       # A Game Boy Color keeps one page even then (Console::Description's painted_pages),
       # and the second paint there only draws the same picture again.
-      # Introspection behind `keep_showing`: how many pictures the chosen screen keeps. A game reads none of this.
+      # Introspection behind `redraw_on_change`: how many pictures the chosen screen keeps. A game reads none of this.
       def screen_pages = @tear_free ? 2 : 1  # :nodoc:
 
       # Keeps everything the block draws inside one part of the screen.
