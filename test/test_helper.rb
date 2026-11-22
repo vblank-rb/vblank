@@ -18,6 +18,10 @@ require "support/shareable_constants"
 require "tmpdir"
 require "fileutils"
 
+# Every constant a file here declares from now on is frozen all the way down as it is declared:
+# in a module of fixtures several test files share, a class of helpers or at the top of a file, as
+# well as in a test class (Minitest::Test below).
+VBlank::Testing::InRactors.share_constants_declared_in(__dir__)
 # Every `vblank run` a test starts keeps the games it writes out in a folder of the run's own
 # (Live::WrittenGames), never the person's, and the folder goes when the run ends. A test that
 # needs a folder of its own names one in the command's environment.

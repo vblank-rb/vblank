@@ -66,6 +66,23 @@ class TestInRactors < Minitest::Test
     assert Ractor.shareable?(fixtures::SIZES)
   end
 
+  # A constant this suite's files declare outside a test class, in a module of fixtures several
+  # files share say, is frozen as it is declared too: test_helper asks for every file under test/.
+  def test_a_constant_a_test_file_declares_in_a_module_is_frozen_as_declared
+    fixtures = Module.new
+    fixtures.const_set(:ITEMS, { byte: [1, 200] })
+
+    assert Ractor.shareable?(fixtures::ITEMS)
+  end
+
+  # A file elsewhere, the library's or a gem's, keeps its constants as it wrote them.
+  def test_a_constant_declared_outside_the_folder_is_left_alone
+    holder = Module.new
+    holder.module_eval("ITEMS = [+'red']", "/elsewhere/fixtures.rb", 1)
+
+    refute Ractor.shareable?(holder::ITEMS)
+  end
+
   # A String INSIDE a fixture (an Array, a Hash, a Data) is safe to write too: six Ractors writing
   # each one at once leave every fixture whole, and no write moves its bytes.
   Pages = Data.define(:copy)
@@ -115,6 +132,23 @@ class TestInRactors < Minitest::Test
 
     assert_match(/^Minitest::Assertion: --- expected\n\+\+\+ actual\n/, message)
     refute_match(/IsolationError/, message)
+  end
+
+  # A test written in a loop is a method made from a block, which a worker can call.
+  def test_a_method_a_test_class_makes_from_a_block_is_called_in_a_ractor
+    tests = Class.new(Minitest::Test)
+    { small: 4, large: 9 }.each { |size, most| tests.class_exec { define_method(:"bound_#{size}") { most } } }
+
+    assert_equal 9, Ractor.new(tests) { |made| made.new("bound_large").bound_large }.value
+  end
+
+  # One that reads a value that can change is left as it was, for the Ractor run to name.
+  def test_a_block_reading_a_value_that_can_change_makes_a_plain_method
+    tests = Class.new(Minitest::Test)
+    seen = [+"red"]
+    tests.class_exec { define_method(:seen) { seen } }
+
+    assert_same seen, tests.new("seen").seen
   end
 
   def test_a_fixture_read_once_is_made_once_in_a_ractor

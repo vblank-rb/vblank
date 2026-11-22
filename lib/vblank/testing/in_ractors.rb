@@ -49,8 +49,44 @@ module VBlank
       def self.included(test_class)
         super
         test_class.extend(FrozenConstants)
+        test_class.extend(ShareableMethods)
         test_class.extend(ReadOnce)
         test_class.parallelize_me!
+      end
+
+      # Every method a test class makes from a block, tests written in a loop above all
+      # (`BOUNDS.each { |shape, bound| define_method(:"test_#{shape}") { ... } }`), made from a
+      # shareable copy of the block, so a test in any Ractor can call it.
+      #
+      # A method made from a plain block can be called only on the Ractor that made it, the main
+      # one, as the file loaded: anywhere else Ruby refuses it as "defined with an un-shareable
+      # Proc in a different Ractor". The copy (Ractor.shareable_proc) is the block with the values
+      # it reads from around it fixed as they were, which a loop's variables are. A block that
+      # reads a value that can change, or a variable set again later, cannot be copied and is
+      # left as it was: the Ractor run names the test that calls it. A class that says
+      # `runs_on_the_main_ractor!` first keeps its blocks as they are.
+      #
+      # Every block inside the copy is cut loose from its surroundings too, so a game's block in
+      # such a test cannot read the loop's variables as game code: VBlank reads game code by
+      # evaluating its source beside the block's variables, and Ruby refuses that ("can not access
+      # variable from isolated Proc"). A test like that names the loop's value in a method of its
+      # own, written out for each value, or reads it outside the game's block.
+      module ShareableMethods
+        private def define_method(name, body = nil, &block)
+          return super(name, body) if body
+          return super if respond_to?(:runs_on_the_main_ractor?) && runs_on_the_main_ractor?
+
+          super(name, &InRactors.shareable_block(block))
+        end
+      end
+
+      # +block+ as a shareable copy (ShareableMethods), or as it was where it cannot be copied.
+      def self.shareable_block(block)
+        return block if block.nil? || Ractor.shareable?(block)
+
+        Ractor.shareable_proc(&block)
+      rescue Ractor::IsolationError
+        block
       end
 
       # Every fixture a test class parks in a constant is frozen, all the way down, the moment it
@@ -153,6 +189,39 @@ module VBlank
       # shareable as a test class's are: for the module's last line, once all are declared.
       def self.share_constants(fixtures)
         fixtures.constants(false).each { |name| share_constant(fixtures, name) }
+      end
+
+      # Every constant a file in +folder+ declares from now on, made shareable the moment it is
+      # declared, as a test class's are. A test helper calls it once with its own folder:
+      #
+      #   VBlank::Testing::InRactors.share_constants_declared_in(__dir__)
+      #
+      # Including InRactors reaches the constants of test classes alone, since only a class Ruby
+      # can tell about its constants is one that has the hook. A module of fixtures several test
+      # files share (`module PaletteWalkTests; PART_OF_THE_SCREEN = [...]`), a class of helpers,
+      # or a constant at the top of a test file is in no test class, and a test that reads one in
+      # a Ractor is refused. This puts the hook on every module (Module#const_added), and shares
+      # what a file in +folder+ declared, found by where Ruby says each was declared, so nothing
+      # the library or a gem declares is touched.
+      def self.share_constants_declared_in(folder)
+        prefix = Ractor.make_shareable(File.join(File.expand_path(folder), ""))
+        hook = Module.new
+        hook.define_method(:const_added, &Ractor.shareable_proc do |name|
+          super(name)
+          InRactors.share_constant_declared_in(self, name, prefix)
+        end)
+        Module.prepend(hook)
+      end
+
+      # Constant +name+ of +holder+ made shareable when a file in +folder+ declared it. A test
+      # class has shared it already (FrozenConstants), and an autoload is left to load when used.
+      def self.share_constant_declared_in(holder, name, folder)
+        return if holder.is_a?(FrozenConstants) || holder.autoload?(name, false)
+        # Expanded, since a test file given to ruby by a relative path declares its constants there.
+        file = holder.const_source_location(name, false)&.first
+        return unless file && File.expand_path(file).start_with?(folder)
+
+        share_constant(holder, name)
       end
 
       # Constant +name+ of +holder+ made shareable (.shareable), put back where that made it a new
