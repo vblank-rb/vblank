@@ -255,6 +255,50 @@ class TestJSPageMenu < Minitest::Test
     assert_includes lines, "js null"
   end
 
+  # A page cannot close its tab, so Quit leaves the game's last picture up, each colour a quarter as
+  # bright, with the words to reload lit white in the middle. Quit is the third line of Game.
+  def test_quit_dims_the_last_picture_and_says_to_reload
+    quit = ["play 3", *%w[F1 ArrowDown ArrowDown ArrowDown Enter].flat_map { |code| ["down #{code}", "up #{code}"] }, "play 5", "picture one"]
+    quitted = pictures_in(played_page(quit, ticking_game, html: page_with_menu(ticking_game))).first
+    three = pictures_in(played_page(["play 3", "picture"], ticking_game)).first
+
+    assert_same_picture stopped_over(three, VBlank::Graphics::Fonts.default), quitted, "after Quit"
+  end
+
+  # On a page Escape closes the menu and leaves fullscreen, so Quit names no key there.
+  def test_quit_names_no_key_on_a_page
+    shown = page_says(["F1"]).last
+
+    assert_includes shown.fetch("lines"), ["Quit", ""]
+  end
+
+  # +picture+ dimmed and the stopped words in +font+ lit over it, as the page draws them.
+  private def stopped_over(picture, font)
+    words = JS::MenuData.stopped_words(font)
+    want = picture.map { |color| (color >> 2) & 0x1CE7 }
+    left = (240 - words.width) / 2
+    top = (160 - words.height) / 2
+    words.points.each_slice(2) { |x, y| want[((top + y) * 240) + left + x] = 0x7FFF }
+    want
+  end
+
+  def test_the_stopped_words_are_in_the_font_the_game_writes_in
+    # A block six pixels wide for every letter the words need.
+    blocks = "STOPEDRLAYGIN.H".chars.to_h { |char| [char, Array.new(7) { [1] * 6 }] }
+    game = VBlank.game "WRITES", consoles: %i[gba] do
+      screen :bitmap
+      font :wide, glyphs: blocks, fold: :upper
+      game_loop do
+        draw_number 7, 0, 0, :white, font: :tiny
+        draw_text "HI", 0, 10, :white, font: :wide
+      end
+    end
+
+    font = JS::MenuData.game_font(game.program, 240)
+    assert_equal 6, font.width, "the first font with letters, after a font of digits alone"
+    assert_equal VBlank::Graphics::Fonts.default, JS::MenuData.game_font(ticking_game.program, 240), "a game that writes nothing"
+  end
+
   def test_a_game_that_says_it_has_no_menu_has_none_on_the_page
     game = VBlank.game("NOMENU", consoles: %i[gba], menu: false) { game_loop {} }
 

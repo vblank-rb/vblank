@@ -151,7 +151,8 @@ module VBlank
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
           [["function #{name}(host) {\n", console_text(program.described_console), Computer::StateFile.js_text(program),
-            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu, states: states, buttons: program.described_console.buttons),
+            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n",
+            MenuData.source(program, menu: menu, states: states),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), RuntimeFeatures.js_text(lowering.runtime_features),
             text, "return page_create(host || {});\n}\n"].join, data_file]
         end
