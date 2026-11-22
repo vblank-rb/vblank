@@ -865,6 +865,14 @@ module VBlank
 
           # A variable set to itself changes nothing, so nothing is made for one.
           def emit_set(node)
+            # A walk stepped the console's way reads where it starts and ends from the chain itself
+            # (#emit_stepped_walk), so the walk's copy of each is not made.
+            return if walk_starts.key?(node)
+
+            emit_assignment(node)
+          end
+
+          def emit_assignment(node)
             return if node.value.is_a?(Node) && node.value.kind == :var_ref && node.value.name == node.var
             return emit_set_half(node.var, node.value) if half_variable?(node.var)
 
@@ -1877,9 +1885,15 @@ module VBlank
           # is X at once, NONE is $FFFF, a negative number, and every field of the thing is read at
           # that X; the thing it is on is written to its variable, as the body reads it.
           #
-          # Every variable of the walk ends as the tree leaves it: the thing it was on, the next
-          # (NONE), and the repeat's index, which counts the turns and stays one below the count
-          # where the walk took every one (Reference#exec_repeat).
+          # The walk's own variables (IR::WalkShape#own_variables) and its count of turns are the
+          # build's, set before each is read and read by nothing after the walk, so no checked run
+          # compares them (RunComparison.uncompared_variables). So the walk starts from the chain's
+          # own ends where the tree copies them into the walk's (#walk_starts), keeps the thing it is
+          # on only where its body reads it, and counts its turns only where its body reads the count;
+          # nothing is written back as it ends. The one exception is a thing the game keeps past its
+          # turn (`target = e` in the walk, `target.x` after it), which reads the walk's variable
+          # after the walk: there the variable is left holding the last thing visited, as the tree
+          # leaves it (#walk_slot_read_after?).
           def emit_stepped_walk(node)
             walk = node.pool_walk
             links = list_slots(walk.links)
@@ -1891,20 +1905,22 @@ module VBlank
             at = place_of(walk.at)
             index = place_of(node.index)
             # X, INC and DEC reach only the first 64K by their short address; a walk whose numbers
-            # went further is walked the tree's way.
-            return emit_control_flow_statement(node) if [ahead, last, at, index].compact.any? { |place| place > 0xFFFF }
+            # went further is walked the tree's way, from the copies of the chain's ends it makes.
+            if [ahead, last, at, index].compact.any? { |place| place > 0xFFFF }
+              walk_starts.each { |set, walked| emit_assignment(set) if walked.equal?(node) }
+              return emit_control_flow_statement(node)
+            end
 
             top = fresh("walk")
             done = fresh("walk_done")
             body = @plan.walk_body(node)
-            current = scaled_current(walk, body, at, links.stride)
-            store_number(index, 0)
-            emit_slot_scaled(place_of(walk.ahead), ahead, shifts)
-            emit_slot_scaled(place_of(walk.last), last, shifts) if last
+            current = scaled_current(walk, body, at, links.stride) unless walk_slot_read_after?(node)
+            starts = walk_start_sources(node)
+            counted = body.any? { |child| child.walk.any? { |each| each.attrs.values.flatten.include?(node.index) } }
+            store_number(index, 0) if counted
+            emit_slot_scaled(kept_place_of(starts.fetch(walk.ahead, walk.ahead)), ahead, shifts)
+            emit_slot_scaled(kept_place_of(starts.fetch(walk.last, walk.last)), last, shifts) if last
             current&.partners&.each { |name, scaled| emit_slot_scaled(place_of(name), scaled, shifts) }
-            store_number(current.scaled, DSL::Pool::NONE) if current
-            counter = turns_countable_in_y?(node, body)
-            @asm.ldy(0) if counter
             @asm.label(top)
             @asm.ldx(at_place(ahead))
             @asm.branch_long(:bmi, done)
@@ -1918,42 +1934,48 @@ module VBlank
             end
             @asm.note_x_holds([at, links.stride])
             emit_walk_link_read(links, @lists.fetch(walk.links)[2], ahead, last, shifts)
-            section = @asm
-            y_changes = @asm.y_changes
             with_scaled_current(walk.at, current) { body.each { |child| statement(child) } }
-            counted_in_y = counter && section.equal?(@asm) && @asm.y_changes == y_changes
-            counted_in_y ? @asm.iny : @asm.inc(at_place(index))
+            @asm.inc(at_place(index)) if counted
             @asm.jump(top)
             @asm.label(done)
-            emit_current_unscaled(current, at, shifts) if current
-            store_number(place_of(walk.ahead), DSL::Pool::NONE)
-            counted_in_y ? emit_walk_turns_from_y(index, folded(node.count)) : emit_walk_index_kept_below(index, folded(node.count))
+            emit_walk_index_kept_below(index, folded(node.count)) if counted
           end
 
-          # The walk's turns counted in Y. The repeat's index is a variable, and counting it there is
-          # an INC of memory each turn, eight cycles at sixteen bits, where an INY is two (the cycle
-          # counts in fullsnes and the SNESdev wiki's 65816 reference). Y is set before the walk and the index written from it once, as the walk ends.
-          # Whether Y keeps it through the body is known only once the body is written
-          # (W65816#y_changes): where something in it changes Y, the turn counts in memory instead,
-          # and the LDY before the walk is left unread.
-          #
-          # Only where nothing in the body reads the index, which is in memory only as the walk ends,
-          # and nothing in it is the game's own instructions or stops the game, past which the index
-          # is not written.
-          def turns_countable_in_y?(node, body)
-            nodes = body.flat_map { |child| child.walk.to_a }
-            nodes.none? { |each| %i[raw halt].include?(each.kind) || each.attrs.values.flatten.include?(node.index) }
+          # Whether anything outside the walk +repeat+ reads the thing it is on: a handle to a thing
+          # kept past its turn, read after the walk. The walk then writes the slot to its variable
+          # on every turn, never keeping it in X alone (ScaledCurrent).
+          def walk_slot_read_after?(repeat)
+            at = repeat.pool_walk.at
+            inside = repeat.walk.each_with_object(Set.new.compare_by_identity) { |each, nodes| nodes << each }
+            @reachable.any? do |each|
+              !inside.include?(each) &&
+                [each, *each.operand_nodes].any? { |operand| operand.kind == :var_ref && operand.name == at }
+            end
           end
 
-          # The repeat's index from Y as the tree leaves it: the turns taken, or one below the count
-          # where the walk took every one of them.
-          def emit_walk_turns_from_y(index, count)
-            kept = fresh("walk_counted")
-            @asm.cpy(count)
-            @asm.bne(kept)
-            @asm.dey
-            @asm.label(kept, join: true)
-            @asm.sty(at_place(index))
+          # The sets that copy the chain's ends into a walk stepped the console's way (DSL::Pool#each:
+          # the walk's next thing set to the first, its last to the final, straight before the walk),
+          # each with the walk's repeat. #emit_stepped_walk reads the chain's ends where they are, so
+          # these copies are not made.
+          def walk_starts
+            @walk_starts ||= @reachable.select { |node| node.kind == :repeat && stepped_walk?(node) }
+                                       .each_with_object({}.compare_by_identity) do |repeat, starts|
+              walk = repeat.pool_walk
+              siblings = repeat.parent&.children or next
+              at = siblings.index { |sibling| sibling.equal?(repeat) }
+              siblings[[at - 2, 0].max...at].each do |set|
+                next unless set.kind == :set && [walk.ahead, walk.last].include?(set.var)
+                next unless set.value.is_a?(Node) && set.value.kind == :var_ref
+
+                starts[set] = repeat
+              end
+            end
+          end
+
+          # The variable each of the walk +repeat+'s own variables is copied from before it, by the
+          # walk's variable (#walk_starts).
+          def walk_start_sources(repeat)
+            walk_starts.filter_map { |set, walked| [set.var, set.value.name] if walked.equal?(repeat) }.to_h
           end
 
           # The thing a walk is on, kept only as X holds it. Each turn of #emit_stepped_walk loads the
@@ -1963,7 +1985,7 @@ module VBlank
           # another thing of the pool held still through the walk (`other.index != e.index`), the
           # halving and the write are dropped: X is stored as it is, a slot reached again from that,
           # the other thing scaled once before the walk and compared with X; and the variable is
-          # written once, as the walk ends.
+          # never written, since nothing after the walk reads it.
           #
           # +scaled+ is where X is stored each turn, +stride+ the pool's, and +partners+ the other
           # things compared with it, by their variables, each with where its scaled place is kept.
@@ -2025,17 +2047,6 @@ module VBlank
           # The ScaledCurrent whose slot X is set from for +key+ (#slot_key), or nil.
           def scaled_current_for(key)
             @scaled_currents&.each_value&.find { |current| [current.at, current.stride] == key }
-          end
-
-          # The walk's variable as the tree leaves it, from the place last stored: the slot it was on,
-          # or as it was where the walk took no turn.
-          def emit_current_unscaled(current, at, shifts)
-            untouched = fresh("walk_untouched")
-            @asm.lda(at_place(current.scaled))
-            @asm.bmi(untouched)
-            shifts.times { @asm.lsr }
-            @asm.sta(at_place(at))
-            @asm.label(untouched, join: true)
           end
 
           # The variable at +from+, a slot or NONE, into the word at +to+ as the slot times the stride
@@ -2456,6 +2467,10 @@ module VBlank
             if (var = variable_named(node))
               return low_half_of(var)
             end
+            # How many a list holds is the word in its header (#value_of_list_len), never more than
+            # the slots a list here can have, so that word is the whole number: a pool's walk asks
+            # whether its removed things are more than none as it ends.
+            return @asm.long(list_place(node), Runtime::Lists::LENGTH) if node.is_a?(Node) && node.kind == :list_len
             return unless plain_slot_read?(node)
 
             _place, _capacity, width = list_placed(node)

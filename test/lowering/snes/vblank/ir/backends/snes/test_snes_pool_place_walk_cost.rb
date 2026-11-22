@@ -62,17 +62,19 @@ class TestSNESPoolPlaceWalkCost < Minitest::Test
     end
   end
 
-  # The retail game's walk of five enemies (Super Bomberman's straight_movement and the collision
-  # checks it calls, bank6.asm) is about a fifteenth of a frame, measured in bsnes by the processor
-  # time spent at each of its routines' addresses. A pair checked costs what that game spends, and
-  # what is left over is each walk's own numbers (the thing it is on, the one after, the last, its
-  # count of turns), which every walk writes in four bytes and the checked run holds to the
-  # interpreter's at every pass. The bound holds what the routine costs with those written.
+  # A retail game's walk of five enemies (its routine stepping each one straight and the collision
+  # checks that routine calls) is about a fifteenth of a frame, measured in bsnes by the processor
+  # time spent at each of its routines' addresses. A pair checked costs what that game spends. A
+  # walk's own numbers (the thing it is on, the one after, the last, its count of turns) are kept in
+  # registers and set only where the walk reads them, since no checked run compares them
+  # (RunComparison.uncompared_variables). What is left over is the routine's own work on each thing
+  # outside the walk: the nudge works the place's pixel out three times, and a number kept before
+  # the walk is written in four bytes. The bound holds what the routine costs now.
   def test_five_walkers_stepping_and_checking_take_under_this_bound
     rom = self.class.game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
     spent = rom.profile(out: StringIO.new, settle: 10, frames: 20).game.find { |row| row.routine.to_s.include?("step_straight") }
 
-    assert_operator spent.share, :<, 0.087
+    assert_operator spent.share, :<, 0.078
   end
 
   # The walkers step, meet and turn as on the interpreter, on every pass.

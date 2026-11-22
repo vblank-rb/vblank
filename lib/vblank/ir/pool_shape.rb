@@ -30,12 +30,16 @@ module VBlank
     # first +step_statements+ statements step it: the thing it is on (+at+) is the one it was going
     # to next (+ahead+), and +ahead+ becomes the thing after it along +links+, or NONE once +at+ is
     # +last+. The repeat's index counts its turns. Each names a variable or list of today's tree,
-    # which keeps its meaning: a lowering stepping the walk its own way leaves each with the number
-    # the tree would have given it wherever the game or a checked run can read it.
+    # which keeps its meaning. No checked run compares the walk's own variables or its count
+    # (#own_variables, Backends::RunComparison.uncompared_variables), so a lowering stepping the
+    # walk its own way keeps them where it likes and need not write them back. It still leaves +at+
+    # holding the thing it was on wherever the game reads it after the walk: a handle to a thing
+    # kept past its turn reads it there.
     WalkShape = Data.define(:pool, :at, :ahead, :last, :links, :step_statements) do
       # The variables of the walk's own: the thing it is on, the one it goes to next and the last
-      # it visits. Every walk writes each of them before it reads it, and nothing outside the walk
-      # reads them, so what they hold once a walk is over is no part of what the game does.
+      # it visits. Every walk writes each of them before it reads it, and no game names them, so
+      # they are no part of what the game does. A handle kept past its turn reads +at+ after the
+      # walk, but only to reach the thing's fields, and what it reads there is the game's.
       def own_variables = [at, ahead, last]
     end
   end

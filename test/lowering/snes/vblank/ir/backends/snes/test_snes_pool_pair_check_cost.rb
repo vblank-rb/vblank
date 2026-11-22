@@ -52,7 +52,7 @@ class TestSNESPoolPairCheckCost < Minitest::Test
     spent.share * FRAME_CLOCKS
   end
 
-  # The retail game's walk (Super Bomberman's check_for_enemy_with_enemy_collision) spends about 372
+  # A retail game's walk (its check of each enemy against the others) spends about 372
   # master clocks on an enemy whose x it tests, in 8 bits with the object in X. Ours keeps every
   # number in 32 bits; the bound holds the cheaper turn and test: short branches where the target is
   # near (W65816#branch_long), the walk's slot copies a half long, `abs(d) < 16` decided from d's
@@ -62,9 +62,8 @@ class TestSNESPoolPairCheckCost < Minitest::Test
   # routine's own thing's fields read once before the walk (SNES::Lowering#with_invariant_reads_kept), and
   # the pool kept as tables, walked a turn at a time in X, its links kept as the slot times the
   # stride so the next is read straight into X, and the thing it is on compared in X with the
-  # routine's own, scaled once (SNES::Lowering::ScaledCurrent), its turns counted in Y
-  # (SNES::Lowering#turns_countable_in_y?, Backends::PoolLayout::Tables,
-  # SNES::Lowering#emit_stepped_walk), and no test of whether a thing is live where every thing on
+  # routine's own, scaled once (SNES::Lowering::ScaledCurrent), its turns counted only where the
+  # body reads the count (Backends::PoolLayout::Tables, SNES::Lowering#emit_stepped_walk), and no test of whether a thing is live where every thing on
   # the chain is (LoweringPlan#dead_on_chain?), and the walk ending on the last thing's NONE link
   # where the chain cannot change during it (LoweringPlan#chain_changed_during_walks?), and the
   # walk's own numbers and the routine's busiest variables on the direct page

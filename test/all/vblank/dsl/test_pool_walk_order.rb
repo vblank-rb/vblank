@@ -433,4 +433,36 @@ class TestPoolWalkOrder < Minitest::Test
 
     assert_equal 200, run[:in_place]
   end
+
+  # A thing kept past its turn (`target = t` in the walk) is the last thing the walk visited, read
+  # after the walk is over. Each thing's place moves every pass, so a handle left on another thing
+  # or on none reads another number.
+  private def kept_handle_game
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:floor, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :floor
+      background :field, tiles: :set, map: Array.new(20) { "#" * 30 }
+      last_x = var :last_x, 0
+      things = pool :thing, x: 0, capacity: 4
+      [10, 20, 30].each { |x| things.spawn(x: x) }
+      game_loop do
+        target = nil
+        things.each do |t|
+          t.x += 1
+          target = t
+        end
+        last_x = target.x
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_thing_kept_past_its_turn_is_the_last_one_walked
+    run = game_player.run(kept_handle_game, frames: 5)
+
+    assert_operator run[:last_x], :>, 30
+  end
 end
