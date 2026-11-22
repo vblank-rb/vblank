@@ -114,6 +114,21 @@ module VBlank
             PLAYING_BANK_NOW = 11
             PLAYING_OWED = 13 # Samples a stop covered, not yet passed over
             PLAYING_SILENCE_LEFT = 14 # Chunks of silence to copy before the reader is past the end
+            PLAYING_MODE = 15 # MODE_COPIED, MODE_DIRECT or MODE_IDLE
+            PLAYING_BACK = 16 # How far back the recording goes round, two bytes: END_AT less LOOP_AT
+            # How the play under way is read: copied ahead into FIFO, read from the cartridge sample by
+            # sample (a play of DIRECT_STEP whole samples a step or more), or none.
+            MODE_COPIED = 0
+            MODE_DIRECT = 1
+            MODE_IDLE = 2
+            # The step, in whole samples, from which a play is read straight from the cartridge. The Z80
+            # copies a little over two bytes ahead in each sample's time (#driver), so a play stepping
+            # further would run FIFO dry; read sample by sample, as the program did before it read ahead,
+            # it plays at any step.
+            DIRECT_STEP = 2
+            # UNSAFE while a play is read straight from the cartridge: the Z80 reads it on every tick and
+            # never looks at BLOCK, so the 68000 stops it for the controllers' read instead.
+            UNSAFE_STOPPED = 0xFF
             # PLAYING_LOOPS once a recording played once has ended and silence is copied after it.
             LOOPS_SILENCE = 3
 
@@ -207,7 +222,9 @@ module VBlank
             # of the Z80's writes (TIMER_WRITES, the labels of their values in #driver) as it asks for it.
             MODE_BITS = 0xC0
             TIMER_WRITES = { stopped: TIMERS_STOPPED, counting: TIMERS_COUNTING, sample_tick_seen: SAMPLE_TICK_SEEN,
-                             chunk_tick_seen: SAMPLE_TICK_SEEN, both_ticks_seen: BOTH_TICKS_SEEN }.freeze
+                             chunk_tick_seen: SAMPLE_TICK_SEEN, both_ticks_seen: BOTH_TICKS_SEEN,
+                             direct_counting: TIMERS_COUNTING, direct_tick_seen: SAMPLE_TICK_SEEN,
+                             direct_both_ticks_seen: BOTH_TICKS_SEEN }.freeze
 
             module_function
 
@@ -317,12 +334,18 @@ module VBlank
             # UNSAFE was set, the Z80 may be in the middle of a chunk, so the 68000 lets go, waits a little
             # longer than a chunk takes, and asks again. Once it reads UNSAFE clear, the Z80 will see BLOCK
             # before it reads the cartridge again, so the ports are read. Then BLOCK is cleared.
+            #
+            # A play stepping DIRECT_STEP samples or more is read from the cartridge on every tick and not
+            # copied ahead (#driver), and its UNSAFE is UNSAFE_STOPPED: the Z80 is kept stopped through the
+            # read instead, as before it read ahead.
             def emit_z80_kept_off_for_pad(asm)
               block = asm.abs_l(Z80_MEMORY + MAILBOX + BLOCK)
               asm.label("rt_z80_kept_off_for_pad")
               emit_bus_requested(asm)
               asm.move(:b, asm.imm(1), block)
               asm.move(:b, asm.abs_l(Z80_MEMORY + MAILBOX + UNSAFE), asm.d(0))
+              asm.cmp(:b, asm.imm(UNSAFE_STOPPED), asm.d(0))
+              asm.branch(:eq, "rt_z80_kept_off_for_pad_stopped")
               emit_bus_released(asm)
               asm.tst(:b, asm.d(0))
               asm.branch(:eq, "rt_z80_kept_off_for_pad_read")
@@ -333,17 +356,21 @@ module VBlank
               asm.label("rt_z80_kept_off_for_pad_read")
               asm.jsr(asm.abs_l("rt_pad_read"))
               emit_bus_requested(asm)
+              asm.label("rt_z80_kept_off_for_pad_let_back")
               asm.clr(:b, block)
               emit_bus_released(asm)
               asm.rts
+              asm.label("rt_z80_kept_off_for_pad_stopped")
+              asm.jsr(asm.abs_l("rt_pad_read"))
+              asm.bra("rt_z80_kept_off_for_pad_let_back")
             end
 
             # rt_z80_queued(register, value, part in D3): an entry put in the Z80's queue, the bus held.
             # D2 and A1 are used. A full queue is let go of for a little while, the Z80 taking entries
             # meanwhile, until there is a place. The Z80's program is then told there is an entry: the
-            # instruction at +entry_at+ in it, where its sample loop looks, is made a call to where an
-            # entry is taken (ENTRY_CALL).
-            def emit_queued(asm, entry_at)
+            # instruction at each of +entry_ats+ in it, where its sample loops look, is made a call to where
+            # an entry is taken (ENTRY_CALL).
+            def emit_queued(asm, entry_ats)
               mail = ->(field) { asm.abs_l(Z80_MEMORY + MAILBOX + field) }
               asm.label("rt_z80_queued")
               asm.move(:b, mail.call(QUEUE_READ), asm.d(2))
@@ -366,7 +393,7 @@ module VBlank
               asm.move(:b, asm.d(1), asm.disp(1, VALUE_PAGE))
               asm.addq(:b, 1, asm.d(2))
               asm.move(:b, asm.d(2), mail.call(QUEUE_WRITTEN))
-              asm.move(:b, asm.imm(ENTRY_CALL), asm.abs_l(Z80_MEMORY + entry_at))
+              entry_ats.each { |entry_at| asm.move(:b, asm.imm(ENTRY_CALL), asm.abs_l(Z80_MEMORY + entry_at)) }
               asm.rts
             end
 
@@ -407,7 +434,7 @@ module VBlank
               asm.label("rt_z80_program")
               asm.data_bytes(program.code)
               asm.data_bytes(0) if program.length.odd?
-              emit_queued(asm, program.address_of(:entry_looked_for))
+              emit_queued(asm, %i[entry_looked_for direct_entry_looked_for].map { |label| program.address_of(label) })
             end
 
             # rt_recordings_play(row): the play's entry logged, and the recording in the place from its start
@@ -762,8 +789,9 @@ module VBlank
             # cleared, its sample sounded, the reader moved and how full FIFO is looked at in 171 more.
             # A chunk of FIFO_CHUNK bytes is 334 cycles, three looks for the tick among them, and 47 more
             # between two chunks; Genesis Plus GX adds three cycles to each read of the cartridge. So the
-            # Z80 copies in a little over two bytes a sample when FIFO is low, and a recording read faster
-            # than that, more than about two of its samples a sample, runs FIFO dry. A tick that comes
+            # Z80 copies in a little over two bytes a sample when FIFO is low, so a play of DIRECT_STEP whole
+            # samples a step or more is not copied: it is read straight from the cartridge, a sample a tick,
+            # as the program did before it read ahead (#emit_direct_play). A tick that comes
             # while a chunk is copied is seen at the next look and sounds that much late, but not so late
             # that the next tick is lost.
             def driver(glides: false)
@@ -785,6 +813,7 @@ module VBlank
                 emit_fm_set(z)
                 emit_bank_shown(z)
                 emit_copy_past_end(z)
+                emit_direct_play(z)
                 emit_glide_entry(z) if glides
               end.assembled
             end
@@ -803,6 +832,7 @@ module VBlank
               z.jump(0xCA, name) # JP Z
               z.bytes(0x3E, ENTRY_CALL) # LD A,the call
               z.jump(0x32, :entry_looked_for) # LD (the sample loop's look),A
+              z.jump(0x32, :direct_entry_looked_for) # LD (the direct loop's look),A
               z.label(name)
             end
 
@@ -815,6 +845,7 @@ module VBlank
               z.bytes(0xF5, 0xE5) # PUSH AF ; PUSH HL
               z.bytes(0xAF) # XOR A: NOP
               z.jump(0x32, :entry_looked_for) # LD (the sample loop's look),A
+              z.jump(0x32, :direct_entry_looked_for) # LD (the direct loop's look),A
               z.word(0x2A, mailbox_at(QUEUE_READ)) # LD HL,(queue read): L the entry's place
               z.word(0x3A, mailbox_at(QUEUE_WRITTEN)) # LD A,(queue written)
               z.bytes(0xBD) # CP L
@@ -850,8 +881,10 @@ module VBlank
               z.label(:idle)
               z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x32, 0x00, 0x40) # LD A,$2A ; LD ($4000),A
               z.bytes(0x3E, 0x80, 0x32, 0x01, 0x40) # LD A,$80 ; LD ($4001),A
-              z.bytes(0xAF) # XOR A: off the cartridge, if a chunk was dropped
+              z.bytes(0xAF) # XOR A: off the cartridge, if a chunk was dropped or a play read it directly
               z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
+              z.bytes(0x3E, MODE_IDLE) # LD A,idle
+              z.word(0x32, playing_at(PLAYING_MODE)) # LD (mode),A
               z.label(:wait)
               z.word(0x3A, mailbox_at(QUEUE_READ)) # LD A,(queue read)
               z.bytes(0x47) # LD B,A
@@ -895,10 +928,20 @@ module VBlank
               z.label(:loop_noted)
               z.word(0x32, playing_at(PLAYING_LOOPS)) # LD (loops),A
               z.label(:loop_known)
+              z.word(0x2A, playing_at(PLAYING_END_AT)) # LD HL,(end at)
+              z.bytes(0xED)
+              z.word(0x5B, playing_at(PLAYING_LOOP_AT)) # LD DE,(loop at)
+              z.bytes(0xB7, 0xED, 0x52) # OR A ; SBC HL,DE
+              z.word(0x22, playing_at(PLAYING_BACK)) # LD (back),HL
               emit_step_written(z)
               z.bytes(0xAF) # XOR A: nothing owed
               z.word(0x32, playing_at(PLAYING_OWED)) # LD (owed),A
               emit_owed_calls_written(z)
+              z.word(0x3A, mailbox_at(Z80_STEP + 1)) # LD A,(step's whole samples)
+              z.bytes(0xFE, DIRECT_STEP) # CP direct
+              z.jump(0xD2, :direct_play) # JP NC
+              z.bytes(0xAF) # XOR A: MODE_COPIED
+              z.word(0x32, playing_at(PLAYING_MODE)) # LD (mode),A
               z.bytes(0xD9) # EXX
               z.word(0x2A, mailbox_at(BANK)) # LD HL,(bank)
               z.call_bank
@@ -925,12 +968,123 @@ module VBlank
               z.jump(0xC3, :fill_poll) # JP
             end
 
-            # The mailbox's step written into the reader's two adds.
+            # The mailbox's step written into the readers' adds, the copied play's and the direct one's.
             def emit_step_written(z)
               z.word(0x3A, mailbox_at(Z80_STEP)) # LD A,(step's fraction)
               z.jump(0x32, :step_fraction) # LD (the add),A
+              z.jump(0x32, :direct_step_fraction) # LD (the add),A
               z.word(0x3A, mailbox_at(Z80_STEP + 1)) # LD A,(step's whole samples)
               z.jump(0x32, :step_whole) # LD (the add),A
+              z.jump(0x32, :direct_step_whole) # LD (the add),A
+            end
+
+            # UNSAFE made UNSAFE_STOPPED, and BLOCK waited out, so the 68000 stops the Z80 for its next
+            # read of the controllers and is not reading them now. The same order as a chunk's: the flag
+            # first, then BLOCK. A is lost. +wait+ names its one label.
+            def emit_stopped_for_pad(z, wait)
+              z.bytes(0x3E, UNSAFE_STOPPED) # LD A,stopped
+              z.word(0x32, mailbox_at(UNSAFE)) # LD (unsafe),A
+              z.label(wait)
+              z.word(0x3A, mailbox_at(BLOCK)) # LD A,(block)
+              z.bytes(0xB7) # OR A
+              z.jump(0xC2, wait) # JP NZ
+              z.bytes(0x3E, MODE_DIRECT) # LD A,direct
+              z.word(0x32, playing_at(PLAYING_MODE)) # LD (mode),A
+            end
+
+            # :direct_play, from :new_play: a play of DIRECT_STEP or more read straight from the cartridge,
+            # from its start. :direct_loop, a tick of it: the sample read before the tick is awaited, kept
+            # in the other A, and sent to the DAC once the tick's flag is cleared; then the reader moved on
+            # (:direct_moved_on). The second timer passes over what a stop covered at once, as the program
+            # did before it read ahead. In the first set: HL where in the window, C the fraction, B the
+            # samples sounded since the second timer, DE the chip's first port.
+            #
+            # This is the old loop, with its cycles. A tick is seen in 21 and takes 235 more at most from
+            # the sample's read, against 269.
+            def emit_direct_play(z)
+              z.label(:direct_play)
+              emit_stopped_for_pad(z, :direct_play_waits)
+              z.word(0x2A, mailbox_at(BANK)) # LD HL,(bank)
+              z.call_bank
+              z.bytes(0x21) # LD HL,timers and counting
+              z.label(:direct_counting)
+              z.bytes(TIMERS_COUNTING, TIMERS)
+              z.jump(0xCD, :set_fm) # CALL
+              z.word(0x2A, mailbox_at(AT)) # LD HL,(at)
+              z.word(0x11, 0x4000) # LD DE,$4000
+              z.word(0x01, 0x0000) # LD BC,0
+
+              z.label(:direct_loop)
+              z.bytes(0x7E, 0x08) # LD A,(HL) ; EX AF,AF'
+              z.label(:direct_wait)
+              z.bytes(0x1A, 0x0F) # LD A,(DE) ; RRCA
+              z.jump(0xD2, :direct_wait) # JP NC
+              z.bytes(0x0F) # RRCA: the second timer's flag
+              z.jump(0xDA, :direct_second_timer) # JP C
+              emit_timers_written(z, SAMPLE_TICK_SEEN, :direct_tick_seen)
+              z.bytes(0x08, 0x1C, 0x12, 0x1D, 0x04) # EX AF,AF' ; INC E ; LD (DE),A ; DEC E ; INC B
+              z.jump(0xCD, :direct_moved_on) # CALL
+              z.label(:direct_entry_looked_for)
+              z.bytes(ENTRY_NONE)
+              z.jump(0xC3, :direct_loop) # JP
+
+              z.label(:direct_second_timer)
+              emit_timers_written(z, BOTH_TICKS_SEEN, :direct_both_ticks_seen)
+              z.bytes(0x08, 0x1C, 0x12, 0x1D, 0x04) # EX AF,AF' ; INC E ; LD (DE),A ; DEC E ; INC B
+              z.jump(0xCD, :direct_moved_on) # CALL
+              z.bytes(0xAF, 0x90, 0x06, 0x00) # XOR A ; SUB B ; LD B,0
+              z.jump(0xCA, :direct_loop) # JP Z
+              z.jump(0xFA, :direct_loop) # JP M
+              z.bytes(0x47) # LD B,A
+              z.label(:direct_missed)
+              z.jump(0xCD, :direct_moved_on) # CALL
+              z.bytes(0x05) # DEC B
+              z.jump(0xC2, :direct_missed) # JP NZ
+              z.jump(0xC3, :direct_loop) # JP
+
+              # :direct_moved_on: HL moved on by the step, into the next bank when it runs off the window,
+              # and back by PLAYING_BACK as many times as it takes past the end, or to where the loop is
+              # in another bank; a play played once ends there. A is lost.
+              z.label(:direct_moved_on)
+              z.bytes(0x79, 0xC6) # LD A,C ; ADD A,the step's fraction
+              z.label(:direct_step_fraction)
+              z.bytes(0x00)
+              z.bytes(0x4F, 0x7D, 0xCE) # LD C,A ; LD A,L ; ADC A,the step's whole samples
+              z.label(:direct_step_whole)
+              z.bytes(0x00)
+              z.bytes(0x6F) # LD L,A
+              z.jump(0xD2, :direct_in_window) # JP NC
+              z.bytes(0x24) # INC H
+              z.jump(0xC2, :direct_in_window) # JP NZ
+              z.bytes(0x26, WINDOW >> 8, 0xE5) # LD H,the window's start ; PUSH HL
+              z.word(0x2A, playing_at(PLAYING_BANK_NOW)) # LD HL,(bank now)
+              z.bytes(0x23) # INC HL
+              z.call_bank
+              z.bytes(0xE1) # POP HL
+              z.label(:direct_in_window)
+              z.bytes(0x7D, 0xD6) # LD A,L ; SUB end low
+              z.label(:direct_end_low)
+              z.bytes(0x00)
+              z.bytes(0x7C, 0xDE) # LD A,H ; SBC A,end high
+              z.label(:direct_end_high)
+              z.bytes(0x00)
+              z.bytes(0xF8) # RET M: before the end
+              z.word(0x3A, playing_at(PLAYING_LOOPS)) # LD A,(loops)
+              z.bytes(0x3D) # DEC A
+              z.jump(0xFA, :direct_ended) # JP M: played once
+              z.jump(0xC2, :direct_other_bank) # JP NZ
+              z.bytes(0xD5, 0xED) # PUSH DE ; LD DE,(back)
+              z.word(0x5B, playing_at(PLAYING_BACK))
+              z.bytes(0xB7, 0xED, 0x52, 0xD1) # OR A ; SBC HL,DE ; POP DE
+              z.jump(0xC3, :direct_in_window) # JP
+              z.label(:direct_other_bank)
+              z.word(0x2A, playing_at(PLAYING_LOOP_BANK)) # LD HL,(loop bank)
+              z.call_bank
+              z.word(0x2A, playing_at(PLAYING_LOOP_AT)) # LD HL,(loop at)
+              z.bytes(0xC9) # RET
+              z.label(:direct_ended)
+              z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0
+              z.jump(0xC3, :idle) # JP
             end
 
             # Fewer than FIFO_FULL bytes in FIFO not sounded yet: carry set. In the first set; A is lost.
@@ -1157,7 +1311,6 @@ module VBlank
               z.bytes(0x7D) # LD A,L
               8.times { z.bytes(0x32, 0x00, 0x60, 0x0F) } # LD ($6000),A ; RRCA
               z.bytes(0x7C, 0x32, 0x00, 0x60) # LD A,H ; LD ($6000),A
-              emit_chunk_tick_looked_for(z)
               z.word(0x3A, playing_at(PLAYING_END_BANK)) # LD A,(end bank, low)
               z.bytes(0xBD) # CP L
               z.jump(0xC2, :not_last) # JP NZ
@@ -1173,12 +1326,14 @@ module VBlank
               z.bytes(0xC9) # RET
             end
 
-            # HL written into the chunk as the end it is held to. A is lost.
+            # HL written into the chunk and the direct reader as the end they are held to. A is lost.
             def emit_end_written(z)
               z.bytes(0x7D) # LD A,L
               z.jump(0x32, :end_low) # LD (end low),A
+              z.jump(0x32, :direct_end_low) # LD (end low),A
               z.bytes(0x7C) # LD A,H
               z.jump(0x32, :end_high) # LD (end high),A
+              z.jump(0x32, :direct_end_high) # LD (end high),A
             end
 
             # :copy_past_end, in the second set, called from a chunk that ran past its end: the bytes past
@@ -1273,7 +1428,43 @@ module VBlank
               z.jump(0xC2, :entry_play) # JP NZ
               emit_queue_moved_on(z, :glide_moved_on)
               emit_step_written(z)
-              z.jump(0xC3, :entry_done) # JP
+              # A copied play glided to DIRECT_STEP or more goes on read straight from the cartridge, from
+              # where the reader is: the copy's place less what is read ahead of the reader, brought back
+              # inside the loop when that is before where it goes round.
+              z.word(0x3A, mailbox_at(Z80_STEP + 1)) # LD A,(step's whole samples)
+              z.bytes(0xFE, DIRECT_STEP) # CP direct
+              z.jump(0xDA, :entry_done) # JP C
+              z.word(0x3A, playing_at(PLAYING_MODE)) # LD A,(mode)
+              z.bytes(0xB7) # OR A: MODE_COPIED
+              z.jump(0xC2, :entry_done) # JP NZ
+              z.word(0x3A, playing_at(PLAYING_LOOPS)) # LD A,(loops)
+              z.bytes(0xFE, LOOPS_SILENCE) # CP silence: the recording is copied to its end already
+              z.jump(0xCA, :entry_done) # JP Z
+              z.bytes(0xE1, 0xF1) # POP HL ; POP AF: the reader back
+              emit_stopped_for_pad(z, :glide_waits)
+              z.bytes(0xD9, 0x7B, 0xD9, 0x95) # EXX ; LD A,E ; EXX ; SUB L: read ahead of the reader
+              z.bytes(0xD9, 0x4F, 0x06, 0x00) # EXX ; LD C,A ; LD B,0
+              z.bytes(0xB7, 0xED, 0x42) # OR A ; SBC HL,BC
+              z.word(0x3A, playing_at(PLAYING_LOOPS)) # LD A,(loops)
+              z.bytes(0x3D) # DEC A
+              z.jump(0xC2, :glide_placed) # JP NZ: no loop in this bank
+              z.label(:glide_back)
+              z.bytes(0xE5, 0xED) # PUSH HL ; LD DE,(loop at)
+              z.word(0x5B, playing_at(PLAYING_LOOP_AT))
+              z.bytes(0xB7, 0xED, 0x52, 0xE1) # OR A ; SBC HL,DE ; POP HL
+              z.jump(0xD2, :glide_placed) # JP NC
+              z.bytes(0xED)
+              z.word(0x5B, playing_at(PLAYING_BACK)) # LD DE,(back)
+              z.bytes(0x19) # ADD HL,DE
+              z.jump(0xC3, :glide_back) # JP
+              z.label(:glide_placed)
+              z.bytes(0x7C, 0xB7) # LD A,H ; OR A
+              z.jump(0xFA, :glide_in_window) # JP M
+              z.bytes(0x26, WINDOW >> 8) # LD H,the window's start: the bank's start was passed back over
+              z.label(:glide_in_window)
+              z.bytes(0xE5, 0xD9, 0xE1) # PUSH HL ; EXX ; POP HL
+              z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0
+              z.jump(0xC3, :direct_loop) # JP
             end
 
             # A very small Z80 assembler, as much of one as the program above takes: bytes, an instruction

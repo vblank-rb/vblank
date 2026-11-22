@@ -432,8 +432,8 @@ inside the same pair of calls (`controls.c`, `_ControllerVBL`).
 |---|---|---|
 | waves, two pads | 90.2 to 111.0 | 91.9 to 110.1 |
 | waves, a Team Player of three | 68.7 to 124.2 | 91.9 to 109.2 |
-| the Z80's program | 490 bytes | 814 bytes, of 8192 |
-| the Z80's memory besides | | 256 bytes read ahead, 15 bytes of its own copy of the play |
+| the Z80's program | 490 bytes | 1047 bytes, of 8192 |
+| the Z80's memory besides | | 256 bytes read ahead, 18 bytes of its own copy of the play |
 | the Z80 stopped for the controllers, a frame | the whole read | two moments of a few instructions |
 | a tick, seen and sounded with the read-ahead full | 204 cycles of 269 | 192 |
 
@@ -442,9 +442,14 @@ GX adds three to each read of the cartridge.
 
 ### Not done
 
-- **A recording read at more than about two of its samples a sample** (an octave above the rate it
-  was recorded at, or more) is read faster than the Z80 can copy it ahead, and runs out. The old
-  program read each sample from the cartridge as it sounded it and had no such limit.
+- **A recording read at two or more of its samples a sample** (about an octave above the rate it was
+  recorded at, or more) would be read faster than the Z80 can copy it ahead. Such a play is read
+  straight from the cartridge on every tick, as before, at any step up to the highest a play can
+  have (`Recordings.z80_step`, under 256 samples); its `UNSAFE` is `UNSAFE_STOPPED`, and the 68000
+  stops the Z80 for the controllers' read, as before. So a Team Player read still holds such a play
+  still. A play glided up past it goes on read straight from where its reader is. Such a play's tick
+  is 21 cycles to see and at most 235 more of 269, counted by hand; a change of bank in one costs a
+  tick, passed over at the second timer's round.
 - **Nothing ran on hardware**, as above. The DAC's value is written a few instructions after the
   timers' register, as GEMS writes it; whether a real chip takes both every time is not known.
 
