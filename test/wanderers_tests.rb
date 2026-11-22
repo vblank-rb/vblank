@@ -3,14 +3,15 @@
 require VBlank.root.join("examples/wanderers").to_s
 
 # Four people wandering one map (examples/wanderers.rb), each in a colour the game picked when they
-# joined. A build that plays on a computer seats four; a cartridge seats the one controller its
-# console reads, so the game built for a cartridge is the one-player walk that
-# test/all/examples/test_wanderers_example.rb plays on every run. These tests play the game as a
-# computer builds it, so they are played through game_player by each run whose player reads four
-# players: the interpreter (test/interpreter/examples/test_wanderers_interpreter.rb), and the game
-# as C, as JavaScript and as Ruby, checked against it on every frame (the files named
-# test_*_wanderers*.rb in the native, JavaScript and Ruby lowerings' examples/ folders). No
-# cartridge run loads them, since every cartridge refuses a game that reads four players.
+# joined. A build that plays on a computer seats four, and so does the Super Nintendo's cartridge,
+# through a Super Multitap; the Advance's and the Color's seat the one controller their console
+# reads, the one-player walk that test/all/examples/test_wanderers_example.rb plays on every run.
+# These tests play the game as a computer builds it, so they are played through game_player by
+# each run whose player reads four players: the interpreter
+# (test/interpreter/examples/test_wanderers_interpreter.rb), and the game as C, as JavaScript and as
+# Ruby, checked against it on every frame (the files named test_*_wanderers*.rb in the native,
+# JavaScript and Ruby lowerings' examples/ folders). The Super Nintendo's run plays them on its
+# cartridge (test/lowering/snes/vblank/ir/backends/snes/examples/test_wanderers_on_snes.rb).
 module WanderersTests
   # Where on a walker its own colour is sure to be, from its top left: the middle of its head
   # (Wanderers::WALKER_ART, row 3, column 3).

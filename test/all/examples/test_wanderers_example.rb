@@ -4,9 +4,9 @@ require "test_helper"
 require VBlank.root.join("examples/wanderers").to_s
 
 # The Wanderers example (examples/wanderers.rb) as a cartridge builds it, on every run's player:
-# one seat, since each console it is for reads one controller. The first player walks the map with
-# the D-pad, drawn in the colour the game picked when they joined. Four players at once are a
-# computer build's, played in test/wanderers_tests.rb.
+# one seat on the Advance and the Color, four on the Super Nintendo. The first player walks the map
+# with the D-pad, drawn in the colour the game picked when they joined. Four players at once are
+# played in test/wanderers_tests.rb.
 class TestWanderersExample < Minitest::Test
   # Where on a walker its own colour is sure to be, from its top left (see WanderersTests::BODY).
   BODY = [3, 3].freeze
