@@ -87,6 +87,12 @@ module VBlank
     # only the tests that play the cartridge, which say so when they run.
     Diagnostics::Emulator.available?
 
+    # The Super Nintendo's emulator as well, on the run that plays its cartridges, which plays its
+    # tests in Ractors. Loaded by the first tests that want it, two starting together could find its
+    # core's class made but its methods not yet given it (Diagnostics::Emulator.snes_loaded? asks
+    # only for the class), and the second test's core then failed to open.
+    Diagnostics::Emulator.load_snes! if RUN.console == :snes
+
     # Standard output unbuffered, so a test in a Ractor can start a program. In Ruby 4.0, before
     # it starts one it flushes the process's standard output, and if words are waiting it takes the
     # lock of an object the main Ractor owns. When the main Ractor is writing the run's progress
