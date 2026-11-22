@@ -201,6 +201,24 @@ class TestCore < Minitest::Test
     core&.destroy
   end
 
+  # The voices left out are the listener's, kept beside the console and not in it: a save state
+  # leaves them as they are, and the next console switched on, in the same copy of the core or
+  # another, hears all eight.
+  def test_voices_left_out_are_kept_until_the_next_console_switches_on
+    @core.silence_voices([1, 6])
+    assert_equal [1, 6], @core.silent_voices
+    state = @core.serialize
+    @core.silence_voices([])
+    @core.unserialize(state)
+    assert_empty @core.silent_voices, "a state does not carry them"
+    @core.silence_voices([0, 1, 2, 3, 4, 5, 6, 7])
+    @core.destroy
+    @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, RED_BACKDROP))
+
+    assert_empty @core.silent_voices
+    assert_raises(ArgumentError) { @core.silence_voices([8]) }
+  end
+
   def test_a_plain_controller_in_the_second_port_is_not_a_multitap
     core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, MULTITAP_READ))
     core.set_buttons(%i[b], port: 2)
