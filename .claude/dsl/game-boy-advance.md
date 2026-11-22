@@ -54,7 +54,7 @@ These work as their group files say:
 `mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`, `picture_groups`, `pool`,
 `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`, `draw_text`, `draw_number`,
 `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`, `clock`,
-`saves_keep_everything`, `part`, `start_over`, `list`, `func`, `call`, `scene`, `most_players`,
+`saves_keep_everything`, `part`, `start_over`, `list`, `func`, `call`, `scene`, `max_players`,
 `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `define_sound`, `beep`,
 `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `release_music`,
 `music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.

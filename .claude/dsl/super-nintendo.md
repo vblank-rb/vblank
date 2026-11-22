@@ -117,7 +117,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have.
 - `held` — works: the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has twelve. `player: 2` reads the second controller. `player: 3` and `player: 4` read the controllers in a Super Multitap in the second port. `player: :any` reads all of them. The build refuses `player: 5` or more, and `players:` more than 4, because it reads four controllers. If no Multitap is connected, players 3 and 4 hold no buttons.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: 1 at the start. A player is connected from the first frame that one of their buttons is down. Then the player stays connected. Players 3 and 4 can connect only through a Super Multitap in the second port. If no Multitap is connected, the count is 1 or 2.

@@ -259,7 +259,7 @@ module VBlank
                     "build refuses `player: 5` or more, and `players:` more than 4, because it reads four " \
                     "controllers. If no Multitap is connected, players 3 and 4 hold no buttons."),
         pressed: works("see `held`."),
-        most_players: works,
+        max_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
         players_connected: works("1 at the start. A player is connected from the first frame that one of their " \

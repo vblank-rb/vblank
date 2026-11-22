@@ -118,7 +118,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Game Boy Color does not have.
 - `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: a Game Boy Color has one controller.

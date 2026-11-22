@@ -178,7 +178,7 @@ module VBlank
             # in a game that takes more than two players (`players:`), any player's button or how
             # many are connected, which they can be part of.
             def reads_multitap?(program)
-              several = program.most_players.to_i > 2
+              several = program.max_players.to_i > 2
               program.walk.any? do |node|
                 if %i[held pressed].include?(node.kind)
                   (node.player.is_a?(Integer) && node.player > 2) || (several && node.player == Buttons::ANY)

@@ -23,9 +23,9 @@ module VBlank
         [IR::ComputerControls::KEYS.fetch(name), button]
       end)
 
-      # Whether a game whose build seats +most_players+ (0 or nil for none named) gives each
+      # Whether a game whose build seats +max_players+ (0 or nil for none named) gives each
       # gamepad a player of its own and player 2 keys.
-      def self.several_players?(most_players) = most_players.to_i > 1
+      def self.several_players?(max_players) = max_players.to_i > 1
 
       def initialize = @players = {} # Each gamepad's player, by the window's number for the gamepad
 

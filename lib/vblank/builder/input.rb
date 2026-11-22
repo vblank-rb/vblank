@@ -96,20 +96,28 @@ module VBlank
       #
       # ```ruby
       # VBlank.game "PARTY", consoles: %i[gba], players: { computer: 1..4, else: 1 } do
-      #   walkers = (1..most_players).map { |player| sprite :walker, at: [20 * player, 80] }
+      #   walkers = (1..max_players).map { |player| sprite :walker, at: [20 * player, 80] }
       # end
       # ```
       #
-      # A game that sets no `players:` has no number to give, and `most_players` raises an error
+      # A game that sets no `players:` has no number to give, and `max_players` raises an error
       # that says so.
       #--
       # A build seats what the console reads, and a computer build up to sixteen, which a game
       # never means.
       #++
-      def most_players
-        @program.most_players or raise ArgumentError,
-                                       "`most_players` needs `players:` on `VBlank.game`, and this game does not say it. " \
-                                       "To fix this, say how many players the game takes, for example `players: 4`."
+      def max_players
+        @program.max_players or raise ArgumentError,
+                                      "`max_players` needs `players:` on `VBlank.game`, and this game does not say it. " \
+                                      "To fix this, say how many players the game takes, for example `players: 4`."
+      end
+
+      #--
+      # The verb's old name, kept only to say the new one. Private, so it is no verb of the DSL's:
+      # a game's block still reaches it, since it runs as the builder.
+      #++
+      private def most_players
+        raise ArgumentError, "`most_players` is now `max_players`. To fix this, write `max_players`."
       end
 
       # Shakes the player's hands for a number of frames, as a ball hitting a bumper does.
@@ -158,7 +166,7 @@ module VBlank
       #
       # * Each keyword is a button, and its value is the key that presses it.
       def computer_keys(**keys)
-        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, console: console, most_players: @program.most_players))
+        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, console: console, max_players: @program.max_players))
       end
 
       # Adds gamepad buttons for a button on a computer, as `computer_keys` adds keys.
@@ -227,7 +235,7 @@ module VBlank
           raise ArgumentError, "`player: #{player.inspect}` is not a player. Use a number from 1 to " \
                                "#{IR::Buttons::MOST_PLAYERS}, or :any for every player."
         end
-        most = @program.most_players
+        most = @program.max_players
         return if most.nil? || player == IR::Buttons::ANY || player <= most
 
         raise ArgumentError, "This line reads player #{player}, and the game takes at most #{most} " \

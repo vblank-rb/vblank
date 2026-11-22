@@ -2,12 +2,12 @@
 
 require "test_helper"
 
-# The most players a build seats, asked while the game is built (`most_players`), so a game says
+# The most players a build seats, asked while the game is built (`max_players`), so a game says
 # how many players it takes once, in `players:`, and lays out its seats from the answer.
-class TestMostPlayers < Minitest::Test
+class TestMaxPlayers < Minitest::Test
   private def game(players: { computer: 1..4, else: 1 })
     VBlank.game "SEATS", consoles: %i[gba], players: players do
-      var :seats, most_players
+      var :seats, max_players
       game_loop {}
     end
   end
@@ -34,8 +34,16 @@ class TestMostPlayers < Minitest::Test
   def test_a_game_that_does_not_say_its_players_is_told_to
     error = assert_raises(ArgumentError) { game(players: nil).checked_program(err: nil) }
 
-    assert_match(/most_players/, error.message)
+    assert_match(/max_players/, error.message)
     assert_match(/players:/, error.message)
+  end
+
+  # The verb's old name is gone, and a game that still calls it is told the new one.
+  def test_a_game_that_asks_for_most_players_is_told_to_write_max_players
+    old = VBlank.game("SEATS", consoles: %i[gba], players: 4) { var :seats, most_players }
+    error = assert_raises(ArgumentError) { old.checked_program(err: nil) }
+
+    assert_match(/max_players/, error.message)
   end
 
   # A game built for a web page or as C is told the same, since both are builds for a computer.

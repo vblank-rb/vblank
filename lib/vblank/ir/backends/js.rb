@@ -110,7 +110,7 @@ module VBlank
           program = checked_program(game, console: console, settings: settings, err: nil)
           described = program.described_console
           Page.controls(screen: described.framed_screen_size, pixel_size: described.pixel_size, buttons: described.buttons,
-                        players: program.most_players || 1)
+                        players: program.max_players || 1)
         end
 
         # The web build's own check, on a program however it was made: every console-only step,
@@ -195,7 +195,7 @@ module VBlank
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.framed_screen_size,
-                      pixel_size: described.pixel_size, buttons: described.buttons, players: program.most_players || 1)
+                      pixel_size: described.pixel_size, buttons: described.buttons, players: program.max_players || 1)
           end
         end
 

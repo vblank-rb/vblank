@@ -214,7 +214,7 @@ module VBlank
                     "ports for pads. The build reads the first alone for now, so `player: 2` and `players:` more " \
                     "than 1 are not made yet."),
         pressed: works("see `held`."),
-        most_players: works,
+        max_players: works,
         drawing_for_local_player: works("the player is always 1: a console is played by one person."),
         mark: works,
         players_connected: works("1 while the build reads the first pad alone."),

@@ -36,9 +36,9 @@
 /* As many gamepads as have a player at once. */
 #define RG_SEATS_MOST 8
 
-/* Whether a game whose build seats +most_players+ (rg_game_seats, 0 for none named) gives each
+/* Whether a game whose build seats +max_players+ (rg_game_seats, 0 for none named) gives each
  * gamepad a player of its own and player 2 keys. */
-static inline int rg_seats_several_players(int32_t most_players) { return most_players > 1; }
+static inline int rg_seats_several_players(int32_t max_players) { return max_players > 1; }
 
 /* The gamepads plugged in and each one's player: +ids+ is the window's number for the gamepad,
  * and +players+ its player from 1, 0 where the place is empty. Starts zeroed. */

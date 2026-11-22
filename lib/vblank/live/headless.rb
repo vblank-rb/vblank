@@ -115,8 +115,8 @@ module VBlank
       # The game's save memory as it stands: the bytes it last wrote, else those +save+ handed in, else nil.
       def saved = @save_file&.bytes
 
-      # The game seats +most_players+ (0 for none named), told by the session before the first pass.
-      def seat_players(most_players) = @seat_counts << most_players
+      # The game seats +max_players+ (0 for none named), told by the session before the first pass.
+      def seat_players(max_players) = @seat_counts << max_players
 
       # The left speaker's sound is kept. The right one's is as long, so it shows nothing more about
       # when the speaker runs out. The sound is the game's own and is written over next frame, so a

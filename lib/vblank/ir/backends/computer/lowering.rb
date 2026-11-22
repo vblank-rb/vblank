@@ -413,7 +413,7 @@ module VBlank
           # window, the Ruby window and the web page read it: only a game for two or more gives
           # player 2 keys and each gamepad a player of its own (rg_seats.h, Live::Seats).
           def seats_array
-            Statements::ConstArray.new(name: @names.own("seats"), type: "int32_t", values: [@program.most_players || 0], exported: true)
+            Statements::ConstArray.new(name: @names.own("seats"), type: "int32_t", values: [@program.max_players || 0], exported: true)
           end
 
           # A program that waits for frames shows nothing until its first frame is set up

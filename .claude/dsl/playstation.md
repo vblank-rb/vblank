@@ -116,7 +116,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a PlayStation does not have.
 - `held` — works: a game names the pad's buttons by the shared names: `:a` is Cross, `:b` Circle, `:x` Triangle, `:y` Square, `:l` L1 and `:r` R1, with `:select`, `:start` and the D-pad. A PlayStation has two ports for pads. The build reads the first alone for now, so `player: 2` and `players:` more than 1 are not made yet.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a console is played by one person.
 - `mark` — works: the same as on the Advance.
 - `players_connected` — works: 1 while the build reads the first pad alone.

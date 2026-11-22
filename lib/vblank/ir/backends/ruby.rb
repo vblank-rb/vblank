@@ -152,7 +152,7 @@ module VBlank
         def match_facts(program, title:)
           fingerprint = Network::Fingerprint.of(program, title: title)
           { "title" => title.to_s, "console" => fingerprint.console, "digest" => fingerprint.digest,
-            "several_players" => program.several_players?, "most_players" => program.most_players }
+            "several_players" => program.several_players?, "max_players" => program.max_players }
         end
 
         MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of every file of the library's

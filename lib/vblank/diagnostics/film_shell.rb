@@ -214,7 +214,7 @@ module VBlank
         def held_buttons(pass) = hand_out_picture.then { @buttons.call(pass) }
         def fast_forward_speed(_pass) = 1
         def hold_while_paused = hand_out_picture.then { false }
-        def seat_players(_most_players) = nil
+        def seat_players(_max_players) = nil
         def notice(_words) = nil
 
         def wait_until(seconds)

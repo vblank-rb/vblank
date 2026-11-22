@@ -17,7 +17,7 @@ module VBlank
       # What a match needs to know of the game: its Network::Fingerprint's parts, whether it is
       # built for several players (IR::Program#several_players?), and the most it seats (nil for
       # no limit named).
-      MatchFacts = Data.define(:title, :console, :digest, :several_players, :most_players) do
+      MatchFacts = Data.define(:title, :console, :digest, :several_players, :max_players) do
         def fingerprint = Network::Fingerprint.new(title: title, console: console, digest: digest)
       end
 
@@ -91,7 +91,7 @@ module VBlank
 
       def players_in_match
         players = @players || 2
-        most = @facts.most_players
+        most = @facts.max_players
         if most && players > most
           raise Refused, "--players #{players} is more than this game takes. The game takes at most #{most}. " \
                          "To fix this, give --players #{most} or fewer."

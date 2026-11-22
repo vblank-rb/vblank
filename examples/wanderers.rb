@@ -17,7 +17,7 @@
 #   * HOW MANY SEATS — `players:` says how many players the game takes on each build. A game
 #     played on a computer (as C, in a web page, or as Ruby) reads sixteen controllers, and here
 #     it takes four; a cartridge reads the controllers its console has. The game says four once,
-#     and `most_players` hands that number back while the game is built, to make the walkers.
+#     and `max_players` hands that number back while the game is built, to make the walkers.
 #   * RANDOM COLOURS EVERYBODY AGREES ON — the colours come from the game's random numbers
 #     (`rand`), which start from the game's own `seed`. Nothing about them comes from outside
 #     the game, so the same presses pick the same colours every time, and two machines playing
@@ -33,7 +33,7 @@
 # an adapter plugged into the second port (a Super Multitap, a Sega Team Player). With no adapter,
 # the second port's own controller is the second player, and the other two never join.
 # `players: { computer: 1..4, snes: 1..4, genesis: 1..4, else: 1 }` says four seats on a computer,
-# the Super Nintendo and the Genesis and one on the other cartridges, and `most_players` makes the
+# the Super Nintendo and the Genesis and one on the other cartridges, and `max_players` makes the
 # matching number of walkers. A game played on a computer is still built AS a console — its
 # screen size and its picture rules are that console's — so the computer builds of this game are
 # each console's, laid out for its screen.
@@ -53,7 +53,7 @@ require_relative "../lib/vblank"
 module Wanderers
   # The most players a computer build seats, and a Super Nintendo or a Genesis with an adapter in
   # its second port. The other cartridges seat one.
-  SEATS_ON_A_COMPUTER = 4
+  MAX_SEATS = 4
   SPEED = 1 # pixels a frame
   SIZE  = 8 # a walker is one 8x8 tile
 
@@ -119,15 +119,15 @@ module Wanderers
   ART
 
   GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc snes genesis],
-                                  players: { computer: 1..SEATS_ON_A_COMPUTER, snes: 1..SEATS_ON_A_COMPUTER,
-                                             genesis: 1..SEATS_ON_A_COMPUTER, else: 1 }) do
+                                  players: { computer: 1..MAX_SEATS, snes: 1..MAX_SEATS,
+                                             genesis: 1..MAX_SEATS, else: 1 }) do
     screen :tiled # a background for the meadow, and the console's own sprites for the walkers
     here = Layout.new(width: screen_width, height: screen_height)
 
     # How many walkers this build makes: four on a computer, a Super Nintendo or a Genesis, one on the other
     # cartridges. It is the number `players:` gives this build, so no line below reads a player
     # the build does not seat.
-    seats = most_players
+    seats = max_players
 
     # Whether to mark which walker is this machine's own. A test that wants every machine of a match
     # to show one picture turns it off, since that mark is the one thing that differs.

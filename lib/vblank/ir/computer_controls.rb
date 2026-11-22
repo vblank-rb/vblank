@@ -87,14 +87,14 @@ module VBlank
       LAYOUT_PADS = 1
 
       # The entries for +given+ (button => key name, or a list of them), as [button, :key, name]
-      # triples, or a friendly error naming what cannot be. +most_players+ is the most players the
+      # triples, or a friendly error naming what cannot be. +max_players+ is the most players the
       # build seats: a game for two or more keeps player 2's keys free. +console+ is the build's
       # (a Console::Description): only its buttons can be named, and only their keys are taken.
-      def self.keys_entries!(given, console:, most_players: nil)
+      def self.keys_entries!(given, console:, max_players: nil)
         entries = entries_of(given, :computer_keys, console)
         refuse_same_twice!(entries, :computer_keys)
         entries.each { |button, name| refuse_key!(button, name, console.buttons) }
-        entries.each { |button, name| refuse_second_player_key!(button, name, console.buttons) } if most_players && most_players > 1
+        entries.each { |button, name| refuse_second_player_key!(button, name, console.buttons) } if max_players && max_players > 1
         refuse_crowded!(entries, :computer_keys, "keys", most: MOST_KEYS) { |button| LAYOUT_KEYS.fetch(button).length }
         entries.map { |button, name| [button, :key, name] }
       end

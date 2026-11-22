@@ -142,7 +142,7 @@ module VBlank
       # (`enable_sound main_volume:`, kept on the program since it is said once for the whole game). A
       # line answers one question, so where both are asked the one this console cannot do is it.
       def program_question(program, console)
-        most = program.most_players
+        most = program.max_players
         questions = []
         questions << Question.new(:held, "This game takes up to #{most} players (`players:`)", most <= console.controllers) if most && most > 1
         if program.main_volume

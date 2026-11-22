@@ -298,7 +298,7 @@ module VBlank
                @program.walk.any? { |node| node.kind != :screen && Paint::STATEMENT_KINDS.include?(node.kind) }
               refuse_unmade!(TILED_SCREEN, "paints a picture and also shows a screen drawn from tiles")
             end
-            second_pad = @program.most_players.to_i > 1 || @program.walk.any? do |node|
+            second_pad = @program.max_players.to_i > 1 || @program.walk.any? do |node|
               %i[held pressed].include?(node.kind) && node.player.is_a?(Integer) && node.player > 1
             end
             refuse_unmade!(SECOND_PAD, "reads the second pad") if second_pad

@@ -442,8 +442,8 @@ module VBlank
         (from_keys + second + from_pads).uniq
       end
 
-      # The game seats +most_players+ (0 for none named), told by the Session before the first pass.
-      def seat_players(most_players) = @several_players = Seats.several_players?(most_players)
+      # The game seats +max_players+ (0 for none named), told by the Session before the first pass.
+      def seat_players(max_players) = @several_players = Seats.several_players?(max_players)
 
       # Whether key +code+ is nobody's: no button of player 1's and no hotkey.
       private def key_free?(code) = @player_settings.button_of_key(code).nil? && @player_settings.hotkey_of_key(code).nil?

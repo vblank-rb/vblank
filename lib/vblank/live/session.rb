@@ -29,7 +29,7 @@ module VBlank
     #   watch(game, player:, players:, input_delay:)
     #                                optional: a device with nobody at the controls is told which game it plays
     #                                (answering `state`), and how the match is set up, before the first pass
-    #   seat_players(most_players)   optional: the most players the game seats (0 for none named), told
+    #   seat_players(max_players)   optional: the most players the game seats (0 for none named), told
     #                                before the first pass, for a window that seats several (Seats)
     #   read_variables_from(game)    optional: the game, told before the first pass, for a window that
     #                                shows its variables (answering `vars`) as it plays
