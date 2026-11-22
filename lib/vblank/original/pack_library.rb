@@ -42,15 +42,18 @@ module VBlank
 
       # Files inside a LEFT_OUT folder that a pack is made with all the same: the packed formats'
       # numbers (Original::Packing::GBA reads BiosCompress's), each lowering's list of what it
-      # cannot make yet (Console::Kit), a build's options and players (read as a routine is built),
-      # the records the interpreter makes of a sprite and of dropped sound, and the fingerprint of a
-      # state file (Computer::StateFile).
+      # cannot make yet (Console::Kit), a build's options, players and features (read as a routine
+      # is built), the records the interpreter makes of a sprite and of dropped sound, the
+      # fingerprint of a state file (Computer::StateFile), and the record of what a build reads
+      # (Live::BuildInputs), whose wrapped read methods run beside every build once `vblank run`
+      # has loaded them.
       KEPT = %w[
         ir/backends/gba/bios_compress.rb
         ir/backends/gbc/lowering.rb ir/backends/snes/lowering.rb ir/backends/genesis/lowering.rb
-        cartridge/options.rb cartridge/players.rb
+        cartridge/options.rb cartridge/players.rb cartridge/features.rb
         diagnostics/sprite_row.rb diagnostics/sound_drops.rb
         network/fingerprint.rb
+        live/build_inputs.rb
       ].freeze
 
       # The library under +root+ (lib, holding vblank.rb and vblank/), leaving out +left_out+ but
