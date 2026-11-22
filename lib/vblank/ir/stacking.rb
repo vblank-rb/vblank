@@ -56,10 +56,34 @@ module VBlank
         declared = program.walk.find { |node| node.kind == :layers }
         stack = declared&.names || []
         shared = declared&.shared || []
-        scenery = order_by_stack(program.walk.select { |node| node.kind == :background }, stack, &:layer)
+        scenery = order_by_stack(scenery_reached(program), stack, &:layer)
         objects = objects_in_draw_order(program)
         Picture.new(stack: stack, shared: shared, scenery: scenery, objects: objects,
                     depths: depths(scenery: scenery, objects: objects, stack: stack, shared: shared))
+      end
+
+      # Every background +program+ declares, less one on no screen: declared only in a routine no
+      # run calls, and named by nothing outside such routines. Its line never runs, so it is never
+      # put up, and a scene the game never picks owns none of the room the scenes it does pick are
+      # counted in. (The builder ties a declaration to its scene only where the game picks that
+      # scene, so such a background would otherwise be counted on every screen.) A background
+      # that a line that can run still names is kept. The builder puts a scene's scroll in the
+      # game loop, for one. A bend and a timer's handler stand from power-on wherever they are
+      # written (Reference#collect_definitions), so the routines they call are reached
+      # (Reach.routines). A bend of a background left out bends nothing (RowBends).
+      def scenery_reached(program)
+        declared = program.walk.select { |node| node.kind == :background }
+        funcs = program.walk.select { |node| node.kind == :func }
+        return declared if funcs.empty?
+
+        called = Reach.routines(program, also: program.walk.select { |node| %i[on_timer scroll_rows].include?(node.kind) })
+        unreached = Set.new.compare_by_identity
+        funcs.reject { |func| called.include?(func.name) }.each { |func| unreached.merge(Reach.statements_under(func)) }
+        return declared if unreached.none? { |node| node.kind == :background }
+
+        named = program.walk.reject { |node| unreached.include?(node) || node.kind == :func }
+                       .flat_map { |node| node.named_operands.flat_map { |_, held| Array(held).flatten } }
+        declared.reject { |node| unreached.include?(node) && !named.include?(node.name) }
       end
 
       # --- one screenful at a time ---

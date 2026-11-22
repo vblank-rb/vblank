@@ -88,7 +88,10 @@ module VBlank
             # A background's name -> the entry that keeps what the game does to it. That is the
             # last one declared by the name, in the order the program declares them, as the
             # interpreter's @bg_by_name keeps it; the stack's order can differ once layers are named.
-            @last_declared = @program.walk.select { |node| node.kind == :background }.to_h { |bg| [bg.name, bg] }
+            # One declared where no run reaches is on no screen (Stacking.scenery_reached), so it
+            # has no entry.
+            drawn = Set.new(@stacking.scenery).compare_by_identity
+            @last_declared = @program.walk.select { |node| node.kind == :background && drawn.include?(node) }.to_h { |bg| [bg.name, bg] }
             @backgrounds = @last_declared.transform_values { |bg| entry_of(bg) }
             @objects = by_name(@program.walk, :object)
             @sprites = @objects.each_key.with_index.to_h # sprite name -> the number rg_screen.c knows it by

@@ -1675,6 +1675,9 @@ module VBlank
             # A background a scene owns goes up as that scene takes over (see
             # #emit_scene_scenery and IR::SceneHandover), not where it is written.
             return if scene_handover.on_arrival?(node)
+            # ...and one in a routine no run calls is on no screen (Stacking.scenery_reached): it
+            # has no layer, and its line never runs.
+            return unless @layout.screen.declared_background(node)
 
             @background_drawing.emit_background_hardware(node)
             emit_enable_late_layer(node)

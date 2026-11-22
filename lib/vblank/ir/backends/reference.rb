@@ -1541,9 +1541,10 @@ module VBlank
         # bend and its scroll are from one pass and show on one frame.
         #
         # A bend written for a background the game does not have is never asked: there are no
-        # rows of it to work out.
+        # rows of it to work out. Nor is one for a background on no screen, declared only in a
+        # routine no run calls (Stacking.scenery_reached, which the picture is made of).
         def work_out_bends
-          bends = @row_bends.select { |name, _| @bg_by_name.key?(name) }
+          bends = @row_bends.select { |name, _| @picture.scenery.any? { |bg| bg.name == name } }
           return if bends.empty?
 
           bends.each { |name, bend| @bend_rows[name] = [run_bend_for_row(bend, 0)] }

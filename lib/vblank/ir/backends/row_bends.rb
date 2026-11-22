@@ -15,7 +15,8 @@ module VBlank
       # is, since a bend stands from power-on (Reference#collect_definitions). They come in the order
       # the backgrounds were first bent, which is the order their rows are worked out in. A bend
       # written for a name the program never declares as a background is never asked: there are no
-      # rows of it to work out.
+      # rows of it to work out. Nor is one for a background on no screen, declared only in a
+      # routine no run calls (Stacking.scenery_reached).
       #
       # Bands: a block that only works a number out, and reads its row only to compare it with a
       # number written in the game, gives one answer for whole bands of rows. A title arriving in two
@@ -44,7 +45,7 @@ module VBlank
         attr_reader :bends
 
         def initialize(program)
-          declared = program.walk.select { |node| node.kind == :background }.to_set(&:name)
+          declared = Stacking.scenery_reached(program).to_set(&:name)
           last = {}
           program.walk.each { |node| last[node.name] = node if node.kind == :scroll_rows && declared.include?(node.name) }
           @bends = last.values.map { |node| Bend.new(background: node.name, row: node.row, offset: node.offset, body: node.children, node: node) }

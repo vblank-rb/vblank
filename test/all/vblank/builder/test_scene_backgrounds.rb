@@ -855,4 +855,57 @@ class TestSceneBackgrounds < Minitest::Test
     assert_equal BLUE, played.call(9).pixel(60, 20), "and up again"
     assert_backends_agree(prog, frames: [5, 6, 9], name: "SCNAWAY")
   end
+
+  # A field every screen shows, and a scene the game never picks holding a background of its own.
+  # That background's line never runs, so it is on no screen and takes no room: a console that
+  # shows one background at a time builds the game too.
+  private def a_scene_never_picked
+    tile = SOLID_TILE
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { tile }
+      image(:blue_art, "#" => :blue) { tile }
+      tiles :red_set, "#" => :red_art
+      tiles :blue_set, "#" => :blue_art
+      map = Array.new(20) { "#" * 30 }
+      background :field, tiles: :red_set, map: map
+      var :state, 0
+      scene(:play) { nil }
+      scene(:never) { background :cover, tiles: :blue_set, map: map }
+      game_loop { call({ 0 => :play }, number: :state) }
+    end
+  end
+
+  def test_a_background_in_a_scene_never_picked_is_on_no_screen
+    prog = a_scene_never_picked
+
+    assert_equal RED, game_player.run(prog, frames: 4).screen.pixel(*MIDDLE)
+    assert_backends_agree(prog, frames: [4], name: "SCNNEVER")
+  end
+
+  # The same, with the never-picked scene's background bent row by row. A bend stands from power-on
+  # wherever it is written, but this one bends a background on no screen, so it bends nothing.
+  private def a_bent_background_in_a_scene_never_picked
+    tile = SOLID_TILE
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { tile }
+      image(:blue_art, "#" => :blue) { tile }
+      tiles :red_set, "#" => :red_art
+      tiles :blue_set, "#" => :blue_art
+      map = Array.new(20) { "#" * 30 }
+      background :field, tiles: :red_set, map: map
+      var :state, 0
+      scene(:play) { nil }
+      scene(:never) { background(:cover, tiles: :blue_set, map: map).scroll_each_row { |row| row >= 30 ? 3 : 0 } }
+      game_loop { call({ 0 => :play }, number: :state) }
+    end
+  end
+
+  def test_a_bend_of_a_background_in_a_scene_never_picked_bends_nothing
+    prog = a_bent_background_in_a_scene_never_picked
+
+    assert_equal RED, game_player.run(prog, frames: 4).screen.pixel(*MIDDLE)
+    assert_backends_agree(prog, frames: [4], name: "SCNBENT")
+  end
 end
