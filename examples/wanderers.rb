@@ -27,13 +27,14 @@
 #   * WHICH ONE IS ME — in a match over a network, each machine shows an arrow over its own
 #     walker (`drawing_for_local_player` and `mark`), and the game stays the same on every machine.
 #
-# It is for the Game Boy Advance, the Game Boy Color, the Super Nintendo and the Sega Genesis. The
-# Advance and the Color read one controller, so a cartridge for either is a one-player walk round
-# the meadow. The Super Nintendo and the Genesis seat four: the first controller, and three more in
-# an adapter plugged into the second port (a Super Multitap, a Sega Team Player). With no adapter,
-# the second port's own controller is the second player, and the other two never join.
-# `players: { computer: 1..4, snes: 1..4, genesis: 1..4, else: 1 }` says four seats on a computer,
-# the Super Nintendo and the Genesis and one on the other cartridges, and `max_players` makes the
+# It is for the Game Boy Advance, the Game Boy Color, the Super Nintendo, the Sega Genesis and the
+# PlayStation. The Advance and the Color read one controller, so a cartridge for either is a
+# one-player walk round the meadow. The Super Nintendo, the Genesis and the PlayStation seat four:
+# the first controller, and three more in an adapter plugged into the second port (a Super
+# Multitap, a Sega Team Player, a PlayStation Multitap). With no adapter, the second port's own
+# controller is the second player, and the other two never join.
+# `players: { computer: 1..4, snes: 1..4, genesis: 1..4, ps1: 1..4, else: 1 }` says four seats on a
+# computer and on those three consoles and one on the other cartridges, and `max_players` makes the
 # matching number of walkers. A game played on a computer is still built AS a console — its
 # screen size and its picture rules are that console's — so the computer builds of this game are
 # each console's, laid out for its screen.
@@ -42,7 +43,7 @@
 # straight through another. Two players may also be given the same colour, as two dice can
 # land the same way.
 #
-# Run it to build examples/wanderers.gba, .gbc, .sfc and .gen:
+# Run it to build examples/wanderers.gba, .gbc, .sfc, .gen and .exe:
 #   ruby examples/wanderers.rb
 # or play four on a computer, with a controller each (the first controller is player 1, the next
 # player 2, and so on), or two at one keyboard: player 1 on the arrows, player 2 on I J K L:
@@ -51,8 +52,8 @@
 require_relative "../lib/vblank"
 
 module Wanderers
-  # The most players a computer build seats, and a Super Nintendo or a Genesis with an adapter in
-  # its second port. The other cartridges seat one.
+  # The most players a computer build seats, and a Super Nintendo, a Genesis or a PlayStation with an
+  # adapter in its second port. The other cartridges seat one.
   MAX_SEATS = 4
   SPEED = 1 # pixels a frame
   SIZE  = 8 # a walker is one 8x8 tile
@@ -118,13 +119,13 @@ module Wanderers
     ........
   ART
 
-  GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc snes genesis],
+  GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc snes genesis ps1],
                                   players: { computer: 1..MAX_SEATS, snes: 1..MAX_SEATS,
-                                             genesis: 1..MAX_SEATS, else: 1 }) do
+                                             genesis: 1..MAX_SEATS, ps1: 1..MAX_SEATS, else: 1 }) do
     screen :tiled # a background for the meadow, and the console's own sprites for the walkers
     here = Layout.new(width: screen_width, height: screen_height)
 
-    # How many walkers this build makes: four on a computer, a Super Nintendo or a Genesis, one on the other
+    # How many walkers this build makes: four on a computer, a Super Nintendo, a Genesis or a PlayStation, one on the other
     # cartridges. It is the number `players:` gives this build, so no line below reads a player
     # the build does not seat.
     seats = max_players
