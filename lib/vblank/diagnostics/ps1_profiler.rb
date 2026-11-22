@@ -46,9 +46,6 @@ module VBlank
 
       FILE_NAME = "game.exe"
 
-      # The buttons a game names, as the PlayStation's core names the pad's.
-      PAD_BUTTONS = IR::Backends::PS1::HeadlessRun::PAD_BUTTONS
-
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is, the
       # frames the slowest took and which pass of the game it was, and how many passes took each number
       # of frames; TimeByRoutine::Report's five; +gpu_share+, the graphics chip's time drawing out of all
@@ -106,16 +103,12 @@ module VBlank
       # memory and takes the pad's own names for its buttons.
       class Meter < TapeProfile::ProcessorTimeMeter
         def hold(core, buttons)
-          IR::Buttons.by_controller(buttons).each_with_index do |held, port|
-            core.set_buttons(pad_buttons(held), port: port) if port.zero? || !held.empty?
+          IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(buttons).each_with_index do |held, port|
+            core.set_buttons(held, port: port)
           end
         end
 
         def words(core) = [core.ram_read32(@passes_at), core.ram_read32(@shown_at)]
-
-        private
-
-        def pad_buttons(buttons) = buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] }
       end
 
       # The time of the +frames+ after +settle+ passes, the graphics chip's share of it, which frames
@@ -124,7 +117,9 @@ module VBlank
         places = rom.built
         shown_at = places.runtime.fetch(IR::Backends::PS1::Runtime::Frame::SHOWN)
         Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
-          core.set_buttons(keys.filter_map { |button| PAD_BUTTONS[button.to_sym] })
+          # A game for more than two is measured with a Multitap in, as it is played.
+          core.plug_in_multitap if IR::Backends::PS1::Runtime::Pads.reads_multitap?(places.source_program)
+          IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(keys).each_with_index { |held, port| core.set_buttons(held, port: port) }
           core.run_frame while core.frames < MOST_FRAMES_TO_SETTLE && core.ram_read32(places.waits_counted_at) <= settle
           first = core.frames + 1
           core.take_processor_time # the first ask starts the count

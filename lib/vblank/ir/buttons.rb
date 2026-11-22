@@ -16,11 +16,17 @@ module VBlank
     module Buttons
       # Every button of any console, by the names a program uses: the ten Game Boy Advance
       # buttons, then the two only a Super Nintendo controller has, then the one only a Sega Genesis
-      # pad has (C: its B and C are the Advance's B and A's neighbours, and it has no Select). A new
-      # button goes on the end, since the first ten keep the order the Advance's key register has
-      # them in. Which a console has is its description's to list (Console::Description#buttons),
-      # and the build refuses the rest.
-      NAMES = %i[a b select start right left up down r l x y c].freeze
+      # pad has (C: its B and C are the Advance's B and A's neighbours, and it has no Select), then the
+      # two only a PlayStation pad has, its second shoulder buttons, L2 and R2. A new button goes on
+      # the end, since the first ten keep the order the Advance's key register has them in. Which a
+      # console has is its description's to list (Console::Description#buttons), and the build
+      # refuses the rest.
+      NAMES = %i[a b select start right left up down r l x y c l2 r2].freeze
+
+      # Other names for some of the buttons, which a game for one console can use as its pad names
+      # them: a PlayStation pad's shapes and first shoulder buttons. Each is the same button as the
+      # shared name: `held(:cross)` is `held(:a)`, on any console.
+      OTHER_NAMES = Ractor.make_shareable({ cross: :a, circle: :b, triangle: :x, square: :y, l1: :l, r1: :r })
 
       # Any button at all, which is not a button and so is not in NAMES: `held(:any)` holds
       # while one of them is down, and `pressed(:any)` on a frame one of them went down —
@@ -70,8 +76,12 @@ module VBlank
         NAMES.include?(name)
       end
 
-      # Whether `held` and `pressed` can ask about +name+: a button, or any of them.
-      def readable?(name) = known?(name) || name == ANY
+      # Whether `held` and `pressed` can ask about +name+: a button, by its name or another
+      # (OTHER_NAMES), or any of them.
+      def readable?(name) = known?(name) || OTHER_NAMES.key?(name) || name == ANY
+
+      # The button +name+ is, by the name in NAMES: +name+ itself, or the button one of OTHER_NAMES is.
+      def named(name) = OTHER_NAMES.fetch(name, name)
 
       # Whether a test or a tape can hold +name+: a button of any player.
       def holdable?(name) = HELD_NAMES.key?(name)

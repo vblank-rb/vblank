@@ -24,11 +24,13 @@ module VBlank
       def width = @core.width
       def height = @core.height
 
-      # +keys+ is a button mask (IR::Buttons.mask).
+      # +keys+ is a button mask (IR::Buttons.mask), the second player's on the second pad. The third and
+      # fourth players' go to the plugs a Multitap would have; this reader plugs none in, so a program read
+      # here plays as on a console with a plain pad in each port.
       def step(frames, keys: 0)
         held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
-        IR::Buttons.by_controller(held).each_with_index do |buttons, port|
-          @core.set_buttons(buttons.filter_map { |button| PAD_BUTTONS[button] }, port: port)
+        IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(held).each_with_index do |buttons, port|
+          @core.set_buttons(buttons, port: port)
         end
         frames.times { @core.run_frame }
         @frames = frames
@@ -70,8 +72,6 @@ module VBlank
       end
 
       def closed? = @closed == true
-
-      PAD_BUTTONS = IR::Backends::PS1::HeadlessRun::PAD_BUTTONS
 
       private
 

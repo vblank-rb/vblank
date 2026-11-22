@@ -43,7 +43,9 @@ module VBlank
             WAITING = "rt waiting" # 1 while the game waits for its next frame's buttons
             PASSES = "rt passes" # Passes of the game loop ended
             SHOWN = "rt shown" # The pass whose picture the console shows
-            HELD = "rt held" # The buttons held through the pass, a bit each in IR::Buttons's order
+            # The buttons held through the pass, a bit each in IR::Buttons's order: the first player's in the
+            # low half, the second's in the high (Pads keeps the third and fourth's).
+            HELD = "rt held"
             SEEN = "rt seen"
             PRESSED = "rt pressed"
             FAULT = "rt fault"
@@ -80,10 +82,8 @@ module VBlank
             # went down on any of them since the last wait ended.
             PAD_HELD = "rt pad held"
             PAD_PRESSED = "rt pad pressed"
-            # The conversation with the pad (Pads): how many of its bytes have been sent, nought for none
-            # under way, and the first of the two button bytes once it has come.
+            # The exchange with a pad (Pads): how many of its bytes have been sent, nought for none under way.
             PAD_STEP = "rt pad step"
-            PAD_BYTE = "rt pad byte"
             # 1 once the interrupt has come since the game began to wait.
             VBLANK = "rt vblank"
             # 1 once the picture is on: before the end of the first pass it is off.
@@ -108,7 +108,7 @@ module VBlank
             KEPT_REGISTERS = %i[at v0 v1 a0 a1 a2 a3 t0 t1 t2 t3 t4 t5 t6 t7 t8 t9 ra].freeze
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES,
-                     FRAMES_MARK, STEP_TAKEN, FRAMES_TAKEN, PAD_HELD, PAD_PRESSED, PAD_STEP, PAD_BYTE, VBLANK,
+                     FRAMES_MARK, STEP_TAKEN, FRAMES_TAKEN, PAD_HELD, PAD_PRESSED, PAD_STEP, VBLANK,
                      DISPLAY_ON, BLANK_LINE].freeze
 
             module_function
@@ -148,7 +148,7 @@ module VBlank
                 emit_show_owed(asm, memory, sound, shown_by)
               end
               emit_show_pass(asm, at, count_at && count_place(count_at))
-              emit_read_buttons(asm, at)
+              emit_read_buttons(asm, memory, at)
               emit_stopping(asm, at, tiles, shown_by)
             end
 
@@ -508,7 +508,7 @@ module VBlank
             # Where a pass's wait ends: the buttons for the pass about to start, from every frame the last
             # one took, and how many frames that was. The interrupt is held off while they are taken, so a
             # press it reads cannot fall between the two.
-            def emit_read_buttons(asm, at)
+            def emit_read_buttons(asm, memory, at)
               asm.label("rt_read_buttons")
               asm.mtc0(:zero, R3000::COP0_STATUS)
               asm.lw(:t0, at.call(PAD_PRESSED), :gp)
@@ -517,6 +517,7 @@ module VBlank
               asm.lw(:t0, at.call(PAD_HELD), :gp)
               asm.lw(:t2, at.call(FRAMES), :gp)
               asm.sw(:t0, at.call(HELD), :gp)
+              Pads.emit_taken_for_pass(asm, memory, at)
               asm.li(:t0, Console::PS1Hardware::SR_INTERRUPTS_ON)
               asm.mtc0(:t0, R3000::COP0_STATUS)
               asm.lw(:t1, at.call(FRAMES_MARK), :gp)

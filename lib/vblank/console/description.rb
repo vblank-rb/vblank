@@ -644,13 +644,14 @@ module VBlank
                               extension: ".gen")
 
     # The PlayStation: a 320×240 screen, a pad whose buttons a game names by the shared names (Cross is
-    # :a, Circle :b, Triangle :x, Square :y, L1 and R1 :l and :r), pictures drawn by a graphics chip with no
-    # limit of sprites on a row, colours of fifteen bits and lists of 256 of them. What each verb does on it
-    # is Console::PS1Answers's to say.
+    # :a, Circle :b, Triangle :x, Square :y, L1 and R1 :l and :r, and L2 and R2 :l2 and :r2), pictures drawn
+    # by a graphics chip with no limit of sprites on a row, colours of fifteen bits and lists of 256 of them.
+    # What each verb does on it is Console::PS1Answers's to say.
     PLAYSTATION = Description.new(name: :ps1, title: "PlayStation", screen_width: 320, screen_height: 240,
-                                  buttons: %i[a b select start right left up down r l x y].freeze,
-                                  # Two ports for pads (the build reads the first alone for now).
-                                  controllers: 2,
+                                  buttons: %i[a b select start right left up down r l x y l2 r2].freeze,
+                                  # Four pads: the first port's, and three on a Multitap in the second
+                                  # (PS1::Runtime::Pads).
+                                  controllers: 4,
                                   # A background is a picture the graphics chip draws, so it can be held to
                                   # a box (the chip's drawing area) that nothing else uses. A recorded note
                                   # can glide: its voice's pitch is a register written while it plays.

@@ -128,7 +128,8 @@ module VBlank
                                   samples: samples, recorded_pans: samples && IR::Tunes.recorded_pans?(program),
                                   glides: samples && Music.glides?(program),
                                   tiles: Lowering::Picture.tiled?(program),
-                                  colors: colors, by_number: by_number, over_picture: over_picture)
+                                  colors: colors, by_number: by_number, over_picture: over_picture,
+                                  pads: Runtime::Pads.pads_read(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           Runtime::Tiles.reserve_plane_mixes(memory) if Lowering::Picture.mixes_see_through?(program)
           lowering = Lowering.new(program, memory: memory, cache: cache)

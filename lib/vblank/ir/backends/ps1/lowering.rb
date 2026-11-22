@@ -158,12 +158,11 @@ module VBlank
 
           # The parts a game can need that the build does not make yet and that are no kind of step of
           # their own, so NOT_LOWERED_YET cannot name them (#refuse_unmade_parts!): a backdrop of a colour
-          # (the build shows black where nothing is drawn), the second pad (the build reads the first), and
-          # a game that paints and also shows a screen drawn from tiles; and parts of what NOT_LOWERED_YET
-          # names, a fade of part of the screen (Picture#refuse_fades_of_part!) and a fade of a painted screen
-          # that cannot be drawn by number (Paint#reserve_painted_numbers!).
+          # (the build shows black where nothing is drawn), and a game that paints and also shows a screen
+          # drawn from tiles; and parts of what NOT_LOWERED_YET names, a fade of part of the screen
+          # (Picture#refuse_fades_of_part!) and a fade of a painted screen that cannot be drawn by number
+          # (Paint#reserve_painted_numbers!).
           BACKDROP_COLOUR = "a backdrop colour"
-          SECOND_PAD = "the second pad"
           TILED_SCREEN = "sprites and tiled backgrounds"
           FADES = "fades, lights and screen effects"
 
@@ -283,8 +282,8 @@ module VBlank
 
           private
 
-          # A backdrop of a colour (`screen ..., backdrop:`, or a list of colours the backdrop follows), and
-          # the second pad (`players:` more than 1, or `player: 2` and on), refused as not made yet.
+          # A backdrop of a colour (`screen ..., backdrop:`, or a list of colours the backdrop follows), and a
+          # painted picture beside a screen drawn from tiles, refused as not made yet.
           def refuse_unmade_parts!
             # A painted screen's backdrop is black whatever its `screen` names (SceneHandover#backdrop_of), and a
             # screen drawn from tiles shows the game's (Runtime::Tiles::BACKDROP), and one that follows a list of
@@ -298,10 +297,6 @@ module VBlank
                @program.walk.any? { |node| node.kind != :screen && Paint::STATEMENT_KINDS.include?(node.kind) }
               refuse_unmade!(TILED_SCREEN, "paints a picture and also shows a screen drawn from tiles")
             end
-            second_pad = @program.max_players.to_i > 1 || @program.walk.any? do |node|
-              %i[held pressed].include?(node.kind) && node.player.is_a?(Integer) && node.player > 1
-            end
-            refuse_unmade!(SECOND_PAD, "reads the second pad") if second_pad
           end
 
           # The colour a screen drawn from tiles shows where nothing is drawn, from power-on: the game's
@@ -1462,8 +1457,14 @@ module VBlank
           def value_of_int(node) = emit_load_constant(node.value)
           def value_of_var_ref(node) = emit_load_variable(node.name)
 
-          # This build reads the first pad only, so one player is connected, always.
-          def value_of_players_connected(_node) = emit_load_constant(1)
+          # The first player, and each one after up to the highest whose button has been down
+          # (Runtime::Pads::CONNECTED, which never falls). A game that reads the first pad alone has one.
+          def value_of_players_connected(_node)
+            return emit_load_constant(1) if Runtime::Pads.pads(@memory) == 1
+
+            emit_load_word(:v0, runtime_place(Runtime::Pads::CONNECTED))
+            @asm.addiu(:v0, :v0, 1)
+          end
 
           # A console is played by one person, the first player.
           def value_of_local_player(_node) = emit_load_constant(1)
@@ -1674,19 +1675,41 @@ module VBlank
           def value_of_chance(node) = emit_value(Build.binop(:<, node.draw, Build.int(node.percent)))
 
           # The buttons held, or pressed, through the pass: a bit each, in IR::Buttons's order, and any of
-          # them for Buttons::ANY.
-          def value_of_held(node) = emit_button_down_flag(Runtime::Frame::HELD, node.button)
-          def value_of_pressed(node) = emit_button_down_flag(Runtime::Frame::PRESSED, node.button)
+          # them for Buttons::ANY. The first two players' are a word, the first's in its low half
+          # (Runtime::Frame::HELD), and the third and fourth's another (Runtime::Pads::TAP_HELD); `player:
+          # :any` is every half the game reads, laid over each other.
+          def value_of_held(node) = emit_button_down_flag(Runtime::Frame::HELD, Runtime::Pads::TAP_HELD, node)
+          def value_of_pressed(node) = emit_button_down_flag(Runtime::Frame::PRESSED, Runtime::Pads::TAP_PRESSED, node)
 
-          def emit_button_down_flag(which, button)
+          def emit_button_down_flag(first_two, last_two, node)
+            button = node.button
             mask = if button == Buttons::ANY
                      Buttons.mask(CONSOLE.buttons)
                    else
                      1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
                    end
-            emit_load_word(:v0, runtime_place(which))
+            if node.player == Buttons::ANY
+              emit_every_players_buttons(first_two, last_two)
+            else
+              emit_load_word(:v0, runtime_place(node.player > 2 ? last_two : first_two))
+              @asm.srl(:v0, :v0, Buttons::PLAYER_SHIFT) if node.player.even?
+            end
             @asm.andi(:v0, :v0, mask)
             @asm.sltu(:v0, :zero, :v0)
+          end
+
+          # v0 = every player's buttons the game reads, laid over each other in its low half.
+          def emit_every_players_buttons(first_two, last_two)
+            pads = Runtime::Pads.pads(@memory)
+            emit_load_word(:v0, runtime_place(first_two))
+            return if pads == 1
+
+            if pads == 4
+              emit_load_word(:t0, runtime_place(last_two))
+              @asm.or(:v0, :v0, :t0)
+            end
+            @asm.srl(:t0, :v0, Buttons::PLAYER_SHIFT)
+            @asm.or(:v0, :v0, :t0)
           end
 
           def emit_load_constant(number, register = :v0) = @asm.li(register, Int32.wrap(number))

@@ -24,8 +24,11 @@ module VBlank
       PAD = 1
 
       # The buttons a computer's window has keys for, every console's, in the order Buttons::NAMES
-      # lists them. A window reads only its console's (Live::Settings's +buttons+).
-      BUTTONS = Buttons::NAMES
+      # lists them. A window reads only its console's (Live::Settings's +buttons+). A PlayStation's
+      # L2 and R2 have none yet (UNKEYED_BUTTONS): a game built for a computer reads them only from a
+      # test or a tape. They are the last of Buttons::NAMES, so each button here keeps its place there.
+      UNKEYED_BUTTONS = %i[l2 r2].freeze
+      BUTTONS = (Buttons::NAMES - UNKEYED_BUTTONS).freeze
 
       # The most keys, and gamepad buttons, one button has in a window (rg_window.h's
       # RG_WINDOW_KEYS_A_BUTTON and RG_WINDOW_PADS_A_BUTTON).
@@ -125,6 +128,10 @@ module VBlank
       end
 
       def self.refuse_button!(button, verb, console)
+        if UNKEYED_BUTTONS.include?(button) && console.buttons.include?(button)
+          raise ArgumentError, "`#{verb} #{button}:` names a button that has no key or gamepad button on a computer yet. " \
+                               "To fix this, remove :#{button} from `#{verb}`."
+        end
         return if console.buttons.include?(button)
 
         raise ArgumentError, "`#{verb} #{button}:` names no button the #{console.title} has. " \

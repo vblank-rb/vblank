@@ -210,14 +210,21 @@ module VBlank
 
         # --- input ---
         held: works("a game names the pad's buttons by the shared names: `:a` is Cross, `:b` Circle, `:x` Triangle, " \
-                    "`:y` Square, `:l` L1 and `:r` R1, with `:select`, `:start` and the D-pad. A PlayStation has two " \
-                    "ports for pads. The build reads the first alone for now, so `player: 2` and `players:` more " \
-                    "than 1 are not made yet."),
+                    "`:y` Square, `:l` L1 and `:r` R1, `:l2` L2 and `:r2` R2, with `:select`, `:start` and the D-pad. " \
+                    "The pad's own names work too: `:cross`, `:circle`, `:triangle`, `:square`, `:l1` and `:r1`. " \
+                    "`player: 2` reads the pad in the second port. `player: 3` and `player: 4` read the pads in a " \
+                    "Sony Multitap in the second port, and player 2 is then the pad in its first plug. " \
+                    "`player: :any` reads all of them. The build refuses `player: 5` or more, and `players:` " \
+                    "more than 4, because it reads four pads. If no Multitap is connected, players 3 and 4 hold " \
+                    "no buttons."),
         pressed: works("see `held`."),
         max_players: works,
         drawing_for_local_player: works("the player is always 1: a console is played by one person."),
         mark: works,
-        players_connected: works("1 while the build reads the first pad alone."),
+        players_connected: works("1 at the start. A player is connected from the first frame that one of their " \
+                                 "buttons is down. Then the player stays connected. Players 3 and 4 can connect " \
+                                 "only through a Multitap in the second port. If no Multitap is connected, the " \
+                                 "count is 1 or 2."),
         rumble: works("nothing is felt. The build reads a digital pad, which has no motor, so the game plays the " \
                       "same without it."),
         computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),

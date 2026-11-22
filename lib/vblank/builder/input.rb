@@ -7,8 +7,10 @@ module VBlank
     # `held(:left)` and `pressed(:start)` ask about a button. Each answers a yes or no that you
     # use with `if`, and join with `&&` and `||`. The buttons are `a`, `b`, `select`, `start`,
     # `right`, `left`, `up`, `down`, `r` and `l`, with `x` and `y` on the Super Nintendo and the
-    # PlayStation and `c` on the Genesis. A button the console does not have is an error when the
-    # game is built.
+    # PlayStation, `c` on the Genesis, and `l2` and `r2` on the PlayStation. A button the console does
+    # not have is an error when the game is built. A PlayStation's buttons can also be named as its pad
+    # names them: `:cross` is `:a`, `:circle` `:b`, `:triangle` `:x`, `:square` `:y`, `:l1` `:l` and
+    # `:r1` `:r`.
     #
     # ```ruby
     # game_loop do
@@ -51,7 +53,7 @@ module VBlank
         reject_block!(:held, button) if block_given?
         check_button!(button)
         check_player!(player)
-        DSL::Condition.new(self, Build.held(button, player: player))
+        DSL::Condition.new(self, Build.held(IR::Buttons.named(button), player: player))
       end
 
       # Asks whether a button went down on this frame.
@@ -71,7 +73,7 @@ module VBlank
         reject_block!(:pressed, button) if block_given?
         check_button!(button)
         check_player!(player)
-        DSL::Condition.new(self, Build.pressed(button, player: player))
+        DSL::Condition.new(self, Build.pressed(IR::Buttons.named(button), player: player))
       end
 
       # Reads how many players are connected now, as a number that is at least 1.
@@ -227,7 +229,8 @@ module VBlank
       def check_button!(button)
         return if IR::Buttons.readable?(button)
 
-        raise ArgumentError, "#{button} is not a known button. Use one of these: :a :b :select :start :right :left :up :down :r :l."
+        raise ArgumentError, "#{button} is not a known button. Use one of these: :a :b :select :start :right :left :up :down :r :l, " \
+                             "or :x :y :c :l2 :r2 on a console that has them."
       end
 
       def check_player!(player)

@@ -18,8 +18,16 @@ module VBlank
           # The buttons a game names, as the emulator names the PlayStation pad's (Runtime::Pads says
           # which is which).
           PAD_BUTTONS = Ractor.make_shareable({ a: :cross, b: :circle, x: :triangle, y: :square, l: :l1, r: :r1,
-                                                select: :select, start: :start, up: :up, down: :down, left: :left,
-                                                right: :right })
+                                                l2: :l2, r2: :r2, select: :select, start: :start, up: :up, down: :down,
+                                                left: :left, right: :right })
+
+          # Each player's buttons among +held+ (names as a test holds them, :p2_left), as the emulator's
+          # ports take them: the first player's on port 0, and the second, third and fourth's on ports 1 to
+          # 3, the second port's pad or a Multitap's plugs. A button the pad lacks is not pressed.
+          def self.pad_buttons_by_port(held)
+            Buttons.by_controller(held.map(&:to_sym), controllers: Console::PLAYSTATION.controllers)
+                   .map { |buttons| buttons.filter_map { |button| PAD_BUTTONS[button] } }
+          end
 
           # The pad the build reads has no motor, so it never runs (Reference#motor_on?).
           def motor_on? = false
@@ -167,11 +175,17 @@ module VBlank
           # where not read).
           HeldRecording = Data.define(:name, :level, :loudness, :owner)
 
-          def power_on = set_buttons(@held)
+          # A game that reads the third or fourth player is played with a Multitap in the second port, as a
+          # person playing it with four would have.
+          def power_on
+            @core.plug_in_multitap if Runtime::Pads.reads_multitap?(@rom.built.source_program)
+            set_buttons(@held)
+          end
 
-          # The buttons a game names, on the pad's. One the pad lacks is one no program for it can read, so
-          # it is not pressed.
-          def set_buttons(buttons) = @core.set_buttons(buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] })
+          # The buttons a game names, on the pads' (HeadlessRun.pad_buttons_by_port).
+          def set_buttons(buttons)
+            HeadlessRun.pad_buttons_by_port(buttons).each_with_index { |held, port| @core.set_buttons(held, port: port) }
+          end
 
           # A run of no frames ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the display on as the

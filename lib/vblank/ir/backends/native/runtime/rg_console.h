@@ -151,7 +151,7 @@
  * a player's number. Every build writes it; this is the same number for a file of the runtime read
  * on its own, and a test holds it to the one every build writes. */
 #ifndef RG_ONE_PLAYERS_BUTTONS
-#define RG_ONE_PLAYERS_BUTTONS 8191
+#define RG_ONE_PLAYERS_BUTTONS 32767
 #endif
 
 /* The buttons the console has, a bit each in the same order (Computer::ConsoleNumbers): the ones

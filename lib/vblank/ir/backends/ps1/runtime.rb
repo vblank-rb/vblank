@@ -46,12 +46,14 @@ module VBlank
           # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+); and
           # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers) or with sprites over
           # it (+over_picture+), each shown from pages of its own; and Frame's count of the frames setting up
-          # took for one that reads how many frames it has shown since power-on (+counted+).
+          # took for one that reads how many frames it has shown since power-on (+counted+); and the places of
+          # the pads it reads (+pads+, Pads.pads_read).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {},
                       samples: false, recorded_pans: false, glides: false, tiles: false, colors: false, by_number: false,
-                      over_picture: false, counted: false)
+                      over_picture: false, counted: false, pads: 1)
             Faces.reserve(memory) if faces
             Frame.reserve(memory, counted: counted)
+            Pads.reserve(memory, pads: pads)
             Paint.reserve(memory, shown_apart: by_number || over_picture)
             Tiles.reserve(memory) if tiles
             Tiles.reserve_sprites(memory) if over_picture

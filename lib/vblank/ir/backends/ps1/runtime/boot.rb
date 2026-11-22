@@ -24,7 +24,7 @@ module VBlank
           #
           # The buttons held from power-on are read before anything that takes a frame: a player's hand is
           # on the pad before the console is on. They are the first pass's (Frame::HELD), kept in s0 until
-          # the game's region of RAM is cleared.
+          # the game's region of RAM is cleared, and the third and fourth players' on the stack.
           module Boot
             module_function
 
@@ -50,12 +50,19 @@ module VBlank
               emit_instruction_cache_emptied(asm, h)
               emit_counting_on(asm, h) if counted
               asm.jal("rt_pads_start")
-              asm.jal("rt_buttons_now")
+              asm.jal("rt_pads_now")
               asm.move(:s0, :v0)
+              pads = Pads.pads(memory)
+              # The third and fourth players' buttons wait on the stack, which the clearing leaves alone.
+              if pads == 4
+                asm.addiu(:sp, :sp, -4)
+                asm.sw(:v1, 0, :sp)
+              end
               emit_sound_quiet(asm, h)
               emit_graphics_chip(asm, h)
               emit_region_cleared(asm, memory)
               asm.sw(:s0, Runtime.at(memory, Frame::HELD), :gp)
+              emit_other_players_from_power_on(asm, memory, pads) if pads > 1
               # Must start after the region and the scratchpad are cleared, which would wipe its state. The
               # chip's drawing settings are its first commands.
               asm.jal("rt_draw_list_start")
@@ -70,6 +77,22 @@ module VBlank
               asm.label("rt_main_returned")
               asm.j("rt_halt")
               emit_gp0_port_word(asm, h)
+            end
+
+            # The players past the first, from power-on, in a game that reads them (Pads.pads): the third and
+            # fourth's buttons off the stack, and the players connected counted from the buttons held, as the
+            # interpreter counts a button held from the start.
+            def emit_other_players_from_power_on(asm, memory, pads)
+              if pads == 4
+                asm.lw(:v1, 0, :sp)
+                asm.addiu(:sp, :sp, 4)
+                asm.sw(:v1, Runtime.at(memory, Pads::TAP_HELD), :gp)
+              else
+                asm.move(:v1, :zero)
+              end
+              asm.jal("rt_pads_connected") { asm.move(:v0, :s0) }
+              asm.lw(:t0, Runtime.at(memory, Pads::PAD_CONNECTED), :gp)
+              asm.sw(:t0, Runtime.at(memory, Pads::CONNECTED), :gp)
             end
 
             # rt_gp0_port_word: the word in a0 stored to the graphics chip's drawing port by the processor,
