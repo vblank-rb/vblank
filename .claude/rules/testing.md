@@ -246,9 +246,12 @@ code Ractor-friendly rather than silencing the report.
   under `test/` declares, in a test class, a shared helper's module or at the top level
   (`InRactors.share_constants_declared_in`). A game kept in a constant whose block holds game code
   cannot be shared that way: return it from a method instead
-- a test made in a loop (`define_method`) → nothing to do; a test class makes it from a shareable
-  copy of its block (`InRactors::ShareableMethods`). A game's block inside such a test cannot read
-  the loop's variables as game code, so write those tests out over one private helper
+- a test made in a loop (`define_method`) → nothing to do; on a run in Ractors a test class, and a
+  module of tests a file under `test/` declares, makes it from a shareable copy of its block
+  (`InRactors::ShareableMethods`), and every other run keeps the block as written. A game's block
+  inside such a test cannot read the loop's variables as game code on that run, so write those
+  tests out over one private helper. A module made any other way (`Module.new` in a method, a
+  class that is not a test) keeps plain blocks
 - an example's constants → require it with `ShareableConstants.require_file(VBlank.root.join("examples/<name>").to_s)`
   (`test/support/shareable_constants.rb`), which freezes what the file defined, so `examples/` stays
   plain Ruby with no `Ractor.make_shareable`
