@@ -199,6 +199,7 @@ module VBlank
           # the fake screen the draw ops write into, sized by that program
           @screen = Framebuffer.new(width: 0, height: 0)
           @held = Set.new          # buttons down right now
+          @pulls = {}              # part pulls a test gave, by name (IR::Buttons.pulls)
           @seen = Set.new          # buttons down at the last frame the screen showed
           @pressed = Set.new       # buttons that went down since the last pass took its presses
           @connected = 1           # players connected: the highest who has held a button (IR::Buttons.masks)
@@ -437,8 +438,8 @@ module VBlank
         # Set which buttons are held down right now, replacing any previous set.
         # This is the simplest way for a test to supply input: hold some buttons,
         # then run. Returns self so it can be chained before #run.
-        def hold(*buttons)
-          @held = to_button_set(buttons)
+        def hold(*buttons, **pulls)
+          @held = to_button_set(pulls.empty? ? buttons : [*buttons, pulls])
           count_connected_players
           self
         end
@@ -4328,7 +4329,7 @@ module VBlank
         # What each kind of value comes to, one method per kind, called by name in #value_by_kind —
         # the value half of STATEMENT_KINDS.
         VALUE_KINDS = %i[
-          int var_ref neg bit_not absolute clamped binop mul_fix div_fix shift_right held pressed
+          int var_ref neg bit_not absolute clamped binop mul_fix div_fix shift_right held pressed pulled
           players_connected local_player chance pixels_overlap data_byte table_get list_get list_len
           save_read save_sum timer_ticks clock
         ].freeze
@@ -4348,6 +4349,7 @@ module VBlank
           when :shift_right then value_of_shift_right(node)
           when :held then value_of_held(node)
           when :pressed then value_of_pressed(node)
+          when :pulled then value_of_pulled(node)
           when :players_connected then value_of_players_connected(node)
           when :local_player then value_of_local_player(node)
           when :chance then value_of_chance(node)
@@ -4441,6 +4443,18 @@ module VBlank
           flag_int(button_down_among?(@pressed, node.button, node.player))
         end
 
+        # How far a button is pulled, in percent. A build for a computer reads a gamepad's triggers
+        # part pulled, which a test gives as a part pull (`hold(l2: 40)`); every other button, and
+        # every button on a cartridge, whose pad is all or nothing, is FULL_PULL while held.
+        def value_of_pulled(node)
+          check_button!(node.button)
+          if read_program&.for_computer && IR::Buttons::PULLED_BUTTONS.include?(node.button)
+            return IR::Buttons.pull_among([*@held, @pulls], node.button, node.player)
+          end
+
+          flag_int(button_down_among?(@held, node.button, node.player)) * IR::Buttons::FULL_PULL
+        end
+
         def value_of_players_connected(_node) = @connected
 
         # Which player the person at this interpreter is: the first, unless a test sets another.
@@ -4449,7 +4463,7 @@ module VBlank
         # A player is connected from the first time one of their buttons is down, and stays so:
         # the length of the list IR::Buttons.masks hands a computer's runtime each pass.
         def count_connected_players
-          @connected = IR::Buttons.masks(@held, @connected).length
+          @connected = IR::Buttons.masks([*@held, @pulls], @connected).length
         end
 
         # A chance holds when the random draw lands below the threshold.
@@ -4563,9 +4577,13 @@ module VBlank
           IR::Buttons.names_asked(button, player).any? { |name| buttons.include?(name) }
         end
 
+        # The names held among +buttons+, a test's list, which may hold part pulls (IR::Buttons.pulls),
+        # kept in @pulls.
         def to_button_set(buttons)
-          buttons.each { |b| check_holdable_button!(b) }
-          Set.new(buttons)
+          @pulls = IR::Buttons.pulls(buttons)
+          names = IR::Buttons.held_names(buttons)
+          [*names, *@pulls.keys].each { |b| check_holdable_button!(b) }
+          Set.new(names)
         end
 
         # Naming an unknown button is almost always a typo, and one that would

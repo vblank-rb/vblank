@@ -115,6 +115,8 @@ module VBlank
                     "`player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. " \
                     "`player: :any` reads that one controller."),
         pressed: works("see `held`."),
+        pulled: works("0 or 100. Each button of a Game Boy Advance is on or off, so a button reads 100 while it is " \
+                      "held and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as `held` does."),
         max_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),

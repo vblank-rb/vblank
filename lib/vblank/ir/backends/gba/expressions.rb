@@ -9,7 +9,7 @@ module VBlank
           # The values this part works out (Lowering#values_written_by), each by its own method.
           VALUE_KINDS = %i[
             int var_ref neg binop bit_not absolute clamped mul_fix div_fix shift_right chance
-            players_connected local_player data_byte table_get read_scanline held pressed
+            players_connected local_player data_byte table_get read_scanline held pressed pulled
           ].freeze
 
           def emit_value(node)
@@ -32,6 +32,7 @@ module VBlank
             when :read_scanline then eval_read_scanline(node)
             when :held then eval_held_node(node)
             when :pressed then eval_pressed_node(node)
+            when :pulled then emit_value(Build.pulled_as_held(node))
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end

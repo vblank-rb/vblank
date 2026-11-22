@@ -54,6 +54,21 @@ class TestInputOnThePlayStation < Minitest::Test
     assert_equal [1, 2], [run[:cross], run[:triangle]]
   end
 
+  # The pad's L2 is on or off (psx-spx, Controllers): held part of the way it reads all of the way,
+  # and touched less than IR::Buttons::HELD_FROM it is not held.
+  def test_l2_reads_all_or_nothing_however_far_it_is_held
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :ps1))
+    builder.instance_eval do
+      total = var :total, 0
+      game_loop { total += pulled(:l2) }
+    end
+    builder.finalize_program
+    pulls = { 2 => 40, 3 => 40, 4 => VBlank::IR::Buttons::HELD_FROM - 1 }
+    run = game_player.input_each_frame { |frame| [{ l2: pulls.fetch(frame, 0) }] }.run(builder.program, frames: 8)
+
+    assert_equal 200, run[:total]
+  end
+
   def test_the_second_players_l2_is_theirs
     run = played(10) { |frame| frame == 3 ? [:p2_l2] : [] }
 

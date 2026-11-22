@@ -220,6 +220,8 @@ module VBlank
                     "reading from the blank before. So a press gets to the game one frame after the pad " \
                     "sees it, as in the console's own games."),
         pressed: works("see `held`."),
+        pulled: works("0 or 100. The build reads a digital pad, and each of its buttons is on or off, L2 and R2 " \
+                      "too (psx-spx, Controllers). So a button reads 100 while it is held and 0 when it is not."),
         max_players: works,
         drawing_for_local_player: works("the player is always 1: a console is played by one person."),
         mark: works,

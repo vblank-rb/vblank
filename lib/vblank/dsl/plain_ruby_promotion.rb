@@ -78,10 +78,10 @@ module VBlank
         # their draw in a variable of their own, set on their line. `frames_since_power_on` is not
         # one either: it hands back a variable, which a game keeps as a handle and reads live
         # (Steps.kept_answer).
-        CONSOLE_STATE_VERBS = %i[held pressed players_connected].freeze
+        CONSOLE_STATE_VERBS = %i[held pressed pulled players_connected].freeze
 
         # The verbs that read a button, which a game means to read where it uses the answer.
-        BUTTON_VERBS = %i[held pressed].freeze
+        BUTTON_VERBS = %i[held pressed pulled].freeze
 
         # What a `clock` and a `timer` read, which move on between passes too (`clock.hour`,
         # `countdown.ticks`).

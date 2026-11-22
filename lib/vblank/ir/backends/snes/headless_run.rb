@@ -221,7 +221,7 @@ module VBlank
           # The second controller's go to the second port, and through a Super Multitap the third's
           # and fourth's to its next plugs.
           def set_buttons(buttons)
-            Buttons.by_controller(buttons.map(&:to_sym), controllers: Console::SUPER_NINTENDO.controllers)
+            Buttons.by_controller(Buttons.held_names(buttons).map(&:to_sym), controllers: Console::SUPER_NINTENDO.controllers)
                    .each_with_index { |held, port| @core.set_buttons(held, port: port) }
           end
 

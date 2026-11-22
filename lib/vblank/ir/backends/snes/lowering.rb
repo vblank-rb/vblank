@@ -119,7 +119,7 @@ module VBlank
           include ShownSort
 
           VALUE_KINDS = (%i[
-            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed list_get
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed pulled list_get
             list_len table_get timer_ticks chance local_player players_connected
           ] + Collision::VALUE_KINDS + Saving::VALUE_KINDS).freeze
 
@@ -137,6 +137,7 @@ module VBlank
             when :shift_right then value_of_shift_right(node)
             when :held then value_of_held(node)
             when :pressed then value_of_pressed(node)
+            when :pulled then value(Build.pulled_as_held(node))
             when :list_get then value_of_list_get(node)
             when :list_len then value_of_list_len(node)
             when :table_get then value_of_table_get(node)

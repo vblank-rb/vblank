@@ -295,7 +295,7 @@ module VBlank
         not_yet("A disc image a console or emulator starts"),
         driven("Digital pad on port 1", :held, :pressed),
         driven("Pad read at low cost"),
-        driven("L2 and R2, and the pad's own names for its buttons", :held, :pressed),
+        driven("L2 and R2, and the pad's own names for its buttons", :held, :pressed, :pulled),
         driven("Second pad", :held, :pressed, :players_connected),
         driven("Four players through a Multitap", :held, :pressed, :players_connected),
         not_yet("The Multitap's fourth plug, a fifth player"),

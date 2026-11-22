@@ -25,7 +25,7 @@ module VBlank
           # ports take them: the first player's on port 0, and the second, third and fourth's on ports 1 to
           # 3, the second port's pad or a Multitap's plugs. A button the pad lacks is not pressed.
           def self.pad_buttons_by_port(held)
-            Buttons.by_controller(held.map(&:to_sym), controllers: Console::PLAYSTATION.controllers)
+            Buttons.by_controller(Buttons.held_names(held).map(&:to_sym), controllers: Console::PLAYSTATION.controllers)
                    .map { |buttons| buttons.filter_map { |button| PAD_BUTTONS[button] } }
           end
 
@@ -213,10 +213,11 @@ module VBlank
           # would count them connected.
           def buttons_sent(frame) = on_pads_read(super)
 
-          # +buttons+ less those of players past the pads the build reads.
+          # +buttons+ less those of players past the pads the build reads. A part pull is held or not,
+          # as the pad's buttons are (Buttons.held_names).
           def on_pads_read(buttons)
             pads = Runtime::Pads.pads_read(@rom.built.source_program)
-            buttons.select { |name| Buttons.player_of(name.to_sym) <= pads }
+            Buttons.held_names(buttons).select { |name| Buttons.player_of(name.to_sym) <= pads }
           end
 
           # The buttons a game names, on the pads' (HeadlessRun.pad_buttons_by_port).

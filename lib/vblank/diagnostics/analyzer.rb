@@ -43,7 +43,7 @@ module VBlank
 
       # The op kinds that read a button, so the profiler can ask a program which buttons it
       # cares about instead of holding all ten.
-      INPUT_KINDS = %i[held pressed].freeze
+      INPUT_KINDS = %i[held pressed pulled].freeze
 
       # +scanlines+ is the measured per-frame wall-clock cost (CPU plus DMA-stall) of the
       # worst frame found; +fps+ is the counted game frame rate, measured only when the

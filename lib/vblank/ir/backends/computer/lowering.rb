@@ -151,7 +151,7 @@ module VBlank
           end
 
           VALUE_KINDS = %i[
-            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed pulled
             players_connected local_player chance table_get data_byte list_get list_len timer_ticks clock
             pixels_overlap save_read save_sum
           ].freeze
@@ -170,6 +170,7 @@ module VBlank
             when :shift_right then value_of_shift_right(node)
             when :held then value_of_held(node)
             when :pressed then value_of_pressed(node)
+            when :pulled then value_of_pulled(node)
             when :players_connected then value_of_players_connected(node)
             when :local_player then value_of_local_player(node)
             when :chance then value_of_chance(node)
@@ -969,6 +970,17 @@ module VBlank
 
           def value_of_held(node) = button_call("rg_held", node)
           def value_of_pressed(node) = button_call("rg_pressed", node)
+
+          # How far a button is pulled. A build for a computer asks the runtime about a gamepad's
+          # triggers, which the window hands it part pulled (IR::Buttons.pull_shift); every other
+          # button, and every button of a build for a cartridge, is all or nothing, as the
+          # interpreter answers it (Reference#value_of_pulled).
+          def value_of_pulled(node)
+            return value(Build.pulled_as_held(node)) unless @program.for_computer && Buttons::PULLED_BUTTONS.include?(node.button)
+
+            call("rg_pulled", Statements::Int.new(button_number(node.button)), Statements::Int.new(Buttons.pull_shift(node.button)),
+                 Statements::Int.new(node.player))
+          end
 
           # The first player's button is a bit to look at. Anything that names another player asks
           # the runtime about that player's buttons, by number (0 for any connected player), and a

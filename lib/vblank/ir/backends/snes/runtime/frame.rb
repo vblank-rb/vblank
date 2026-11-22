@@ -155,7 +155,7 @@ module VBlank
 
             # Whether +program+ reads X or Y, by name or as any button at all.
             def reads_extra_buttons?(program)
-              program.walk.any? { |node| %i[held pressed].include?(node.kind) && (EXTRA_BUTTONS + [Buttons::ANY]).include?(node.button) }
+              program.walk.any? { |node| %i[held pressed pulled].include?(node.kind) && (EXTRA_BUTTONS + [Buttons::ANY]).include?(node.button) }
             end
 
             # How many controllers +program+ reads: 1; 2 for a game that reads the second
@@ -170,7 +170,7 @@ module VBlank
 
             def reads_second_controller?(program)
               program.walk.any? do |node|
-                (%i[held pressed].include?(node.kind) && node.player != 1) || node.kind == :players_connected
+                (%i[held pressed pulled].include?(node.kind) && node.player != 1) || node.kind == :players_connected
               end
             end
 
@@ -180,7 +180,7 @@ module VBlank
             def reads_multitap?(program)
               several = program.max_players.to_i > 2
               program.walk.any? do |node|
-                if %i[held pressed].include?(node.kind)
+                if %i[held pressed pulled].include?(node.kind)
                   (node.player.is_a?(Integer) && node.player > 2) || (several && node.player == Buttons::ANY)
                 else
                   several && node.kind == :players_connected

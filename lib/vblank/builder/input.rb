@@ -76,6 +76,34 @@ module VBlank
         DSL::Condition.new(self, Build.pressed(IR::Buttons.named(button), player: player))
       end
 
+      # Reads how far a button is pulled, as a number from 0 (let go) to 100 (all the way).
+      #
+      # It is for a trigger that can be pulled part of the way, as a gamepad's L2 and R2 can be on a
+      # computer: a pedal, a throttle, a bow drawn back. Every other button is all or nothing, so it
+      # reads 100 while the button is held and 0 when it is not. A PlayStation's own pad has L2 and
+      # R2 that are all or nothing too.
+      #
+      # ```ruby
+      # speed = pulled(:r2) / 25         # 0 to 4
+      # brake = pulled(:l2, player: 2)
+      # ```
+      #
+      # `held(:l2)` stays a plain yes or no: a trigger counts as held from a small pull.
+      #
+      # * `button` - the button's name, as a symbol.
+      # * `player:` - whose controller: a number from 1.
+      #--
+      # A cartridge answers it as `held` times 100 (IR::Build.pulled_as_held); only a build for a
+      # computer reads a trigger part pulled (IR::Buttons::PULLED_BUTTONS).
+      #++
+      def pulled(button, player: 1, &)
+        reject_block!(:pulled, button) if block_given?
+        refuse_pull_of_any!(button, player)
+        check_button!(button)
+        check_player!(player)
+        DSL::Value.new(self, Build.pulled(IR::Buttons.named(button), player: player))
+      end
+
       # Reads how many players are connected now, as a number that is at least 1.
       #
       # A player counts from the first time one of their buttons is down, and stays counted.
@@ -231,6 +259,18 @@ module VBlank
 
         raise ArgumentError, "#{button} is not a known button. Use one of these: :a :b :select :start :right :left :up :down :r :l, " \
                              "or :x :y :c :l2 :r2 on a console that has them."
+      end
+
+      # `pulled` reads one button of one player: how far "any" button is pulled has no answer.
+      def refuse_pull_of_any!(button, player)
+        if button == IR::Buttons::ANY
+          raise ArgumentError, "`pulled(:any)` does not name a button. `pulled` reads how far one button is pulled. " \
+                               "To fix this, name the button, for example `pulled(:r2)`."
+        end
+        return unless player == IR::Buttons::ANY
+
+        raise ArgumentError, "`pulled(#{button.inspect}, player: :any)` does not name a player. `pulled` reads the " \
+                             "controller of one player. To fix this, give a number, for example `player: 2`."
       end
 
       def check_player!(player)

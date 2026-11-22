@@ -107,7 +107,7 @@ module VBlank
           # pad, and through a Team Player the third's and fourth's on its next plugs. A button a Genesis
           # pad lacks is one no cartridge for it can read, so it is not pressed.
           def set_buttons(buttons)
-            Buttons.by_controller(buttons.map(&:to_sym), controllers: Console::GENESIS.controllers)
+            Buttons.by_controller(Buttons.held_names(buttons).map(&:to_sym), controllers: Console::GENESIS.controllers)
                    .each_with_index { |held, port| @core.set_buttons(held & PAD_BUTTONS, port: port) }
           end
 

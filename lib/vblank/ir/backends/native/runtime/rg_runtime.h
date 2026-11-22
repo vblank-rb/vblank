@@ -91,6 +91,10 @@ int32_t rg_pressed(int32_t button);
  * bit for each button in that numbering. */
 int32_t rg_held_by(int32_t player, int32_t mask);
 int32_t rg_pressed_by(int32_t player, int32_t mask);
+/* How far +button+ (in that numbering) of +player+ (1 to 16) is pulled, 0 to 100: the part pull a driver
+ * handed above the buttons' bits, from bit +shift+ (IR::Buttons.pull_shift), or all or nothing as the
+ * button is held where it handed none. */
+int32_t rg_pulled(int32_t button, int32_t shift, int32_t player);
 /* How many players are connected now: at least 1. */
 int32_t rg_players_connected(void);
 /* Which player the person at this machine is, from 1. Only what the game draws may depend on it. */

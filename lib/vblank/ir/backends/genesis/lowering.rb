@@ -126,7 +126,7 @@ module VBlank
           end
 
           VALUE_KINDS = (%i[
-            int var_ref binop neg bit_not absolute clamped shift_right held pressed list_get list_len
+            int var_ref binop neg bit_not absolute clamped shift_right held pressed pulled list_get list_len
             table_get timer_ticks chance mul_fix div_fix data_byte players_connected local_player
           ] + Collision::VALUE_KINDS).freeze
 
@@ -142,6 +142,7 @@ module VBlank
             when :shift_right then value_of_shift_right(node)
             when :held then value_of_held(node)
             when :pressed then value_of_pressed(node)
+            when :pulled then value(Build.pulled_as_held(node))
             when :list_get then value_of_list_get(node)
             when :list_len then value_of_list_len(node)
             when :table_get then value_of_table_get(node)

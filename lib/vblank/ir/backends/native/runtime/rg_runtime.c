@@ -24,6 +24,7 @@ const rg_driver *rg_active_driver;
 static uint32_t held[RG_MOST_PLAYERS];    /* buttons down now */
 static uint32_t seen[RG_MOST_PLAYERS];    /* ...and at the last frame boundary, to tell a press from a hold */
 static uint32_t pressed[RG_MOST_PLAYERS]; /* buttons that went down at the last frame boundary */
+static uint32_t pulls[RG_MOST_PLAYERS];   /* how far the triggers are part pulled, above the buttons' bits (IR::Buttons.pull_shift) */
 static int32_t connected = 1; /* players connected: never fewer than the driver has reported */
 
 /* +count+ players' buttons as held now. A player stays connected once a driver has reported it, and
@@ -31,8 +32,10 @@ static int32_t connected = 1; /* players connected: never fewer than the driver 
 static void hold_players(int32_t count, const uint32_t *masks) {
   if (count > RG_MOST_PLAYERS) count = RG_MOST_PLAYERS;
   if (count > connected) connected = count;
-  for (int32_t player = 0; player < RG_MOST_PLAYERS; player++)
+  for (int32_t player = 0; player < RG_MOST_PLAYERS; player++) {
     held[player] = player < count ? masks[player] & RG_ONE_PLAYERS_BUTTONS : 0;
+    pulls[player] = player < count ? masks[player] & ~(uint32_t)RG_ONE_PLAYERS_BUTTONS : 0;
+  }
 }
 
 /* A button counts as pressed on the one frame it goes down, however long it is then held — the
@@ -478,6 +481,15 @@ static int32_t down_by(const uint32_t *buttons, int32_t player, int32_t mask) {
 
 int32_t rg_held_by(int32_t player, int32_t mask) { return down_by(held, player, mask); }
 int32_t rg_pressed_by(int32_t player, int32_t mask) { return down_by(pressed, player, mask); }
+
+/* How far a trigger is pulled: the part pull handed (seven bits from +shift+, nought for none), or
+ * all or nothing as the button is held (Reference#value_of_pulled). */
+int32_t rg_pulled(int32_t button, int32_t shift, int32_t player) {
+  if (player < 1 || player > RG_MOST_PLAYERS) return 0;
+  int32_t part = (int32_t)((pulls[player - 1] >> (uint32_t)shift) & 127u);
+  if (part) return part;
+  return button_down(held[player - 1], button) ? 100 : 0;
+}
 
 /* How many players are connected now. */
 int32_t rg_players_connected(void) { return connected; }

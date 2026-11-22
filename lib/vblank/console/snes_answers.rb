@@ -259,6 +259,9 @@ module VBlank
                     "build refuses `player: 5` or more, and `players:` more than 4, because it reads four " \
                     "controllers. If no Multitap is connected, players 3 and 4 hold no buttons."),
         pressed: works("see `held`."),
+        pulled: works("0 or 100. Each button of a Super Nintendo controller is on or off, so a button reads 100 " \
+                      "while it is held and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as " \
+                      "`held` does."),
         max_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),

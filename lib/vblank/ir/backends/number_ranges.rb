@@ -403,6 +403,7 @@ module VBlank
           when :clamped then clamped_range(range_of(node.operand, vars), node.min, node.max, vars)
           when :shift_right then shifted_down(range_of(node.operand, vars), node.bits)
           when :held, :pressed, :chance, :pixels_overlap then 0..1
+          when :pulled then 0..Buttons::FULL_PULL
           when :data_byte then 0..0xFF
           end
         end

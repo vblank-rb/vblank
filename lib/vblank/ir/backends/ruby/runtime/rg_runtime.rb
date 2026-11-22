@@ -38,6 +38,7 @@ def rg_runtime_setup
   @rg_held = [0]    # each connected player's buttons down now, a bit each
   @rg_seen = [0]    # ...and at the last frame boundary, to tell a press from a hold
   @rg_pressed = [0] # buttons that went down at the last frame boundary
+  @rg_pulls = [0]   # how far the triggers are part pulled, above the buttons' bits (IR::Buttons.pull_shift)
   # One timer each (RgTimer), and the timers in the order each was first started, which is the
   # order the interpreter walks them in.
   @rg_timers = Array.new(RG_MAX_TIMERS) { RgTimer.new }
@@ -90,13 +91,16 @@ end
 # the players connected already.
 def rg_players_buttons(now)
   held = @rg_held
+  pulls = @rg_pulls
   player = 0
   while player < now.length
     held[player] = now[player] & RG_ONE_PLAYERS_BUTTONS
+    pulls[player] = now[player] & ~RG_ONE_PLAYERS_BUTTONS
     player += 1
   end
   while player < held.length
     held[player] = 0
+    pulls[player] = 0
     player += 1
   end
   held
@@ -122,6 +126,17 @@ def rg_any_down_by(buttons, player, mask)
   return buttons.any? { |held| (held & mask) != 0 } ? 1 : 0 if player.zero?
 
   ((buttons[player - 1] || 0) & mask) != 0 ? 1 : 0
+end
+
+# How far a trigger is pulled: the part pull handed (seven bits from +shift+, nought for none), or all
+# or nothing as the button is held (rg_runtime.c's rg_pulled).
+def rg_pulled(button, shift, player)
+  return 0 if player < 1 || player > RG_MOST_PLAYERS
+
+  part = ((@rg_pulls[player - 1] || 0) >> shift) & 127
+  return part unless part.zero?
+
+  rg_button_down(@rg_held[player - 1] || 0, button) == 1 ? 100 : 0
 end
 
 # How many players are connected now: one for each number in the driver's list.

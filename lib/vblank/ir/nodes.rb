@@ -1174,6 +1174,17 @@ module VBlank
         operands button: :option, player: :player
       end
 
+      # How far a button is pulled, in percent (IR::Buttons::FULL_PULL all the way). A button that is
+      # only up or down answers 0 or FULL_PULL, which is every button of every console's own pad: a
+      # cartridge answers it as `held` times FULL_PULL (Build.pulled_as_held). Only a build for a
+      # computer reads a gamepad's triggers part pulled.
+      class Pulled
+        include Node
+        kind :pulled
+        category :value
+        operands button: :option, player: :player
+      end
+
       class If
         include Node
         kind :if

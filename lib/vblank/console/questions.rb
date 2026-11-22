@@ -84,7 +84,7 @@ module VBlank
             Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
                          console.changes_cells_while_drawing)
           end
-        when :held, :pressed then button_question(node, console)
+        when :held, :pressed, :pulled then button_question(node, console)
         when :players_connected
           Question.new(:players_connected, "This line asks how many players are connected (`players_connected`)", nil)
         when :program then program_question(node, console)

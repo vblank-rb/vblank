@@ -86,8 +86,10 @@ module VBlank
 
         include Reference::ReadingBack
 
-        def hold(*buttons)
-          @held = buttons
+        # A part pull is a keyword (`hold(l2: 40)`), held from IR::Buttons::HELD_FROM: a console's pad
+        # is all or nothing.
+        def hold(*buttons, **pulls)
+          @held = pulls.empty? ? buttons : [*buttons, pulls]
           self
         end
 

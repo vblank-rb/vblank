@@ -164,9 +164,10 @@ module VBlank
           include Reference::ReadingBack
 
           # Buttons held down for the whole run, replacing any held before. An input script
-          # (#input_each_frame) decides instead when there is one. Gives back self.
-          def hold(*buttons)
-            @held = buttons
+          # (#input_each_frame) decides instead when there is one. A part pull is a keyword
+          # (`hold(l2: 40)`, Reference#hold). Gives back self.
+          def hold(*buttons, **pulls)
+            @held = pulls.empty? ? buttons : [*buttons, pulls]
             self
           end
 

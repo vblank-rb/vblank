@@ -71,6 +71,57 @@ module VBlank
       # added to NAMES is kept there too.
       EVERY_BUTTON_MASK = (1 << NAMES.length) - 1
 
+      # How far a button is pulled (`pulled(:r2)`), in percent: 0 let go, FULL_PULL all the way.
+      # A button that is only up or down, which is every button a console's pad has, is 0 or
+      # FULL_PULL. A gamepad's triggers on a computer can be part pulled, and so can a button a
+      # test holds part pulled (#held_names).
+      FULL_PULL = 100
+
+      # The buttons a computer's runtime can be told a part pull of: a gamepad's two triggers.
+      PULLED_BUTTONS = %i[l2 r2].freeze
+
+      # How far a part-pulled button must be pulled to count as held, in percent: the same in every
+      # window and in a test, so `held(:l2)` and `pulled(:l2)` agree everywhere. It is XInput's
+      # trigger threshold, XINPUT_GAMEPAD_TRIGGER_THRESHOLD, 30 of 255 (Microsoft's XInput
+      # documentation, XINPUT_GAMEPAD), rounded up to a whole percent.
+      HELD_FROM = 12
+
+      # In a player's number (#player_mask), each of PULLED_BUTTONS has PULL_BITS bits for how far
+      # it is pulled, the first from PULL_SHIFT up, above the buttons' own bits. Nought there means
+      # "as held": FULL_PULL while the button is held and 0 when not, so a key, or anything that
+      # keeps only the buttons' bits, reads all or nothing.
+      PULL_SHIFT = 16
+      PULL_BITS = 7
+
+      # The bit a part pull of +button+ (one of PULLED_BUTTONS) starts at in a player's number.
+      def pull_shift(button) = PULL_SHIFT + (PULL_BITS * PULLED_BUTTONS.index(button))
+
+      # The names in a list of buttons held, which may hold part pulls besides plain names: a Hash
+      # of a name and how far it is pulled, in percent (`[:a, { l2: 40 }]`). A part pull is held
+      # from HELD_FROM.
+      def held_names(held)
+        Array(held).flat_map { |entry| entry.is_a?(Hash) ? entry.filter_map { |name, pull| name if pull >= HELD_FROM } : [entry] }
+      end
+
+      # The part pulls in a list of buttons held, by name: what a Hash in it gives, each a whole
+      # number from 0 to FULL_PULL, or a friendly error.
+      def pulls(held)
+        Array(held).grep(Hash).reduce({}, :merge).each do |name, pull|
+          next if pull.is_a?(Integer) && pull.between?(0, FULL_PULL)
+
+          raise ArgumentError, "#{name.inspect} is held #{pull.inspect} of the way. To fix this, give a whole number " \
+                               "from 0 (let go) to #{FULL_PULL} (pulled all the way)."
+        end
+      end
+
+      # How far +button+ of +player+ is pulled, in percent, among +held+ (a list of buttons held,
+      # part pulls among them): the part pull a test gave, else FULL_PULL while it is held and 0
+      # when it is not.
+      def pull_among(held, button, player)
+        name = name_for(button, player)
+        pulls(held).fetch(name) { held_names(held).include?(name) ? FULL_PULL : 0 }
+      end
+
       # Whether +name+ is a button a program can read.
       def known?(name)
         NAMES.include?(name)
@@ -97,6 +148,7 @@ module VBlank
       # The first player's buttons among +held+, then the second's, and so on for +controllers+
       # players, by the plain names each has on its own controller: what a console's ports are told.
       def by_controller(held, controllers: 2)
+        held = held_names(held)
         PLAYERS_NAMES.first(controllers).map do |names|
           NAMES.zip(names).filter_map { |name, theirs| name if held.include?(theirs) }
         end
@@ -112,8 +164,12 @@ module VBlank
         players.flat_map { |each_player| buttons.map { |name| name_for(name, each_player) } }
       end
 
-      # The highest player with a button among +held+, or 1 for none.
-      def highest_player(held) = Array(held).map { |name| player_of(name) }.max || 1
+      # The highest player with a button among +held+, or 1 for none. A button pulled any way at all
+      # counts, so a player whose trigger is only touched is handed the pull.
+      def highest_player(held)
+        touched = held_names(held) + pulls(held).filter_map { |name, pull| name if pull.positive? }
+        touched.map { |name| player_of(name) }.max || 1
+      end
 
       # The buttons of one pass, as a computer's runtime reads them: one number per connected
       # player, the first player's first, a bit each in the order NAMES lists them. This plain
@@ -141,9 +197,14 @@ module VBlank
         def headless_input_line(held) = masks(held).join(" ")
       end
 
-      # +player+'s buttons among +held+ as one number, a bit each in NAMES's order.
+      # +player+'s buttons among +held+ as one number, a bit each in NAMES's order, and above them how
+      # far each of PULLED_BUTTONS is part pulled, where +held+ gives a part pull (#pull_shift).
       def player_mask(held, player)
-        held.reduce(0) { |bits, name| player_of(name) == player ? bits | (1 << NAMES.index(button_of(name))) : bits }
+        buttons = held_names(held).reduce(0) do |bits, name|
+          player_of(name) == player ? bits | (1 << NAMES.index(button_of(name))) : bits
+        end
+        given = pulls(held)
+        PULLED_BUTTONS.reduce(buttons) { |bits, button| bits | (given.fetch(name_for(button, player), 0) << pull_shift(button)) }
       end
 
       # +held+ buttons as one number, a bit each in the order NAMES lists them — for the first ten
@@ -151,7 +212,7 @@ module VBlank
       # further player's the same, PLAYER_SHIFT up from the one before. Past the second player the
       # number is wider than a console's (Ruby's numbers have no width), which only a playthrough
       # reads, to hand the names on to a computer's run.
-      def mask(held) = Array(held).reduce(0) { |bits, button| bits | (1 << bit_of(button)) }
+      def mask(held) = held_names(held).reduce(0) { |bits, button| bits | (1 << bit_of(button)) }
 
       def bit_of(button)
         button, player = HELD_NAMES.fetch(button)

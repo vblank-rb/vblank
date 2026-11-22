@@ -1319,6 +1319,15 @@ module VBlank
         Nodes.build(:held, button: button, player: player)
       end
 
+      # How far a button is pulled, in percent (see Nodes::Pulled).
+      def pulled(button, player: 1)
+        Nodes.build(:pulled, button: button, player: player)
+      end
+
+      # A pulled node as a pad whose buttons are only up or down answers it: FULL_PULL while the
+      # button is held, 0 when not. What every cartridge lowers it as.
+      def pulled_as_held(node) = binop(:*, held(node.button, player: node.player), int(Buttons::FULL_PULL))
+
       # Which player this machine's person is, from 1 (see Nodes::LocalPlayer).
       def local_player
         Nodes.build(:local_player)
