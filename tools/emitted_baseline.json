@@ -9,6 +9,10 @@
       "code": 4358,
       "data": 1122
     },
+    "animate@snes": {
+      "code": 14312,
+      "data": 16281
+    },
     "bird": {
       "code": 7316,
       "data": 0
@@ -24,6 +28,10 @@
     "buffered_bounce": {
       "code": 4942,
       "data": 0
+    },
+    "buffered_bounce@snes": {
+      "code": 15771,
+      "data": 555
     },
     "cave": {
       "code": 38536,
@@ -65,9 +73,17 @@
       "code": 4878,
       "data": 880
     },
+    "everywhere@snes": {
+      "code": 6276,
+      "data": 2574
+    },
     "floating_digits": {
       "code": 11656,
       "data": 0
+    },
+    "floating_digits@snes": {
+      "code": 18434,
+      "data": 12275
     },
     "flowers": {
       "code": 2640,
@@ -77,9 +93,17 @@
       "code": 7077,
       "data": 4736
     },
+    "flowers@snes": {
+      "code": 5537,
+      "data": 2832
+    },
     "font_styles": {
       "code": 2832,
       "data": 0
+    },
+    "font_styles@snes": {
+      "code": 15927,
+      "data": 2187
     },
     "fonts": {
       "code": 4488,
@@ -89,6 +113,10 @@
       "code": 3940,
       "data": 826
     },
+    "fonts@snes": {
+      "code": 15963,
+      "data": 3089
+    },
     "grid_cursor": {
       "code": 6804,
       "data": 0
@@ -97,9 +125,17 @@
       "code": 4426,
       "data": 44
     },
+    "grid_cursor@snes": {
+      "code": 14866,
+      "data": 555
+    },
     "hero": {
       "code": 81040,
       "data": 0
+    },
+    "hero@snes": {
+      "code": 56972,
+      "data": 13807
     },
     "jukebox": {
       "code": 72434,
@@ -109,6 +145,10 @@
       "code": 4782,
       "data": 0
     },
+    "lake@snes": {
+      "code": 6129,
+      "data": 5636
+    },
     "level": {
       "code": 3872,
       "data": 0
@@ -116,6 +156,10 @@
     "level@genesis": {
       "code": 4396,
       "data": 2404
+    },
+    "level@snes": {
+      "code": 7931,
+      "data": 3977
     },
     "lit_corridor": {
       "code": 40540,
@@ -129,6 +173,10 @@
       "code": 3968,
       "data": 2108
     },
+    "maze@snes": {
+      "code": 6418,
+      "data": 3322
+    },
     "meadow": {
       "code": 33108,
       "data": 0
@@ -140,6 +188,10 @@
     "pacman@gbc": {
       "code": 8702,
       "data": 14272
+    },
+    "pacman@snes": {
+      "code": 15423,
+      "data": 7330
     },
     "panorama": {
       "code": 156312,
@@ -153,6 +205,10 @@
       "code": 3224,
       "data": 4448
     },
+    "parallax@snes": {
+      "code": 4612,
+      "data": 4829
+    },
     "piano": {
       "code": 26560,
       "data": 0
@@ -164,6 +220,10 @@
     "pixels@genesis": {
       "code": 4236,
       "data": 44
+    },
+    "pixels@snes": {
+      "code": 14038,
+      "data": 555
     },
     "pong": {
       "code": 42576,
@@ -181,6 +241,10 @@
       "code": 6112,
       "data": 0
     },
+    "raycaster@snes": {
+      "code": 16296,
+      "data": 2667
+    },
     "rotozoom_bg": {
       "code": 3588,
       "data": 0
@@ -193,6 +257,10 @@
       "code": 8284,
       "data": 7600
     },
+    "scoreboard@snes": {
+      "code": 5412,
+      "data": 4908
+    },
     "scroll": {
       "code": 2348,
       "data": 0
@@ -201,9 +269,17 @@
       "code": 3212,
       "data": 8472
     },
+    "scroll@snes": {
+      "code": 4573,
+      "data": 8851
+    },
     "sheet": {
       "code": 3872,
       "data": 0
+    },
+    "sheet@snes": {
+      "code": 7931,
+      "data": 3977
     },
     "shmup": {
       "code": 37412,
@@ -213,6 +289,10 @@
       "code": 38708,
       "data": 0
     },
+    "snake@snes": {
+      "code": 31558,
+      "data": 16690
+    },
     "snake_buffered": {
       "code": 40352,
       "data": 0
@@ -220,6 +300,10 @@
     "sparks": {
       "code": 3004,
       "data": 0
+    },
+    "sparks@snes": {
+      "code": 18001,
+      "data": 611
     },
     "sprite_mover": {
       "code": 12964,
@@ -229,6 +313,10 @@
       "code": 4766,
       "data": 134
     },
+    "sprite_mover@snes": {
+      "code": 15096,
+      "data": 2407
+    },
     "tiles": {
       "code": 7848,
       "data": 0
@@ -236,6 +324,10 @@
     "tiles@genesis": {
       "code": 3332,
       "data": 2776
+    },
+    "tiles@snes": {
+      "code": 4716,
+      "data": 6855
     },
     "tower": {
       "code": 15728,
@@ -248,6 +340,10 @@
     "tower@genesis": {
       "code": 6394,
       "data": 3740
+    },
+    "tower@snes": {
+      "code": 11658,
+      "data": 8091
     },
     "two_rooms": {
       "code": 36906,
@@ -264,6 +360,10 @@
     "wanderers@genesis": {
       "code": 6546,
       "data": 3032
+    },
+    "wanderers@snes": {
+      "code": 10431,
+      "data": 3297
     }
   }
 }

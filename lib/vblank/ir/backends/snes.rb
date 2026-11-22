@@ -72,9 +72,11 @@ module VBlank
         # of its header (Backends::PoolLayout::SlotPlace, CartridgeHeadlessRun#slot_place_of).
         # +half_variables+ is the variables kept in two bytes (HalfVariables), read back with their
         # sign spread upward; +unsigned_lists+ the lists kept in two-byte slots read back with no sign.
+        # +bytes+ gives what the cartridge's sections come to, as :code (what the processor runs) and
+        # :data (what it only reads or sends on), for the size check (tools/emitted_snes_probe.rb).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
-                             :sound_memory, :slot_places, :half_variables, :unsigned_lists) do
+                             :sound_memory, :slot_places, :half_variables, :unsigned_lists, :bytes) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -266,7 +268,8 @@ module VBlank
                              sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
                              console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
                              sound_memory: runtime.sound_memory, slot_places: lowering.slot_places,
-                             half_variables: lowering.half_variables_kept, unsigned_lists: lowering.unsigned_lists)
+                             half_variables: lowering.half_variables_kept, unsigned_lists: lowering.unsigned_lists,
+                             bytes: byte_counts(linked))
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }
@@ -381,6 +384,21 @@ module VBlank
                                  "build cannot make a cartridge with that chip yet. To fix this, remove the chip " \
                                  "from variants: or from --variant."
           end
+        end
+
+        # The sections that hold what the processor runs: the runtime's own (which name nothing they
+        # hold), the game's routines, and the code that paints a picture a column at a time.
+        CODE_HOLDINGS = [nil, Lowering::ROUTINES, Lowering::Paint::COLUMN_CODE].freeze
+
+        # How many bytes of the cartridge are code and how many are data: the game's tables, pictures,
+        # songs and recordings are data, and so is the sound unit's program, which the processor only
+        # sends across (Runtime::Sound#sections); the rest is code.
+        def byte_counts(linked)
+          code, data = linked.sections.values.partition do |placed|
+            section = placed.section
+            CODE_HOLDINGS.include?(section.holds) && !section.name.start_with?(Runtime::Sound.start_piece_label(""))
+          end
+          { code: code.sum { |placed| placed.section.size }, data: data.sum { |placed| placed.section.size } }
         end
       end
     end

@@ -84,6 +84,15 @@ class TestEmittedBaseline < Minitest::Test
     assert_match(/always in view 8000 → 8040 \(\+40 bytes\)/, render(v))
   end
 
+  # A Super Nintendo cartridge's two numbers are its code and its data, in bytes: the 65816's
+  # instructions are of many sizes, so there is no instruction to count in.
+  def test_a_super_nintendo_cartridge_says_which_part_grew_in_bytes
+    v = verdict({ "pacman@snes" => { code: 9000, data: 4000 } }, { "pacman@snes" => { code: 9040, data: 4100 } })
+
+    refute_predicate v, :ok?
+    assert_match(/pacman@snes  code 9000 → 9040 \(\+40 bytes\), data 4000 → 4100 \(\+100 bytes\)/, render(v))
+  end
+
   # ---- shrinking is the good direction ----
 
   def test_code_that_shrank_passes_but_is_mentioned
@@ -170,7 +179,9 @@ class TestEmittedBaseline < Minitest::Test
     advance = Emitted.examples.map { |path| File.basename(path, ".rb") }
     color = Emitted.color_examples.map { |path| "#{File.basename(path, '.rb')}#{Emitted::COLOR_MARK}" }
     genesis = Emitted.genesis_examples.map { |path| "#{File.basename(path, '.rb')}#{Emitted::GENESIS_MARK}" }
-    assert_equal (advance + color + genesis).sort, recorded.keys.sort,
+    snes = Emitted.snes_examples.map { |path| "#{File.basename(path, '.rb')}#{Emitted::SNES_MARK}" }
+    refute_empty snes, "the examples built for the Super Nintendo"
+    assert_equal (advance + color + genesis + snes).sort, recorded.keys.sort,
                  "the baseline and the examples have drifted apart — run rake emitted:record"
   end
 end

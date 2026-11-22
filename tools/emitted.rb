@@ -38,12 +38,16 @@ module Emitted
   PROBE = File.join(__dir__, "emitted_probe.rb").freeze
   COLOR_PROBE = File.join(__dir__, "emitted_color_probe.rb").freeze
   GENESIS_PROBE = File.join(__dir__, "emitted_genesis_probe.rb").freeze
+  SNES_PROBE = File.join(__dir__, "emitted_snes_probe.rb").freeze
 
   # What ends the name of an example's Color cartridge in the baseline.
   COLOR_MARK = "@gbc"
 
   # ...and of its Sega Genesis cartridge.
   GENESIS_MARK = "@genesis"
+
+  # ...and of its Super Nintendo cartridge.
+  SNES_MARK = "@snes"
 
   # Which Ruby to launch, asked once. Asking reads Ruby's own table of how it was built,
   # which a worker Ractor may not touch.
@@ -172,6 +176,11 @@ module Emitted
     Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bgenesis\b/) }
   end
 
+  # The examples that say they are for the Super Nintendo, as absolute paths.
+  def snes_examples
+    Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bsnes\b/) }
+  end
+
   # Build every example against the library at +lib_root+, one process each.
   def measure(lib_root, paths, detail: false)
     paths.to_h { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }
@@ -179,20 +188,20 @@ module Emitted
 
   # Each example's Color cartridge, named apart from its Advance one: +code+ the part always in
   # view, +data+ the banks (tools/emitted_color_probe.rb).
-  def measure_color(lib_root, paths)
-    paths.to_h do |path|
-      name = "#{File.basename(path, '.rb')}#{COLOR_MARK}"
-      stdout, stderr, status = Open3.capture3(RUBY, COLOR_PROBE, lib_root, ROOT, path, chdir: ROOT)
-      [name, measurement(name, stdout, stderr, status)]
-    end
-  end
+  def measure_color(lib_root, paths) = measure_cartridges(lib_root, paths, COLOR_PROBE, COLOR_MARK)
 
   # Each example's Genesis cartridge, named apart from its Advance one: +code+ the bytes the processor
   # runs, +data+ the bytes it only reads (tools/emitted_genesis_probe.rb).
-  def measure_genesis(lib_root, paths)
+  def measure_genesis(lib_root, paths) = measure_cartridges(lib_root, paths, GENESIS_PROBE, GENESIS_MARK)
+
+  # Each example's Super Nintendo cartridge, the same two numbers (tools/emitted_snes_probe.rb).
+  def measure_snes(lib_root, paths) = measure_cartridges(lib_root, paths, SNES_PROBE, SNES_MARK)
+
+  # Each of +paths+ built by +probe+, one process each, named with +mark+ after the example.
+  def measure_cartridges(lib_root, paths, probe, mark)
     paths.to_h do |path|
-      name = "#{File.basename(path, '.rb')}#{GENESIS_MARK}"
-      stdout, stderr, status = Open3.capture3(RUBY, GENESIS_PROBE, lib_root, ROOT, path, chdir: ROOT)
+      name = "#{File.basename(path, '.rb')}#{mark}"
+      stdout, stderr, status = Open3.capture3(RUBY, probe, lib_root, ROOT, path, chdir: ROOT)
       [name, measurement(name, stdout, stderr, status)]
     end
   end
