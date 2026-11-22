@@ -246,11 +246,12 @@ module VBlank
               asm.beq("rt_blank_lines_above")
               # Before the blank, its interrupt is still to come and takes its lines out of the
               # window while a copy waits: they are counted as gone already. It reads a controller
-              # by hand, which is most of its time, and a game that reads two reads two.
+              # by hand, which is most of its time, and a game that reads two, or four through a
+              # Super Multitap, reads each.
               asm.cmp(FIRST_BLANK_LINE)
               asm.bcs("rt_blank_lines_interrupt_counted")
               interrupt_lines = COPY_START_LINE - FIRST_BLANK_LINE + 1
-              asm.adc(memory.reserved?(Frame::SECOND_HELD) ? interrupt_lines * 2 : interrupt_lines) # the carry is clear
+              asm.adc(interrupt_lines * Frame.controllers_reserved(memory)) # the carry is clear
               asm.label("rt_blank_lines_interrupt_counted")
               asm.eor(0xFFFF)
               asm.sec

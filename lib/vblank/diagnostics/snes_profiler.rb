@@ -71,6 +71,8 @@ module VBlank
         places = rom.built
         shown_at = places.runtime.fetch(IR::Backends::SNES::Runtime::Frame::SHOWN)
         Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
+          # A game for more than two is measured with a Super Multitap in, as it is played.
+          core.plug_in_multitap if IR::Backends::SNES::Runtime::Frame.reads_multitap?(places.source_program)
           core.set_buttons(keys)
           # Settled by passes, as the frames each took are: sending the recordings across at power-on
           # takes many frames before the game has played one.

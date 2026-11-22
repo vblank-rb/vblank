@@ -16,11 +16,26 @@ class TestSNESRuntimeCarries < Minitest::Test
   end
 
   def test_a_game_that_reads_one_controller_carries_no_second
-    refute carries { game_loop { halt if held(:left) } }.second_controller
+    assert_equal 1, carries { game_loop { halt if held(:left) } }.controllers
   end
 
   def test_a_game_that_names_the_second_player_carries_the_second_controller
-    assert carries { game_loop { halt if held(:left, player: 2) } }.second_controller
+    assert_equal 2, carries { game_loop { halt if held(:left, player: 2) } }.controllers
+  end
+
+  # The third and fourth players are read through a Super Multitap, which only a game that names
+  # one of them carries the reading of.
+  def test_a_game_that_names_the_third_player_carries_the_multitap
+    assert_equal 4, carries { game_loop { halt if held(:left, player: 3) } }.controllers
+  end
+
+  # A game that seats two asks how many of the two are connected.
+  def test_a_game_that_counts_the_players_carries_the_count_and_the_second_controller
+    counting = carries { game_loop { halt if players_connected > 1 } }
+
+    assert counting.counts_players
+    assert_equal 2, counting.controllers
+    refute carries { game_loop { halt if held(:left, player: 2) } }.counts_players
   end
 
   def test_a_game_that_asks_about_x_carries_the_extra_buttons

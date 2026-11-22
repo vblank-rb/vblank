@@ -33,7 +33,8 @@ module VBlank
           # (Tint's rt_backdrop_from), and +dims+ fades to black. +math_turns+ turns a see-through
           # layer solid. +bar_covers+ tells a bar to cover sprites. +tile_sizes+ has layers of two tile
           # sizes. +scene_tiles+ and +scene_background_tiles+ bring a scene's tiles in as it arrives.
-          # +extra_buttons+ can ask about X and Y, and +second_controller+ reads it. +glides+ has a
+          # +extra_buttons+ can ask about X and Y, +controllers+ is how many it reads (Frame#controllers_read),
+          # and +counts_players+ asks how many are connected (Frame::PLAYERS_PAST_FIRST). +glides+ has a
           # recorded note that carries on the one sounding at a new pitch (Recordings). +text_layer+
           # shows text at places known when it is built on a layer over the painted one (TextLayer).
           # +paint_turns+ keeps a second painted picture to swap with (PaintTurns). +chip_envelopes+
@@ -51,7 +52,7 @@ module VBlank
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
-                                :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
+                                :scene_background_tiles, :extra_buttons, :controllers, :counts_players, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band,
                                 :doubled, :boxes, :sprites_over_picture) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
@@ -85,7 +86,8 @@ module VBlank
                   math_turns: picture.see_through_turns_solid?(program, stacking), bar_covers: picture.bar_covers_sprites?(program),
                   tile_sizes: picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
                   scene_background_tiles: background_tiles || walks_areas, extra_buttons: Frame.reads_extra_buttons?(program),
-                  second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),
+                  controllers: Frame.controllers_read(program), counts_players: Frame.counts_players?(program),
+                  glides: SNES::Music.glides?(program),
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
                   third_layer: picture.third_layer?(program),

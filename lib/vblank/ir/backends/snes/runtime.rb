@@ -59,7 +59,7 @@ module VBlank
             elsif c.painted
               Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns)
             end
-            Frame.reserve(memory, second_controller: c.second_controller)
+            Frame.reserve(memory, controllers: c.controllers, counts_players: c.counts_players)
             Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, alone_flag_in_line_table: c.alone_flag_in_line_table,
                                     bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
@@ -67,7 +67,7 @@ module VBlank
                                     scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer, boxes: c.boxes)
             BackgroundBox.reserve(memory) if c.boxes
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
-            Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
+            Chip.reserve(memory, extra_buttons: c.extra_buttons, controllers: c.controllers) if c.chip?
             Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
@@ -99,8 +99,8 @@ module VBlank
             s = scratch(memory, c, fractions: lowering.fractions?)
             Int32.emit(asm, s.int32, divides: lowering.divides?)
             pad = s.pad
-            Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
-                                    second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
+            Frame.emit(asm, memory, pad: pad, tap: s.tap, sound: c.sound, extra_buttons: c.extra_buttons,
+                                    controllers: c.controllers, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
                                     count_at: count_at)
             Blank.emit(asm, memory, s.blank)
             lists = s.lists
@@ -124,7 +124,7 @@ module VBlank
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, s.collide) if c.collides
             Mosaic.emit(asm, memory, backgrounds: lowering.mosaic_backgrounds) if c.mosaic
-            Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
+            Chip.emit(asm, memory, pad: pad, tap: s.tap, extra_buttons: c.extra_buttons, controllers: c.controllers) if c.chip?
             if c.letterboxes?
               Letterbox.emit(asm, memory, black_places: lowering.painted_art.black_places)
             elsif c.shown_band
@@ -161,13 +161,14 @@ module VBlank
 
           # The runtime's scratch on the direct page, one part for each routine that works there,
           # nil for a part the cartridge does not carry.
-          Scratch = Data.define(:int32, :pad, :blank, :lists, :picture, :tile_runs, :paint, :tint, :collide, :saving)
+          Scratch = Data.define(:int32, :pad, :tap, :blank, :lists, :picture, :tile_runs, :paint, :tint, :collide, :saving)
 
           # The scratch #sections works in, taken from +memory+'s direct page, for a cartridge that
           # carries +carries+, with the fractions' part where +fractions+.
           def scratch(memory, carries, fractions:)
             c = carries
             Scratch.new(int32: Int32.scratch(memory, fractions: fractions), pad: memory.scratch(4),
+                        tap: (memory.scratch(8) if c.controllers == Frame::MULTITAP_CONTROLLERS),
                         blank: Blank.scratch(memory), lists: Lists.scratch(memory), picture: memory.scratch(8),
                         tile_runs: (Picture.run_scratch(memory) if c.tile_runs.length.positive?),
                         paint: (Paint.scratch(memory) if c.doubled || c.painted),

@@ -210,13 +210,19 @@ module VBlank
           # game was found waiting at that pass's end: read again as the pass's moment is.
           def read_setting_up = @setting_up = half(runtime_place(Runtime::Frame::SETTING_UP))
 
-          def power_on = set_buttons(@held)
+          # A game that reads the third or fourth player is played with a Super Multitap in the
+          # second port, as a person playing it with four would have.
+          def power_on
+            @core.plug_in_multitap if Runtime::Frame.reads_multitap?(@rom.built.source_program)
+            set_buttons(@held)
+          end
 
           # The buttons a game names, on the controller's: the same names, A, B, the shoulders L and R.
+          # The second controller's go to the second port, and through a Super Multitap the third's
+          # and fourth's to its next plugs.
           def set_buttons(buttons)
-            first, second = Buttons.by_controller(buttons.map(&:to_sym))
-            @core.set_buttons(first)
-            @core.set_buttons(second, port: 1)
+            Buttons.by_controller(buttons.map(&:to_sym), controllers: Console::SUPER_NINTENDO.controllers)
+                   .each_with_index { |held, port| @core.set_buttons(held, port: port) }
           end
 
           # A pass's moment waits for the count of its sounds (#sounds_counted?), but for the moment

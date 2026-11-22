@@ -477,10 +477,11 @@ module VBlank
 
     # The Super Nintendo: a wider and taller screen than the Advance's, twelve buttons (a game reads
     # the ten the Advance has), 128 sprites and 34 pieces of them on a row, backgrounds of tiles,
-    # nothing that turns but one layer the build does not use, lists of sixteen colours. What each
-    # verb does on it is Console::SNESAnswers's to say.
+    # nothing that turns but one layer the build does not use, lists of sixteen colours. Four
+    # controllers: the first port's, and three through a Super Multitap in the second
+    # (SNES::Runtime::Frame#emit_tap_bits). What each verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
-                                     buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
+                                     buttons: %i[a b select start right left up down r l x y].freeze, controllers: 4,
                                      holds_background_above_row: true, background_box: :own_window, glides_recordings: true, sets_main_volume: true, sprites: 128,
                                      # rt_paint_area keeps the area in memory, and a routine on a
                                      # Super FX chip is handed it (SNES::Lowering::Paint#emit_inside,

@@ -79,6 +79,9 @@ module VBlank
             SECOND_PRESSED = "rt second pressed"
             SECOND_PAD_HELD = "rt second pad held"
             SECOND_PAD_PRESSED = "rt second pad pressed"
+            # How many players past the first are connected, in a game that asks (`players_connected`):
+            # the highest player with a button down so far, less one, so nought is the first alone.
+            PLAYERS_PAST_FIRST = "rt players past first"
             # 1 once the interrupt has come since the game began to wait.
             VBLANK = "rt vblank"
             # 1 once the screen is on: before the end of the first pass it is off.
@@ -109,6 +112,37 @@ module VBlank
 
             EXTRA_BUTTONS = %i[x y].freeze
 
+            # Where one controller's buttons are kept: through the pass (+held+, +pressed+), as the
+            # interrupt last read them (+seen+), and as the interrupt gathers them for the next pass
+            # (+pad_held+, +pad_pressed+).
+            Controller = Data.define(:held, :seen, :pressed, :pad_held, :pad_pressed)
+
+            # Every controller a game can read, the first player's first: the two ports, then the
+            # third and fourth players on a Super Multitap in the second port.
+            CONTROLLERS = Ractor.make_shareable([
+                                                  Controller.new(HELD, SEEN, PRESSED, PAD_HELD, PAD_PRESSED),
+                                                  Controller.new(SECOND_HELD, SECOND_SEEN, SECOND_PRESSED,
+                                                                 SECOND_PAD_HELD, SECOND_PAD_PRESSED),
+                                                  Controller.new("rt third held", "rt third seen", "rt third pressed",
+                                                                 "rt third pad held", "rt third pad pressed"),
+                                                  Controller.new("rt fourth held", "rt fourth seen", "rt fourth pressed",
+                                                                 "rt fourth pad held", "rt fourth pad pressed")
+                                                ])
+
+            # The controllers a game reads through a Super Multitap: the first port's, and the
+            # tap's first three plugs. Its fourth plug, the console's fifth controller, is not read.
+            MULTITAP_CONTROLLERS = 4
+
+            # WRIO's top bit picks which two of the tap's plugs the second port's two lines carry:
+            # set, its first two (the second and third controllers); clear, its last two. Set is
+            # also what the picture's line latch needs (Blank#emit_line_now), so it is put back.
+            TAP_FIRST_PLUGS = 0x80
+            TAP_LAST_PLUGS = 0x00
+
+            # The ports the controllers are read through (fullsnes, "SNES Controllers I/O Ports").
+            JOYSER0 = 0x4016
+            JOYSER1 = 0x4017
+
             module_function
 
             # Whether +program+ reads X or Y, by name or as any button at all.
@@ -116,13 +150,43 @@ module VBlank
               program.walk.any? { |node| %i[held pressed].include?(node.kind) && (EXTRA_BUTTONS + [Buttons::ANY]).include?(node.button) }
             end
 
-            # Whether +program+ reads the second controller, on its own or as either of the two. A
-            # game that never does is built without it, the same bytes as before there was one.
-            def reads_second_controller?(program)
-              program.walk.any? { |node| %i[held pressed].include?(node.kind) && node.player != 1 }
+            # How many controllers +program+ reads: 1; 2 for a game that reads the second
+            # controller, on its own or as any player's, or asks how many are connected; or
+            # MULTITAP_CONTROLLERS for one that reads a Super Multitap (#reads_multitap?). A game
+            # that reads fewer is built without the rest, the same bytes as before there were any.
+            def controllers_read(program)
+              return MULTITAP_CONTROLLERS if reads_multitap?(program)
+
+              reads_second_controller?(program) ? 2 : 1
             end
 
-            def reserve(memory, second_controller: false)
+            def reads_second_controller?(program)
+              program.walk.any? do |node|
+                (%i[held pressed].include?(node.kind) && node.player != 1) || node.kind == :players_connected
+              end
+            end
+
+            # Whether +program+ reads the third or fourth player: a button of theirs by number, or,
+            # in a game that takes more than two players (`players:`), any player's button or how
+            # many are connected, which they can be part of.
+            def reads_multitap?(program)
+              several = program.most_players.to_i > 2
+              program.walk.any? do |node|
+                if %i[held pressed].include?(node.kind)
+                  (node.player.is_a?(Integer) && node.player > 2) || (several && node.player == Buttons::ANY)
+                else
+                  several && node.kind == :players_connected
+                end
+              end
+            end
+
+            # Whether +program+ asks how many players are connected.
+            def counts_players?(program) = program.walk.any? { |node| node.kind == :players_connected }
+
+            # How many controllers the runtime laid out in +memory+ reads.
+            def controllers_reserved(memory) = CONTROLLERS.count { |controller| memory.reserved?(controller.held) }
+
+            def reserve(memory, controllers: 1, counts_players: false)
               memory.reserve(STATE, 2)
               memory.reserve(WAITING, 2)
               memory.reserve(PASSES, 4)
@@ -144,9 +208,10 @@ module VBlank
               memory.reserve(DISPLAY_ON, 2)
               memory.reserve(SETTING_UP, 2)
               memory.reserve(SETTING_UP_UNCOUNTED, 2)
-              return unless second_controller
-
-              [SECOND_HELD, SECOND_SEEN, SECOND_PRESSED, SECOND_PAD_HELD, SECOND_PAD_PRESSED].each { |name| memory.reserve(name, 2) }
+              CONTROLLERS.drop(1).first(controllers - 1).each do |controller|
+                controller.to_h.each_value { |name| memory.reserve(name, 2) }
+              end
+              memory.reserve(PLAYERS_PAST_FIRST, 2) if counts_players
             end
 
             # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
@@ -169,11 +234,13 @@ module VBlank
             end
 
             # +pad+ is two words of the direct page, the same on the game's page and the
-            # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
+            # interrupt's, that reading the controller works in, and +tap+ four more, for a game that
+            # reads MULTITAP_CONTROLLERS (#emit_tap_bits). +controllers+ is how many the game reads
+            # (#controllers_read). +sound+ for a game that makes sound,
             # whose wait ends in Sound's rt_sound_frame. +sleeps_every_pass+ for the cartridge a checked
             # run reads (#emit_sleep_unless_in_blank gives the reason). +count_at+ is where the game
             # keeps its count of frames since power-on (#emit_setting_up_counted).
-            def emit(asm, memory, pad:, sound: false, extra_buttons: false, second_controller: false, dims: false,
+            def emit(asm, memory, pad:, tap: nil, sound: false, extra_buttons: false, controllers: 1, dims: false,
                      sleeps_every_pass: false, count_at: nil)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
@@ -211,8 +278,14 @@ module VBlank
 
               emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank: memory.reserved?(Sound::QUEUE) && !sleeps_every_pass,
                                                              count_at: count_at)
-              emit_buttons(asm, memory, pad, extra_buttons, second_controller)
+              emit_buttons(asm, memory, Reading.new(pad: pad, tap: tap, extra_buttons: extra_buttons, controllers: controllers))
               emit_stopping(asm, memory)
+            end
+
+            # How a runtime reads its controllers: the direct page it works in (+pad+, and +tap+ for
+            # a Super Multitap), whether it turns X and Y round, and how many it reads.
+            Reading = Data.define(:pad, :tap, :extra_buttons, :controllers) do
+              def multitap? = controllers == MULTITAP_CONTROLLERS
             end
 
             # The interrupt that signals a frame has been drawn. Everything it touches is saved, and it
@@ -272,16 +345,27 @@ module VBlank
             # The same interrupt, as a routine of its own with the buttons' reading written into it
             # rather than called, for a copy of it that runs from work RAM (Runtime::Chip). Its
             # branches are relative and every address it names is fixed, so it runs wherever it is
-            # copied to.
-            def emit_interrupt_whole(asm, memory, pad:, extra_buttons: false, second_controller: false)
+            # copied to. A Super Multitap's controllers are turned into IR::Buttons's order bit by
+            # bit here, not through the table rt_buttons_remapped reads, which is in the cartridge
+            # and out of the processor's reach while the chip runs.
+            def emit_interrupt_whole(asm, memory, pad:, tap: nil, extra_buttons: false, controllers: 1)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               emit_interrupt_body(asm, memory) do
-                emit_controller_update(asm, at, pad, SEEN, PAD_PRESSED, PAD_HELD) do
-                  emit_controller_bits(asm, pad, "rt_whole_buttons", 0x4016, extra_buttons)
+                emit_controller_update(asm, at, pad, CONTROLLERS.first) do
+                  emit_controller_bits(asm, pad, "rt_whole_buttons", JOYSER0, extra_buttons)
                 end
-                if second_controller
-                  emit_controller_update(asm, at, pad, SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD) do
-                    emit_controller_bits(asm, pad, "rt_whole_second_buttons", 0x4017, extra_buttons)
+                if controllers == MULTITAP_CONTROLLERS
+                  emit_tap_bits(asm, tap, "rt_whole_tap")
+                  CONTROLLERS.drop(1).first(controllers - 1).each_with_index do |controller, index|
+                    emit_controller_update(asm, at, pad, controller) do
+                      asm.lda(asm.direct(tap + (index * 2)))
+                      asm.sta(asm.direct(pad))
+                      emit_bits_remapped(asm, pad, "rt_whole_tap_#{index}", extra_buttons)
+                    end
+                  end
+                elsif controllers == 2
+                  emit_controller_update(asm, at, pad, CONTROLLERS[1]) do
+                    emit_controller_bits(asm, pad, "rt_whole_second_buttons", JOYSER1, extra_buttons)
                   end
                 end
               end
@@ -457,20 +541,32 @@ module VBlank
             # here is two bytes wide, which walks the next port on too: so the read of the first
             # controller has already used the second's up, and the second's read starts by telling
             # them both to take hold again.
-            def emit_buttons(asm, memory, pad, extra_buttons, second_controller)
+            #
+            # A game for more than two reads a Super Multitap in the second port (#emit_tap_bits),
+            # and turns the three controllers it reads there into IR::Buttons's order through a
+            # table (rt_buttons_remapped) rather than a button at a time.
+            def emit_buttons(asm, memory, reading)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
+              pad = reading.pad
               # rt_buttons_now: A = the buttons held now, a bit each in IR::Buttons's order.
-              emit_controller_read(asm, pad, "rt_buttons_now", 0x4016, extra_buttons)
-              emit_controller_read(asm, pad, "rt_second_buttons_now", 0x4017, extra_buttons) if second_controller
+              emit_controller_read(asm, pad, "rt_buttons_now", JOYSER0, reading.extra_buttons)
+              if reading.multitap?
+                asm.label("rt_tap_read")
+                emit_tap_bits(asm, reading.tap, "rt_tap_read")
+                asm.rts
+                emit_buttons_remapped(asm, pad, reading.extra_buttons)
+              elsif reading.controllers == 2
+                emit_controller_read(asm, pad, "rt_second_buttons_now", JOYSER1, reading.extra_buttons)
+              end
+              others = CONTROLLERS.drop(1).first(reading.controllers - 1)
 
               # In the interrupt, every frame: the buttons held now, and every one that went down
               # since the frame before added to those pressed during the pass.
               asm.label("rt_pad_read")
-              emit_controller_update(asm, at, pad, SEEN, PAD_PRESSED, PAD_HELD) { asm.jsr(asm.abs("rt_buttons_now")) }
-              if second_controller
-                emit_controller_update(asm, at, pad, SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD) do
-                  asm.jsr(asm.abs("rt_second_buttons_now"))
-                end
+              emit_controller_update(asm, at, pad, CONTROLLERS.first) { asm.jsr(asm.abs("rt_buttons_now")) }
+              asm.jsr(asm.abs("rt_tap_read")) if reading.multitap?
+              others.each.with_index(2) do |controller, player|
+                emit_controller_update(asm, at, pad, controller) { emit_buttons_now(asm, reading, player) }
               end
               asm.rts
 
@@ -487,13 +583,15 @@ module VBlank
               asm.stz(at.call(PAD_PRESSED))
               asm.lda(at.call(PAD_HELD))
               asm.sta(at.call(HELD))
-              if second_controller
-                asm.lda(at.call(SECOND_PAD_PRESSED))
-                asm.sta(at.call(SECOND_PRESSED))
-                asm.stz(at.call(SECOND_PAD_PRESSED))
-                asm.lda(at.call(SECOND_PAD_HELD))
-                asm.sta(at.call(SECOND_HELD))
+              others.each do |controller|
+                asm.lda(at.call(controller.pad_pressed))
+                asm.sta(at.call(controller.pressed))
+                asm.stz(at.call(controller.pad_pressed))
+                asm.lda(at.call(controller.pad_held))
+                asm.sta(at.call(controller.held))
               end
+              counted = memory.reserved?(PLAYERS_PAST_FIRST)
+              emit_players_counted(asm, at, others.map(&:pressed), "rt_read_buttons_joined") if counted
               asm.lda(at.call(FRAMES))
               asm.tay
               asm.sep(0x20)
@@ -528,11 +626,155 @@ module VBlank
               asm.label("rt_buttons_from_power_on")
               asm.jsr(asm.abs("rt_buttons_now"))
               asm.sta(at.call(HELD))
-              if second_controller
-                asm.jsr(asm.abs("rt_second_buttons_now"))
-                asm.sta(at.call(SECOND_HELD))
+              asm.jsr(asm.abs("rt_tap_read")) if reading.multitap?
+              others.each.with_index(2) do |controller, player|
+                emit_buttons_now(asm, reading, player)
+                asm.sta(at.call(controller.held))
               end
+              # A player holding a button from power-on is connected from the first pass, as the
+              # interpreter counts the buttons it is told to hold before the game starts.
+              emit_players_counted(asm, at, others.map(&:held), "rt_buttons_from_power_on_joined") if counted
               asm.rtl
+            end
+
+            # A = the buttons held now on +player+'s controller (2 or more), a bit each in
+            # IR::Buttons's order: through a Super Multitap, as rt_tap_read last left them.
+            def emit_buttons_now(asm, reading, player)
+              return asm.jsr(asm.abs("rt_second_buttons_now")) unless reading.multitap?
+
+              asm.lda(asm.direct(reading.tap + ((player - 2) * 2)))
+              asm.jsr(asm.abs("rt_buttons_remapped"))
+            end
+
+            # The count of players past the first (PLAYERS_PAST_FIRST) raised to each player past the
+            # first whose word at +names+ (theirs in order, the second player's first) holds a
+            # button: so it is the highest such player less one, and never falls
+            # (Reference#count_connected_players). +label+ names the branches.
+            def emit_players_counted(asm, at, names, label)
+              names.each.with_index(1) do |name, past_first|
+                skip = "#{label}_#{past_first}"
+                asm.lda(at.call(name))
+                asm.beq(skip)
+                asm.lda(past_first)
+                asm.cmp(at.call(PLAYERS_PAST_FIRST))
+                asm.bcc(skip)
+                asm.sta(at.call(PLAYERS_PAST_FIRST))
+                asm.label(skip)
+              end
+            end
+
+            # THE SUPER MULTITAP. It plugs into the second port and has four plugs of its own, the
+            # console's controllers 2 to 5. Both its lines are read at once: each read of JOYSER1
+            # hands over a bit of one plug in bit 0 and of another in bit 1, and WRIO's top bit
+            # picks which two (TAP_FIRST_PLUGS: controllers 2 and 3; TAP_LAST_PLUGS: 4 and 5). It
+            # is read the way fullsnes gives ("SNES Controllers Multiplayer 5"): the latch held high
+            # while eight reads of the second line find it 1 (a tap pulls it high; a plain
+            # controller, or none, leaves it 0), the latch let go, sixteen reads of controllers 2
+            # and 3, WRIO's bit cleared, sixteen of controller 4, and the bit set again. A tap whose
+            # third controller's first eight buttons read all held is not believed either, since
+            # nobody holds all four ways of the cross at once. Nintendo's own MULTI5 routine reads it
+            # the same way, taking the first sixteen bits from the console's automatic read.
+            #
+            # With no tap there, the third and fourth controllers hold nothing, and the last
+            # sixteen reads are never made: a plain controller would hand over sixteen bits of 1
+            # past its own, which a game would read as every button down.
+            #
+            # +tap+ is four words of the direct page: controllers 2, 3 and 4 as read, B at the top
+            # (JOYPAD_BITS), then whether the tap answered. A is 16 bits wide after, X is used.
+            def emit_tap_bits(asm, tap, label)
+              h = Console::SNESHardware
+              answered = tap + 6
+              asm.sep(0x20)
+              asm.lda(TAP_FIRST_PLUGS)
+              asm.sta(asm.abs(h::WRIO))
+              asm.lda(1)
+              asm.sta(asm.abs(JOYSER0))
+              asm.lda(0b10)
+              asm.sta(asm.direct(answered))
+              asm.ldx(8)
+              asm.label("#{label}_seen")
+              asm.lda(asm.abs(JOYSER1))
+              asm.and_a(asm.direct(answered))
+              asm.sta(asm.direct(answered))
+              asm.dex
+              asm.bne("#{label}_seen")
+              asm.stz(asm.abs(JOYSER0))
+              asm.rep(0x20)
+              asm.stz(asm.direct(tap))
+              asm.stz(asm.direct(tap + 2))
+              asm.stz(asm.direct(tap + 4))
+              asm.ldx(16)
+              asm.label("#{label}_first_plugs")
+              asm.lda(asm.abs(JOYSER1))
+              asm.lsr
+              asm.rol(asm.direct(tap))
+              asm.lsr
+              asm.rol(asm.direct(tap + 2))
+              asm.dex
+              asm.bne("#{label}_first_plugs")
+              asm.lda(asm.direct(answered))
+              asm.and_a(0b10)
+              asm.beq("#{label}_none")
+              asm.lda(asm.direct(tap + 2))
+              asm.and_a(0xFF00)
+              asm.cmp(0xFF00)
+              asm.beq("#{label}_none")
+              asm.sep(0x20)
+              asm.lda(TAP_LAST_PLUGS)
+              asm.sta(asm.abs(h::WRIO))
+              asm.rep(0x20)
+              asm.ldx(16)
+              asm.label("#{label}_last_plugs")
+              asm.lda(asm.abs(JOYSER1))
+              asm.lsr
+              asm.rol(asm.direct(tap + 4))
+              asm.dex
+              asm.bne("#{label}_last_plugs")
+              asm.sep(0x20)
+              asm.lda(TAP_FIRST_PLUGS)
+              asm.sta(asm.abs(h::WRIO))
+              asm.rep(0x20)
+              asm.bra("#{label}_done")
+              asm.label("#{label}_none")
+              asm.stz(asm.direct(tap + 2))
+              asm.label("#{label}_done")
+            end
+
+            # rt_buttons_remapped (JSR): A = the buttons in A as a controller hands them over
+            # (JOYPAD_BITS), a bit each in IR::Buttons's order, X used. The top byte (B to Right)
+            # and the next four bits (A, X, L and R) are each looked up in a table worked out as the
+            # cartridge is built, a few instructions in place of a test of each button.
+            def emit_buttons_remapped(asm, pad, extra_buttons)
+              asm.label("rt_buttons_remapped")
+              asm.sta(asm.direct(pad))
+              asm.xba
+              asm.and_a(0x00FF)
+              asm.asl
+              asm.tax
+              asm.lda(asm.long_x("rt_buttons_remapped_high"))
+              asm.sta(asm.direct(pad + 2))
+              asm.lda(asm.direct(pad))
+              asm.and_a(0x00F0)
+              asm.lsr
+              asm.lsr
+              asm.lsr
+              asm.tax
+              asm.lda(asm.long_x("rt_buttons_remapped_low"))
+              asm.ora(asm.direct(pad + 2))
+              asm.rts
+              asm.label("rt_buttons_remapped_high")
+              asm.data_words(Array.new(256) { |byte| buttons_remapped(byte << 8, extra_buttons) })
+              asm.label("rt_buttons_remapped_low")
+              asm.data_words(Array.new(16) { |nibble| buttons_remapped(nibble << 4, extra_buttons) })
+            end
+
+            # The bits of +word+, as a controller hands them over, in IR::Buttons's order.
+            def buttons_remapped(word, extra_buttons)
+              BUTTON_BITS.sum do |name, (from, to)|
+                next 0 if EXTRA_BUTTONS.include?(name) && !extra_buttons
+
+                word.anybits?(from) ? to : 0
+              end
             end
 
             # The routine at +label+: A = the buttons held now on the controller read through
@@ -545,11 +787,10 @@ module VBlank
 
             # What that routine does, written in place: A = the buttons, its labels named from +label+.
             def emit_controller_bits(asm, pad, label, port, extra_buttons)
-              joyser = 0x4016
               asm.sep(0x20)
               asm.lda(1)
-              asm.sta(asm.abs(joyser))
-              asm.stz(asm.abs(joyser))
+              asm.sta(asm.abs(JOYSER0))
+              asm.stz(asm.abs(JOYSER0))
               asm.rep(0x20)
               asm.stz(asm.direct(pad))
               asm.ldx(16)
@@ -559,6 +800,12 @@ module VBlank
               asm.rol(asm.direct(pad))
               asm.dex
               asm.bne("#{label}_bit")
+              emit_bits_remapped(asm, pad, label, extra_buttons)
+            end
+
+            # The word at +pad+, as a controller hands it over, turned into IR::Buttons's order a
+            # button at a time: A = the buttons, and the word at +pad+ + 2 too.
+            def emit_bits_remapped(asm, pad, label, extra_buttons)
               asm.stz(asm.direct(pad + 2))
               BUTTON_BITS.each do |name, (from, to)|
                 next if EXTRA_BUTTONS.include?(name) && !extra_buttons
@@ -577,17 +824,17 @@ module VBlank
 
             # One controller's frame: the buttons read (the block emits that, leaving them in A), and
             # what they show kept.
-            def emit_controller_update(asm, at, pad, seen, pressed, held)
+            def emit_controller_update(asm, at, pad, controller)
               yield
               asm.sta(asm.direct(pad))
-              asm.lda(at.call(seen))
+              asm.lda(at.call(controller.seen))
               asm.eor(0xFFFF)
               asm.and_a(asm.direct(pad))
-              asm.ora(at.call(pressed))
-              asm.sta(at.call(pressed))
+              asm.ora(at.call(controller.pad_pressed))
+              asm.sta(at.call(controller.pad_pressed))
               asm.lda(asm.direct(pad))
-              asm.sta(at.call(held))
-              asm.sta(at.call(seen))
+              asm.sta(at.call(controller.pad_held))
+              asm.sta(at.call(controller.seen))
             end
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is

@@ -27,11 +27,13 @@ module VBlank
       def width = @core.width
       def height = @core.height
 
-      # +keys+ is a button mask (IR::Buttons.mask).
+      # +keys+ is a button mask (IR::Buttons.mask). The third and fourth players' go to the plugs a
+      # Super Multitap would have; this reader plugs none in, so a cartridge read here plays as on
+      # a console with a plain controller in each port.
       def step(frames, keys: 0)
-        first, second = IR::Buttons.by_controller(IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) })
-        @core.set_buttons(first)
-        @core.set_buttons(second, port: 1)
+        held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
+        IR::Buttons.by_controller(held, controllers: Console::SUPER_NINTENDO.controllers)
+                   .each_with_index { |buttons, port| @core.set_buttons(buttons, port: port) }
         @last_audio = Array.new(frames) do
           @core.run_frame
           @core.take_audio.pack("s<*")

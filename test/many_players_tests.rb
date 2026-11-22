@@ -5,8 +5,9 @@
 # connected player, and the game asks how many are connected.
 #
 # Every build that plays on a computer reads sixteen players, and so does the interpreter, but no
-# console's cartridge does: the Advance and the Color read one controller and the Super Nintendo
-# and the Genesis two, and each refuses a game that reads more. So these tests are not in
+# console's cartridge does: the Advance and the Color read one controller, the Genesis two and the
+# Super Nintendo four (test/lowering/snes/vblank/ir/backends/snes/test_snes_multitap.rb), and each
+# refuses a game that reads more. So these tests are not in
 # test/all/, which every cartridge run plays too, and not in test/console/, which a console's
 # cartridge run plays. They are played through game_player by each run whose player reads them
 # all: the interpreter (test/interpreter/vblank/builder/test_many_players_interpreter.rb), and the

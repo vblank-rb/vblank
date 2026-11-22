@@ -87,11 +87,12 @@ module VBlank
       # any of them.
       def player?(player) = player == ANY || (player.is_a?(Integer) && player.between?(1, MOST_PLAYERS))
 
-      # The first player's buttons among +held+, and then the second's, by the plain names each
-      # has on its own controller: what a console's two ports are told.
-      def by_controller(held)
-        first = held & NAMES
-        [first, SECOND_PLAYER.select { |_name, theirs| held.include?(theirs) }.keys]
+      # The first player's buttons among +held+, then the second's, and so on for +controllers+
+      # players, by the plain names each has on its own controller: what a console's ports are told.
+      def by_controller(held, controllers: 2)
+        PLAYERS_NAMES.first(controllers).map do |names|
+          NAMES.zip(names).filter_map { |name, theirs| name if held.include?(theirs) }
+        end
       end
 
       # Every name a test of +button+ for +player+ looks for among the buttons held: `pressed(:any,

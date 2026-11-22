@@ -120,7 +120,7 @@ module VBlank
 
           VALUE_KINDS = (%i[
             int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed list_get
-            list_len table_get timer_ticks chance local_player
+            list_len table_get timer_ticks chance local_player players_connected
           ] + Collision::VALUE_KINDS + Saving::VALUE_KINDS).freeze
 
           def value_of_kind(node)
@@ -143,6 +143,7 @@ module VBlank
             when :timer_ticks then value_of_timer_ticks(node)
             when :chance then value_of_chance(node)
             when :local_player then value_of_local_player(node)
+            when :players_connected then value_of_players_connected(node)
             when *Collision::VALUE_KINDS then value_of_collision_kind(node)
             when *Saving::VALUE_KINDS then value_of_saving_kind(node)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
@@ -154,8 +155,7 @@ module VBlank
           # above to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the picture" => %i[show_picture_group data_byte],
-                                                    "sprite tiles the game loads" => %i[load_sprite_tiles],
-                                                    "telling which controllers are connected" => %i[players_connected]
+                                                    "sprite tiles the game loads" => %i[load_sprite_tiles]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by
@@ -3801,6 +3801,15 @@ module VBlank
 
           # A cartridge is played by one person, the first player.
           def value_of_local_player(_node) = load_constant(1)
+
+          # The first player, and each one after up to the highest whose button has been down
+          # (Runtime::Frame::PLAYERS_PAST_FIRST, which never falls).
+          def value_of_players_connected(_node)
+            @asm.lda(@asm.abs(@memory[Runtime::Frame::PLAYERS_PAST_FIRST]))
+            @asm.inc
+            @asm.sta(@asm.direct(R0))
+            @asm.stz(@asm.direct(R0 + 2))
+          end
           def value_of_var_ref(node) = load_variable(node.name)
 
           def value_of_binop(node)
@@ -4037,16 +4046,23 @@ module VBlank
           end
 
           # The buttons held, or pressed, through the pass: a bit each, in IR::Buttons's order, and
-          # any of them for Buttons::ANY. The second controller's are a word of their own, with
-          # the same bits, and either controller is the two words together.
-          def value_of_held(node) = emit_button_truth(Runtime::Frame::HELD, Runtime::Frame::SECOND_HELD, node)
-          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::PRESSED, Runtime::Frame::SECOND_PRESSED, node)
+          # any of them for Buttons::ANY. Each other controller's are a word of their own, with
+          # the same bits, and any player is every word the game reads together
+          # (Runtime::Frame::CONTROLLERS).
+          def value_of_held(node) = emit_button_truth(Runtime::Frame::CONTROLLERS.map(&:held), node)
+          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::CONTROLLERS.map(&:pressed), node)
 
-          def emit_button_truth(first, second, node)
+          # +words+ is where each controller's buttons are kept, the first player's first.
+          def emit_button_truth(words, node)
             mask = button_truth_mask(node.button)
             nought = fresh("not_down")
-            @asm.lda(@asm.abs(@memory[node.player == 2 ? second : first]))
-            @asm.ora(@asm.abs(@memory[second])) if node.player == Buttons::ANY
+            if node.player == Buttons::ANY
+              read = words.select { |name| @memory.reserved?(name) }
+              @asm.lda(@asm.abs(@memory[read.first]))
+              read.drop(1).each { |name| @asm.ora(@asm.abs(@memory[name])) }
+            else
+              @asm.lda(@asm.abs(@memory[words.fetch(node.player - 1)]))
+            end
             @asm.and_a(mask)
             @asm.beq(nought)
             @asm.lda(1)

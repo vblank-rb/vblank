@@ -56,12 +56,12 @@ module VBlank
 
             module_function
 
-            # +extra_buttons+ and +second_controller+ set what the interrupt reads, as Frame.emit is
+            # +extra_buttons+ and +controllers+ set what the interrupt reads, as Frame.emit is
             # told. Its size does not hang on which byte of the direct page it reads the controller
-            # in, so it is measured with any.
-            def reserve(memory, extra_buttons: false, second_controller: false)
+            # in, so it is measured with any (and a Super Multitap's words with any).
+            def reserve(memory, extra_buttons: false, controllers: 1)
               memory.reserve(WAIT, WAIT_BYTES)
-              size = interrupt_code(memory, pad: 0, extra_buttons: extra_buttons, second_controller: second_controller).bytesize
+              size = interrupt_code(memory, pad: 0, tap: 0, extra_buttons: extra_buttons, controllers: controllers).bytesize
               memory.reserve_far(INTERRUPT, size)
             end
 
@@ -71,9 +71,9 @@ module VBlank
             # byte the picture's layout bits for SCMR (its colours and height; nought when it plots
             # nothing). Both are called long (JSL) with A, X and Y 16 bits wide, and give them back
             # so. The chip's other registers ($3000-$301D) are the caller's to set before
-            # rt_chip_run. +pad+, +extra_buttons+ and +second_controller+ are what Frame.emit is told.
-            def emit(asm, memory, pad:, extra_buttons: false, second_controller: false)
-              interrupt = interrupt_code(memory, pad: pad, extra_buttons: extra_buttons, second_controller: second_controller)
+            # rt_chip_run. +pad+, +tap+, +extra_buttons+ and +controllers+ are what Frame.emit is told.
+            def emit(asm, memory, pad:, tap: nil, extra_buttons: false, controllers: 1)
+              interrupt = interrupt_code(memory, pad: pad, tap: tap, extra_buttons: extra_buttons, controllers: controllers)
               emit_start(asm, memory, interrupt)
               emit_run(asm, memory)
             end
@@ -178,9 +178,9 @@ module VBlank
 
             # The vertical blank's interrupt whole (Frame#emit_interrupt_whole), as bytes to copy
             # into work RAM.
-            def interrupt_code(memory, pad:, extra_buttons:, second_controller:)
+            def interrupt_code(memory, pad:, tap:, extra_buttons:, controllers:)
               asm = W65816.new("rt chip interrupt")
-              Frame.emit_interrupt_whole(asm, memory, pad: pad, extra_buttons: extra_buttons, second_controller: second_controller)
+              Frame.emit_interrupt_whole(asm, memory, pad: pad, tap: tap, extra_buttons: extra_buttons, controllers: controllers)
               Linker.new([asm.section]).link.bytes.byteslice(0, asm.here)
             end
           end

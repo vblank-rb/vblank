@@ -7,8 +7,8 @@
 <text x="616" y="72" fill="#9198a1" font-size="14" text-anchor="end">46 / 53</text>
 <text x="24" y="106" fill="#e6edf3" font-size="14">Super Nintendo</text>
 <rect x="174" y="96" width="382" height="12" rx="6" fill="#21262d"/>
-<rect x="174" y="96" width="151.0" height="12" rx="6" fill="#4493f8"/>
-<text x="616" y="106" fill="#9198a1" font-size="14" text-anchor="end">17 / 43</text>
+<rect x="174" y="96" width="165.0" height="12" rx="6" fill="#4493f8"/>
+<text x="616" y="106" fill="#9198a1" font-size="14" text-anchor="end">19 / 44</text>
 <text x="24" y="140" fill="#e6edf3" font-size="14">Sega Genesis</text>
 <rect x="174" y="130" width="382" height="12" rx="6" fill="#21262d"/>
 <rect x="174" y="130" width="179.8" height="12" rx="6" fill="#4493f8"/>

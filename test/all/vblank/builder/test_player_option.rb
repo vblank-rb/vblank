@@ -34,19 +34,26 @@ class TestPlayerOption < Minitest::Test
     end
   end
 
+  # The Super Nintendo seats four, through a Super Multitap in its second port.
   def test_a_console_refuses_a_player_past_its_controllers_in_plain_words
-    { gba: /one controller/, gbc: /one controller/, snes: /controller 3/, genesis: /controller 3/ }.each do |console, words|
+    { gba: [3, /one controller/], gbc: [3, /one controller/], snes: [5, /controller 5/],
+      genesis: [3, /controller 3/] }.each do |console, (player, words)|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
-        built_for(console, err: said) { game_loop { halt if pressed(:a, player: 3) } }
+        built_for(console, err: said) { game_loop { halt if pressed(:a, player: player) } }
       end
 
       assert_match(words, said.string, console.to_s)
     end
   end
 
+  def test_the_super_nintendo_reads_the_third_and_fourth_players
+    built_for(:snes) { game_loop { halt if pressed(:a, player: 3) || held(:left, player: 4) } }
+    VBlank.build("PLAYERS", console: :snes, players: 4, out: StringIO.new, err: StringIO.new) { game_loop { halt } }
+  end
+
   def test_a_game_for_more_players_than_a_console_seats_is_refused_there
-    { gba: 2, gbc: 2, snes: 3, genesis: 3 }.each do |console, players|
+    { gba: 2, gbc: 2, snes: 5, genesis: 3 }.each do |console, players|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         VBlank.build("PLAYERS", console: console, players: players, out: StringIO.new, err: said) { game_loop { halt } }
@@ -67,18 +74,13 @@ class TestPlayerOption < Minitest::Test
                             out: StringIO.new, err: StringIO.new) { game_loop { halt if held(:left, player: 8) } }
   end
 
-  # A game for the Super Nintendo built for a computer is judged by what that build can do: the
-  # computer's runtime counts the players connected, though the cartridge build does not yet, and
-  # says so by name.
-  def test_a_super_nintendo_game_built_for_a_computer_asks_how_many_players_are_connected
+  # A game for the Super Nintendo counts the players connected, built for a computer and as a
+  # cartridge.
+  def test_a_super_nintendo_game_asks_how_many_players_are_connected
     counting = proc { game_loop { halt if players_connected > 1 } }
     VBlank.build("PLAYERS", console: :snes, cartridge: false, for_computer: true, out: StringIO.new,
                             err: StringIO.new, &counting)
-
-    error = assert_raises(VBlank::BuildError) do
-      VBlank.build("PLAYERS", console: :snes, out: StringIO.new, err: StringIO.new, &counting)
-    end
-    assert_match(/players_connected/, error.message)
+    VBlank.build("PLAYERS", console: :snes, out: StringIO.new, err: StringIO.new, &counting)
   end
 
   def test_a_line_reading_a_player_past_the_ones_the_game_takes_is_refused_in_plain_words
