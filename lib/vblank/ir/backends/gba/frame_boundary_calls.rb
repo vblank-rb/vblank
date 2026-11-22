@@ -56,10 +56,11 @@ module VBlank
           # +program+'s Plan.
           def self.plan(program)
             handlers = IR::Nodes::OnTimer.of(program)
-            bends = RowBends.new(program).nodes
-            return Plan.none if handlers.empty? && bends.empty?
+            return Plan.none if handlers.empty? && program.walk.none? { |node| node.kind == :scroll_rows }
 
             lowering_plan = LoweringPlan.new(program, console: Console::ADVANCE, error: LoweringError)
+            bends = lowering_plan.row_bends.nodes
+            return Plan.none if handlers.empty? && bends.empty?
             funcs = program.walk.select { |node| node.kind == :func }.to_h { |node| [node.name, node] }
             unread = LoopForm.unread_indexes(program)
             reentered = lowering_plan.routines_reentered_at_frame_boundary

@@ -218,7 +218,7 @@ module VBlank
             # What the runtime carries for a try built on +board+ with +choices+ (Runtime::Carries.of).
             def carries(board, **choices)
               @carries[[board, choices]] ||= Runtime::Carries.of(@cache.program, board: board, handover: @cache.handover,
-                                                                                 stacking: @cache.stacking, **choices)
+                                                                                 stacking: @cache.stacking, row_bends: @cache.plan.row_bends, **choices)
             end
 
             # The variables kept in two bytes (HalfVariables), worked out once a build and again after

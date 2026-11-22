@@ -188,7 +188,7 @@ module VBlank
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
           counted = IR::Frames.counts_from_power_on?(program)
-          bends = picture == :tiled && Lowering::Bends.bends?(program)
+          bends = picture == :tiled && !cache.plan.row_bends.empty?
           Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs, counted: counted,
                                   music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),

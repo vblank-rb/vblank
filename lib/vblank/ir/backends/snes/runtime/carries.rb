@@ -57,9 +57,10 @@ module VBlank
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
-            # its layers stack (Stacking.picture), each worked out once a build (BuildCache).
+            # its layers stack (Stacking.picture), each worked out once a build (BuildCache), and +row_bends+
+            # its bends (LoweringPlan#row_bends).
             def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:,
-                        handover: IR::SceneHandover.of(program), stacking: Stacking.picture(program))
+                        handover: IR::SceneHandover.of(program), stacking: Stacking.picture(program), row_bends: RowBends.new(program))
               picture = Lowering::Picture
               songs = Lowering::Sound.songs?(program)
               backdrops = picture.scene_backdrops?(program, handover)
@@ -74,8 +75,8 @@ module VBlank
                   sides: SNES::Music.sides_under_level?(program), status_bar: picture.status_bar?(program),
                   row_held: picture.background_rows_held?(program), alone_flag_in_line_table: picture.alone_flag_in_line_table?(program),
                   held_hides_sprites: picture.held_hides_sprites?(program),
-                  bends: picture.bends?(program),
-                  scene_bends: picture.scene_bends?(program, handover), tile_runs: picture.tile_run_bytes(program),
+                  bends: !row_bends.empty?,
+                  scene_bends: picture.scene_bends?(row_bends, handover), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
                   changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) || walks_areas ||
                                    Lowering::Paint.inks?(program),

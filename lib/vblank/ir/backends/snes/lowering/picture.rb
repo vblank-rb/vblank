@@ -105,15 +105,12 @@ module VBlank
             # Does the game fade to black, which the display's brightness does (Runtime::Tint)?
             def self.fades_to_black?(program) = program.walk.any? { |node| node.kind == :fade && node.toward != :white }
 
-            # Whether +program+ bends a background row by row, which the runtime then keeps the rows
-            # and line tables of (Runtime::Picture's rt_bends_prepare).
-            def self.bends?(program) = !RowBends.new(program).empty?
-
             # Whether a background a scene puts up is bent, whose rows then go straight while that
-            # scene is away (Runtime::Picture::LAYERS_STRAIGHT).
-            def self.scene_bends?(program, handover = IR::SceneHandover.of(program))
+            # scene is away (Runtime::Picture::LAYERS_STRAIGHT). +row_bends+ is the game's bends
+            # (LoweringPlan#row_bends).
+            def self.scene_bends?(row_bends, handover)
               always = handover.always_up.scenery.map(&:name)
-              RowBends.new(program).bends.any? { |bend| !always.include?(bend.background) }
+              row_bends.bends.any? { |bend| !always.include?(bend.background) }
             end
 
             # The runs of tiles +program+ paints from lists (Builder::TileRuns), each once, in the order

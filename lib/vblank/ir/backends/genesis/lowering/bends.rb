@@ -31,9 +31,6 @@ module VBlank
             # (LoweringPlan#bends_in_own_routine?).
             BENDS = "bends frame"
 
-            # Whether +program+ bends any background row by row.
-            def self.bends?(program) = !RowBends.new(program).empty?
-
             # Reference#exec_scroll_rows: a standing declaration, gathered up front (#bends). Its rows
             # are worked out at every wait (#emit_bends), not where it is written.
             def emit_scroll_rows(_node) = nil
