@@ -21,7 +21,7 @@ module ListReadingTests
           3.times { queue.shift }
           [4, 5, 6].each { |number| queue.push number }
           words.push 100_000
-          words.push -2
+          words.push(-2)
           guards.spawn(x: 3, speed: 1.5)
           guards.spawn(x: 4, speed: 0.25)
           guards.spawn(x: 5, speed: -2.5)

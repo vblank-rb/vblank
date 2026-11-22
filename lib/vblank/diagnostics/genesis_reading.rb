@@ -12,6 +12,12 @@ module VBlank
     # runtime keeps.
     module GenesisReading
       include CountedPasses
+      include RuntimeLists
+
+      private def list_layout = IR::Backends::Genesis::Runtime::Lists
+
+      # The 68000 keeps a number's high byte first, in a list's header and its slots alike.
+      private def big_endian? = true
 
       # Four lists of sixteen colours, shared by the backgrounds and the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 0, group: 16)
