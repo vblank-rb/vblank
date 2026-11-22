@@ -40,28 +40,30 @@ class TestSNESFadePace < Minitest::Test
     end
   end
 
-  WHITENING = walking("FADE PACE WHITE") { |level| fade :white, level }
-  TINTING = walking("TINT PACE") { |level| tint :orange, level }
-  UNDIMMED_BLACK = walking("FADE PACE BLACK") { |level| tint :black, level }
+  # Methods, not constants: each game's block holds game code (`level += 7`), and a block kept in a
+  # constant is made shareable, which cannot run game code as normal Ruby.
+  private def whitening = self.class.walking("FADE PACE WHITE") { |level| fade :white, level }
+  private def tinting = self.class.walking("TINT PACE") { |level| tint :orange, level }
+  private def undimmed_black = self.class.walking("FADE PACE BLACK") { |level| tint :black, level }
 
   def test_the_screen_fading_to_white_shows_what_the_interpreter_shows
-    game_player.run(WHITENING.program(console: :snes), frames: 40)
+    game_player.run(whitening.program(console: :snes), frames: 40)
   end
 
   def test_the_tinted_screen_shows_what_the_interpreter_shows
-    game_player.run(TINTING.program(console: :snes), frames: 40)
+    game_player.run(tinting.program(console: :snes), frames: 40)
   end
 
   def test_the_screen_tinted_toward_black_shows_what_the_interpreter_shows
-    game_player.run(UNDIMMED_BLACK.program(console: :snes), frames: 40)
+    game_player.run(undimmed_black.program(console: :snes), frames: 40)
   end
 
   def test_a_fade_toward_white_changing_every_pass_takes_a_small_part_of_each_frame
-    assert_operator colour_share(WHITENING), :<=, MOST_OF_A_FRAME
+    assert_operator colour_share(whitening), :<=, MOST_OF_A_FRAME
   end
 
   def test_a_tint_changing_every_pass_takes_a_small_part_of_each_frame
-    assert_operator colour_share(TINTING), :<=, MOST_OF_A_FRAME
+    assert_operator colour_share(tinting), :<=, MOST_OF_A_FRAME
   end
 
   private

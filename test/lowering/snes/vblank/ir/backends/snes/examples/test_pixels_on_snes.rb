@@ -2,14 +2,18 @@
 
 require "test_helper"
 # A plain require, not ShareableConstants.require_file: Pixels is a game written at the top of its
-# file, so its block belongs to Ruby's top-level object and cannot be shared. This run plays no
-# test in a Ractor, so nothing here needs it shared.
+# file, so its block belongs to Ruby's top-level object and cannot be shared.
 require VBlank.root.join("examples/pixels").to_s
 
 # examples/pixels.rb on a Super Nintendo: placed from the screen's own size, so the flag is in the
 # middle of its 256×224 screen and a marker is in each of its corners — held to the interpreter,
 # every pixel, when the game halts.
 class TestPixelsOnSNES < Minitest::Test
+  # The game's block belongs to Ruby's top-level object, which only the main Ractor may use; and a
+  # program built from it ahead cannot be kept frozen, since a build notes what it works out on the
+  # program's own nodes.
+  runs_on_the_main_ractor!
+
   Color = VBlank::Graphics::Color
 
   def test_the_flag_is_in_the_middle_and_the_markers_in_the_corners

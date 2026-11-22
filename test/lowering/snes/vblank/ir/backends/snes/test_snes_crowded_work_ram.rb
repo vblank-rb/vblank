@@ -61,22 +61,24 @@ class TestSNESCrowdedWorkRAM < Minitest::Test
     end
   end
 
-  CROWDED = crowded(effects: 40, variables: 1300, approaches: 200)
-  CROWDED_ON_CHIP = crowded(effects: 40, variables: 1300, approaches: 200, variants: { snes: :superfx })
+  # Methods, not constants: the game's block holds game code (`pass += 1`), and a block kept in a
+  # constant is made shareable, which cannot run game code as normal Ruby.
+  private def crowded_game = self.class.crowded(effects: 40, variables: 1300, approaches: 200)
+  private def crowded_on_chip = self.class.crowded(effects: 40, variables: 1300, approaches: 200, variants: { snes: :superfx })
 
   private def built(game) = SNES.new.build(game.program(console: :snes)).built
 
   def test_a_crowded_game_plays_as_the_interpreter_plays_it
-    game_player.run(CROWDED.program(console: :snes), frames: 12)
+    game_player.run(crowded_game.program(console: :snes), frames: 12)
   end
 
   def test_a_crowded_game_plays_as_the_interpreter_plays_it_on_a_super_fx_cartridge
-    game_player.run(CROWDED_ON_CHIP.program(console: :snes, variant: :superfx), frames: 12)
+    game_player.run(crowded_on_chip.program(console: :snes, variant: :superfx), frames: 12)
   end
 
   # The runtime's tables go first, and the variables the game names most stay near.
   def test_the_tables_go_further_on_before_the_busy_variables
-    places = built(CROWDED)
+    places = built(crowded_game)
 
     assert_operator places.runtime.fetch(SNES::Runtime::Sound::QUEUE), :>, 0xFFFF
     assert_operator places.runtime.fetch(SNES::Runtime::Sound::LOG), :>, 0xFFFF

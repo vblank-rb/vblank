@@ -221,33 +221,41 @@ class TestSNESChipColumns < Minitest::Test
   # Walls across the whole width of the screen, so the right half's tile columns (x 128 and on, a
   # plot of their own on the chip) are drawn too, running down into the last row of tiles; and the
   # same inside an area that reaches the right edge and the bottom.
-  [false, true].each do |area|
-    define_method(:"test_walls_across_the_whole_width_#{area ? 'inside_an_area_' : ''}look_as_on_the_interpreter") do
-      game = VBlank.game("CHIP WIDE", consoles: %i[snes], variants: { snes: :superfx }) do
-        screen :bitmap
-        image :wall, width: 64, height: 64, data: WALL
-        step = var :step, 0
-        tall = var :_tall, 0
-        func :walls, on_chip: true do
-          repeat(128) do |col|
-            tall = 40 + (((col * 11) + (step * 7)) % 200)
-            draw_column_at :wall, slice: col + step, x: col * 2, top: 224 - tall, height: tall, width: 2
-          end
-        end
-        game_loop do
-          clear_screen :black
-          step += 1
-          if area
-            inside(90, 100, 166, 124) { call :walls }
-          else
-            call :walls
-          end
+  #
+  # Two tests written out, not a loop: a test made in a loop is a shareable copy of its block
+  # (Testing::InRactors::ShareableMethods), and the game's block inside it could not read the loop's
+  # value as game code.
+  def test_walls_across_the_whole_width_look_as_on_the_interpreter = assert_full_width_walls_agree(area: false)
+
+  def test_walls_across_the_whole_width_inside_an_area_look_as_on_the_interpreter
+    assert_full_width_walls_agree(area: true)
+  end
+
+  private def assert_full_width_walls_agree(area:)
+    game = VBlank.game("CHIP WIDE", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      image :wall, width: 64, height: 64, data: WALL
+      step = var :step, 0
+      tall = var :_tall, 0
+      func :walls, on_chip: true do
+        repeat(128) do |col|
+          tall = 40 + (((col * 11) + (step * 7)) % 200)
+          draw_column_at :wall, slice: col + step, x: col * 2, top: 224 - tall, height: tall, width: 2
         end
       end
-      run = game_player.run(superfx_program(game), frames: 40)
-
-      assert_operator run[:step], :>=, 4, "four passes or more were checked"
+      game_loop do
+        clear_screen :black
+        step += 1
+        if area
+          inside(90, 100, 166, 124) { call :walls }
+        else
+          call :walls
+        end
+      end
     end
+    run = game_player.run(superfx_program(game), frames: 40)
+
+    assert_operator run[:step], :>=, 4, "four passes or more were checked"
   end
 
   # A game that paints 255 colours besides black, and draws black on the chip: the chip needs black
