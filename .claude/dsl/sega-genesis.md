@@ -115,12 +115,12 @@ and a test fails when the two differ. The Advance's answers are in
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Genesis has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Genesis does not have.
-- `held` — works: the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` reads the second pad, and `player: :any` reads either. `player: 3` or more is refused, and `players:` more than 2 is refused too: this build reads two pads, and does not read a four-player adapter yet.
+- `held` — works: the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` reads the second pad. `player: 3` and `player: 4` read the pads in a Sega Team Player in the second port. `player: :any` reads all of them. The build refuses `player: 5` or more, and `players:` more than 4, because it reads four pads. If no Team Player is connected, players 3 and 4 hold no buttons.
 - `pressed` — works: see `held`.
 - `most_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
-- `players_connected` — works: 1, or 2 from the first frame a button on the second pad is down.
+- `players_connected` — works: 1 at the start. A player is connected from the first frame that one of their buttons is down. Then the player stays connected. Players 3 and 4 can connect only through a Sega Team Player in the second port. If no Team Player is connected, the count is 1 or 2.
 - `rumble` — works: nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same without it.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.

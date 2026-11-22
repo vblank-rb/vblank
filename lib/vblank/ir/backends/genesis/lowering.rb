@@ -2025,11 +2025,11 @@ module VBlank
 
           def value_of_int(node) = load_constant(node.value)
 
-          # The first player, and the second once a button on the second pad has been down
-          # (Runtime::Frame::SECOND_CONNECTED, 1 from then on).
+          # The first player, and each one after up to the highest whose button has been down
+          # (Runtime::Frame::PLAYERS_PAST_FIRST, which never falls).
           def value_of_players_connected(_node)
             @asm.moveq(0, @asm.d(0))
-            @asm.move(:w, runtime_at(Runtime::Frame::SECOND_CONNECTED), @asm.d(0))
+            @asm.move(:w, runtime_at(Runtime::Frame::PLAYERS_PAST_FIRST), @asm.d(0))
             @asm.addq(:l, 1, @asm.d(0))
           end
 
@@ -2216,20 +2216,26 @@ module VBlank
           def value_of_chance(node) = value(Build.binop(:<, node.draw, Build.int(node.percent)))
 
           # The buttons held, or pressed, through the pass: a bit each, in IR::Buttons's order, and
-          # any of them for Buttons::ANY; the second pad's for `player: 2`, and either pad's for
-          # `player: :any`.
-          def value_of_held(node) = emit_button_truth(Runtime::Frame::HELD, Runtime::Frame::SECOND_HELD, node)
-          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::PRESSED, Runtime::Frame::SECOND_PRESSED, node)
+          # any of them for Buttons::ANY; each other player's pad's for `player: 2` to 4, and every pad
+          # the game reads for `player: :any` (Runtime::Frame::OTHER_CONTROLLERS).
+          def value_of_held(node) = emit_button_truth([Runtime::Frame::HELD] + Runtime::Frame::OTHER_CONTROLLERS.map(&:held), node)
+          def value_of_pressed(node) = emit_button_truth([Runtime::Frame::PRESSED] + Runtime::Frame::OTHER_CONTROLLERS.map(&:pressed), node)
 
-          def emit_button_truth(first, second, node)
+          # +words+ is where each player's buttons are kept, the first player's first.
+          def emit_button_truth(words, node)
             button = node.button
             mask = if button == Buttons::ANY
                      Buttons.mask(Console::GENESIS.buttons)
                    else
                      1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
                    end
-            @asm.move(:w, runtime_at(node.player == 2 ? second : first), @asm.d(0))
-            @asm.or(:w, runtime_at(second), @asm.d(0)) if node.player == Buttons::ANY
+            if node.player == Buttons::ANY
+              read = words.select { |name| @memory.reserved?(name) }
+              @asm.move(:w, runtime_at(read.first), @asm.d(0))
+              read.drop(1).each { |name| @asm.or(:w, runtime_at(name), @asm.d(0)) }
+            else
+              @asm.move(:w, runtime_at(words.fetch(node.player - 1)), @asm.d(0))
+            end
             @asm.and(:w, @asm.imm(mask), @asm.d(0))
             @asm.scc(:ne, @asm.d(0))
             @asm.and(:l, @asm.imm(1), @asm.d(0))

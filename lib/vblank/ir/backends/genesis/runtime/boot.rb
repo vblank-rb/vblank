@@ -45,8 +45,10 @@ module VBlank
             # as soon as the video chip is set up, counting only (Frame::COUNTING), with the part of work RAM
             # it counts in cleared first and left alone by the clearing after (#emit_counting_on).
             #
-            # +second+ (a SecondPad) for a game that reads the second pad (Frame#reads_second_pad?).
-            def emit(asm, main:, registers:, held_at:, counting: nil, second: nil)
+            # +second+ (a SecondPad) for a game that reads the second pad (Frame#reads_second_pad?), and
+            # +team_player+ for one that reads a Team Player there, whose buttons from power-on are read
+            # once work RAM is cleared (Frame#emit_tap_held_from_power_on) in place of the pad's.
+            def emit(asm, main:, registers:, held_at:, counting: nil, second: nil, team_player: false)
               h = Console::GenesisHardware
               asm.label("rt_boot")
               asm.move_to_sr(asm.imm(0x2700)) # every interrupt held off
@@ -58,7 +60,11 @@ module VBlank
               emit_memories_cleared(asm, h, kept_bytes: counting ? counting.bytes : 0, counting: !counting.nil?)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
               asm.move(:w, asm.d(7), asm.disp(5, held_at))
-              emit_second_held_from_power_on(asm, second) if second
+              if team_player
+                asm.jsr(asm.abs_l("rt_tap_held_from_power_on"))
+              elsif second
+                emit_second_held_from_power_on(asm, second)
+              end
               asm.jsr(asm.abs_l("rt_start"))
               asm.jsr(asm.abs_l(main))
               asm.label("rt_main_returned")
@@ -85,7 +91,7 @@ module VBlank
             end
 
             # Where the second pad's buttons held from power-on go (Frame::SECOND_HELD), and whether a
-            # button on it makes the second player connected (Frame::SECOND_CONNECTED): each a distance
+            # button on it makes the second player connected (Frame::PLAYERS_PAST_FIRST): each a distance
             # from A5.
             SecondPad = Data.define(:held_at, :connected_at)
 

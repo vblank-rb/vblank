@@ -34,10 +34,11 @@ class TestPlayerOption < Minitest::Test
     end
   end
 
-  # The Super Nintendo seats four, through a Super Multitap in its second port.
+  # The Super Nintendo seats four, through a Super Multitap in its second port, and the Genesis
+  # four through a Team Player in its second port.
   def test_a_console_refuses_a_player_past_its_controllers_in_plain_words
     { gba: [3, /one controller/], gbc: [3, /one controller/], snes: [5, /controller 5/],
-      genesis: [3, /controller 3/] }.each do |console, (player, words)|
+      genesis: [5, /controller 5/] }.each do |console, (player, words)|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         built_for(console, err: said) { game_loop { halt if pressed(:a, player: player) } }
@@ -47,15 +48,17 @@ class TestPlayerOption < Minitest::Test
     end
   end
 
-  def test_the_super_nintendo_reads_the_third_and_fourth_players
-    said = StringIO.new
-    refute_nil built_for(:snes, err: said) { game_loop { halt if pressed(:a, player: 3) || held(:left, player: 4) } }
-    refute_nil VBlank.build("PLAYERS", console: :snes, players: 4, out: StringIO.new, err: said) { game_loop { halt } }
-    refute_match(/controller/, said.string, "nothing is said about the controllers")
+  def test_the_super_nintendo_and_the_genesis_read_the_third_and_fourth_players
+    %i[snes genesis].each do |console|
+      said = StringIO.new
+      refute_nil built_for(console, err: said) { game_loop { halt if pressed(:a, player: 3) || held(:left, player: 4) } }
+      refute_nil VBlank.build("PLAYERS", console: console, players: 4, out: StringIO.new, err: said) { game_loop { halt } }
+      refute_match(/controller/, said.string, "nothing is said about the controllers on the #{console}")
+    end
   end
 
   def test_a_game_for_more_players_than_a_console_seats_is_refused_there
-    { gba: 2, gbc: 2, snes: 5, genesis: 3 }.each do |console, players|
+    { gba: 2, gbc: 2, snes: 5, genesis: 5 }.each do |console, players|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         VBlank.build("PLAYERS", console: console, players: players, out: StringIO.new, err: said) { game_loop { halt } }

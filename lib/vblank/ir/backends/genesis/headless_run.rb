@@ -96,14 +96,19 @@ module VBlank
 
           def big_endian? = true
 
-          def power_on = set_buttons(@held)
+          # A game that reads the third or fourth player is played with a Team Player in the second
+          # port, as a person playing it with four would have.
+          def power_on
+            @core.plug_in_team_player if Runtime::Frame.reads_team_player?(@rom.built.source_program)
+            set_buttons(@held)
+          end
 
           # The buttons a game names, on the pads': the same names, the second player's on the second
-          # pad. A button a Genesis pad lacks is one no cartridge for it can read, so it is not pressed.
+          # pad, and through a Team Player the third's and fourth's on its next plugs. A button a Genesis
+          # pad lacks is one no cartridge for it can read, so it is not pressed.
           def set_buttons(buttons)
-            first, second = Buttons.by_controller(buttons.map(&:to_sym))
-            @core.set_buttons(first & PAD_BUTTONS)
-            @core.set_buttons(second & PAD_BUTTONS, port: 1)
+            Buttons.by_controller(buttons.map(&:to_sym), controllers: Console::GENESIS.controllers)
+                   .each_with_index { |held, port| @core.set_buttons(held & PAD_BUTTONS, port: port) }
           end
 
           # A run of no frames ends as the first pass does, before anything is shown

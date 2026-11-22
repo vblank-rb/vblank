@@ -571,12 +571,14 @@ module VBlank
                                      save_memories: SNES_PLAIN_SAVE_MEMORIES,
                                      extension: ".sfc")
 
-    # The Sega Genesis: a 320×224 screen, two pads of seven buttons each (the D-pad, A, B, C and Start:
+    # The Sega Genesis: a 320×224 screen, pads of seven buttons each (the D-pad, A, B, C and Start:
     # no Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
     # tiles, nothing that turns, four lists of sixteen colours, and colours of 9 bits, three to a
-    # channel. What each verb does on it is Console::GenesisAnswers's to say.
+    # channel. Four pads: the first port's, and three on a Team Player in the second
+    # (Genesis::Runtime::Frame#emit_team_player_read). What each verb does on it is
+    # Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
-                              buttons: %i[a b c start right left up down].freeze, controllers: 2,
+                              buttons: %i[a b c start right left up down].freeze, controllers: 4,
                               holds_background_above_row: false, background_box: nil, cells_in_front: true, glides_recordings: true,
                               sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
