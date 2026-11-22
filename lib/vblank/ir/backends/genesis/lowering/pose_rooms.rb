@@ -27,13 +27,22 @@ module VBlank
           # blank at the end of the pass (Runtime::Tiles#emit_upload) compares it with the pose last copied
           # in, and copies only on a change, before the sprite table that shows it, so the frame that first
           # shows a pose draws it from its own tiles. The rooms together are held to what the video chip
-          # moves in a blank beside the sprite table and the colours (MOST_TILES), so every room changing on
+          # moves in a blank beside the sprite table, the colours and a bending game's line table (#most_room_tiles), so every room changing on
           # one frame still lands before the screen is drawn.
           module PoseRooms
             # The most tiles all the rooms may hold together: what the video chip copies in one blank, less
             # the sprite table and the colour memory, which are copied in the same blank.
             MOST_TILES = (Console::GenesisHardware::BLANK_DMA_BYTES - (Runtime::Tiles::MOST_SPRITES * Runtime::Tiles::SPRITE_BYTES) -
                           (Art::PALETTES * Art::PLACES * 2)) / Art::TILE_BYTES
+
+            # ...and in a game that bends a background row by row, less the table of every line's scroll too,
+            # which the same blank copies after the poses (Runtime::Tiles#emit_scroll_written).
+            MOST_TILES_BESIDE_LINES = (Console::GenesisHardware::BLANK_DMA_BYTES - (Runtime::Tiles::MOST_SPRITES * Runtime::Tiles::SPRITE_BYTES) -
+                                       (Art::PALETTES * Art::PLACES * 2) -
+                                       (Runtime::Tiles::LINES * Runtime::Tiles::LINE_BYTES)) / Art::TILE_BYTES
+
+            # The most tiles all this game's rooms may hold together.
+            def most_room_tiles = bends.any? ? MOST_TILES_BESIDE_LINES : MOST_TILES
 
             # The routine the blank calls.
             POSES_SENT = "art poses sent"
@@ -47,7 +56,7 @@ module VBlank
 
             # The sprites to keep to one pose in the try after one that ran out of tiles with +streamed+ kept so
             # (Genesis#build): those, and the group of sprites facing the same poses that gives the most tiles
-            # back. Nil where no group left would give any back, or its rooms would be more than MOST_TILES.
+            # back. Nil where no group left would give any back, or its rooms would be more than #most_room_tiles.
             # Asked of a try whose sprite pictures are cut already (Picture#make_sprite_art).
             public def streamed_after(streamed)
               return nil unless tiled?
@@ -58,7 +67,7 @@ module VBlank
                 next unless poses.all? { |name| @art.cut_of(name) }
 
                 room = room_tiles(poses)
-                next if rooms + (room * objects.length) > MOST_TILES
+                next if rooms + (room * objects.length) > most_room_tiles
 
                 gives = poses.uniq.flat_map { |name| @art.cut_tiles(name) }.uniq.length - (room * objects.length)
                 [gives, objects] if gives.positive?

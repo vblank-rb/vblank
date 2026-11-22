@@ -45,8 +45,11 @@ module VBlank
             MOST_SPRITES = Console::GENESIS.sprites
             # The cells the queue holds, each noted as the first word of the command that points the
             # chip at it (#cell_command), which has its plane in it, and its tile. A message box of
-            # 30 by 8 cells opening in one pass fits, and the blank writes that many with time to
-            # spare. A pass that changes more writes the queue early (#emit_queue_written_early).
+            # 30 by 8 cells opening in one pass fits. The blank writes the cells after its copies (the
+            # colours, the poses, the sprite table, and in a game that bends a background row by row the
+            # line table, an eighth of what the chip copies in a blank), so how much of the blank is left
+            # for them depends on what else changed that pass, and a full queue beside full pose rooms
+            # can run past it. A pass that changes more writes the queue early (#emit_queue_written_early).
             MOST_CELLS = 256
             CELL_BYTES = 4
             # A sprite piece's note, which is its row of the sprite table: how far down it is as the chip
@@ -707,7 +710,7 @@ module VBlank
             # A sprite kept to one pose in video memory has the pose it changed to copied in before the
             # sprite table that shows it (Lowering::PoseRooms#pose_rooms_section), so the frame that first
             # shows the pose draws it from its own tiles. The copy is the video chip's, from the cartridge,
-            # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms::MOST_TILES).
+            # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms#most_room_tiles).
             def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false, poses: false,
                             blocks: false, bends: false)
               asm.label("rt_upload")
