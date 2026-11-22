@@ -32,6 +32,11 @@ module VBlank
     # +last+. The repeat's index counts its turns. Each names a variable or list of today's tree,
     # which keeps its meaning: a lowering stepping the walk its own way leaves each with the number
     # the tree would have given it wherever the game or a checked run can read it.
-    WalkShape = Data.define(:pool, :at, :ahead, :last, :links, :step_statements)
+    WalkShape = Data.define(:pool, :at, :ahead, :last, :links, :step_statements) do
+      # The variables of the walk's own: the thing it is on, the one it goes to next and the last
+      # it visits. Every walk writes each of them before it reads it, and nothing outside the walk
+      # reads them, so what they hold once a walk is over is no part of what the game does.
+      def own_variables = [at, ahead, last]
+    end
   end
 end

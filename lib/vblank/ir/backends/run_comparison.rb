@@ -82,16 +82,32 @@ module VBlank
           (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
         end
 
+        # The variables of +program+ no checked run compares: each pool walk's own (IR::WalkShape#own_variables)
+        # and the count of its turns, the index of the repeat the walk is. The builder makes them for the
+        # walk, no game can name them, and every walk writes each before it reads it, so what one holds
+        # between walks is nothing the game can see. A lowering that steps a walk its own way
+        # (SNES::Lowering#emit_stepped_walk) keeps those numbers in registers and memory of its own, and
+        # writes back only what the walk reads.
+        def self.uncompared_variables(program)
+          program.walk.each_with_object(Set.new) do |node, names|
+            next unless node.kind == :repeat && node.pool_walk
+
+            names.merge(node.pool_walk.own_variables)
+            names << node.index if node.index
+          end
+        end
+
         # The first moment +got+ (the lowered side) disagrees with +want+ (the interpreter) on, said
-        # as the frame and everything that differs there; nil when they agree throughout.
-        def first_difference(want, got)
+        # as the frame and everything that differs there; nil when they agree throughout. The
+        # variables named in +uncompared+ (.uncompared_variables) are left out.
+        def first_difference(want, got, uncompared: Set.new)
           if want.map(&:frame) != got.map(&:frame)
             return "how far the run went: the interpreter stopped after frame #{last_frame(want)}, " \
                    "the #{lowered_side} after frame #{last_frame(got)}"
           end
 
           want.zip(got).each do |reference, lowered|
-            differences = variable_differences(reference.variables, lowered.variables)
+            differences = variable_differences(variables_compared(reference.variables, uncompared), variables_compared(lowered.variables, uncompared))
             differences << "the picture differs" if reference.picture != lowered.picture
             if reference.sounds != lowered.sounds
               differences << "the sound log holds #{lowered.sounds} entries in the #{lowered_side} and " \
@@ -184,6 +200,8 @@ module VBlank
         def last_frame(moments) = moments.map(&:frame).grep(Integer).max || 0
 
         private
+
+        def variables_compared(variables, uncompared) = uncompared.empty? ? variables : variables.except(*uncompared)
 
         def sprite_in_words(row) = row ? "#{row.name.inspect} at (#{row.x}, #{row.y}) showing #{row.picture.inspect}" : "none"
 

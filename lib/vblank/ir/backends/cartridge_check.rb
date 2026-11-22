@@ -49,6 +49,7 @@ module VBlank
           frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES
           refuse_endless_game_without_frames!(program)
           before = @save.dup # the interpreter starts from the save memory the cartridge started from
+          @uncompared = RunComparison.uncompared_variables(program)
           super(program, frames: frames)
           width, height = screen.then { |picture| [picture.width, picture.height] }
           interpreted = first_moment_of_each_frame(play_on_interpreter(program, frames, width, height, before))
@@ -102,7 +103,7 @@ module VBlank
         end
 
         # The first moment the two sides differ at, in words, or nil.
-        def moments_difference(interpreted) = self.class.first_difference(interpreted, moments)
+        def moments_difference(interpreted) = self.class.first_difference(interpreted, moments, uncompared: @uncompared)
 
         # What else the console's cartridge is held to the interpreter on, past the moments: the first
         # difference in words, or nil. +before+ is the save memory the run started from, and the

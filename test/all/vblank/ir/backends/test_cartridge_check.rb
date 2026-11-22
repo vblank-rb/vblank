@@ -50,10 +50,14 @@ class TestCartridgeCheck < Minitest::Test
       wrong = self.class.wrong_from && frame.is_a?(Integer) && frame >= self.class.wrong_from
       variables = @run.vars.dup
       variables[:n] += 1 if wrong
-      Comparison::Moment.new(frame: frame, variables: variables, picture: Comparison.picture_check(shown),
+      Comparison::Moment.new(frame: frame, variables: altered(variables), picture: Comparison.picture_check(shown),
                              sounds: @run.audio.size, sprites: @run.sprites_by_depth,
-                             collections: @run.game_state.except(:vars), sounding: [])
+                             collections: altered_collections(@run.game_state.except(:vars)), sounding: [])
     end
+
+    # The variables and the lists and pools as a moment holds them, changed by a stand-in told to.
+    def altered(variables) = variables
+    def altered_collections(collections) = collections
   end
 
   # The stand-in checked against the interpreter.
@@ -72,6 +76,33 @@ class TestCartridgeCheck < Minitest::Test
     def moments = super.reject { |moment| moment.frame == 3 }
   end
 
+  # The same, with every variable a walk of a pool keeps of its own (its thing, the next, the
+  # last and its count of turns, read off the walk's repeat) holding a number of its own.
+  class WrongWalkNumbers < CheckedStandIn
+    def run(program, frames:)
+      @walk_numbers = program.walk.select { |node| node.kind == :repeat && node.pool_walk }
+                             .flat_map { |node| [*node.pool_walk.own_variables, node.index] }
+      super
+    end
+
+    private
+
+    def altered(variables) = variables.merge(@walk_numbers.to_h { |name| [name, 77] })
+  end
+
+  # The same, with the game's own variable :total one bigger.
+  class WrongTotal < CheckedStandIn
+    private def altered(variables) = variables.merge(total: variables.fetch(:total) + 1)
+  end
+
+  # The same, with the field :x of the pool's things one bigger.
+  class WrongField < CheckedStandIn
+    private def altered_collections(collections)
+      fields = collections[:pools][:guard].merge(x: collections[:pools][:guard][:x].map { |x| x && (x + 1) })
+      collections.merge(pools: collections[:pools].merge(guard: fields))
+    end
+  end
+
   private def counting
     b = Builder.new
     b.instance_eval do
@@ -80,6 +111,45 @@ class TestCartridgeCheck < Minitest::Test
     end
     b.finalize_program
     b.program
+  end
+
+  # Two things of a pool walked every pass, each adding its place to a variable of the game's.
+  private def walking
+    b = Builder.new
+    b.instance_eval do
+      total = var :total, 0
+      guards = pool :guard, x: 0, capacity: 4
+      guards.spawn(x: 3)
+      guards.spawn(x: 5)
+      game_loop do
+        guards.each do |guard|
+          guard.x += 1
+          total += guard.x
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A pool walk's own numbers are the build's, made for the walk: no game names them, and every walk
+  # sets them before it reads them. So a cartridge that keeps them its own way agrees.
+  def test_the_numbers_a_walk_keeps_of_its_own_are_not_compared
+    run = WrongWalkNumbers.new(save: SaveImage.new).run(walking, frames: 4)
+
+    assert_equal Reference.new.run(walking, frames: 4)[:total], run[:total]
+  end
+
+  def test_a_variable_of_the_game_changed_in_a_walk_is_still_compared
+    error = assert_raises(Comparison::Disagreement) { WrongTotal.new(save: SaveImage.new).run(walking, frames: 4) }
+
+    assert_match(/total: cartridge has \d+, Reference \d+/, error.message)
+  end
+
+  def test_a_field_of_the_walked_pool_is_still_compared
+    error = assert_raises(Comparison::Disagreement) { WrongField.new(save: SaveImage.new).run(walking, frames: 4) }
+
+    assert_match(/pool :guard field :x/, error.message)
   end
 
   def test_two_sides_that_agree_say_nothing
