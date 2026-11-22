@@ -12,8 +12,12 @@ module VBlank
     class SNESProbe
       # bsnes's picture is held in 256 × 224, so a whole screen's questions (Emulator.screen_questions)
       # read this as they read any console's.
-      def initialize(path, save_dir: nil)
+      #
+      # +multitap+ plugs a Super Multitap into the second port before the first frame, as a person
+      # playing with four would have (RubySnesEmulator::Core#plug_in_multitap).
+      def initialize(path, save_dir: nil, multitap: false)
         @core = Emulator.open_snes(path, save_dir: save_dir)
+        @core.plug_in_multitap if multitap
         @battery = Cartridge::SNESROM.battery?(File.binread(path))
         @last_audio = []
       end
@@ -27,9 +31,10 @@ module VBlank
       def width = @core.width
       def height = @core.height
 
-      # +keys+ is a button mask (IR::Buttons.mask). The third and fourth players' go to the plugs a
-      # Super Multitap would have; this reader plugs none in, so a cartridge read here plays as on
-      # a console with a plain controller in each port.
+      # +keys+ is a button mask (IR::Buttons.mask). The second player's go to the second port, and
+      # the third and fourth players' to the next plugs of a Super Multitap there, as
+      # IR::Backends::SNES::HeadlessRun hands them over. Without a tap (+multitap+), the second
+      # port has a plain controller, and the third and fourth players' buttons reach nothing.
       def step(frames, keys: 0)
         held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
         IR::Buttons.by_controller(held, controllers: Console::SUPER_NINTENDO.controllers)

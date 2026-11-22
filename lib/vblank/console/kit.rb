@@ -55,8 +55,10 @@ module VBlank
     #   open_core(path, save_dir:)
     #                           the emulator its cartridges play in, opened on a cartridge file
     #   save_file_extension     how that emulator names the file it keeps battery-backed RAM in
-    #   open_probe(path, save_dir:)
-    #                           a running cartridge as the one reader asks of one
+    #   open_probe(path, save_dir:, multitap:)
+    #                           a running cartridge as the one reader asks of one, with the
+    #                           console's adapter for more controllers in its second port if asked
+    #   multitap_name           that adapter's name (a Super Multitap, a Team Player), or nil
     #   dumps_ir?               whether `vblank build --format ir` can write its games
     #   routine_lister          what lists a routine of its cartridges (`dump_func`), or nil
     #   inspector              what prints one of its cartridges' header and first instructions
@@ -131,8 +133,24 @@ module VBlank
       def save_file_of(_cartridge) = reading::SAVE_FILE
 
       # A running cartridge as the one reader asks of one (Diagnostics::Verifier), opened on a
-      # cartridge file, and what that file is called.
-      def open_probe(path, save_dir:) = Diagnostics::Emulator.probe(path, save_dir: save_dir)
+      # cartridge file, and what that file is called. +multitap+ plugs the console's adapter for
+      # more controllers into its second port (#multitap_name), which a console with none refuses.
+      def open_probe(path, save_dir:, multitap: false)
+        refuse_missing_multitap! if multitap
+        Diagnostics::Emulator.probe(path, save_dir: save_dir)
+      end
+
+      # The adapter that plugs into the console's second port and takes the third and fourth
+      # players' controllers, by its maker's name, or nil for a console with none.
+      def multitap_name = nil
+
+      # A plain refusal of `multitap:` for a console with no such adapter.
+      def refuse_missing_multitap!
+        return if multitap_name
+
+        raise ArgumentError, "`multitap: true` is set for a #{title} cartridge. A #{title} has no adapter for more " \
+                             "controllers. To fix this, remove `multitap:`."
+      end
 
       # The emulator its cartridges play in, loaded, and what answers questions about a whole screen
       # of its picture. The Advance and the Color play in libmgba, the Advance's emulator, whose C
@@ -331,7 +349,8 @@ module VBlank
       def cartridge = Cartridge::SNESROM
       def reading = Diagnostics::SNESReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_snes(path, save_dir: save_dir)
-      def open_probe(path, save_dir:) = Diagnostics::SNESProbe.new(path, save_dir: save_dir)
+      def open_probe(path, save_dir:, multitap: false) = Diagnostics::SNESProbe.new(path, save_dir: save_dir, multitap: multitap)
+      def multitap_name = "Super Multitap"
       def load_emulator! = Diagnostics::Emulator.load_snes!
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
@@ -385,7 +404,8 @@ module VBlank
       def cartridge = Cartridge::GenesisROM
       def reading = Diagnostics::GenesisReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_genesis(path, save_dir: save_dir)
-      def open_probe(path, save_dir:) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir)
+      def open_probe(path, save_dir:, multitap: false) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir, multitap: multitap)
+      def multitap_name = "Team Player"
       def load_emulator! = Diagnostics::Emulator.load_genesis!
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
@@ -407,7 +427,8 @@ module VBlank
       def cartridge = Cartridge::PS1EXE
       def reading = Diagnostics::PS1Reading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_ps1(path, save_dir: save_dir)
-      def open_probe(path, save_dir:) = Diagnostics::PS1Probe.new(path, save_dir: save_dir)
+      def open_probe(path, save_dir:, multitap: false) = Diagnostics::PS1Probe.new(path, save_dir: save_dir, multitap: multitap)
+      def multitap_name = "Multitap"
       def load_emulator! = Diagnostics::Emulator.load_ps1!
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"

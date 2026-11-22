@@ -13,8 +13,11 @@ module VBlank
     # names (PS1::HeadlessRun::PAD_BUTTONS lists which is which). And the build makes no sound yet, so
     # every frame's sound is silence.
     class PS1Probe
-      def initialize(path, save_dir: nil)
+      # +multitap+ plugs Sony's Multitap into the second port before the first frame
+      # (RubyPS1Emulator::Core#plug_in_multitap).
+      def initialize(path, save_dir: nil, multitap: false)
         @core = Emulator.open_ps1(path, save_dir: save_dir)
+        @core.plug_in_multitap if multitap
         @frames = 0
       end
 
@@ -25,8 +28,8 @@ module VBlank
       def height = @core.height
 
       # +keys+ is a button mask (IR::Buttons.mask), the second player's on the second pad. The third and
-      # fourth players' go to the plugs a Multitap would have; this reader plugs none in, so a program read
-      # here plays as on a console with a plain pad in each port.
+      # fourth players' go to the next plugs of a Multitap there. Without one (+multitap+), the second port
+      # has a plain pad, and the third and fourth players' buttons reach nothing.
       def step(frames, keys: 0)
         held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
         IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(held).each_with_index do |buttons, port|

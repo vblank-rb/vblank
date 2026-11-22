@@ -21,14 +21,25 @@ module VBlank
 
       attr_reader :path, :buffer
 
-      def initialize(path)
+      # +multitap+ plays the cartridge with the console's adapter for more controllers in its
+      # second port (Console::Kit#multitap_name): a Super Multitap on the Super Nintendo, a Team
+      # Player on the Genesis, a Multitap on the PlayStation. The third and fourth players' buttons
+      # then reach its plugs. A file has no program to ask whether the game reads one, so the
+      # caller says so. Without it the second port has a plain controller, and a console with no
+      # such adapter refuses it.
+      def initialize(path, multitap: false)
         raise ArgumentError, "There is no cartridge file at #{path}. Give the path of a cartridge file." unless File.file?(path)
 
         @path = path.to_s
         @buffer = File.binread(path).freeze
         @kind = self.class.kinds.find { |kind| kind.header?(@buffer) }
         refuse_non_cartridge!
+        Console.for(console).refuse_missing_multitap! if multitap
+        @multitap = multitap == true
       end
+
+      # Whether it plays with the adapter for more controllers in (+multitap+ above).
+      def multitap? = @multitap
 
       # Nothing built this, so there is no record of how.
       def built = nil

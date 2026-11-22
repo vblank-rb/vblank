@@ -84,8 +84,8 @@ module VBlank
 
       # A probe on +cartridge+ for the length of the block, closed when it ends; without a block, the
       # probe, for the caller to close.
-      def self.open(cartridge, labels: {}, save: nil, save_dir: nil)
-        probe = new(cartridge, labels: labels, save: save, save_dir: save_dir)
+      def self.open(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false)
+        probe = new(cartridge, labels: labels, save: save, save_dir: save_dir, multitap: multitap)
         return probe unless block_given?
 
         begin
@@ -95,11 +95,12 @@ module VBlank
         end
       end
 
-      def initialize(cartridge, labels: {}, save: nil, save_dir: nil)
+      def initialize(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false)
         @labels = labels.to_h { |name, place| [name.to_s, label_from(place)] }
+        refuse_multitap_on_built!(cartridge) if multitap
         @owns_save_dir = save_dir.nil?
         @save_dir = save_dir || Dir.mktmpdir("vblank-probe")
-        cartridge = Diagnostics::CartridgeFile.new(cartridge) unless cartridge.respond_to?(:console)
+        cartridge = Diagnostics::CartridgeFile.new(cartridge, multitap: multitap) unless cartridge.respond_to?(:console)
         @kit = Console.for(cartridge.console)
         @reader = Diagnostics::Verifier.new(cartridge, frames: 0, save: save, save_dir: @save_dir)
         @frame = 0
@@ -288,6 +289,17 @@ module VBlank
         @reader.step(frames, keys: mask)
         @frame += frames
         self
+      end
+
+      # `multitap:` is for a cartridge opened by its path. A built cartridge, or a CartridgeFile
+      # already opened, is played as it was given: with the adapter only if the file was opened so.
+      def refuse_multitap_on_built!(cartridge)
+        return unless cartridge.respond_to?(:console)
+        return if cartridge.respond_to?(:multitap?) && cartridge.multitap?
+
+        raise ArgumentError, "The probe got `multitap: true` and a built cartridge, not the path of a cartridge file. " \
+                             "`multitap:` works only on a cartridge file. To fix this, give the path of the file. Or " \
+                             "open the file with `CartridgeFile.new(path, multitap: true)`."
       end
 
       def refuse_holding_and_keys!(holding, keys)

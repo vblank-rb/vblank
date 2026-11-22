@@ -29,11 +29,21 @@ module VBlank
       WIDE_SCREEN_SPRITE_ENTRIES = 80
       NARROW_SCREEN_SPRITE_ENTRIES = 64
 
-      def initialize(path, save_dir: nil)
+      # +multitap+ plugs Sega's Team Player into the second port before the first frame
+      # (RubyGenesisEmulator::Core#plug_in_team_player), its plugs filled with three-button pads.
+      def initialize(path, save_dir: nil, multitap: false)
         @path = path
         @save_dir = save_dir
-        @core = Emulator.open_genesis(path, save_dir: save_dir)
+        @multitap = multitap
+        @core = open_core
         @last_audio = []
+      end
+
+      # The core on the cartridge, with the core settings +settings+, and the Team Player plugged in
+      # if one was asked for.
+      private def open_core(settings: {})
+        core = Emulator.open_genesis(@path, save_dir: @save_dir, settings: settings)
+        @multitap ? core.plug_in_team_player : core
       end
 
       # The voices #hearing can name: the FM chip's six and the square chip's three and its noise.
@@ -67,8 +77,7 @@ module VBlank
 
         silent = only ? channels - named : named
         @core.destroy
-        @core = Emulator.open_genesis(@path, save_dir: @save_dir,
-                                             settings: silent.to_h { |voice| [VOICE_SETTINGS.fetch(voice), "0"] })
+        @core = open_core(settings: silent.to_h { |voice| [VOICE_SETTINGS.fetch(voice), "0"] })
         self
       end
 
@@ -76,8 +85,8 @@ module VBlank
       def height = @core.height
 
       # +keys+ is a button mask (IR::Buttons.mask), the second player's on the second pad. The third
-      # and fourth players' go to the plugs a Team Player would have; this reader plugs none in, so a
-      # cartridge read here plays as on a console with a plain pad in each port.
+      # and fourth players' go to the next plugs of a Team Player there. Without one (+multitap+),
+      # the second port has a plain pad, and the third and fourth players' buttons reach nothing.
       def step(frames, keys: 0)
         held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
         IR::Buttons.by_controller(held, controllers: Console::GENESIS.controllers)

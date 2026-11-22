@@ -1106,6 +1106,11 @@ module VBlank
       # What says how this cartridge's console is played.
       def kit = Console.for(@rom.console)
 
+      # Whether the cartridge plays with the console's adapter for more controllers in its second
+      # port: a cartridge file opened with `multitap: true` (CartridgeFile#multitap?). A built
+      # cartridge answers no such question, and plays with a plain controller there.
+      def multitap? = @rom.respond_to?(:multitap?) && @rom.multitap?
+
       # The picture to compare this reader's with: another reader's, or one that was kept.
       #
       # Anything else is refused here, by size: a picture is four bytes a pixel, and the one
@@ -1136,7 +1141,7 @@ module VBlank
         @rom.write(@tempfile.path)
         @tempfile.flush
         write_save_memory if @save
-        @probe = kit.open_probe(@tempfile.path, save_dir: @save_dir)
+        @probe = kit.open_probe(@tempfile.path, save_dir: @save_dir, multitap: multitap?)
         read_picture_size
         @probe.clock_at(@clock, set: @clock_set) if @clock
         @rendered = true
