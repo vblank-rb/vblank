@@ -129,6 +129,14 @@ writing an instruction is shared, because two copies of a decision drift apart:
   nothing else in the loop writing `i`: `LoopForm#counted_while`), which `ControlFlow#emit_counted_while`
   lowers as a counted loop held as a repeat's count is, and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
+- `Backends::RowBends` (`LoweringPlan#row_bends`) and `Backends::BendSchedule` — a background bent row
+  by row (`scroll_each_row`): which bends a game has (the last of each declared background, in the
+  order first bent), where a block's answer can only change (`bands`), and whether a block can be
+  left out while its scene is away (`observable_while_away?`); and the order every lowering works the
+  rows out in at each frame boundary (`emit_bends_worked_out`: row 0 of every bend, then the rest of
+  each), mixed in beside `ControlFlow` with hooks for the rows, the bands and the row variable. The
+  feed to the display stays each console's. `BendSchedule::OWN_WAYS` names the lowerings with their
+  own way, and `test/all/vblank/ir/backends/test_bend_schedule.rb` holds the list.
 - `Backends::NumberRanges` (`LoweringPlan#number_ranges`) — what range a value stays in, each
   variable's and list's real range worked out together, which variables are proven to stay in a byte
   or two, and which lists (a pool's fields among them) hold only numbers narrower than their slots

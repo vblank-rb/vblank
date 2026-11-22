@@ -817,17 +817,23 @@ module VBlank
             Statements::Function.new(name: @names.own("bend_offsets"), body: answers, exported: true)
           end
 
-          # Reference#work_out_bends: every bend's line 0, then the rest of each bend in turn,
-          # which leaves each bend's row one past the bottom of the screen, the program's console's.
+          # Reference#work_out_bends, in the order every lowering works bends out in (BendSchedule).
           # Called last in every frame boundary (rg_screen_work_out_bends).
           def work_out_bends
-            height = @program.described_console.screen_height
-            first_lines = @bends.bends.map { |bend| work_out_bend_lines(bend.background, 0, 1) }
-            the_rest = @bends.bends.flat_map do |bend|
-              [work_out_bend_lines(bend.background, 1, height), assign(bend.row, Statements::Int.new(height))]
-            end
-            Statements::Function.new(name: @names.own("work_out_bends"), body: first_lines + the_rest, exported: true)
+            Statements::Function.new(name: @names.own("work_out_bends"), body: emit_bends_worked_out, exported: true)
           end
+
+          # The game's bends, for the schedule.
+          def bends = @bends.bends
+
+          # The program's console's screen, whose rows the runtime works out.
+          def bend_screen_height = @program.described_console.screen_height
+
+          # The runtime asks #bend_offsets for each of the lines, which hands each its number in the
+          # bend's variable; the last line asked leaves it there.
+          def emit_bend_rows(bend, first, past) = work_out_bend_lines(bend.background, first, past)
+
+          def emit_row_variable_set(bend, height) = assign(bend.row, Statements::Int.new(height))
 
           # The routines rg_screen.c calls to work the game's light out (Reference#work_out_shade):
           # where the lit span of one row starts and ends, the row going into the light's

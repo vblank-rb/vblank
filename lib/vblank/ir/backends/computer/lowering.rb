@@ -21,6 +21,7 @@ module VBlank
         # carries on from where it stopped: Resumable), and
         # rg_game_dump_state, which a test build uses to print where every variable and list stands.
         class Lowering
+          include BendSchedule
           include Picture
           include Sound
           include Saving
