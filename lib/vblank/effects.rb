@@ -102,9 +102,20 @@ module VBlank
         raise ArgumentError, "Effects.register needs a block: Effects.register(:#{name}) { ... }" unless body
 
         refuse_taken_verb!(name, :inline)
-        VERBS.define_method(name, &body)
+        VERBS.define_method(name, &verb_body(body))
         @verbs = @verbs.merge(name => :inline).freeze
         name
+      end
+
+      # The block a verb is made from. Ruby lets a method made from a plain block be called only
+      # on the Ractor that made it, and a game registers its verbs once, as it loads, while its
+      # tests may build it in any Ractor. So a block that keeps nothing of its own is copied into a
+      # shareable one. A block that keeps a value of its own (a local list, an object) cannot be,
+      # and still makes a verb for the Ractor that registered it.
+      private def verb_body(body)
+        Ractor.shareable_proc(&body)
+      rescue Ractor::IsolationError
+        body
       end
 
       # Add a module of verbs. This is the pack form: several related verbs, their

@@ -135,6 +135,34 @@ class TestRactorSafety < Minitest::Test
     WHY
   end
 
+  # The methods made from a block where only the Ractor that made them calls them, by file. Each
+  # says why no other Ractor can reach one.
+  MADE_FROM_A_BLOCK_ON_PURPOSE = {
+    "lib/vblank/ir/backends/ruby/live_game.rb" =>
+      "LiveGame#count_calls wraps one game's routines for the test that asks, on that test's Ractor"
+  }.freeze
+
+  # A method made from a plain block (`define_method(name) { ... }`) can be called only on the
+  # Ractor that made it: any other is stopped with "defined with an un-shareable Proc in a
+  # different Ractor". One made as a file loads is made on the main Ractor, so every build in a
+  # worker that reaches it stops, and which tests stop depends on the order they play in. So the
+  # library makes such a method from `Ractor.shareable_proc`, or writes it out as source.
+  #
+  # Parsed rather than searched for: a block written after the call is what makes the method a
+  # plain block's, and `&Ractor.shareable_proc { ... }` is a block argument instead.
+  def test_the_library_makes_no_method_from_a_plain_block
+    sources = Dir[VBlank.root.join("lib/**/*.rb").to_s].sort
+    offenders = sources.flat_map { |path| methods_from_plain_blocks(path) }
+
+    assert_empty offenders, <<~WHY
+      These lines make a method from a plain block, which only the Ractor that made it can call:
+
+      #{offenders.map { |where| "  #{where}" }.join("\n")}
+
+      Make it from Ractor.shareable_proc, or write it out with class_eval of its source.
+    WHY
+  end
+
   # The one that actually proves it. The two censuses above are about what the library
   # holds; this one builds a whole cartridge inside a worker and compares it byte for byte
   # with the same build on the main Ractor. Anything still unreachable raises rather than
@@ -209,6 +237,33 @@ class TestRactorSafety < Minitest::Test
   end
 
   private def list(offenders) = offenders.map { |what, kind| "  #{what}  (#{kind})" }.join("\n")
+
+  private def methods_from_plain_blocks(path)
+    relative = path.delete_prefix("#{VBlank.root}/")
+    return [] if MADE_FROM_A_BLOCK_ON_PURPOSE.key?(relative)
+
+    finder = MethodsFromPlainBlocks.new(relative)
+    Prism.parse_file(path).value.accept(finder)
+    finder.found
+  end
+
+  # Each `define_method` or `define_singleton_method` given a block written after the call.
+  class MethodsFromPlainBlocks < Prism::Visitor
+    MAKERS = %i[define_method define_singleton_method].freeze
+
+    attr_reader :found
+
+    def initialize(path)
+      super()
+      @path = path
+      @found = []
+    end
+
+    def visit_call_node(node)
+      @found << "#{@path}:#{node.location.start_line}" if MAKERS.include?(node.name) && node.block.is_a?(Prism::BlockNode)
+      super
+    end
+  end
 
   # Somewhere a class or module works a value out the first time it is asked for and keeps it.
   class LazyModuleCaches < Prism::Visitor
