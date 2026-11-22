@@ -2256,36 +2256,47 @@ module VBlank
             def emit_scroll_rows(_node) = nil
 
             # The game's bends: the last each background is given, in the order the backgrounds were
-            # first bent (Reference#collect_definitions).
-            def bends
-              @plan.row_bends.bends
-            end
+            # first bent (RowBends).
+            def bends = @plan.row_bends.bends
 
-            # Reference#work_out_bends, before the pass's wait: each row of the screen, its number
-            # in the bend's variable, the bend's own steps, and how far along the row sits kept in the
-            # layer's rows (Runtime::Picture.bend_offsets) for the frame the wait shows; the first row of each
-            # bend, then the rest of each, leaving each variable at the screen's height.
+            # Reference#work_out_bends, before the pass's wait, in the order every lowering works bends
+            # out in (BendSchedule): each row of the screen, its number in the bend's variable, the
+            # bend's own steps, and how far along the row sits kept in the layer's rows
+            # (Runtime::Picture.bend_offsets) for the frame the wait shows.
             #
             # A game all of whose bends hold one value for whole bands of rows has each band worked
-            # out once (RowBends#bands). All of them or none: a block asked every row can change a number
-            # another block reads, and then that one's rows are not bands at all.
+            # out once (#bend_bands_taken). All of them or none: a block asked every row can change a
+            # number another block reads, and then that one's rows are not bands at all.
             #
             # A bend whose scene is away is asked as it is on the interpreter if its block can change
             # a number the game reads (RowBends#observable_while_away?), and otherwise takes none of the frame.
             # Only the rows of one whose scene is up are kept: a layer has one set of rows, and
             # another scene's bend may share the layer.
-            def emit_bends
-              bands = bend_bands
+            def emit_bends = emit_bends_worked_out
+
+            def bend_screen_height = Runtime::Picture::SCREEN_HEIGHT
+
+            # A block asked once a band rather than once a row (BendSchedule::OWN_WAYS).
+            def bend_bands_taken(bend) = @plan.row_bends.bands(bend, Runtime::Picture::SCREEN_HEIGHT)
+
+            # Rows +first+ to +past+ - 1 of +bend+, left out while its scene is away if the game cannot
+            # tell. The variable ends at +past+, or at the row for a single row.
+            def emit_bend_rows(bend, first, past)
+              last = past - first == 1 ? first : past
+              emit_bend_rows_unless_away(bend, last) { emit_bend_row_loop(bend, first, past) }
+            end
+
+            # A bend's bands, as steps of lines where every bend's fit the runtime's room for them
+            # (#bends_by_bands?), and as every row's offset otherwise.
+            def emit_bend_bands(bend, firsts)
               height = Runtime::Picture::SCREEN_HEIGHT
-              if bends_by_bands?
-                bends.zip(bands).each { |bend, firsts| emit_bend_rows_unless_away(bend, height) { emit_bend_steps(bend, firsts) } }
-              elsif bands.all?
-                bends.zip(bands).each { |bend, firsts| emit_bend_rows_unless_away(bend, height) { emit_bend_bands(bend, firsts) } }
-              else
-                bends.each { |bend| emit_bend_rows_unless_away(bend, 1) { emit_bend_rows(bend, 0...1) } }
-                bends.each { |bend| emit_bend_rows_unless_away(bend, height) { emit_bend_rows(bend, 1...height) } }
+              emit_bend_rows_unless_away(bend, height) do
+                bends_by_bands? ? emit_bend_steps(bend, firsts) : emit_bend_band_rows(bend, firsts)
               end
             end
+
+            # Each way of working a bend out leaves its row variable at the height already.
+            def emit_row_variable_set(_bend, _height) = nil
 
             # Each bend's bands, as the first row of each, or nil for a bend asked every row.
             def bend_bands
@@ -2333,7 +2344,7 @@ module VBlank
             end
 
             # Each band of +bend+ from its first row, whose answer goes in all the band's rows.
-            def emit_bend_bands(bend, firsts)
+            def emit_bend_band_rows(bend, firsts)
               height = Runtime::Picture::SCREEN_HEIGHT
               firsts.zip(firsts.drop(1) + [height]).each do |first, past|
                 statement(Build.set(bend.row, first))
@@ -2405,18 +2416,19 @@ module VBlank
               @plan.row_bends.observable_while_away?(bend) ? emit_while_bend_up(bend, &store) : yield
             end
 
-            # Rows +rows+ (a range short of its end) of +bend+.
-            def emit_bend_rows(bend, rows)
+            # Rows +first+ to +past+ - 1 of +bend+, leaving its variable at +past+, or at the row for
+            # a single row.
+            def emit_bend_row_loop(bend, first, past)
               top = fresh("bend_row")
               done = fresh("bend_rows_done")
-              statement(Build.set(bend.row, rows.begin))
+              statement(Build.set(bend.row, first))
               @asm.label(top)
               bend.body.each { |child| statement(child) }
               emit_bend_offset(bend)
-              statement(Build.add(bend.row, 1))
-              return if rows.size == 1
+              return if past - first == 1
 
-              jump_unless(Build.binop(:<, Build.var_ref(bend.row), Build.int(rows.end)), done)
+              statement(Build.add(bend.row, 1))
+              jump_unless(Build.binop(:<, Build.var_ref(bend.row), Build.int(past)), done)
               @asm.brl(top)
               @asm.label(done)
             end

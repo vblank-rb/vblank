@@ -469,6 +469,44 @@ class TestRowBend < Minitest::Test
 
   # --- the order the rows are asked in ---
 
+  # A block may read another bend's row. The interpreter asks every bend's top row first
+  # (Reference#work_out_bends), each leaving its row at nought, and then the rest of each bend in
+  # turn, each leaving its row at the height. So the shore's bend, asked its top row, finds the sea's
+  # row at nought, and asked its next row finds it at the height. The two backgrounds are in scenes of
+  # their own, so a console showing one background at a time bends both.
+  def test_a_bend_reading_another_bends_row_finds_it_where_the_interpreter_left_it
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      top_saw = var :top_saw, -1
+      next_saw = var :next_saw, -1
+      sea_rows = []
+      scene(:sea) do
+        sea = background :sea, tiles: :stripes, map: Array.new(20) { "#" * 30 }
+        sea.scroll_each_row do |row|
+          sea_rows << row
+          0
+        end
+      end
+      scene(:shore) do
+        shore = background :shore, tiles: :stripes, map: Array.new(20) { "#" * 30 }
+        shore.scroll_each_row do |row|
+          top_saw = sea_rows.first if row == 0
+          next_saw = sea_rows.first if row == 1
+          0
+        end
+      end
+      var :state, 0
+      game_loop { call({ 0 => :sea, 1 => :shore }, number: :state) }
+    end
+    b.finalize_program
+    run = game_player.run(b.program, frames: 4)
+
+    assert_equal [0, VBlank::Console.described(game_console).screen_height], [run[:top_saw], run[:next_saw]]
+  end
+
   # A bend written for a name the game never declares as a background bends nothing: the interpreter
   # has no rows of it to work out. The DSL only bends a declared background, so the bend is written
   # in the program's own steps.

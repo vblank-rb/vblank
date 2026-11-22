@@ -37,6 +37,7 @@ module VBlank
           end
 
           include ControlFlow
+          include BendSchedule
           include ListPackBlocks
           include DrawOrderWalk
           include SceneryWrites

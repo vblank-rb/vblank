@@ -45,7 +45,16 @@ module VBlank
         # lowering, with why its way is cheaper there. A lowering takes the schedule as it is unless it
         # is named here (.claude/rules/adding-a-backend.md); test_bend_schedule.rb holds the lowerings
         # to this list, both ways.
-        OWN_WAYS = Ractor.make_shareable({})
+        OWN_WAYS = Ractor.make_shareable(
+          {
+            bend_bands_taken: {
+              "SNES" => "The 65816 multiplies and divides a little at a time, so a block with a table read in it " \
+                        "asked for all 224 rows is about a frame on its own. SNES::Lowering#bend_bands_taken takes " \
+                        "each bend's bands when every bend has them and asks its block once a band; the Advance, " \
+                        "the Color and the computer builds ask every row, which their frames hold."
+            }
+          }
+        )
 
         # Reference#work_out_bends: row 0 of every bend, then +after_first_rows+ (what a lowering feeds
         # with the first rows, before the picture starts), then the rest of each bend in turn, each
