@@ -467,6 +467,23 @@ class TestRowBend < Minitest::Test
     assert_backends_agree(program, frames: 4, name: "BUSY")
   end
 
+  # --- the order the rows are asked in ---
+
+  # A bend written for a name the game never declares as a background bends nothing: the interpreter
+  # has no rows of it to work out. The DSL only bends a declared background, so the bend is written
+  # in the program's own steps.
+  def test_a_bend_of_a_background_never_declared_bends_nothing
+    program = bars_program do |_water|
+      ensure_var(:ghost_row)
+      record(VBlank::IR::Build.scroll_rows(:ghost, row: :ghost_row,
+                                           offset: VBlank::IR::Build.binop(:%, VBlank::IR::Build.var_ref(:ghost_row), 8)))
+    end
+    i = game_player.run(program)
+
+    assert_equal ["RR......RR.."] * 4, (0...4).map { |y| row_picture(i, y) }
+    assert_backends_agree(program, frames: 4, name: "GHOST")
+  end
+
   # A block that calls a routine which is itself waiting. The rows are worked out at the frame
   # boundary, which here comes inside :walk's own loop, and the block calls :walk again. Each call
   # counts its own turns, as the interpreter's does, so the walk that waited goes on from its own

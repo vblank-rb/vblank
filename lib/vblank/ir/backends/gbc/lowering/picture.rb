@@ -1380,53 +1380,58 @@ module VBlank
             def emit_camera(node) = runtime_call("rt_background_scroll", [node.x, node.y])
 
             # A background bent row by row (Reference#exec_scroll_rows): a standing declaration,
-            # gathered up front. Its rows are worked out at every frame boundary (#emit_bends), and
-            # shown while its background is up (#emit_bends_shown).
-            def emit_scroll_rows(node) = declared_background!(node)
+            # gathered up front (#bends). Its rows are worked out at every frame boundary
+            # (#emit_bends), and shown while its background is up (#emit_bends_shown).
+            def emit_scroll_rows(_node) = nil
 
             # Reference#work_out_bends, where the pass's wait ends: every bend's, whichever
-            # background is up, as the interpreter works every one out. Each row of the screen, its
-            # number in the bend's variable, the bend's own steps, and how far along it sits kept in
-            # the bend's table for the frame after (#bend_table); the first row of each bend, then
-            # the rest of each; then the variable left past the last row. +painting+ is the
-            # interpreter painting a game that never waits, row by row (Reference#bend_offset_at),
-            # which leaves the variable at the last row.
+            # background is up, as the interpreter works every one out, in the order every lowering
+            # works them out in (BendSchedule). Each row of the screen, its number in the bend's
+            # variable, the bend's own steps, and how far along it sits kept in the bend's table for
+            # the frame after (#bend_table). +painting+ is the interpreter painting a game that never
+            # waits, row by row (Reference#bend_offset_at), which leaves each variable at the last row
+            # painted rather than past it.
             def emit_bends(painting: false)
-              height = Console::GBCHardware::SCREEN_HEIGHT
-              bends.each { |bend| emit_bend_rows(bend, 0...1) }
-              bends.each do |bend|
-                emit_bend_rows(bend, 1...height)
-                statement(Build.set(bend.row, height - 1)) if painting
-              end
+              @painting_bends = painting
+              emit_bends_worked_out
+            ensure
+              @painting_bends = false
             end
 
-            # Rows +rows+ (a range short of its end) of +bend+: the first in its variable, its
-            # steps, the row kept, and on to the next until the last, leaving the variable at the end.
-            def emit_bend_rows(bend, rows)
+            # Rows +first+ to +past+ - 1 of +bend+: the first in its variable, its steps, the row
+            # kept, and on to the next until the last, leaving the variable at +past+. A single row
+            # leaves it at that row.
+            def emit_bend_rows(bend, first, past)
               row = fresh("bend_row")
-              statement(Build.set(bend.row, rows.begin))
+              statement(Build.set(bend.row, first))
               @asm.label(row)
-              bend.children.each { |child| statement(child) }
+              bend.body.each { |child| statement(child) }
               emit_store_row_offset(bend)
-              statement(Build.add(bend.row, 1))
-              return if rows.size == 1
+              return if past - first == 1
 
+              statement(Build.add(bend.row, 1))
               value(bend.row) # rows from nought to the last, so the low byte is all there is to ask
               @asm.load(:a, :e)
-              @asm.cp_a(rows.end)
+              @asm.cp_a(past)
               @asm.jump(:c, row)
             end
 
-            # The game's bends, one for each background bent (Reference#collect_definitions): the
-            # last a background is given, in the order the backgrounds were first bent.
-            def bends
-              @bends ||= @program.walk.select { |node| node.kind == :scroll_rows }.group_by(&:name).map { |_, said| said.last }
+            # The rows' loop stops with the variable at the height; a game that never waits leaves
+            # it at the last row painted.
+            def emit_row_variable_set(bend, height)
+              statement(Build.set(bend.row, height - 1)) if @painting_bends
             end
+
+            def bend_screen_height = Console::GBCHardware::SCREEN_HEIGHT
+
+            # The game's bends (RowBends): the last a background is given, in the order the
+            # backgrounds were first bent.
+            def bends = @plan.row_bends.bends
 
             # Where a bend's rows are kept as a pass works them out: a byte for each row of the screen.
             def bend_table(bend)
               @bend_tables ||= {}
-              @bend_tables[bend.name] ||= @memory.reserve("the bend of #{bend.name.inspect}", Console::GBCHardware::SCREEN_HEIGHT)
+              @bend_tables[bend.background] ||= @memory.reserve("the bend of #{bend.background.inspect}", Console::GBCHardware::SCREEN_HEIGHT)
             end
 
             # The row in the bend's variable kept in its table: the low byte of how far along.
@@ -1450,7 +1455,7 @@ module VBlank
             def emit_bends_shown(bg)
               return if bends.empty?
 
-              bend = bg && bends.find { |said| said.name == bg.name }
+              bend = bg && @plan.row_bends.bend_for(bg.name)
               return @asm.call("rt_bends_off") unless bend
 
               @asm.load(:hl, bend_table(bend))
