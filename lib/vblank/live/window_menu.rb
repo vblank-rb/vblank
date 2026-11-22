@@ -77,7 +77,7 @@ module VBlank
       QUICK_LOAD_KEY = "F9"
 
       # The console's buttons and the window's hotkeys, in Settings::BUTTONS's and HOTKEYS's order.
-      BUTTON_NAMES = %w[A B Select Start Right Left Up Down R L X Y C].freeze
+      BUTTON_NAMES = %w[A B Select Start Right Left Up Down R L X Y C L2 R2].freeze
       HOTKEY_NAMES = ["Pause", "Step one frame", "Show frame rate", "Fullscreen", "Mute", "Show menu", "Fast forward"].freeze
 
       # The most times the picture's size a window can be made. A frontend may set fewer: the most

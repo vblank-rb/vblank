@@ -49,8 +49,15 @@ module VBlank
         end
       end
 
-      # +buttons+, plain names, as +player+'s (:left as player 3's is :p3_left).
-      def self.buttons_as_player(buttons, player) = buttons.map { |button| IR::Buttons.name_for(button, player) }
+      # +buttons+, plain names, as +player+'s (:left as player 3's is :p3_left), and a part pull among
+      # them (IR::Buttons.pulls) the same.
+      def self.buttons_as_player(buttons, player)
+        buttons.map do |button|
+          next IR::Buttons.name_for(button, player) unless button.is_a?(Hash)
+
+          button.transform_keys { |name| IR::Buttons.name_for(name, player) }
+        end
+      end
     end
   end
 end

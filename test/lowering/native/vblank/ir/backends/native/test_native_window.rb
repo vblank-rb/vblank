@@ -258,6 +258,22 @@ class TestNativeWindow < Minitest::Test
     assert_equal ["button x", "button y", "north", "west"], ask(SUPER_NINTENDO, "owner W", "owner Q", "pad_of x", "pad_of y")
   end
 
+  PLAYSTATION = "console a b select start right left up down r l x y l2 r2"
+
+  # L2 and R2 are E and R on the keyboard, and the gamepad's triggers.
+  def test_a_playstation_window_presses_l2_with_e_and_r2_with_r
+    assert_equal ["button l2", "button r2", "left trigger", "right trigger"],
+                 ask(PLAYSTATION, "owner E", "owner R", "pad_of l2", "pad_of r2")
+  end
+
+  def test_a_playstation_window_can_give_l2_another_key_and_keeps_it_in_the_settings_file
+    out = ask(PLAYSTATION, "read\nkey.l2 = D\n.", "keys_of l2", "write").join("\n")
+
+    assert_includes out, "D none"
+    assert_includes out, "key.l2 = D\nkey.r2 = R\n"
+    assert_includes out, "pad.l2 = left_trigger\npad.r2 = right_trigger\n"
+  end
+
   # The Advance has no X, Y or C, so their keys press nothing there and are free for its buttons.
   def test_an_advance_window_has_no_x_y_or_c_and_their_keys_are_free
     assert_equal ["none", "none", "none", "ok", "X C"], ask("owner W", "owner Q", "owner C", "bind_key a 1 C", "keys_of a")

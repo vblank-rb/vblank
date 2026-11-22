@@ -157,8 +157,16 @@ module VBlank
       # How far the stick goes each way is a number up to 32767. A stick at rest seldom reads
       # nought, so it moves the game only once pushed past this, about a third of the way.
       STICK_DEAD_ZONE = 10_000
+      # The triggers: SDL's axes for them, by the windows' own numbers for them as gamepad buttons
+      # (Settings::PAD_BUTTONS), and how far SDL reads one pulled all the way.
+      TRIGGER_AXES = Ractor.make_shareable({ Settings::PAD_BUTTONS.index(:left_trigger) => 4,
+                                             Settings::PAD_BUTTONS.index(:right_trigger) => 5 })
+      TRIGGER_FULL = 32_767
       INIT_GAMEPAD = 0x2000
-      EVENT_PAD_BUTTON_DOWN = 0x651 # (0x650 is a stick moving)
+      EVENT_PAD_AXIS = 0x650 # A stick or a trigger moving
+      PAD_AXIS_AT = 20 # Where in an axis's event the axis is (1 byte)...
+      PAD_AXIS_VALUE_AT = 24 # ...and how far it is (2 bytes, with a sign)
+      EVENT_PAD_BUTTON_DOWN = 0x651
       EVENT_PAD_BUTTON_UP = 0x652
       EVENT_GAMEPAD_ADDED = 0x653
       EVENT_GAMEPAD_REMOVED = 0x654
@@ -1123,7 +1131,13 @@ module VBlank
         type = @event[0, 4].unpack1("L")
         @closed = true if type == EVENT_QUIT || type == EVENT_WINDOW_CLOSE_REQUESTED
         return open_or_close_pad(type) if type == EVENT_GAMEPAD_ADDED || type == EVENT_GAMEPAD_REMOVED
-        return read_pad_button(type == EVENT_PAD_BUTTON_DOWN) if type == EVENT_PAD_BUTTON_DOWN || type == EVENT_PAD_BUTTON_UP
+        return read_trigger if type == EVENT_PAD_AXIS
+        if type == EVENT_PAD_BUTTON_DOWN || type == EVENT_PAD_BUTTON_UP
+          # Past SDL's standard fifteen, the windows' numbers are the triggers' (TRIGGER_AXES).
+          return read_pad_button(type == EVENT_PAD_BUTTON_DOWN) if @event[PAD_BUTTON_AT, 1].unpack1("C") < TRIGGER_AXES.keys.min
+
+          return
+        end
         return unless type == EVENT_KEY_DOWN || type == EVENT_KEY_UP
 
         scancode = @event[KEY_SCANCODE_AT, 4].unpack1("L")
@@ -1152,21 +1166,44 @@ module VBlank
         end
       end
 
-      # The console's buttons one gamepad holds now.
+      # The console's buttons one gamepad holds now. A trigger is down from IR::Buttons::HELD_FROM,
+      # and L2 and R2 keep how far theirs is pulled, as a part pull among the buttons
+      # (IR::Buttons.pulls), which reaches the game above their bits.
       def pad_held(pad)
         pads = @player_settings.pad_map
-        down = (pads.keys - @pad_kept).select { |button| @sdl.SDL_GetGamepadButton(pad, button) != 0 }
-        self.class.pad_buttons(down: down, stick_x: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_X),
-                               stick_y: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_Y), pads: pads)
+        unkept = pads.keys - @pad_kept
+        pulls = unkept.select { |button| TRIGGER_AXES.key?(button) }.to_h { |button| [button, trigger_percent(pad, button)] }
+        down = (unkept - pulls.keys).select { |button| @sdl.SDL_GetGamepadButton(pad, button) != 0 }
+        down += pulls.select { |_, percent| percent >= IR::Buttons::HELD_FROM }.keys
+        held = self.class.pad_buttons(down: down, stick_x: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_X),
+                                      stick_y: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_Y), pads: pads)
+        part = pulls.filter_map do |button, percent|
+          [pads[button], percent] if percent.positive? && IR::Buttons::PULLED_BUTTONS.include?(pads[button])
+        end
+        part.empty? ? held : held + [part.to_h]
+      end
+
+      # How far trigger +button+ (Settings::PAD_BUTTONS's number) of +pad+ is pulled, in percent.
+      def trigger_percent(pad, button)
+        value = @sdl.SDL_GetGamepadAxis(pad, TRIGGER_AXES.fetch(button))
+        value.positive? ? value * 100 / TRIGGER_FULL : 0
+      end
+
+      # A trigger moved: crossing IR::Buttons::HELD_FROM it goes down or comes up as a gamepad button
+      # of the windows' own number does, so the menu can give it to a button (rg_sdl.c's trigger_moved).
+      def read_trigger
+        button = TRIGGER_AXES.key(@event[PAD_AXIS_AT, 1].unpack1("C")) or return
+        id = @event[PAD_ID_AT, 4].unpack1("L")
+        value = @event[PAD_AXIS_VALUE_AT, 2].unpack1("s")
+        down = (value.positive? ? value * 100 / TRIGGER_FULL : 0) >= IR::Buttons::HELD_FROM
+        read_pad_button(down, id: id, button: button) unless down == @pad_down[id].include?(button)
       end
 
       # A gamepad's button went down, or came up. The guide button, or Back and Start together,
       # opens or closes the menu, and while it is open the D-pad, A and B work it. Back and Start
       # each come as an event of their own, and only the second of them, with the first still
       # down, opens it. A button pressed for the menu is kept from the game until it comes up.
-      def read_pad_button(down)
-        id = @event[PAD_ID_AT, 4].unpack1("L")
-        button = @event[PAD_BUTTON_AT, 1].unpack1("C")
+      def read_pad_button(down, id: @event[PAD_ID_AT, 4].unpack1("L"), button: @event[PAD_BUTTON_AT, 1].unpack1("C"))
         unless down
           @pad_down[id].delete(button)
           return @pad_kept.delete(button)

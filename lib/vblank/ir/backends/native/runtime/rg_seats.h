@@ -82,8 +82,9 @@ static inline void rg_seats_leave(rg_seats *seats, uint32_t id) {
 }
 
 /* Player 2's keys: the console button (in rg_runtime.h's order: a, b, select, start, right, left,
- * up, down, r, l, x, y, c) each key presses, by scancode. H, Y and B are X, Y and C: the window
- * reads them only on a console that has the button (rg_window_console_has). */
+ * up, down, r, l, x, y, c, l2, r2) each key presses, by scancode. H, Y and B are X, Y and C, and 6
+ * and minus L2 and R2: the window reads them only on a console that has the button
+ * (rg_window_console_has). */
 static inline int rg_seats_second_player_button(int key) {
   switch (key) {
   case 18: return 0; /* O: A */
@@ -99,6 +100,8 @@ static inline int rg_seats_second_player_button(int key) {
   case 11: return 10; /* H: X */
   case 28: return 11; /* Y: Y */
   case 5: return 12;  /* B: C */
+  case 35: return 13; /* 6: L2 */
+  case 45: return 14; /* minus: R2 */
   default: return -1;
   }
 }

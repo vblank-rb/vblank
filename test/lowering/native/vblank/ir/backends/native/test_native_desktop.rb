@@ -305,6 +305,30 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A PlayStation pad's L2 and R2: E and R, all or nothing, and --help names them.
+  def test_e_and_r_press_l2_and_r2_in_a_playstation_game
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("PRESSES L2", consoles: %i[ps1]) do
+        screen :bitmap
+        held_l2 = var(:held_l2, 0)
+        pulled_r2 = var(:pulled_r2, 0)
+        game_loop do
+          clear_screen :black
+          held_l2.increase! 1 if held(:l2)
+          pulled_r2.increase! pulled(:r2)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "l2"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:E keydown:R", "0", "0", "0", "0 keyup:E keyup:R", "0"], frames: 10)
+
+      assert_match(/^  L2 +E$/, help)
+      assert_operator played.variables[:held_l2], :>=, 3, "E presses L2"
+      assert_equal 0, played.variables[:pulled_r2] % 100, "a key pulls R2 all the way"
+      assert_operator played.variables[:pulled_r2], :>=, 300, "R presses R2"
+    end
+  end
+
   # Player 2's X and Y in a Super Nintendo game for two: H and Y, and --help names them.
   def test_h_and_y_are_player_twos_x_and_y_in_a_super_nintendo_game
     Dir.mktmpdir do |dir|

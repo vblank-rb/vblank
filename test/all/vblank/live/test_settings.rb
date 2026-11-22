@@ -279,6 +279,23 @@ class TestSettings < Minitest::Test
     assert_equal [:x, :y], [settings.pad_map[3], settings.pad_map[2]]
   end
 
+  # L2 and R2 are E and R, and the triggers, which the windows number after SDL's fifteen buttons.
+  def test_a_playstation_window_presses_l2_with_e_and_r2_with_r
+    settings = for_console(:ps1)
+
+    assert_equal %i[l2 r2], settings.buttons_held { |key| [8, 21].include?(key) }
+    assert_equal %i[l2 r2], [settings.pad_map[15], settings.pad_map[16]]
+    assert_includes settings.text, "key.l2 = key 8\nkey.r2 = key 21\n"
+    assert_includes settings.text, "pad.l2 = left_trigger\npad.r2 = right_trigger\n"
+  end
+
+  def test_a_playstation_window_reads_l2s_key_from_the_settings_file
+    settings = for_console(:ps1)
+    settings.read("key.l2 = key 7\n")
+
+    assert_equal 7, settings.keys_of(:l2).first
+  end
+
   # The Advance has no X, Y or C, so their keys press nothing there and are free for its buttons.
   def test_an_advance_window_has_no_x_y_or_c_and_their_keys_are_free
     settings = fresh

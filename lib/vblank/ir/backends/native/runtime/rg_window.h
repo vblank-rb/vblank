@@ -26,8 +26,8 @@ extern "C" {
 #endif
 
 /* Every console's buttons, in the order rg_runtime.h numbers them (IR::Buttons::NAMES): a, b,
- * select, start, right, left, up, down, r, l, x, y, c. */
-#define RG_WINDOW_BUTTONS 13
+ * select, start, right, left, up, down, r, l, x, y, c, l2, r2. */
+#define RG_WINDOW_BUTTONS 15
 /* Keys a button may have: Right Shift and Backspace are both Select by default. */
 #define RG_WINDOW_KEYS_A_BUTTON 2
 /* Gamepad buttons a button may have: the one it starts on, and one the game adds (a player's
@@ -67,7 +67,14 @@ const char *rg_window_hotkey_name(int hotkey);
 const char *rg_window_pad_button_name(int pad_button);
 const char *rg_window_button_setting(int button);
 const char *rg_window_hotkey_setting(int hotkey);
-#define RG_WINDOW_PAD_BUTTONS 15 /* the ones a standard gamepad has: face, back, start, sticks, shoulders, d-pad */
+/* The ones a standard gamepad has: face, back, start, sticks, shoulders, d-pad, and then its two
+ * triggers. A trigger is an axis to SDL, not a button, so the window gives each a number after SDL's
+ * fifteen (IR::ComputerControls::PADS): it is down from RG_TRIGGER_HELD_FROM percent pulled. */
+#define RG_WINDOW_PAD_BUTTONS 17
+#define RG_PAD_LEFT_TRIGGER 15
+#define RG_PAD_RIGHT_TRIGGER 16
+/* How far a trigger must be pulled, in percent, to count as held (IR::Buttons::HELD_FROM). */
+#define RG_TRIGGER_HELD_FROM 12
 
 /* --- pause, step and fast forward --- */
 

@@ -89,9 +89,9 @@ module VBlank
           PAGE_KEYS = { fullscreen: "KeyF", menu: "F1" }.freeze
 
           # The order the buttons are said in beside the pad: player 1's, and player 2's, whose L and
-          # R come before Start. L and R are said together, under :l.
-          FIRST_PLAYER_SAID = %i[a b start select l x y c].freeze
-          SECOND_PLAYER_SAID = %i[a b l start select x y c].freeze
+          # R come before Start. L and R are said together, under :l, and L2 and R2 under :l2.
+          FIRST_PLAYER_SAID = %i[a b start select l x y c l2].freeze
+          SECOND_PLAYER_SAID = %i[a b l start select x y c l2].freeze
 
           # The one source of the keys, the same table the desktop window reads: player 1's layout and
           # player 2's, by button, as the names IR::ComputerControls gives them.
@@ -107,6 +107,7 @@ module VBlank
             when :enter then "Enter"
             when :backspace then "Backspace"
             when :right_shift then "ShiftRight"
+            when :minus then "Minus"
             when :right, :left, :up, :down then "Arrow#{name.to_s.capitalize}"
             else "Key#{name.to_s.upcase}"
             end
@@ -117,6 +118,7 @@ module VBlank
             case name
             when :enter then "Enter"
             when :backspace then "Backspace"
+            when :minus then "-"
             else name.to_s.upcase
             end
           end
@@ -134,8 +136,10 @@ module VBlank
             order.filter_map do |button|
               next unless buttons.include?(button)
 
-              if button == :l
-                "<kbd>#{key_word(layout.fetch(:l).first)}</kbd> and <kbd>#{key_word(layout.fetch(:r).first)}</kbd> are L and R"
+              if %i[l l2].include?(button)
+                pair = button == :l ? %i[l r] : %i[l2 r2]
+                "<kbd>#{key_word(layout.fetch(pair[0]).first)}</kbd> and <kbd>#{key_word(layout.fetch(pair[1]).first)}</kbd> " \
+                  "are #{pair[0].upcase} and #{pair[1].upcase}"
               else
                 "<kbd>#{key_word(layout.fetch(button).first)}</kbd> is #{button.to_s.capitalize}"
               end

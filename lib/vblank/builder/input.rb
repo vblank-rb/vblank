@@ -190,7 +190,7 @@ module VBlank
       #
       # A key presses one button. A key that VBlank already gives a button, or keeps for the
       # window (P, N, M, F, Tab, Escape and the key above Tab), is an error, and so is one of
-      # player 2's keys (I, J, K, L, O, U and 7 to 0) in a game for more than one player. A
+      # player 2's keys (I, J, K, L, O, U and 6 to 0) in a game for more than one player. A
       # player can still change every key in the Controls screen, and Reset puts the game's
       # layout back. A game names its keys once, in one line.
       #

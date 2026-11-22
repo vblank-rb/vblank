@@ -172,7 +172,10 @@
 /* One frame of the console, in nanoseconds. */
 #define FRAME_NS ((Uint64)RG_CONSOLE_TICKS_A_FRAME * 1000000000ull / RG_CONSOLE_TICKS_A_SECOND)
 
-#define BUTTONS 13
+#define BUTTONS 15
+/* L2 and R2, the last two buttons: a gamepad's triggers, which can be pulled part of the way. The
+ * keyboard's gamepad has no trigger to press, so their keys reach player 1 directly. */
+#define FIRST_TRIGGER_BUTTON 13
 /* As many gamepads as are read at once, the keyboard's among them. */
 #define MOST_PADS 8
 
@@ -237,8 +240,28 @@ static const SDL_GamepadButton keyboard_pad_buttons[BUTTONS] = {
   SDL_GAMEPAD_BUTTON_NORTH,          /* x */
   SDL_GAMEPAD_BUTTON_WEST,           /* y */
   SDL_GAMEPAD_BUTTON_WEST,           /* c */
+  SDL_GAMEPAD_BUTTON_INVALID,        /* l2: no button; its key reaches player 1 directly */
+  SDL_GAMEPAD_BUTTON_INVALID,        /* r2: the same */
 };
-static const char *const button_names[BUTTONS] = {"a", "b", "select", "start", "right", "left", "up", "down", "r", "l", "x", "y", "c"};
+static const char *const button_names[BUTTONS] = {"a", "b", "select", "start", "right", "left", "up", "down", "r", "l", "x", "y", "c",
+                                                  "l2", "r2"};
+_Static_assert(RG_PAD_LEFT_TRIGGER == SDL_GAMEPAD_BUTTON_DPAD_RIGHT + 1, "the triggers' numbers follow SDL's standard buttons");
+
+/* How far trigger +pad_button+ (RG_PAD_LEFT_TRIGGER or RG_PAD_RIGHT_TRIGGER) of +pad+ is pulled, in
+ * percent: SDL reads a trigger from 0 to 32767 (SDL_GetGamepadAxis). */
+static int trigger_percent(SDL_Gamepad *pad, int pad_button) {
+  SDL_GamepadAxis axis = pad_button == RG_PAD_LEFT_TRIGGER ? SDL_GAMEPAD_AXIS_LEFT_TRIGGER : SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+  int value = SDL_GetGamepadAxis(pad, axis);
+  return value <= 0 ? 0 : value * 100 / 32767;
+}
+
+/* How far L2 or R2 (+button+) is pulled kept in a player's number, above the buttons' bits, seven bits
+ * a trigger (IR::Buttons.pull_shift): the furthest of any gamepad of the player's. */
+static void keep_pull(uint32_t *number, int button, int percent) {
+  uint32_t shift = 16u + 7u * (uint32_t)(button - FIRST_TRIGGER_BUTTON);
+  uint32_t had = (*number >> shift) & 127u;
+  if ((uint32_t)percent > had) *number = (*number & ~(127u << shift)) | ((uint32_t)percent << shift);
+}
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
@@ -1537,6 +1560,27 @@ static void pad_button_changed(const SDL_GamepadButtonEvent *event) {
   }
 }
 
+/* A gamepad's trigger moved. Crossing RG_TRIGGER_HELD_FROM it goes down or comes up as a button of the
+ * window's own number does (RG_PAD_LEFT_TRIGGER), so a trigger can be chosen for a button in the
+ * menu, and is kept from the game while the menu has it, as any gamepad button is. How far it is
+ * pulled is read with the buttons (players_held). */
+static void trigger_moved(const SDL_GamepadAxisEvent *event) {
+  if (event->axis != SDL_GAMEPAD_AXIS_LEFT_TRIGGER && event->axis != SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) return;
+  int slot = 0;
+  while (slot < MOST_PADS && !(pads[slot] && SDL_GetGamepadID(pads[slot]) == event->which)) slot++;
+  if (slot == MOST_PADS) return;
+  int button = event->axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? RG_PAD_LEFT_TRIGGER : RG_PAD_RIGHT_TRIGGER;
+  bool down = (event->value > 0 ? event->value * 100 / 32767 : 0) >= RG_TRIGGER_HELD_FROM;
+  bool was = (pad_buttons_down[slot] >> (uint32_t)button) & 1u;
+  if (down == was) return;
+  SDL_GamepadButtonEvent as_button;
+  SDL_zero(as_button);
+  as_button.which = event->which;
+  as_button.button = (Uint8)button;
+  as_button.down = down;
+  pad_button_changed(&as_button);
+}
+
 /* Everything the window reports: closing it ends the game, a key presses the keyboard's
  * gamepad, a gamepad plugged in or pulled out is taken up or let go, and a window moved to
  * another monitor, or a monitor set to another rate, is paced afresh. Returns whether there were any. */
@@ -1554,7 +1598,11 @@ static bool read_events(void) {
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
-      pad_button_changed(&event.gbutton);
+      /* Past the standard fifteen, the window's numbers are the triggers' (RG_PAD_LEFT_TRIGGER). */
+      if (event.gbutton.button < RG_PAD_LEFT_TRIGGER) pad_button_changed(&event.gbutton);
+      break;
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      trigger_moved(&event.gaxis);
       break;
     case SDL_EVENT_WINDOW_RESIZED:
       window_owed_a_drawing = true;
@@ -1670,12 +1718,14 @@ static void trace_frame(uint32_t held) {
 static int32_t players_held(uint32_t *masks) {
   uint32_t keyboard = keys_down | keys_tapped;
   keys_tapped = 0;
-  for (uint32_t i = 0; i < BUTTONS; i++)
+  for (uint32_t i = 0; i < FIRST_TRIGGER_BUTTON; i++)
     if (rg_window_console_has((int)i)) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
   SDL_UpdateGamepads();
 
   bool several = rg_seats_several_players(rg_game_seats[0]);
   memset(masks, 0, RG_MOST_PLAYERS * sizeof *masks);
+  for (uint32_t i = FIRST_TRIGGER_BUTTON; i < BUTTONS; i++)
+    if (rg_window_console_has((int)i)) masks[0] |= keyboard & (1u << i); /* a key is all or nothing */
   masks[1] = second_keys_down | second_keys_tapped;
   second_keys_tapped = 0;
   for (int pad = 0; pad < MOST_PADS; pad++) {
@@ -1688,17 +1738,27 @@ static int32_t players_held(uint32_t *masks) {
     for (uint32_t i = 0; i < BUTTONS; i++) {
       if (!rg_window_console_has((int)i)) continue; /* a button the console lacks presses nothing */
       if (keyboards) {
-        if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) *held |= 1u << i;
+        if (i < FIRST_TRIGGER_BUTTON && SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) *held |= 1u << i;
         continue;
       }
       for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++) {
         int chosen = rg_window_pad_button((int)i, slot);
         if (chosen == RG_NO_PAD) continue;
         if ((pad_buttons_kept >> (uint32_t)chosen) & 1u) continue; /* pressed for the menu */
-        if (SDL_GetGamepadButton(pads[pad], (SDL_GamepadButton)chosen)) *held |= 1u << i;
+        if (chosen >= RG_PAD_LEFT_TRIGGER) {
+          /* A trigger is down from RG_TRIGGER_HELD_FROM, and L2 and R2 keep how far it is pulled. */
+          int percent = trigger_percent(pads[pad], chosen);
+          if (percent >= RG_TRIGGER_HELD_FROM) *held |= 1u << i;
+          if (i >= FIRST_TRIGGER_BUTTON && percent > 0) keep_pull(held, (int)i, percent);
+        } else if (SDL_GetGamepadButton(pads[pad], (SDL_GamepadButton)chosen)) {
+          *held |= 1u << i;
+        }
       }
     }
   }
+  /* A key for L2 or R2 is pulled all the way, whatever a gamepad of player 1's says. */
+  for (uint32_t i = FIRST_TRIGGER_BUTTON; i < BUTTONS; i++)
+    if (rg_window_console_has((int)i) && ((keyboard >> i) & 1u)) keep_pull(&masks[0], (int)i, 100);
   return rg_seats_players_holding(masks, RG_MOST_PLAYERS);
 }
 
@@ -2573,8 +2633,9 @@ static void attach_keyboard_pad(void) {
 /* Player 2's keys for the console's buttons other than the pad, as --help says them ("O is A"),
  * after the words before them on the line, kept within 80 columns, with a full stop. */
 static void print_second_player_keys(void) {
-  /* O, U, 7, 9, 8, 0, H, Y and B, in the order they are said; rg_seats.h says which button each is. */
-  static const int keys[] = {18, 24, 36, 38, 37, 39, 11, 28, 5};
+  /* O, U, 7, 9, 8, 0, H, Y, B, 6 and minus, in the order they are said; rg_seats.h says which button
+   * each is. */
+  static const int keys[] = {18, 24, 36, 38, 37, 39, 11, 28, 5, 35, 45};
   int column = 57; /* the end of "  Player 2 can also use these keys: I, J, K and L move," */
   int left = 0;
   for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)

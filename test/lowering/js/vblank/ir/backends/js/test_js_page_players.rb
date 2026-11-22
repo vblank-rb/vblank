@@ -71,6 +71,38 @@ class TestJSPagePlayers < Minitest::Test
     assert_same_picture interpreter.screen.shown, picture, "with player 2's H and Y held"
   end
 
+  # A PlayStation game's L2 and R2 on a page: E and R, and a controller's triggers (buttons 6 and
+  # 7), whose pull reaches `pulled`. A bar as long as each pull draws it, held to the interpreter's
+  # with the same pulls.
+  private def triggers_game
+    VBlank.game "TRIGGERS", consoles: %i[ps1] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 10, pulled(:l2), 4, :white
+        fill_rect 0, 20, pulled(:r2), 4, :white
+        fill_rect 0, 30, 8, 8, :white if held(:l2)
+      end
+    end
+  end
+
+  private def assert_triggers_page(steps, held, moment)
+    picture = pictures_in(played_page([*steps, "play 2", "picture"], triggers_game)).first
+    program = triggers_game.checked_program(err: nil, console: :ps1, for_computer: true)
+    interpreter = Reference.new.input_each_frame { |frame| frame >= 2 ? held : [] }.run(program, frames: 2)
+
+    assert_same_picture interpreter.screen.shown, picture, moment
+  end
+
+  def test_e_and_r_pull_l2_and_r2_all_the_way_on_a_playstation_page
+    assert_triggers_page(["down KeyE", "down KeyR"], %i[l2 r2], "with E and R held")
+  end
+
+  def test_a_controllers_triggers_part_pulled_reach_the_game
+    assert_triggers_page(["pad 0 connect", "pad 0 pull 6 0.4", "pad 0 pull 7 0.05"], [{ l2: 40, r2: 5 }],
+                         "with the left trigger pulled 40 in 100 and the right 5")
+  end
+
   # A game that names no players plays as before: every controller is player 1's, and player 2's
   # keys are nobody's.
   def test_a_game_for_one_player_has_every_controller_as_player_one

@@ -23,13 +23,20 @@ class TestIRComputerControls < Minitest::Test
     assert_empty keys.keys & %i[f1 f3 f5 f9 f11]
   end
 
-  # L2 and R2 have no key on a computer yet, so a game cannot add one for them.
-  def test_a_key_for_l2_is_refused_in_plain_words
-    error = assert_raises(ArgumentError) do
-      VBlank::IR::ComputerControls.keys_entries!({ l2: :d }, console: VBlank::Console::PLAYSTATION)
-    end
+  def test_a_game_for_the_playstation_can_add_a_key_for_l2
+    entries = VBlank::IR::ComputerControls.keys_entries!({ l2: :d }, console: VBlank::Console::PLAYSTATION)
 
-    assert_match(/no key or gamepad button on a computer/, error.message)
+    assert_equal [%i[l2 key d]], entries
+  end
+
+  # E is L2's own key on a PlayStation, and so cannot be added to another button there; on the
+  # Advance, which has no L2, nobody has it.
+  def test_l2s_key_is_taken_only_on_a_console_with_l2
+    controls = VBlank::IR::ComputerControls
+    error = assert_raises(ArgumentError) { controls.keys_entries!({ a: :e }, console: VBlank::Console::PLAYSTATION) }
+
+    assert_match(/already presses :l2/, error.message)
+    assert_equal [%i[a key e]], controls.keys_entries!({ a: :e }, console: VBlank::Console.described(:gba))
   end
 
   def test_a_game_that_adds_none_hands_over_a_count_of_nought

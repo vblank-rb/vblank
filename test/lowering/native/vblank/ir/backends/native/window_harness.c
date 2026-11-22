@@ -18,7 +18,7 @@ static const struct {
   {"A", 4},      {"B", 5},    {"C", 6},         {"W", 26},        {"D", 7},       {"M", 16},        {"N", 17},      {"P", 19},          {"S", 22},   {"X", 27},
   {"Z", 29},     {"Q", 20},   {"Return", 40},   {"Escape", 41}, {"Backspace", 42},  {"Tab", 43}, {"Space", 44},
   {",", 54},     {"F1", 58},  {"F3", 60},       {"F11", 68},    {"Right", 79},      {"Left", 80}, {"Down", 81},
-  {"Up", 82},    {"Right Shift", 229},
+  {"Up", 82},    {"Right Shift", 229}, {"E", 8},     {"R", 21},
 };
 #define KEYS (sizeof key_table / sizeof key_table[0])
 

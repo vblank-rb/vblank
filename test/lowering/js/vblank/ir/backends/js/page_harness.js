@@ -453,6 +453,9 @@ function pad(...words) {
     tell(page, "gamepaddisconnected", { gamepad: controller });
   } else if (action === "press" || action === "release") {
     controller.buttons[Number(a)] = { pressed: action === "press", value: action === "press" ? 1 : 0 };
+  } else if (action === "pull") {
+    /* A trigger part pulled: its value is how far, and the browser calls it pressed from half way. */
+    controller.buttons[Number(a)] = { pressed: Number(b) >= 0.5, value: Number(b) };
   } else if (action === "stick") {
     controller.axes[0] = Number(a);
     controller.axes[1] = Number(b);
