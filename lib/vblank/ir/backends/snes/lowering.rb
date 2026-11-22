@@ -2400,7 +2400,7 @@ module VBlank
               emit_carry_for(node.op)
               return emit_half_sum(node.op, right)
             end
-            return emit_low_half_with_slot_last(node) if slot_read_last?(node, bits)
+            return emit_low_half_with_slot_last(node, depth) if slot_read_last?(node, bits)
 
             # The left side kept on the stack while the right is worked out; a subtraction is then
             # the left plus the right turned round, plus one.
@@ -2436,9 +2436,9 @@ module VBlank
           # keeping the left side on the stack takes a PHA, an ADC of the stack and a PLY, and X then
           # holds the slot, so a store of the sum back to it needs no X of its own (fullsnes, "CPU
           # 65XX Microprocessor").
-          def emit_low_half_with_slot_last(node)
+          def emit_low_half_with_slot_last(node, depth)
             left = node.lhs
-            emit_low_half(node.rhs, 16)
+            emit_low_half(node.rhs, 16, depth + 1)
             @asm.tay
             emit_slot_of_index_into_x(list_placed(left)[0], list_slots(left).stride, left)
             @asm.tya
