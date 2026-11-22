@@ -216,7 +216,9 @@ module VBlank
                     "Sony Multitap in the second port, and player 2 is then the pad in its first plug. " \
                     "`player: :any` reads all of them. The build refuses `player: 5` or more, and `players:` " \
                     "more than 4, because it reads four pads. If no Multitap is connected, players 3 and 4 hold " \
-                    "no buttons."),
+                    "no buttons. The console reads the pads while the screen is blank, and a pass uses the " \
+                    "reading from the blank before. So a press gets to the game one frame after the pad " \
+                    "sees it, as in the console's own games."),
         pressed: works("see `held`."),
         max_players: works,
         drawing_for_local_player: works("the player is always 1: a console is played by one person."),

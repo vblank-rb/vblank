@@ -18,6 +18,11 @@ module VBlank
           # acknowledge line low for a moment, and the next byte must wait for that, or the pad never hears
           # it. With no pad in the port nothing comes back, and the buttons read as none held.
           #
+          # How long the exchange is, the pad's kind says: its low four bits are how many halfwords follow
+          # the 5Ah, nought meaning sixteen (psx-spx, "Controller ID"). A digital pad (41h) is five bytes;
+          # an analog one (73h) nine, its sticks after the buttons. The exchange is read to its end, so its
+          # last byte is the one no pad acknowledges, and no acknowledge comes late into the next.
+          #
           # The two button bytes, bit by bit, turned into IR::Buttons's order: the first is Select, L3, R3,
           # Start, Up, Right, Down, Left; the second L2, R2, L1, R1, Triangle, Circle, Cross, Square. A game
           # names the PlayStation's buttons by the shared names (Console::PS1Answers): :a is Cross, :b
@@ -35,13 +40,27 @@ module VBlank
           # that 01h it answers for its first plug alone, as a pad does, and a plain pad in the second port
           # ignores the 01h and answers as a pad: so the second player is the pad in the second port, or the
           # tap's first plug, and the third and fourth are its second and third plugs. Its fourth is not read.
+          # Power-on reads the second port twice, so the tap has seen the 01h before the game's first pass.
           #
-          # ### Read on every frame, with the game working meanwhile
+          # ### Read on every frame, and never waited for
           #
           # A byte takes the port about a thousand of the processor's cycles to send, and an exchange is five
           # (thirty-five with a Multitap). Each pad's acknowledge raises the port's own interrupt (IRQ7;
           # JOY_CTRL bit 12 turns it on, bit 4 lets the next one come), and the byte after it is sent from
-          # there, so the processor is busy for a few instructions a byte, not for the whole exchange:
+          # there, so the processor is busy for a few instructions a byte, not for the whole exchange.
+          #
+          # The game never waits for the port either. The console's own games read their pads as the BIOS's
+          # pad routines do: the reading starts in the blank's interrupt and lands in a buffer, and the game
+          # takes whatever the buffer holds when its pass starts (psx-spx, "BIOS Joypad Functions":
+          # InitPad's buffers, filled by the BIOS in the blank's interrupt).
+          # So here: the pass that starts at a blank takes the buttons of the reading the blank before
+          # began, finished long since, and a press reaches the game a frame after the pad saw it, as it
+          # does in those games. (A checked run hands the emulator each frame's buttons a frame early, so
+          # the game has them on the frame the interpreter does: PS1::HeadlessRun#decide_buttons.)
+          #
+          # A port with nothing in it answers nothing, so every byte sent starts the third timer (TIMER2)
+          # counting, and an exchange no answer has come to by its target is ended as one with no pad: the
+          # second port is still read when the first is empty.
           #
           #   rt_pad_read          in the frame's interrupt: the exchanges of the frame before decoded
           #                        (rt_pad_finish), and the first port's begun (rt_pad_begin)
@@ -49,13 +68,13 @@ module VBlank
           #                        and the next byte sent. The last byte is not acknowledged, so the port's
           #                        interrupt on a byte received is turned on for it (JOY_CTRL bit 11), and
           #                        its answer ends the exchange: the second port's is begun from there
+          #   rt_pad_timed_out     in the timer's interrupt: an exchange no answer came to, ended as the
+          #                        last answer ends one, the port marked as holding no pad
           #   rt_pad_finish        the buttons made of the answers of every exchange that reached its end:
           #                        held now, and every one that went down since the frame before added to
           #                        those pressed during the pass
-          #   rt_pad_await         as a pass's wait ends: waits for the exchanges the blank began, and
-          #                        decodes them, so the pass has that frame's buttons
-          #   rt_pads_now          at power-on, with the interrupts off: the same exchanges, the port's
-          #                        interrupt flag watched in place of the interrupt
+          #   rt_pads_now          at power-on, with the interrupts off: the same exchanges, the port's and
+          #                        the timer's interrupt flags watched in place of the interrupts
           #
           # A frame's buttons are a word for two players, the first's in the low half and the second's in
           # the high (Frame::HELD, as IR::Buttons.mask lays them out), and another for the third and fourth
@@ -84,19 +103,28 @@ module VBlank
             START = 0x01
             ASK_BUTTONS = 0x42
             READ_EVERY_PLUG = 0x01
-            # The bytes of an exchange with a pad, and with a Multitap reading every plug.
-            PAD_BYTES = 5
-            TAP_BYTES = 3 + (8 * 4)
+            # The bytes of an exchange before the halfwords the pad's kind counts (its low four bits): 01h,
+            # 42h and the one 5Ah comes back for; and the most there can be, sixteen halfwords, a
+            # Multitap's four plugs of eight bytes.
+            HEAD_BYTES = 3
+            MOST_BYTES = HEAD_BYTES + (2 * 16)
             # What a Multitap reading every plug answers in place of a pad's kind.
             TAP_KIND = 0x80
-            # Where in PAD_ANSWERS the second port's answers start, and how many bytes are kept for each.
-            SECOND_ANSWERS = 8
+            # Where in PAD_ANSWERS the second port's answers start: each port keeps room for the longest, a
+            # power of two of bytes so a port's place is its number shifted.
+            SECOND_ANSWERS_SHIFT = 6
+            SECOND_ANSWERS = 1 << SECOND_ANSWERS_SHIFT
             # Where each plug's two button bytes are in a Multitap's answers.
             PLUG_BUTTONS = [5, 13, 21].freeze
 
-            # How many times a wait looks for the next answer before it gives up: far longer than a pad
-            # takes between two bytes.
-            PATIENCE = 400
+            # How long the port is given to answer a byte, in eighths of the processor's clock (TIMER2): a
+            # byte takes about a thousand cycles and a pad acknowledges within a few hundred more, a
+            # Multitap's first within a thousand (psx-spx, "Controller and Memory Card Signals"), so this is
+            # several times what a pad that is there ever takes.
+            ANSWER_TIMEOUT = 850
+            # At power-on, how many looks at the flags the wait takes before it gives up, should neither
+            # interrupt ever come: it only guards against a hang.
+            HANG_GUARD = 0x10_0000
 
             # The third and fourth players' buttons, kept as Frame::HELD, SEEN, PRESSED, PAD_HELD and
             # PAD_PRESSED keep the first two's, in a game that reads a Multitap.
@@ -115,6 +143,10 @@ module VBlank
             PAD_ANSWERS = "rt pad answers"
             PAD_DONE = "rt pad done"
             PAD_PORT = "rt pad port"
+            # 1 once the boot has read the buttons held from power-on and kept them for the first pass
+            # (Boot#emit). Only a reader of the run asks: the pads' next reading is frame 1's, so a checked
+            # run hands the emulator frame 1's buttons from then (PS1::HeadlessRun#hand_over_frame_one).
+            READ_AT_POWER_ON = "rt pads read at power-on"
 
             module_function
 
@@ -149,8 +181,9 @@ module VBlank
 
             # The places the exchanges keep their answers in, for +pads+ pads (#pads_read).
             def reserve(memory, pads:)
-              memory.reserve(PAD_ANSWERS, pads == 1 ? PAD_BYTES : SECOND_ANSWERS + (pads == 4 ? TAP_BYTES : PAD_BYTES))
+              memory.reserve(PAD_ANSWERS, pads == 1 ? MOST_BYTES : SECOND_ANSWERS + MOST_BYTES)
               memory.reserve(PAD_DONE, 4)
+              memory.reserve(READ_AT_POWER_ON, 4)
               return if pads == 1
 
               [PAD_PORT, PAD_CONNECTED, CONNECTED].each { |name| memory.reserve(name, 4) }
@@ -171,14 +204,15 @@ module VBlank
               emit_start(asm, h)
               emit_begin(asm, at, h, pads)
               emit_acknowledged(asm, at, h, pads)
+              emit_timed_out(asm, at, h, pads)
               emit_read(asm, at, pads)
               emit_finish(asm, at, pads)
               emit_connected(asm, at, pads) if pads > 1
-              emit_await(asm, at, h, pads)
               emit_now(asm, at, h, pads)
             end
 
-            # rt_pads_start: the port set to the speed and the shape of byte a pad talks in.
+            # rt_pads_start: the port set to the speed and the shape of byte a pad talks in, and the timer
+            # an answer is waited for with told how long that is.
             def emit_start(asm, h)
               asm.label("rt_pads_start")
               asm.lui(:t1, h::IO >> 16)
@@ -186,7 +220,18 @@ module VBlank
               asm.li(:t0, MODE)
               asm.sh(:t0, h::JOY_MODE & 0xFFFF, :t1)
               asm.li(:t0, BAUD)
-              asm.jr(:ra) { asm.sh(:t0, h::JOY_BAUD & 0xFFFF, :t1) }
+              asm.sh(:t0, h::JOY_BAUD & 0xFFFF, :t1)
+              asm.li(:t0, ANSWER_TIMEOUT)
+              asm.sh(:t0, h::TIMER2_TARGET & 0xFFFF, :t1)
+              asm.li(:t0, h::TIMER2_EIGHTHS)
+              asm.jr(:ra) { asm.sh(:t0, h::TIMER2_MODE & 0xFFFF, :t1) }
+            end
+
+            # The timer started counting the wait for the byte just sent, from nought: its mode written
+            # again, its interrupt once at the target (t1 the ports' base). Changes t0.
+            def emit_answer_awaited(asm, h)
+              asm.li(:t0, h::TIMER2_EIGHTHS | h::TIMER2_ONCE_AT_TARGET)
+              asm.sh(:t0, h::TIMER2_MODE & 0xFFFF, :t1)
             end
 
             # rt_pad_begin: an exchange begun with the port in a0 (0 or 1; the first alone for a game of
@@ -206,6 +251,7 @@ module VBlank
               # The port takes a byte in only once the one before was read, so whatever is left is read
               # first and thrown away.
               asm.lbu(:t0, h::JOY_DATA & 0xFFFF, :t1)
+              emit_answer_awaited(asm, h)
               asm.li(:t0, START)
               asm.sb(:t0, h::JOY_DATA & 0xFFFF, :t1)
               asm.jr(:ra) { asm.sw(:t0, at.call(Frame::PAD_STEP), :gp) } # one byte sent
@@ -213,8 +259,9 @@ module VBlank
 
             # rt_pad_acknowledged: the pad's interrupt. Frame::PAD_STEP is how many bytes of the exchange have
             # been sent, nought when none is under way. The answer to the last one sent is kept, and the next
-            # byte sent; or, where that was the exchange's last byte, the exchange ends, and in a game of two
-            # pads or more the second port's begins once the first's has ended. Changes t0 to t7 and a0.
+            # byte sent; or, where that was the exchange's last byte (as the pad's kind counts them), the
+            # exchange ends, and in a game of two pads or more the second port's begins once the first's has
+            # ended. Changes t0 to t7, v1 and a0.
             def emit_acknowledged(asm, at, h, pads)
               answers = at.call(PAD_ANSWERS)
               asm.label("rt_pad_acknowledged")
@@ -232,24 +279,25 @@ module VBlank
               asm.li(:t0, ~h::IRQ_PAD & 0xFFFF_FFFF)
               asm.sw(:t0, h::I_STAT & 0xFFFF, :t1)
               asm.beq(:t2, :zero, "rt_pad_acknowledged_done")
-              # The answer to byte PAD_STEP - 1, kept in its port's part of PAD_ANSWERS.
+              # The answer to byte PAD_STEP - 1, kept in its port's part of PAD_ANSWERS (from v1).
               asm.lbu(:t3, h::JOY_DATA & 0xFFFF, :t1)
-              asm.addu(:t6, :gp, :t2)
               if pads > 1
-                asm.sll(:t0, :t4, 3) # SECOND_ANSWERS
-                asm.addu(:t6, :t6, :t0)
+                asm.sll(:t0, :t4, SECOND_ANSWERS_SHIFT)
+                asm.addu(:v1, :gp, :t0)
+              else
+                asm.move(:v1, :gp)
               end
+              asm.addu(:t6, :v1, :t2)
               asm.sb(:t3, answers - 1, :t6)
-              # t7: how many bytes this exchange is, which a Multitap's answer to the second byte decides.
-              asm.li(:t7, PAD_BYTES)
-              if pads == 4
-                asm.beq(:t4, :zero, "rt_pad_acknowledged_length")
-                asm.lbu(:t0, answers + SECOND_ANSWERS + 1, :gp)
-                asm.xori(:t0, :t0, TAP_KIND)
-                asm.bne(:t0, :zero, "rt_pad_acknowledged_length")
-                asm.li(:t7, TAP_BYTES)
-                asm.label("rt_pad_acknowledged_length")
-              end
+              # t7: how many bytes this exchange is, from the pad's kind once it has come (the answer to the
+              # second byte): HEAD_BYTES and two for each halfword its low four bits count, nought for
+              # sixteen. Before that, any count it can give is past the bytes sent so far.
+              asm.lbu(:t0, answers + 1, :v1)
+              asm.andi(:t0, :t0, 0xF)
+              asm.addiu(:t0, :t0, -1)
+              asm.andi(:t0, :t0, 0xF)
+              asm.sll(:t0, :t0, 1)
+              asm.addiu(:t7, :t0, HEAD_BYTES + 2)
               asm.sltu(:t0, :t2, :t7)
               asm.beq(:t0, :zero, "rt_pad_acknowledged_last")
               emit_next_byte(asm, pads)
@@ -259,6 +307,7 @@ module VBlank
               asm.ori(:t0, :t5, LAST_ANSWER_INTERRUPT)
               asm.sh(:t0, h::JOY_CTRL & 0xFFFF, :t1)
               asm.label("rt_pad_acknowledged_send")
+              emit_answer_awaited(asm, h)
               asm.sb(:t3, h::JOY_DATA & 0xFFFF, :t1)
               asm.addiu(:t2, :t2, 1)
               asm.jr(:ra) { asm.sw(:t2, at.call(Frame::PAD_STEP), :gp) }
@@ -274,13 +323,46 @@ module VBlank
                 asm.ori(:t0, :t0, 1)
               end
               asm.sw(:t0, at.call(PAD_DONE), :gp)
+              emit_ended(asm, at, h, pads)
+              asm.label("rt_pad_acknowledged_done")
+              asm.jr(:ra)
+            end
+
+            # rt_pad_ended: the exchange with the port in t4 over (t1 the ports' base), the port let go and
+            # the timer stopped; and, after the first port's in a game of two pads or more, the second's
+            # begun.
+            def emit_ended(asm, at, h, pads)
+              asm.label("rt_pad_ended")
               asm.sw(:zero, at.call(Frame::PAD_STEP), :gp)
               asm.sh(:zero, h::JOY_CTRL & 0xFFFF, :t1)
-              if pads > 1
-                asm.bne(:t4, :zero, "rt_pad_acknowledged_done")
-                asm.j("rt_pad_begin") { asm.li(:a0, 1) }
-              end
-              asm.label("rt_pad_acknowledged_done")
+              asm.li(:t0, h::TIMER2_EIGHTHS)
+              asm.sh(:t0, h::TIMER2_MODE & 0xFFFF, :t1)
+              return asm.jr(:ra) if pads == 1
+
+              asm.bne(:t4, :zero, "rt_pad_ended_both")
+              asm.j("rt_pad_begin") { asm.li(:a0, 1) }
+              asm.label("rt_pad_ended_both")
+              asm.jr(:ra)
+            end
+
+            # rt_pad_timed_out: the timer's interrupt. Where an exchange is under way and the wait for the
+            # last byte sent reached its target, no answer came: the port holds no pad, and the exchange
+            # ends as one that never reached its end (no PAD_DONE bit). An interrupt raised before the byte
+            # after it was sent, the timer starting again, finds the count under the target, and is let be.
+            # Changes t0 to t5 and a0.
+            def emit_timed_out(asm, at, h, pads)
+              asm.label("rt_pad_timed_out")
+              asm.lui(:t1, h::IO >> 16)
+              asm.li(:t0, ~h::IRQ_TIMER2 & 0xFFFF_FFFF)
+              asm.sw(:t0, h::I_STAT & 0xFFFF, :t1)
+              asm.lw(:t2, at.call(Frame::PAD_STEP), :gp)
+              asm.beq(:t2, :zero, "rt_pad_timed_out_done")
+              asm.lhu(:t0, h::TIMER2_COUNT & 0xFFFF, :t1)
+              asm.sltiu(:t0, :t0, ANSWER_TIMEOUT)
+              asm.bne(:t0, :zero, "rt_pad_timed_out_done")
+              asm.lw(:t4, at.call(PAD_PORT), :gp) if pads > 1
+              asm.j("rt_pad_ended")
+              asm.label("rt_pad_timed_out_done")
               asm.jr(:ra)
             end
 
@@ -426,70 +508,42 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # rt_pad_await: as a pass's wait ends, waits until the exchanges the blank began have ended, or
-            # until no answer has come for a while, and decodes them with the interrupts off. The waiting's
-            # labels are named as the wait for the screen is, so a profile counts it as time the game had
-            # nothing to do.
-            def emit_await(asm, at, h, pads)
-              asm.label("rt_pad_await")
-              asm.addiu(:sp, :sp, -4)
-              asm.sw(:ra, 0, :sp)
-              asm.li(:t2, PATIENCE)
-              asm.li(:t3, -1)
-              asm.label("rt_sleep_until_vblank_pad")
-              emit_exchange_moved_on(asm, at, "rt_pad_awaited", "rt_sleep_until_vblank_pad_moved", pads)
-              asm.addiu(:t2, :t2, -1)
-              asm.bne(:t2, :zero, "rt_sleep_until_vblank_pad")
-              asm.label("rt_pad_awaited")
-              asm.mtc0(:zero, R3000::COP0_STATUS)
-              asm.jal("rt_pad_finish")
-              asm.li(:t0, h::SR_INTERRUPTS_ON)
-              asm.mtc0(:t0, R3000::COP0_STATUS)
-              asm.lw(:ra, 0, :sp)
-              asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
-            end
-
-            # A wait's look at the exchanges: to +ended+ where none is under way; otherwise, where another
-            # byte has been answered since the last look (t3 is where they had got to), the wait's patience
-            # (t2) starts again. +moved+ names the branch.
-            def emit_exchange_moved_on(asm, at, ended, moved, pads, patience: :t2, got_to: :t3)
-              asm.lw(:t0, at.call(Frame::PAD_STEP), :gp)
-              asm.beq(:t0, :zero, ended)
-              if pads > 1
-                asm.lw(:t1, at.call(PAD_PORT), :gp)
-                asm.sll(:t1, :t1, 8)
-                asm.or(:t0, :t0, :t1)
-              end
-              asm.beq(:t0, got_to, moved)
-              asm.move(got_to, :t0)
-              asm.li(patience, PATIENCE)
-              asm.label(moved)
-            end
-
             # rt_pads_now: at power-on, with the interrupts off, the exchanges run to their end as the frame's
-            # interrupt runs them, the port's interrupt flag in I_STAT watched in place of the interrupt. v0 =
-            # the first two players' buttons held now, v1 the third and fourth's. Changes t0 to t9 and a0.
+            # interrupt runs them, the port's and the timer's interrupt flags in I_STAT watched in place of
+            # the interrupts. A game that reads a Multitap reads twice: the tap answers for every plug only
+            # in the exchange after the one that told it to (psx-spx, "Multitap"). v0 = the first two
+            # players' buttons held now, v1 the third and fourth's. Changes t0 to t9 and a0.
             def emit_now(asm, at, h, pads)
               asm.label("rt_pads_now")
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              asm.jal("rt_pads_now_round")
+              asm.jal("rt_pads_now_round") if pads == 4
+              asm.jal("rt_pad_finish")
+              asm.lw(:ra, 0, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
+
+              asm.label("rt_pads_now_round")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
               asm.sw(:zero, at.call(PAD_DONE), :gp)
               asm.move(:a0, :zero) if pads > 1
               asm.jal("rt_pad_begin")
-              asm.li(:t8, PATIENCE)
-              asm.li(:t9, -1)
+              asm.li(:t8, HANG_GUARD)
               asm.label("rt_pads_now_wait")
-              asm.lui(:t1, h::IO >> 16)
-              asm.lw(:t0, h::I_STAT & 0xFFFF, :t1)
-              asm.andi(:t0, :t0, h::IRQ_PAD)
-              asm.beq(:t0, :zero, "rt_pads_now_quiet")
-              asm.jal("rt_pad_acknowledged")
-              asm.label("rt_pads_now_quiet")
-              emit_exchange_moved_on(asm, at, "rt_pads_now_ended", "rt_pads_now_moved", pads, patience: :t8, got_to: :t9)
+              [[h::IRQ_PAD, "rt_pad_acknowledged"], [h::IRQ_TIMER2, "rt_pad_timed_out"]].each do |flag, routine|
+                asm.lui(:t1, h::IO >> 16)
+                asm.lw(:t0, h::I_STAT & 0xFFFF, :t1)
+                asm.andi(:t0, :t0, flag)
+                asm.beq(:t0, :zero, "rt_pads_now_not_#{routine}")
+                asm.jal(routine)
+                asm.label("rt_pads_now_not_#{routine}")
+              end
+              asm.lw(:t0, at.call(Frame::PAD_STEP), :gp)
+              asm.beq(:t0, :zero, "rt_pads_now_ended")
               asm.addiu(:t8, :t8, -1)
               asm.bne(:t8, :zero, "rt_pads_now_wait")
               asm.label("rt_pads_now_ended")
-              asm.jal("rt_pad_finish")
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
             end

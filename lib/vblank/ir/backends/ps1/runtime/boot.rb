@@ -63,6 +63,8 @@ module VBlank
               emit_region_cleared(asm, memory)
               asm.sw(:s0, Runtime.at(memory, Frame::HELD), :gp)
               emit_other_players_from_power_on(asm, memory, pads) if pads > 1
+              asm.li(:t0, 1)
+              asm.sw(:t0, Runtime.at(memory, Pads::READ_AT_POWER_ON), :gp)
               # Must start after the region and the scratchpad are cleared, which would wipe its state. The
               # chip's drawing settings are its first commands.
               asm.jal("rt_draw_list_start")
@@ -71,7 +73,11 @@ module VBlank
               emit_counting_handed_over(asm, memory) if counted
               emit_interrupts_on(asm, h, counted: counted)
               # The game starts as a frame starts, so its first pass ends in a frame after the one the
-              # program was loaded in, where a reader of the run finds it waiting.
+              # program was loaded in, where a reader of the run finds it waiting. It waits for two
+              # blanks: the pads' reading the second begins is the second pass's buttons (Pads), and the
+              # first comes too soon after power-on for the pads to have moved on from the buttons held
+              # then, which the first pass has already.
+              asm.jal("rt_sleep_until_vblank")
               asm.jal("rt_sleep_until_vblank")
               asm.jal(main)
               asm.label("rt_main_returned")
@@ -315,7 +321,7 @@ module VBlank
               else
                 asm.sw(:zero, h::I_STAT & 0xFFFF, :t1)
               end
-              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD)
+              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD | h::IRQ_TIMER2)
               asm.sw(:t0, h::I_MASK & 0xFFFF, :t1)
               asm.li(:t0, h::SR_INTERRUPTS_ON)
               asm.mtc0(:t0, R3000::COP0_STATUS)

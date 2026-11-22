@@ -60,13 +60,16 @@ class TestPS1Film < Minitest::Test
     %w[interpreter ruby].each do |lowering|
       program = FilmCartridge.open(game)
       lowered = FilmCartridge.open(game, lowering: lowering)
+      # A press reaches a PlayStation program a frame after its pad saw it, as it reaches the console's
+      # own games (PS1::Runtime::Pads), so the lowering's side is handed the same presses a frame later.
       (1..12).each do |frame|
-        keys = frame.between?(4, 8) ? RIGHT : 0
-        shown = [program, lowered].map do |side|
-          File.binread(side.step(1, keys: keys).screenshot(File.join(scratch, "side.png")))
+        keys = [frame.between?(4, 8) ? RIGHT : 0, frame.between?(5, 9) ? RIGHT : 0]
+        shown = [program, lowered].zip(keys).map do |side, held|
+          File.binread(side.step(1, keys: held).screenshot(File.join(scratch, "side.png")))
         end
-        # Frame 1 is the console's own start, before the program's first picture.
-        assert_equal shown.first, shown.last, "on #{lowering}, frame #{frame}" if frame > 1
+        # Frames 1 and 2 are the console's own start, before the program's first picture: it waits two
+        # blanks before its first pass (PS1::Runtime::Boot#emit).
+        assert_equal shown.first, shown.last, "on #{lowering}, frame #{frame}" if frame > 2
       end
     ensure
       program&.close

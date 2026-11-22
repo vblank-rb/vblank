@@ -154,9 +154,11 @@ module VBlank
 
             # The interrupt. Every register the handler or the routines it calls may change is kept first,
             # and HI and LO with them, since the code it stopped may be between a multiply and the read of
-            # its answer. Only a vertical blank is let through (I_MASK), and it is acknowledged by writing
-            # a nought to its bit of I_STAT. Then back where the processor was stopped (EPC), with RFE in
-            # the jump's delay slot, which puts back the interrupts-on state the exception saved.
+            # its answer. Three interrupts are let through (I_MASK, Boot#emit_interrupts_on): the pad's
+            # (Pads' rt_pad_acknowledged), the timer that gives up on a pad (Pads' rt_pad_timed_out) and the
+            # vertical blank, each acknowledged by writing a nought to its bit of I_STAT. Then back where the
+            # processor was stopped (EPC), with RFE in the jump's delay slot, which puts back the interrupts-on
+            # state the exception saved.
             #
             # +counting+ for a game that counts the frames setting up takes, in k1 while it does
             # (Boot#emit_counting_on): the handler only counts until k1 is nought.
@@ -177,6 +179,13 @@ module VBlank
               asm.beq(:t0, :zero, "rt_interrupt_not_pad")
               asm.jal("rt_pad_acknowledged")
               asm.label("rt_interrupt_not_pad")
+              # ...then the timer's, which finds an exchange the pad answered just now still going.
+              asm.lui(:t2, h::IO >> 16)
+              asm.lw(:t0, h::I_STAT & 0xFFFF, :t2)
+              asm.andi(:t0, :t0, h::IRQ_TIMER2)
+              asm.beq(:t0, :zero, "rt_interrupt_not_timer")
+              asm.jal("rt_pad_timed_out")
+              asm.label("rt_interrupt_not_timer")
               asm.lui(:t2, h::IO >> 16)
               asm.lw(:t0, h::I_STAT & 0xFFFF, :t2)
               asm.andi(:t0, :t0, h::IRQ_VBLANK)
@@ -268,8 +277,8 @@ module VBlank
               asm.jal("rt_show_pass")
               asm.lw(:t0, at.call(HOLD), :gp)
               asm.bne(:t0, :zero, "rt_stopped")
-              # The blank that ended the wait asked the pad for its buttons; they are the next pass's.
-              asm.jal("rt_pad_await")
+              # The blank that ended the wait decoded the pads' reading the blank before began, and began
+              # the next: what it decoded is the next pass's (Pads).
               asm.jal("rt_read_buttons")
               asm.sw(:zero, at.call(WAITING), :gp)
               asm.jal("rt_sound_frame") if sound # the fades of the frames the pass took, and its voices started (Sound)
@@ -385,7 +394,6 @@ module VBlank
               asm.jal("rt_show_pass")
               asm.lw(:t0, at.call(HOLD), :gp)
               asm.bne(:t0, :zero, "rt_stopped")
-              asm.jal("rt_pad_await")
               asm.jal("rt_read_buttons")
               asm.jal("rt_sound_frame") if sound
               asm.jal("rt_draw_list_unpark") if shown_by

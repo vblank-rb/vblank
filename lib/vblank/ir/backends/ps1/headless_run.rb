@@ -179,7 +179,44 @@ module VBlank
           # person playing it with four would have.
           def power_on
             @core.plug_in_multitap if Runtime::Pads.reads_multitap?(@rom.built.source_program)
+            @held = on_pads_read(@held)
             set_buttons(@held)
+          end
+
+          # The pads are read in the blank's interrupt and land in a buffer, and a pass takes the reading
+          # the blank before it began (Runtime::Pads), as the console's own games do: a press reaches the
+          # game a frame after the pad saw it. So the emulator's pads are handed each frame's buttons a
+          # frame early, and the game has them on the frame the interpreter does.
+          def decide_buttons
+            return unless @deciding
+
+            frame = next_screen_frame + 1
+            return if frame == @decided
+
+            @decided = frame
+            set_buttons(buttons_sent(frame))
+          end
+
+          # Frame 1's buttons are read before the first pass starts: the reading the blank before it
+          # begins, which the second pass takes. So they go on the pads as soon as the boot has read the
+          # buttons held from power-on, which are the first pass's (Runtime::Pads::READ_AT_POWER_ON).
+          def hand_over_frame_one
+            return if @deciding || @frame_one_handed
+            return unless read32(runtime_place(Runtime::Pads::READ_AT_POWER_ON)) == 1
+
+            @frame_one_handed = true
+            set_buttons(buttons_sent(1))
+          end
+
+          # The buttons for +frame+ the build reads: a player past the pads it reads (Runtime::Pads.pads_read)
+          # is not plugged in, so is not held, here or on the interpreter it is checked against, which
+          # would count them connected.
+          def buttons_sent(frame) = on_pads_read(super)
+
+          # +buttons+ less those of players past the pads the build reads.
+          def on_pads_read(buttons)
+            pads = Runtime::Pads.pads_read(@rom.built.source_program)
+            buttons.select { |name| Buttons.player_of(name.to_sym) <= pads }
           end
 
           # The buttons a game names, on the pads' (HeadlessRun.pad_buttons_by_port).
@@ -206,6 +243,7 @@ module VBlank
           def start_run(_program)
             @setting_up = nil
             @frames_played = 0
+            @frame_one_handed = false
             @lines_after_blank = {}
             @logged_entries = []
             @sounds = 0
@@ -343,7 +381,10 @@ module VBlank
 
           def play_frame
             @frames_played += 1
-            decide_buttons unless @frames_played == 1
+            unless @frames_played == 1
+              hand_over_frame_one
+              decide_buttons
+            end
             @core.run_frame
             sound = @core.take_audio
             @loudest_each_frame << (sound.map(&:abs).max || 0)

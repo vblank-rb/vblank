@@ -23,8 +23,8 @@ class TestPS1Multitap < Minitest::Test
   private def built(players) = self.class.game(players).build_rom(console: :ps1, out: StringIO.new, err: StringIO.new, profile: false)
 
   # The processor's share of a frame each routine that reads or keeps the buttons took, measured in
-  # Beetle PSX (PS1Profiler), with a Multitap in for a game of four. The wait for the exchanges is not
-  # among them: it is time the game had nothing to do (Pads#emit_await).
+  # Beetle PSX (PS1Profiler), with a Multitap in for a game of four. No pass waits for an exchange
+  # (#test_a_pass_never_waits_for_the_pads), so these are the whole of what the pads cost.
   private def button_shares(players)
     rows = built(players).profile(out: StringIO.new, settle: 10, frames: 20).runtime
     rows.select { |row| row.routine.to_s.match?(/\Art_pad|\Art_pads/) }.to_h { |row| [row.routine.to_s, row.share] }
@@ -44,6 +44,16 @@ class TestPS1Multitap < Minitest::Test
     assert_operator four, :<, budget, "four players took #{four.round(5)} of a frame, the budget #{budget.to_f.round(5)}"
   end
 
+  # A pass never waits on the serial port: it takes the reading the blank before it began, finished long
+  # since, as the console's own games take the BIOS's pad buffer (Runtime::Pads). Waiting for the blank's
+  # own reading held a game of four for several of the frame's lines on every pass. So the wait that ends
+  # a pass has no wait for the pads in it, and the pads' whole cost is their routines, measured above.
+  def test_a_pass_never_waits_for_the_pads
+    labels = built(4).built.code.keys
+
+    assert_empty labels.grep(/\Art_(sleep_until_vblank_pad|pad_await)/)
+  end
+
   def test_a_game_of_one_reads_one_port
     run = game_player.hold(:right).run(self.class.game(1).program(console: :ps1), frames: 4)
 
@@ -59,6 +69,17 @@ class TestPS1Multitap < Minitest::Test
     assert_operator run[:steps3], :>, 0
     assert_equal 0, run[:steps2]
     assert_equal 3, run[:connected]
+  end
+
+  # A Multitap answers for every plug only in the exchange after the one that told it to (psx-spx,
+  # "Multitap"), so power-on reads it twice: the third player's button held from power-on counts on the
+  # first pass, as the interpreter's does.
+  def test_the_third_player_held_from_power_on_counts_on_the_first_pass
+    program = self.class.game(4).program(console: :ps1)
+    first_pass = Reference.new.hold(:p3_right).run(program, frames: 1)[:steps3]
+
+    assert_equal 1, first_pass, "the interpreter counts it on the first pass"
+    assert_equal first_pass, game_player.hold(:p3_right).run(program, frames: 1)[:steps3]
   end
 
   def test_every_player_is_read_through_the_tap_on_the_same_frame
