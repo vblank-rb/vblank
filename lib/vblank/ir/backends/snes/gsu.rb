@@ -49,19 +49,19 @@ module VBlank
           BRANCHES = { bra: 0x05, bge: 0x06, blt: 0x07, bne: 0x08, beq: 0x09, bpl: 0x0A, bmi: 0x0B, bcc: 0x0C,
                        bcs: 0x0D, bvc: 0x0E, bvs: 0x0F }.freeze
 
-          SINGLES = { stop: [0x00, 0x01], nop: [0x01], cache: [0x02], lsr: [0x03], rol: [0x04], loop: [0x3C],
+          SINGLES = Ractor.make_shareable({ stop: [0x00, 0x01], nop: [0x01], cache: [0x02], lsr: [0x03], rol: [0x04], loop: [0x3C],
                       alt1: [ALT1], alt2: [ALT2], alt3: [ALT3], plot: [0x4C], rpix: [ALT1, 0x4C], swap: [0x4D],
                       color: [0x4E], cmode: [ALT1, 0x4E], not_: [0x4F], merge: [0x70], sbk: [0x90], sex: [0x95],
                       asr: [0x96], div2: [ALT1, 0x96], ror: [0x97], lob: [0x9E], fmult: [0x9F],
                       lmult: [ALT1, 0x9F], hib: [0xC0], getc: [0xDF], ramb: [ALT2, 0xDF], romb: [ALT3, 0xDF],
-                      getb: [0xEF], getbh: [ALT1, 0xEF], getbl: [ALT2, 0xEF], getbs: [ALT3, 0xEF] }.freeze
+                      getb: [0xEF], getbh: [ALT1, 0xEF], getbl: [ALT2, 0xEF], getbs: [ALT3, 0xEF] })
 
           # The sums with a register or a four-bit number: the base opcode, and the prefix of each of
           # the four forms (register, register after ALT1, number, number after ALT1).
-          SUMS = { add: [0x50, nil, ALT2], adc: [0x50, ALT1, ALT3], sub: [0x60, nil, ALT2], sbc: [0x60, ALT1, nil],
+          SUMS = Ractor.make_shareable({ add: [0x50, nil, ALT2], adc: [0x50, ALT1, ALT3], sub: [0x60, nil, ALT2], sbc: [0x60, ALT1, nil],
                    cmp: [0x60, ALT3, nil], and_: [0x70, nil, ALT2], bic: [0x70, ALT1, ALT3],
                    mult: [0x80, nil, ALT2], umult: [0x80, ALT1, ALT3], or_: [0xC0, nil, ALT2],
-                   xor: [0xC0, ALT1, ALT3] }.freeze
+                   xor: [0xC0, ALT1, ALT3] })
 
           def initialize(name, home: :any, holds: nil)
             @name = name
@@ -89,10 +89,13 @@ module VBlank
                                 fixups: @fixups.dup.freeze, home: @home, holds: @holds)
           end
 
-          SINGLES.each { |name, opcodes| define_method(name) { emit(*opcodes) } }
+          # The instructions made from a table are made from shareable blocks: Ruby will not let a
+          # Ractor other than the one that loaded this file call a method made from a plain block,
+          # and a cartridge may be built in any Ractor.
+          SINGLES.each { |name, opcodes| define_method(name, &Ractor.shareable_proc { emit(*opcodes) }) }
 
           BRANCHES.each_key do |name|
-            define_method(name) { |target| branch(name, target) }
+            define_method(name, &Ractor.shareable_proc { |target| branch(name, target) })
           end
 
           # A branch to +target+ on +condition+, one of BRANCHES (:bra for always): for a branch the
@@ -105,7 +108,7 @@ module VBlank
 
           # A sum on the source and +operand+, a register or imm(0..15), into the destination.
           SUMS.each_key do |name|
-            define_method(name) { |operand| sum(name, operand) }
+            define_method(name, &Ractor.shareable_proc { |operand| sum(name, operand) })
           end
 
           # The sum +name+ (one of SUMS) on the source and +operand+: for a sum the code works out

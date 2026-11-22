@@ -30,14 +30,24 @@ class TestSNESConformance < Minitest::Test
     declared = kept.flat_map { |part| part.walk.to_a }.select { |node| %i[background object song].include?(node.kind) }
                    .map(&:name)
     painted = kept.any? { |part| part.walk.any? { |node| node.kind == :screen && node.mode == :bitmap } }
-    kept.reject do |part|
+    made_together(kept.reject do |part|
       part.walk.any? do |node|
-        (%i[scroll_background set_tile show_map place_bar play_song background_colors].include?(node.kind) && !declared.include?(node.name)) ||
+        (%i[scroll_background scroll_rows set_tile show_map place_bar play_song background_colors].include?(node.kind) && !declared.include?(node.name)) ||
           (node.kind == :song_list && !(node.songs - declared).empty?) ||
           (node.kind == :sound_effect_list && !(node.effects - declared).empty?) ||
           (node.kind == :present_objects && !(node.names - declared).empty?) ||
           (painted && %i[tile_run copy_tiles copy_owed_tiles].include?(node.kind))
       end
+    end)
+  end
+
+  # Of +parts+, in order, each that the build still makes beside the ones kept before it. Two parts
+  # the build makes alone can be refused together as not made yet: a background held to a box
+  # beside a see-through layer, say.
+  private def made_together(parts)
+    parts.each_with_object([]) do |part, made|
+      together = Build.program(*made, part).tap { |program| program.console = :snes }
+      made << part unless not_made_yet?(together)
     end
   end
 
