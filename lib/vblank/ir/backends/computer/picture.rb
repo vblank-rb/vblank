@@ -585,7 +585,7 @@ module VBlank
                bg.streams? ? 1 : 0, tiles_start,
                bg.scene ? @scenes.fetch(bg.scene, NEVER_ARRIVES) : EVERY_SCENE, bg.bar? ? NOT_A_BAR : @stacking.depths.of_scenery(bg),
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
-               see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
+               see_through_number(bg), @bends.bend_for(bg.name) ? 1 : 0, fade_place(bg),
                tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR, bg.shown_above_row,
                tiles_in_front_of(bg, tile_count, tiles_in_front), places_start_of(bg),
@@ -809,9 +809,9 @@ module VBlank
           # goes into the bend's variable, what its block asks to run runs, and the offset is
           # worked out from there.
           def bend_offsets
-            answers = @bends.each_value.map do |bend|
-              Statements::If.new(condition: call("rg_bend_asked", Statements::Int.new(@backgrounds.fetch(bend.name))),
-                        body: [assign(bend.row, call("rg_bend_line")), *body_of(bend),
+            answers = @bends.bends.map do |bend|
+              Statements::If.new(condition: call("rg_bend_asked", Statements::Int.new(@backgrounds.fetch(bend.background))),
+                        body: [assign(bend.row, call("rg_bend_line")), *statements_of(bend.body),
                                eval_call("rg_bend_answer", value(bend.offset))])
             end
             Statements::Function.new(name: @names.own("bend_offsets"), body: answers, exported: true)
@@ -822,9 +822,9 @@ module VBlank
           # Called last in every frame boundary (rg_screen_work_out_bends).
           def work_out_bends
             height = @program.described_console.screen_height
-            first_lines = @bends.each_key.map { |name| work_out_bend_lines(name, 0, 1) }
-            the_rest = @bends.flat_map do |name, bend|
-              [work_out_bend_lines(name, 1, height), assign(bend.row, Statements::Int.new(height))]
+            first_lines = @bends.bends.map { |bend| work_out_bend_lines(bend.background, 0, 1) }
+            the_rest = @bends.bends.flat_map do |bend|
+              [work_out_bend_lines(bend.background, 1, height), assign(bend.row, Statements::Int.new(height))]
             end
             Statements::Function.new(name: @names.own("work_out_bends"), body: first_lines + the_rest, exported: true)
           end

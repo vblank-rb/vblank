@@ -102,6 +102,9 @@ module VBlank
         # each scene is known by, in the order the program first dispatches to them.
         attr_reader :handover, :scenes
 
+        # The game's row-by-row bends, which each is and what can be told of its block (RowBends).
+        attr_reader :row_bends
+
         # +error+ is the lowering's own error class, which every refusal here raises.
         def initialize(program, console:, error:)
           @program = program
@@ -116,8 +119,10 @@ module VBlank
             end
           end.uniq.each_with_index.to_h
           # A bend's steps run at every frame boundary, wherever it is declared, so a routine they
-          # call is reached as a timer's handler's is.
-          @bend_roots = program.walk.select { |node| node.kind == :scroll_rows }
+          # call is reached as a timer's handler's is. Only the bends that are worked out (RowBends):
+          # one replaced by a later bend of the same background is never asked.
+          @row_bends = RowBends.new(program)
+          @bend_roots = @row_bends.nodes
           @called = Reach.routines(program, also: @tick_handlers.values + @bend_roots)
           @reachable = Reach.statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@tick_handlers.values,
                                              *@bend_roots)

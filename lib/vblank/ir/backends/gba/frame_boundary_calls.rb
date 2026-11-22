@@ -56,7 +56,7 @@ module VBlank
           # +program+'s Plan.
           def self.plan(program)
             handlers = IR::Nodes::OnTimer.of(program)
-            bends = program.walk.select { |node| node.kind == :scroll_rows }
+            bends = RowBends.new(program).nodes
             return Plan.none if handlers.empty? && bends.empty?
 
             lowering_plan = LoweringPlan.new(program, console: Console::ADVANCE, error: LoweringError)

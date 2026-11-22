@@ -74,15 +74,13 @@ module VBlank
             FREE_ENGINES - SOUND_ENGINES
           end
 
-          def scroll_rows_nodes(program)
-            program.walk.select { |node| node.kind == :scroll_rows }
-          end
-
           # Everything fed to the display a row at a time: each bending layer, and the light
           # (a spotlight's window edges are a number a row exactly as a bend's scroll is, and
-          # take an engine the same way). The light is one however often it is declared.
+          # take an engine the same way). The light is one however often it is declared, and a
+          # bend one for each background it bends (RowBends): one replaced by a later bend of the
+          # same background, or written for a name the game never declares, takes no engine.
           def row_feeds(program)
-            fed = scroll_rows_nodes(program)
+            fed = RowBends.new(program).nodes
             light = program.walk.find { |node| node.kind == :shade_outside }
             light ? fed + [light] : fed
           end

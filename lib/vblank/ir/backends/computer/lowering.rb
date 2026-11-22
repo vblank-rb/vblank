@@ -205,13 +205,8 @@ module VBlank
             @names = Names.new
             @locals = 0
             @funcs = by_name(program.walk, :func)
-            # The bend each background's rows are given: the last one written for it, wherever
-            # that is, since it stands from power-on (Reference#collect_definitions), in the
-            # order the bends are first written, which is the order they are worked out in. One
-            # written for a background the game does not have is never asked for.
-            written = by_name(program.walk, :scroll_rows)
-            declared = by_name(program.walk, :background)
-            @bends = written.select { |name, _| declared.key?(name) }
+            # The bend each background's rows are given (RowBends), in the order they are worked out.
+            @bends = RowBends.new(program)
             # The game's light: the last one written, wherever, since it stands from power-on
             # (Reference#collect_definitions), or nil for a game with none.
             @shade = program.walk.select { |node| node.kind == :shade_outside }.last
@@ -230,7 +225,7 @@ module VBlank
             # what each bend runs as its lines are worked out. A routine nothing calls is left
             # out of the file altogether, so nothing in it (a table it reads, a routine it calls)
             # can leave something declared and unused.
-            @reachable = statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@bends.values,
+            @reachable = statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@bends.nodes,
                                          *@tick_handlers.values)
             @tables = by_name(program.walk, :table)
             @shadings = by_name(program.walk, :shading)
@@ -434,7 +429,7 @@ module VBlank
           def statements_under(root) = Reach.statements_under(root)
           def statements_from(*roots) = Reach.statements_from(*roots)
           def routines_named(nodes) = Reach.routines_named(nodes)
-          def called_routines = Reach.routines(@program, also: [*@bends.values, *@tick_handlers.values])
+          def called_routines = Reach.routines(@program, also: [*@bends.nodes, *@tick_handlers.values])
           def variable_names = @variable_names ||= (Reach.variables(@program) + loop_variables).uniq
 
           def by_name(nodes, *kinds) = nodes.select { |node| kinds.include?(node.kind) }.to_h { |node| [node.name, node] }

@@ -343,7 +343,7 @@ class TestRowBend < Minitest::Test
     end
   end
 
-  # Every row of a band has one answer, so the build asks the block once a band (RowBands).
+  # Every row of a band has one answer, so a build may ask the block once a band (RowBends#bands).
   def test_a_bend_in_bands_shows_on_the_frame_of_the_scroll_it_goes_with
     program = scroll_cancelled_by_bend { |row, across| row >= 40 ? across * -1 : 0 }
 

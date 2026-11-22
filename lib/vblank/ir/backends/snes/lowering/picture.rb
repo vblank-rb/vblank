@@ -107,13 +107,13 @@ module VBlank
 
             # Whether +program+ bends a background row by row, which the runtime then keeps the rows
             # and line tables of (Runtime::Picture's rt_bends_prepare).
-            def self.bends?(program) = program.walk.any? { |node| node.kind == :scroll_rows }
+            def self.bends?(program) = !RowBends.new(program).empty?
 
             # Whether a background a scene puts up is bent, whose rows then go straight while that
             # scene is away (Runtime::Picture::LAYERS_STRAIGHT).
             def self.scene_bends?(program, handover = IR::SceneHandover.of(program))
               always = handover.always_up.scenery.map(&:name)
-              program.walk.any? { |node| node.kind == :scroll_rows && !always.include?(node.name) }
+              RowBends.new(program).bends.any? { |bend| !always.include?(bend.background) }
             end
 
             # The runs of tiles +program+ paints from lists (Builder::TileRuns), each once, in the order
@@ -1305,7 +1305,7 @@ module VBlank
             attr_reader :see_through_layers
 
             # The layers bent, in #bends' order, whose line tables the runtime makes.
-            def bent_layers = painted? ? [] : bends.map { |bend| layer_of(background_declared_for(bend)) }.uniq
+            def bent_layers = painted? ? [] : bends.map { |bend| layer_of(background_declared_for(bend.node)) }.uniq
 
             # Whether the game's bends are kept as a step for each band (Runtime::Picture, "A bend that
             # holds one value for whole bands of rows"): every bend has bands, few enough to keep.
@@ -1559,7 +1559,7 @@ module VBlank
                 hidden_whole = @program.walk.any? { |node| node.kind == :box_background && node.name == held.name && node.whole }
                 refuse_unmade!(hidden_whole ? "#{words} switched off and on (`hide`, `show`)" : "#{words} held to a box (`show_only_inside`)")
               end
-              refuse_unmade!("#{words} bent row by row") if bends.any? { |bend| bend.name == held.name }
+              refuse_unmade!("#{words} bent row by row") if bends.any? { |bend| bend.background == held.name }
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
               return unless held.above_row
 
@@ -1666,7 +1666,7 @@ module VBlank
 
             # The layers some scene bends and the one taking over does not: their rows go straight.
             def emit_layers_straight_for(arrival)
-              bent = bends.reject { |bend| scenes_showing(bend).nil? }.map { |bend| background_declared_for(bend) }
+              bent = bends.reject { |bend| scenes_showing(bend).nil? }.map { |bend| background_declared_for(bend.node) }
               return if bent.empty?
 
               up = bent.select { |bg| scenery_holds?(arrival.scenery, bg) }
@@ -2258,7 +2258,7 @@ module VBlank
             # The game's bends: the last each background is given, in the order the backgrounds were
             # first bent (Reference#collect_definitions).
             def bends
-              @bends ||= @program.walk.select { |node| node.kind == :scroll_rows }.group_by(&:name).map { |_, said| said.last }
+              @plan.row_bends.bends
             end
 
             # Reference#work_out_bends, before the pass's wait: each row of the screen, its number
@@ -2267,11 +2267,11 @@ module VBlank
             # bend, then the rest of each, leaving each variable at the screen's height.
             #
             # A game all of whose bends hold one value for whole bands of rows has each band worked
-            # out once (RowBands). All of them or none: a block asked every row can change a number
+            # out once (RowBends#bands). All of them or none: a block asked every row can change a number
             # another block reads, and then that one's rows are not bands at all.
             #
             # A bend whose scene is away is asked as it is on the interpreter if its block can change
-            # a number the game reads (#bend_block_observable?), and otherwise takes none of the frame.
+            # a number the game reads (RowBends#observable_while_away?), and otherwise takes none of the frame.
             # Only the rows of one whose scene is up are kept: a layer has one set of rows, and
             # another scene's bend may share the layer.
             def emit_bends
@@ -2289,7 +2289,7 @@ module VBlank
 
             # Each bend's bands, as the first row of each, or nil for a bend asked every row.
             def bend_bands
-              @bend_bands ||= bends.map { |bend| RowBands.firsts(bend, Runtime::Picture::SCREEN_HEIGHT) }
+              @bend_bands ||= bends.map { |bend| @plan.row_bends.bands(bend, Runtime::Picture::SCREEN_HEIGHT) }
             end
 
             # Each band of +firsts+ as the lines of its steps. A step counts so many lines at most.
@@ -2302,11 +2302,11 @@ module VBlank
 
             # Each band of +bend+ from its first row, kept as its steps, and lines of nought after.
             def emit_bend_steps(bend, firsts)
-              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
+              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend.node)))]
               at = offsets
               firsts.zip(band_steps(firsts)).each do |first, steps|
                 statement(Build.set(bend.row, first))
-                bend.children.each { |child| statement(child) }
+                bend.body.each { |child| statement(child) }
                 value(bend.offset)
                 from = at
                 emit_row_store_while_up(bend) { emit_stores_of_steps(steps, from) }
@@ -2337,14 +2337,14 @@ module VBlank
               height = Runtime::Picture::SCREEN_HEIGHT
               firsts.zip(firsts.drop(1) + [height]).each do |first, past|
                 statement(Build.set(bend.row, first))
-                bend.children.each { |child| statement(child) }
+                bend.body.each { |child| statement(child) }
                 emit_band_offset(bend, first...past)
               end
               statement(Build.set(bend.row, height))
             end
 
             def emit_band_offset(bend, rows)
-              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
+              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend.node)))]
               value(bend.offset)
               emit_row_store_while_up(bend) do
                 @asm.lda(@asm.direct(R0))
@@ -2381,7 +2381,7 @@ module VBlank
             # The numbers of the scenes that put up +bend+'s background, or nil for one every screen
             # shows.
             def scenes_showing(bend)
-              bg = background_declared_for(bend)
+              bg = background_declared_for(bend.node)
               return nil if scenery_holds?(@handover.always_up.scenery, bg)
 
               @scenes.filter_map { |scene, number| number if scenery_holds?(@handover.arrival(scene).scenery, bg) }
@@ -2389,16 +2389,11 @@ module VBlank
 
             def scenery_holds?(scenery, bg) = scenery.any? { |up| up.equal?(bg) }
 
-            # Whether the game can tell +bend+'s block ran. A block with no statements changes nothing,
-            # unless it reads a list, whose index can stop the game.
-            def bend_block_observable?(bend)
-              !bend.children.empty? || bend.offset.walk.any? { |node| node.kind == :list_get }
-            end
-
-            # The block's rows, left out while the bend's scene is away if the game cannot tell. The
-            # row's variable still ends at +last_row+, as the rows would have left it.
+            # The block's rows, left out while the bend's scene is away if the game cannot tell
+            # (RowBends#observable_while_away?). The row's variable still ends at +last_row+, as the
+            # rows would have left it.
             def emit_bend_rows_unless_away(bend, last_row, &rows)
-              return yield if scenes_showing(bend).nil? || bend_block_observable?(bend)
+              return yield if scenes_showing(bend).nil? || @plan.row_bends.observable_while_away?(bend)
 
               emit_while_bend_up(bend, &rows)
               statement(Build.set(bend.row, last_row))
@@ -2407,7 +2402,7 @@ module VBlank
             # Keeps a row's offset only while the bend's scene is up, in a bend whose block ran
             # whichever scene is up. One left out while away (#emit_bend_rows_unless_away) has no need.
             def emit_row_store_while_up(bend, &store)
-              bend_block_observable?(bend) ? emit_while_bend_up(bend, &store) : yield
+              @plan.row_bends.observable_while_away?(bend) ? emit_while_bend_up(bend, &store) : yield
             end
 
             # Rows +rows+ (a range short of its end) of +bend+.
@@ -2416,7 +2411,7 @@ module VBlank
               done = fresh("bend_rows_done")
               statement(Build.set(bend.row, rows.begin))
               @asm.label(top)
-              bend.children.each { |child| statement(child) }
+              bend.body.each { |child| statement(child) }
               emit_bend_offset(bend)
               statement(Build.add(bend.row, 1))
               return if rows.size == 1
@@ -2429,7 +2424,7 @@ module VBlank
             # The row in the bend's variable kept at its place in the layer's rows: the low 16 bits of
             # how far along, all the console's scroll register takes.
             def emit_bend_offset(bend)
-              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
+              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend.node)))]
               value(bend.row)
               @asm.lda(@asm.direct(R0))
               @asm.asl
@@ -2449,7 +2444,7 @@ module VBlank
 
               refuse_unmade!("a background bent row by row in a game that never waits for the screen") unless
                 @program.walk.any? { |node| node.kind == :wait_vblank }
-              refuse_unmade!("a status bar bent row by row") if bends.any? { |bend| background_declared_for(bend)&.bar? }
+              refuse_unmade!("a status bar bent row by row") if bends.any? { |bend| background_declared_for(bend.node)&.bar? }
             end
 
             # Reference#exec_show_map: a number naming no map leaves the cells alone; the view stays
