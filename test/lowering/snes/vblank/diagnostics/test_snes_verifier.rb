@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "weakref"
 
 # The one reader over a running cartridge plays a Super Nintendo cartridge in bsnes and answers
 # the questions it answers for the other consoles.
@@ -34,8 +33,12 @@ class TestSNESVerifier < Minitest::Test
     end
   end
 
-  # What a reader left open saved, and a weak reference that says whether Ruby has collected it.
-  LeftOpen = Data.define(:save, :reader)
+  # What a reader left open saved, and a weak map holding it, which loses it once Ruby has collected
+  # it. A WeakRef keeps its references in a class variable that only the main Ractor may read, and
+  # this run plays its tests in Ractors; a weak map is an object of its own.
+  LeftOpen = Data.define(:save, :held) do
+    def reader_alive? = held.key?(:reader)
+  end
 
   # A reader nobody closed is collected by Ruby in the end, and the cartridge read next in this
   # process starts with its save memory as the console leaves it: the one cartridge's save is
@@ -47,7 +50,7 @@ class TestSNESVerifier < Minitest::Test
     collect_readers_left_open
     left_open = Thread.new { play_reader_left_open }.value
     collect_readers_left_open
-    refute left_open.reader.weakref_alive?, "the reader left open was collected"
+    refute left_open.reader_alive?, "the reader left open was collected"
 
     fresh = Verifier.new(saving_rom, frames: 0)
     fresh_save = fresh.save_bytes
@@ -63,7 +66,7 @@ class TestSNESVerifier < Minitest::Test
   # every stack, and a word left on the test's own could keep the reader from being collected.
   private def play_reader_left_open
     reader = Verifier.new(saving_rom, frames: 10)
-    LeftOpen.new(save: reader.save_bytes, reader: WeakRef.new(reader))
+    LeftOpen.new(save: reader.save_bytes, held: ObjectSpace::WeakMap.new.tap { |held| held[:reader] = reader })
   end
 
   private def collect_readers_left_open = 3.times { GC.start(full_mark: true, immediate_sweep: true) }
