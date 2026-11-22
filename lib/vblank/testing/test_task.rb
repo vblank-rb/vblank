@@ -176,11 +176,20 @@ module VBlank
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
                    Lowering::CONSOLE_SETTING => nil, Lowering::FAIL_FAST_SETTING => nil,
                    Lowering::RESUME_SETTING => nil, Lowering::STOPS_AT_FAILURE_SETTING => ENV.fetch(Lowering::FAIL_FAST_SETTING, nil) }
-        return { Lowering::SETTING => lowering.to_s, **shared } unless in_processes?
+        return { Lowering::SETTING => lowering.to_s, **roomy_heap_settings, **shared } unless in_processes?
 
         { Lowering::SETTING => lowering.to_s, "MT_RACTOR" => nil, "MT_CPU" => "1", **shared,
           "TESTOPTS" => ENV["TESTOPTS"] && without_ractor(ENV["TESTOPTS"]),
           "TEST_PROCESSES" => ENV.fetch("TEST_PROCESSES") { ENV.fetch("MT_RACTOR_WORKERS") { RactorSettings.default_workers.to_s } } }
+      end
+
+      # RactorSettings' roomy heap, for a run in Ractors whose record asks for it
+      # (Lowering::Run#roomy_heap), with any of its settings already in the environment left as
+      # they are. Handed to that run alone, so a run after it in the same rake call keeps its own.
+      def roomy_heap_settings
+        return {} unless in_ractors? && Lowering.run_named(lowering).roomy_heap?
+
+        RactorSettings::ROOMY_HEAP.to_h { |name, value| [name, ENV.fetch(name, value)] }
       end
 
       def refuse_lowering_after_definition!

@@ -58,6 +58,16 @@ class TestTestTask < Minitest::Test
     assert_equal "false", yjit_enabled_in_run(:gbc, test_options: nil, ruby_options: "--yjit")
   end
 
+  # Every Ractor shares one heap, so a run in Ractors whose record asks for it is handed the roomy
+  # heap, and no other run is.
+  def test_a_run_in_ractors_that_asks_for_the_roomy_heap_is_given_it
+    assert_equal "4000000", heap_slots_in_run(:snes, test_options: "--ractor")
+  end
+
+  def test_a_run_that_does_not_ask_for_the_roomy_heap_keeps_the_default
+    assert_equal "", heap_slots_in_run(:gba, test_options: "--ractor")
+  end
+
   # A checked run's processes, the one rake starts and the ones it plays its tests in, require
   # the process runner, which requires minitest, from Ruby's command line. Ruby 4.1 no longer
   # sets bundler up while RubyGems loads, so that line runs before RUBYOPT's bundler/setup, and
@@ -112,6 +122,14 @@ class TestTestTask < Minitest::Test
   private def yjit_enabled_in_run(lowering, test_options:, ruby_options: nil)
     record_from_run(lowering, test_options: test_options, ruby_options: ruby_options) do |record|
       "File.write(#{record.inspect}, RubyVM::YJIT.enabled?.to_s)\n"
+    end
+  end
+
+  private def heap_slots_in_run(lowering, test_options:)
+    with_environment("RUBY_GC_HEAP_0_INIT_SLOTS" => nil) do
+      record_from_run(lowering, test_options: test_options) do |record|
+        "File.write(#{record.inspect}, ENV.fetch('RUBY_GC_HEAP_0_INIT_SLOTS', ''))\n"
+      end
     end
   end
 

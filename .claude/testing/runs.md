@@ -52,7 +52,9 @@ test file and the folder that keeps its last output and, on macOS, a sample of t
 
 ## Which runs use Ractors, and which processes
 
-Each run's record says which (`Testing::Lowering::Run#ractors`). The GBA run plays in Ractors, and
+Each run's record says which (`Testing::Lowering::Run#ractors`). The GBA and Super Nintendo runs
+play in Ractors, the Super Nintendo's with the roomy heap (`Run#roomy_heap`, handed to that run
+alone by `TestTask`; the GBA run's is not measured yet), and
 a run in Ractors reports every test that reaches state the whole process shares. The other runs
 play in processes and check nothing of the kind, so code only their tests reach can leak between
 tests unseen.
