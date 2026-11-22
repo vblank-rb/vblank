@@ -106,6 +106,7 @@ module VBlank
           end
 
           include Console::Hardware
+          include BendSchedule
 
           # The lines the picture is drawn on. The display counts on past the bottom of the
           # picture (through 227) while nothing is being drawn, so a line at or past this
@@ -139,14 +140,14 @@ module VBlank
           # background a game declares can be called it.
           LIGHT = :__spotlight
 
-          # Which backgrounds bend, name -> its :scroll_rows node, and the light, if there is
-          # one. Collected in the definitions pass so whichever mechanism answers them can be
-          # set up at boot, before any of the program's own code runs.
+          # Which backgrounds bend, name -> its :scroll_rows node (RowBends: the last of each
+          # background the game declares), and the light, if there is one. Collected in the
+          # definitions pass so whichever mechanism answers them can be set up at boot, before any
+          # of the program's own code runs.
           def register_row_bends(program)
-            program.walk.each do |node|
-              @row_bends[node.name] = node if node.kind == :scroll_rows # last wins if repeated
-              @light = node if node.kind == :shade_outside
-            end
+            @bends = RowBends.new(program)
+            @bends.bends.each { |bend| @row_bends[bend.background] = bend.node }
+            program.walk.each { |node| @light = node if node.kind == :shade_outside }
             @dark_scenes = IR::LightScenes.switches?(program) ? IR::LightScenes.dark(program).keys : []
             # A game that places a fade in the stack keeps the object window's field of the
             # register switched on too (SpriteDrawing#emit_boot_object_windows).
@@ -559,10 +560,28 @@ module VBlank
               emit_light_darkness
               emit_stage_first_light_rows
             end
-            feed_keys.each { |key| key == LIGHT ? emit_light_first_row : emit_bend_first_row(key) }
-            emit_flat_scroll_of_backgrounds_up
-            @row_bends.each_key { |key| emit_fill_row_table(key) }
+            emit_bends_worked_out do
+              emit_light_first_row if @light
+              emit_flat_scroll_of_backgrounds_up
+            end
           end
+
+          # The game's bends, for the schedule (BendSchedule): every bend's row 0 by
+          # #emit_bend_first_row, then the rest of each by #emit_fill_row_table.
+          def bends = @bends ? @bends.bends : []
+
+          def bend_screen_height = VISIBLE_LINES
+
+          def emit_bend_rows(bend, first, past)
+            return emit_bend_first_row(bend.background) if first.zero? && past == 1
+            raise ArgumentError, "a bend's rows after the first go to the bottom of the picture" unless past == VISIBLE_LINES
+
+            emit_fill_row_table(bend.background, first: first)
+          end
+
+          # #emit_fill_row_table counts in the row variable and stops at the height, so the
+          # variable is there already.
+          def emit_row_variable_set(_bend, _height) = nil
 
           # The light's rows are one routine, called at the end of every pass and from
           # Spotlight#show_now. A light whose shape is worked out row by row costs a few dozen

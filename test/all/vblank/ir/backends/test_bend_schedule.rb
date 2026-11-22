@@ -80,7 +80,7 @@ class TestBendSchedule < Minitest::Test
   end
 
   private def lowerings
-    { "Computer" => Backends::Computer::Lowering }
+    { "Computer" => Backends::Computer::Lowering, "GBA" => Backends::GBA::Raster }
   end
 
   # Every lowering that works bends out ahead of the picture takes this schedule.
