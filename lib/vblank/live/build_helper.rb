@@ -27,7 +27,7 @@ module VBlank
       # Gives back its pid and the end of the pipe it says what it is doing on, which BuildWatch reads.
       def self.start(game_file:, console:, settings:, slot:, library:, match: false, shell: false)
         reader, writer = IO.pipe
-        pid = Process.spawn(RbConfig.ruby, "-I", VBlank.root.join("lib").to_s, "-e", STARTER, "--",
+        pid = Process.spawn(IR::Backends::Ruby::RUBY_PROGRAM, "-I", VBlank.root.join("lib").to_s, "-e", STARTER, "--",
                             File.expand_path(game_file), console.to_s, slot.folder, JSON.generate(settings),
                             JSON.generate(library.to_plain), JSON.generate({ "match" => match, "shell" => shell }),
                             PIPE_FD => writer, in: File::NULL)

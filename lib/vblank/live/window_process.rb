@@ -36,7 +36,7 @@ module VBlank
         kept_open = helper_pipe ? { helper_pipe => helper_pipe } : {}
         # Must come just before exec, which runs no at_exit hook and finishes no object.
         Diagnostics::Verifier.remove_save_dir
-        Kernel.exec(IR::Backends::Ruby::PROGRAM_ENVIRONMENT, RbConfig.ruby, *("--zjit" if zjit),
+        Kernel.exec(IR::Backends::Ruby::PROGRAM_ENVIRONMENT, IR::Backends::Ruby::RUBY_PROGRAM, *("--zjit" if zjit),
                     *loaded.flat_map { |path| ["-r", path] }, File.join(runtime, "rg_window_main.rb"),
                     JSON.generate(launch.merge(build_fd: helper_pipe&.fileno)), **kept_open)
       end

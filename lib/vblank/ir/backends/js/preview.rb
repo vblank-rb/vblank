@@ -25,6 +25,10 @@ module VBlank
         # files are read afresh every time, and a build that stops — a guardrail's error, a Ruby
         # mistake — is shown in the page in its own words instead of a game.
         class Preview
+          # The Ruby each build is run by: the one running now, read once as the library loads,
+          # since only the main Ractor may read RbConfig.
+          RUBY_PROGRAM = RbConfig.ruby.freeze
+
           # +game_file+ is the game; +settings+ are what `--set` hands its build; +template+ is the
           # template every page is written from, nil for the default; +console+ the one the page
           # plays the game as, nil for the first the game names; +port+ is the one to serve on,
@@ -103,7 +107,7 @@ module VBlank
           # and how it ended. Its last word names the folder this build happened in, which is of no
           # use to anybody: #page says "Built" itself.
           def run_build(path)
-            Open3.popen2e(RbConfig.ruby, VBlank.root.join("bin", "vblank").to_s, "build", @game_file,
+            Open3.popen2e(RUBY_PROGRAM, VBlank.root.join("bin", "vblank").to_s, "build", @game_file,
                           "--format", "web", "-o", path, *(["--template", @template] if @template),
                           *(["--console", @console] if @console), *settings_arguments) do |input, output, ended|
               input.close
