@@ -97,8 +97,8 @@ module BufferedSnake
     define_sound :die, frequency: 140, duty: :half, decay: :medium
 
     # The body: two parallel lists, one entry per cell (xs[i], ys[i]).
-    xs = list :xs, capacity: BODY_CAP
-    ys = list :ys, capacity: BODY_CAP
+    xs = Array.new(capacity: BODY_CAP)
+    ys = Array.new(capacity: BODY_CAP)
 
     state    = 0    # 0 = title, 1 = playing, 2 = game over
     blink    = true
@@ -150,8 +150,8 @@ module BufferedSnake
     # Start a fresh game: reset the body, face right, zero the score, place the food.
     # No board painting here — the playing scene repaints every frame anyway.
     func :new_game do
-      list :xs, capacity: BODY_CAP
-      list :ys, capacity: BODY_CAP
+      xs = Array.new(capacity: BODY_CAP)
+      ys = Array.new(capacity: BODY_CAP)
       START_CELLS.each do |cx, cy|
         xs.push cx
         ys.push cy

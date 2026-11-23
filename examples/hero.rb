@@ -303,7 +303,7 @@ module Hero
     # them, so there the box is a picture sprites show instead (`as: :sprite`): the same words,
     # typed the same way.
     two_backgrounds = console.backgrounds < 3
-    note = list :note, capacity: 32, width: :byte # the sign's words, as letters, put together as you read
+    note = Array.new(capacity: 32, width: :byte) # the sign's words, as letters, put together as you read
     box = canvas :box, width: 192, height: 16, colors: [:transparent, :white, rgb(2, 4, 12)],
                        as: two_backgrounds ? :sprite : :tiles
     trail = canvas :trail, width: 32, height: 32, colors: %i[transparent white blue], as: :sprite

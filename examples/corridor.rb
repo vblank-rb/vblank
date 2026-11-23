@@ -91,7 +91,7 @@ module Corridor
       sin = table :sin, SIN
       world = table :world, MAP, width: :byte
       gold_at = table :gold_at, GOLD, width: :byte
-      taken = list :taken, capacity: GOLD.length, width: :byte
+      taken = Array.new(GOLD.length, 0, width: :byte) # one slot per piece of gold, 0 until it is taken
 
       view = 0    # the way the player faces (0..511, wraps freely)
       px = 3.5      # standing in the middle of cell (3, 3)
@@ -113,9 +113,6 @@ module Corridor
       seen = var :_seen, 0.0 # ...and how far that is once the fan is corrected for
       col_h = var :_col_h, 0
       top = var :_top, 0
-
-      # One slot per piece of gold, 0 until it is taken. Filled once, at boot.
-      GOLD.each_index { taken << 0 }
 
       game_loop do
         # The status bar first, so the view is painted over a clean strip either way.

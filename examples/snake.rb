@@ -9,8 +9,8 @@
 #   - Run into a wall or into your own body and it's game over.
 #   - Press START on the title (or after a game over) to play.
 #
-# It shows off the pieces that make a real game: a `list` for the growing body
-# (two parallel lists, xs and ys, one cell per segment), `seed`/`rand` for where
+# It shows off the pieces that make a real game: Arrays the game keeps as lists
+# for the growing body (two parallel ones, xs and ys, one cell per segment), `seed`/`rand` for where
 # the food appears, `every` for the movement beat, `draw_number` for the live
 # score, and scenes wired together with a state variable.
 #
@@ -124,8 +124,8 @@ module Snake
     define_sound :die, frequency: 140, duty: :half, decay: :medium
 
     # --- The body: two parallel lists, one entry per cell (xs[i], ys[i]) ---
-    xs = list :xs, capacity: here.body_cap
-    ys = list :ys, capacity: here.body_cap
+    xs = Array.new(capacity: here.body_cap)
+    ys = Array.new(capacity: here.body_cap)
 
     # --- RAM variables (each `var` hands back a handle we compare and mutate) ---
     state    = 0    # 0 = title, 1 = playing, 2 = game over (picked by the case below)
@@ -209,9 +209,9 @@ module Snake
     # Start a fresh game: reset the body to the opening snake, face right, zero the
     # score, place the first food, paint the board once, and switch to playing.
     func :new_game do
-      # Re-declaring a list empties it — the clean way to start the body over.
-      list :xs, capacity: here.body_cap
-      list :ys, capacity: here.body_cap
+      # A new Array in place of the old one empties the body, as Ruby would.
+      xs = Array.new(capacity: here.body_cap)
+      ys = Array.new(capacity: here.body_cap)
       here.start_cells.each do |cx, cy|
         xs.push cx
         ys.push cy
