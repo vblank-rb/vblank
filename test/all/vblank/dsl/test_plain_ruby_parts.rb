@@ -6,6 +6,8 @@ VBlank.require_game_file "../../../fixtures/game_with_two_parts/first"
 VBlank.require_game_file "../../../plain_ruby_game_parts"
 VBlank.require_game_file "../../../plain_ruby_loop_parts"
 VBlank.require_game_file "../../../plain_ruby_named_parts"
+VBlank.require_game_file "../../../plain_ruby_split_counts_named"
+VBlank.require_game_file "../../../plain_ruby_split_counts_changed"
 VBlank.require_game_file "../../../plain_ruby_flagged_bytes_part"
 VBlank.require_game_file "../../../plain_ruby_secret_lift_parts"
 
@@ -340,6 +342,29 @@ class TestPlainRubyParts < Minitest::Test
     player = played(CountsByNumberPart, :counts_by_number_tick, frames: 3)
 
     assert_equal [0, 3], player.list(:counts_by_number_part_counts)
+  end
+
+  # The class names the Array in one file and changes it at a worked-out index in another,
+  # reopened there. It plays as the one-file part above.
+  def test_a_named_array_changed_at_a_worked_out_index_in_another_file_plays_as_a_list
+    player = played(SplitCountsPart, :split_counts_tick, frames: 3)
+
+    assert_equal [0, 3], player.list(:split_counts_part_counts)
+  end
+
+  # A subclass in another file changes the Array its parent names: the subclass's object keeps a
+  # list, named by the subclass.
+  def test_a_subclass_in_another_file_changes_its_parents_named_array_as_a_list
+    player = played(SplitCountsChildPart, :split_counts_child_tick, frames: 3)
+
+    assert_equal [0, 3], player.list(:split_counts_child_part_counts)
+  end
+
+  # Read in the other file only at an index known while building: a variable for each index.
+  def test_a_named_array_read_in_another_file_at_known_indexes_stays_a_variable_for_each
+    player = played(SplitKnownCountsPart, :split_known_counts_tick, frames: 3)
+
+    assert_equal [0, 3], [player[:split_known_counts_part_counts_0], player[:split_known_counts_part_counts_1]]
   end
 
   # A named Hash has no list to be, so a key the game works out is still refused.

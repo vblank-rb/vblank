@@ -219,7 +219,7 @@ Each limit, with what to write instead. Where a limit is refused, VBlank says so
 - It cannot hold Arrays or Hashes (refused): keep one Array for each row, or use a `pool`.
 - `unshift`, `insert`, `concat`, `sort!`, `map` and the other Ruby methods a list does not have are refused by name: use the verbs above, or a `while` loop over the items.
 - `Array.new` takes only `capacity:`, `width:` and `fast:` besides Ruby's size and start (refused otherwise).
-- A named instance variable's Array read at an index the game works out is a list only when that read is in the file whose class names it with `game_variables`. Read from another file, it is refused: read it in a method of that class, and call the method.
+- A named instance variable's Array read at an index the game works out is a list only when the read is written `@counts[which]`, in the class, in the class reopened, or in a class made from it. The file does not matter. A read through another object (`part.counts[which]`) is refused: read it in a method of that class, and call the method.
 
 ## Changing a variable
 

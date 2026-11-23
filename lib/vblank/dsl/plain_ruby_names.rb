@@ -57,7 +57,11 @@ module VBlank
         # The instance variables read or written at an index that may be worked out as the game
         # plays, as `:@counts` (#note_instance_variable_index): any but a number, a symbol, a String
         # or a constant written out, or a parameter of a Ruby loop over something written out.
+        # These are the ones outside any `class` or `module`, the game block's own.
         attr_reader :instance_variables_at_worked_out_keys
+
+        # The same, for those inside a `class` or `module`, by the nearest one around them.
+        attr_reader :instance_variables_at_worked_out_keys_by_module
 
         # Every method, lambda and game block: code that runs when it is called, or as the game
         # plays, after the lines around it.
@@ -241,6 +245,8 @@ module VBlank
           # plays, after the lines around it (Promotion#run_later?).
           @bodies_run_later = []
           @instance_variables_at_worked_out_keys = Set.new
+          @instance_variables_at_worked_out_keys_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
+          @open_modules = []
           @next_block_iterates = false
           read_names(block_node, [], false)
         end
@@ -559,6 +565,10 @@ module VBlank
             inside_loops([]) { inside_method { read_block(node, [], false) } }
           when Prism::CallNode then read_call(node, scopes, in_game_code)
           when Prism::StatementsNode then read_statements(node, scopes, in_game_code)
+          when Prism::ClassNode, Prism::ModuleNode
+            @open_modules.push(node)
+            read_children(node, scopes, in_game_code)
+            @open_modules.pop
           when Prism::WhileNode, Prism::UntilNode
             inside_loops(@open_loops + [node]) do
               inside_region(node) do
@@ -770,7 +780,8 @@ module VBlank
                  end
           return if keys.all? { |key| key_known_while_building?(key) }
 
-          @instance_variables_at_worked_out_keys << node.receiver.name
+          noted = @open_modules.empty? ? @instance_variables_at_worked_out_keys : @instance_variables_at_worked_out_keys_by_module[@open_modules.last]
+          noted << node.receiver.name
         end
 
         def key_known_while_building?(key)

@@ -340,8 +340,25 @@ module VBlank
           when *OWN_SCOPES then own_scope_text(node)
           when Prism::ParenthesesNode, Prism::BeginNode then grouped_text(node)
           when Prism::StatementsNode then statements_text(node)
+          when Prism::ClassNode, Prism::ModuleNode then module_text(node)
           else copied_text(node)
           end
+        end
+
+        # A `class` or `module` whose code reads or writes an instance variable at an index the game
+        # may work out marks it, last in its body, so that an Array of numbers a `game_variables`
+        # line names becomes a list (InstanceVariables.keep_arrays_as_lists). The mark is on the
+        # class this file opens, so it holds wherever the `game_variables` line is: in this file, in
+        # a file brought in before this one, or in a parent the class is made from. A named Array
+        # is made a game's at the first line of game code that reads it, as the game is built,
+        # which is after every file it is made from has run.
+        def module_text(node)
+          text = copied_text(node)
+          labels = @names.instance_variables_at_worked_out_keys_by_module.fetch(node, nil)
+          return text if labels.nil? || !@follows_instance_variables
+
+          # Whatever stands before `end` ends the last line with a line break or a `;` already.
+          "#{text.delete_suffix('end')}#{INSTANCE_VARIABLES}.keep_arrays_as_lists(self, #{labels.to_a.inspect}); end"
         end
 
         # A statement with another after it has nothing reading its value, so a join there
@@ -511,6 +528,10 @@ module VBlank
         # name nothing a game reads, so it is refused there. The arguments are passed as written,
         # so `saved: false` arrives as a keyword and a name given as `states: :lit_state` among the
         # rest.
+        #
+        # In the game block, outside any class, the line also marks the instance variables the
+        # block reads at an index the game may work out, which are the builder's own. A class's
+        # are marked by the class (#module_text).
         def game_variables_text(node)
           return "#{INSTANCE_VARIABLES}.refuse_named_in_method!" if @in_method
 

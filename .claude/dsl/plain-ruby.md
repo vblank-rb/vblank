@@ -124,7 +124,9 @@ instance variables.
   something written out gives (`SIDES.each do |side|`, `3.times do |i|`).
 - **A named Array of numbers read at an index the game may work out is a list** (`lists.md`):
   `@counts = [0, 0]` in `initialize`, then `@counts[which] += 1` in game code, with any other index
-  than those above, written in the same file as the class's `game_variables :counts` line. It holds
+  than those above, written in the class, in the class reopened or in a class made from it, in any
+  file (`VBlank.require_game_file`): the class that reads it marks it, and the Array becomes the
+  game's at the first line of game code that reads it, after every file has run. It holds
   its items and room for no more, holds fractions where a start is a Float, and a profile reads it
   by the name its variables would have had, `counts_by_number_part_counts`. A named Hash at a key
   the game works out is still refused: a Hash has no list to be.
