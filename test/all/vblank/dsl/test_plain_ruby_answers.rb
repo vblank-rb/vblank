@@ -697,8 +697,7 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   def test_a_field_called_index
-    known_gap("a member named index", gap: "A Struct with a member named index is refused in words about a pool",
-                                      reads: %i[out out2], passes: 1) do
+    agrees("a member named index", reads: %i[out out2], passes: 1) do
       cards = Array.new(capacity: 4)
       out = out2 = 0
       game_loop do
@@ -706,6 +705,24 @@ class TestPlainRubyAnswers < Minitest::Test
         cards.each { |c| out = c.index }
         cards.each { |c| c.index += 1 }
         cards.each { |c| out2 = c.index }
+      end
+    end
+  end
+
+  def test_members_named_as_a_things_own_words
+    agrees("members named left, move, capacity and rate", reads: %i[boxes total], passes: 2) do
+      boxes = Array.new(capacity: 4)
+      total = started = 0
+      game_loop do
+        if started == 0
+          boxes << AnswerBox.new(1, 2, 3, 4)
+          started = 1
+        end
+        boxes.each do |b|
+          b.left += b.rate
+          b.move += 1
+          total = b.left + b.move + b.capacity
+        end
       end
     end
   end

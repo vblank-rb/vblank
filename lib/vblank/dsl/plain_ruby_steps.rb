@@ -21,7 +21,7 @@ module VBlank
         # A thing `min` or `max` handed back is one too: whether the Array held any thing, as
         # Ruby's nil for an empty one is falsy (StructArray::Thing#found_test).
         def game_test?(value)
-          return true if value.is_a?(StructArray::Thing) && value.found
+          return true if value.is_a?(StructArray::Thing) && value.found_flag
 
           value.is_a?(Condition) || (value.is_a?(Value) && (value.boolean? || !value.truth.nil?))
         end
@@ -33,7 +33,7 @@ module VBlank
         def game_value?(value) = [Integer, Float, Symbol, TrueClass, FalseClass].any? { |kind| value.is_a?(kind) }
 
         def as_condition(value)
-          return value.found_test if value.is_a?(StructArray::Thing) && value.found
+          return value.found_test if value.is_a?(StructArray::Thing) && value.found_flag
           return value unless value.is_a?(Value)
 
           value.truth ? value.truth == Value::TRUTHY_HELD : value != 0
@@ -53,7 +53,7 @@ module VBlank
 
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
         def nil_test(value)
-          return !value.found_test if value.is_a?(StructArray::Thing) && value.found
+          return !value.found_test if value.is_a?(StructArray::Thing) && value.found_flag
 
           value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
         end
@@ -72,7 +72,7 @@ module VBlank
 
         # The other answer to a test, for `!` and `unless`.
         def opposite(value)
-          return !value.found_test if value.is_a?(StructArray::Thing) && value.found
+          return !value.found_test if value.is_a?(StructArray::Thing) && value.found_flag
           return !value unless value.is_a?(Value) && game_test?(value)
 
           value.truth ? value.truth != Value::TRUTHY_HELD : value == 0

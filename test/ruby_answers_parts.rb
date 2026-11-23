@@ -38,6 +38,10 @@ end
 # A card with a field called index.
 AnswerCard = Struct.new(:x, :y, :index)
 
+# A box whose members share their names with what a thing of an Array answers (left), with
+# what a walk hands its block (move) and with `pool`'s own words (capacity, rate).
+AnswerBox = Struct.new(:left, :move, :capacity, :rate)
+
 # An object whose initialize pushes into Arrays it is handed, not its own.
 class AnswerHanded
   def initialize(notes, points, x)

@@ -41,7 +41,7 @@ module VBlank
           Steps.refuse_number_question_as_number!(value)
           # A thing of an Array of Structs given a name keeps its slot, so the name stays on that
           # thing after its walk moves on.
-          return value.array.kept(value, current) if value.is_a?(StructArray::Thing)
+          return value.struct_array.kept(value, current) if value.is_a?(StructArray::Thing)
 
           share_argument(value, owner, label) if shares && owner
           if owner

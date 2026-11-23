@@ -280,6 +280,7 @@ end
 - Two things compare as Structs do: `a == b` when every field is equal, `a.equal?(b)` when they are the same thing. A thing kept in a name after its walk (`pick = s if s.x == 10`) is still that thing.
 - `narrow :x, :y` in the Struct's block keeps each of those fields in half a word, and `narrow kind: :byte` in a byte, for a big Array.
 - A field holds fractions where a line puts one in: `Spark.new(x, 0.0, 1.5)`, or `s.vy = 0.5` in a walk.
+- A member can have any name Ruby allows. A member named as what a thing answers, such as `left` or `move`, means the member, as in Ruby.
 - A part keeps one in an instance variable the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class.
 - `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change, and so are Ruby's Array methods it has no meaning for (`rotate!`, `map`), by name.
 - A push onto a full Array stops the game, as it does for an Array of numbers: `shift` first to make room, as above, or test `size` first to skip the new thing. A thing taken out inside a walk gives its place back only when the walk ends, so a `<<` in the same walk that needs that place stops the game saying so: add the new thing after the walk. A `<<` in a walk of an Array with room joins it at once, and only the walk it is in does not visit it.

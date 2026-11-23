@@ -68,7 +68,10 @@ module VBlank
         fields = kind.members.to_h { |member| [member, fraction_field?(member, declaration) ? 0.0 : 0] }
         name = builder.plain_array_list_name(*name_and_owner(owner, declaration))
         widths = PlainRuby::StructSettings.widths_of(kind)
-        made = -> { builder.pool(name, capacity: capacity, on_full: :stop, widths: widths, **drawing, **settings, **fields) }
+        made = lambda do
+          builder.declare_pool(name, fields, capacity: capacity, on_full: :stop, widths: widths, struct_fields: true,
+                                             **drawing, **settings)
+        end
         @pool = layer ? builder.layer(layer) { made.call } : made.call
         @pool.explain_kinds_with { |field| kind_advice(field) }
         @walked = walked_class(kind)
@@ -315,16 +318,16 @@ module VBlank
                                              "thing in each case.")
         end
         slot = @builder.hidden_variable(:clamped)
-        slot.store!(thing.index)
-        (thing < min).record_branch { slot.store!(min.index) }
-        (thing > max).record_branch { slot.store!(max.index) }
-        walked(Pool::Instance.new(@pool, slot)).tap { |kept| kept.kept = true }
+        slot.store!(thing.slot)
+        (thing < min).record_branch { slot.store!(min.slot) }
+        (thing > max).record_branch { slot.store!(max.slot) }
+        walked(Pool::Instance.new(@pool, slot)).tap { |kept| kept.own_slot = true }
       end
 
       # A thing of another Array, or anything that is not a thing, cannot be compared with one of
       # these: the order reads both from this Array's slots.
       def refuse_other_array!(other) # :nodoc:
-        return if other.is_a?(Thing) && other.array.equal?(self)
+        return if other.is_a?(Thing) && other.struct_array.equal?(self)
 
         PlainRuby::Steps.refuse_game_code!("This line compares a thing of `#{@local}` with #{other.is_a?(Thing) ? 'a thing of another Array' : 'something that is not one of its things'}. " \
                                            "The game compares things of one Array only. To fix this, compare their " \
@@ -344,11 +347,11 @@ module VBlank
         best.store!(Value.new(@builder, IR::Build.var_ref(@pool.head_var)))
         leader = walked(Pool::Instance.new(@pool, best))
         each do |thing|
-          precedes(thing, leader, key, smallest: smallest).record_branch { best.store!(thing.index) }
+          precedes(thing, leader, key, smallest: smallest).record_branch { best.store!(thing.slot) }
         end
         leader.tap do |kept|
-          kept.kept = true
-          kept.found = found
+          kept.own_slot = true
+          kept.found_flag = found
         end
       end
 
@@ -391,16 +394,16 @@ module VBlank
       # handed it over moves on, as a Ruby name stays on its object. A name that holds such a
       # thing of this Array already keeps it, and takes the new slot.
       def kept(thing, current) # :nodoc:
-        if current.is_a?(Thing) && current.kept? && current.array.equal?(self) && current.found.equal?(thing.found)
-          current.index.store!(thing.index)
+        if current.is_a?(Thing) && current.own_slot? && current.struct_array.equal?(self) && current.found_flag.equal?(thing.found_flag)
+          current.slot.store!(thing.slot)
           return current
         end
 
         slot = @builder.hidden_variable(:kept)
-        slot.store!(thing.index)
+        slot.store!(thing.slot)
         walked(Pool::Instance.new(@pool, slot)).tap do |own|
-          own.kept = true
-          own.found = thing.found # what `min` or `max` found, as a test (Thing#found)
+          own.own_slot = true
+          own.found_flag = thing.found_flag # what `min` or `max` found, as a test (Thing#found_flag)
         end
       end
 
@@ -480,6 +483,10 @@ module VBlank
         kind.members.each do |member|
           walked.class_eval("def #{member}=(value); self[#{member.inspect}].store!(value); end", __FILE__, __LINE__)
         end
+        # A member named as what a thing answers (`left`, `move`, `index`) is the member, as in Ruby.
+        (kind.members & Thing.public_instance_methods).each do |member|
+          walked.class_eval("def #{member} = self[#{member.inspect}]", __FILE__, __LINE__)
+        end
         PlainRuby::StructMethods.define_on(walked, kind)
         walked
       end
@@ -509,8 +516,8 @@ module VBlank
       # The thing +instance+ is, as an object of the game's Struct.
       def walked(instance)
         thing = @walked.allocate
-        thing.instance = instance
-        thing.array = self
+        thing.pool_instance = instance
+        thing.struct_array = self
         @kind.members.each { |member| thing[member] = @pool.field_ref(member, instance.index) }
         thing
       end
@@ -603,25 +610,30 @@ module VBlank
       # One thing of an Array of Structs
       #
       # What a walk hands the block: the game's own Struct, with what one thing of a pool answers.
+      #--
+      # The names of the framework's own (#pool_instance, #struct_array, #slot and the rest) are
+      # ones a game's Struct is unlikely to have as members, since a member of the same name as any
+      # method here wins (StructArray#walked_class), as it would in Ruby.
+      #++
       module Thing
         # The pool's own handle on this thing.
-        attr_accessor :instance # :nodoc:
+        attr_accessor :pool_instance # :nodoc:
 
         # The Array of Structs this thing is in.
-        attr_accessor :array # :nodoc:
+        attr_accessor :struct_array # :nodoc:
 
         # Whether this thing's slot is a number of its own (StructArray#kept), not a walk's.
-        attr_writer :kept # :nodoc:
+        attr_writer :own_slot # :nodoc:
 
-        def kept? = @kept || false # :nodoc:
+        def own_slot? = @own_slot || false # :nodoc:
 
         # For a thing `min` or `max` handed back: the hidden yes or no of whether the Array held
         # any thing then. As a test the thing is that, as Ruby's nil answer for an empty Array is
         # false (PlainRuby::Steps.game_test?). nil for any other thing, which is always there.
-        attr_accessor :found # :nodoc:
+        attr_accessor :found_flag # :nodoc:
 
-        # Whether this thing is there, as a test the game makes (#found); nil where it always is.
-        def found_test = (found != 0 if found) # :nodoc:
+        # Whether this thing is there, as a test the game makes (#found_flag); nil where it always is.
+        def found_test = (found_flag != 0 if found_flag) # :nodoc:
 
         # A test that holds while every field of this thing equals the same field of +other+, as
         # Struct#== compares two Structs. Anything that is not a Struct with these fields is never
@@ -633,7 +645,7 @@ module VBlank
         def ==(other)
           return false unless other.is_a?(Struct) && other.members == members
 
-          case array.equality
+          case struct_array.equality
           when :order then level_in_order(other)
           when :same_thing then equal?(other)
           else eql?(other)
@@ -651,14 +663,14 @@ module VBlank
         # Ruby's Comparable, answered by the Struct's own order (StructArray#own_order) as tests
         # the game makes: whether this thing comes before +other+, after it, and so on.
         def <(other)
-          array.refuse_other_array!(other)
-          array.precedes(self, other, array.own_order)
+          struct_array.refuse_other_array!(other)
+          struct_array.precedes(self, other, struct_array.own_order)
         end
 
         # Does this thing come after +other+?
         def >(other)
-          array.refuse_other_array!(other)
-          array.precedes(self, other, array.own_order, smallest: false)
+          struct_array.refuse_other_array!(other)
+          struct_array.precedes(self, other, struct_array.own_order, smallest: false)
         end
 
         # Does this thing come before +other+, or level with it?
@@ -672,53 +684,53 @@ module VBlank
 
         # +min+ where this thing comes before it, +max+ where it comes after it, or this thing, as
         # Ruby's `clamp`: a thing kept as a name keeps one.
-        def clamp(min, max) = array.clamped(self, min, max)
+        def clamp(min, max) = struct_array.clamped(self, min, max)
 
         private def level_in_order(other)
-          array.own_order.fields.map { |field| self[field.name] == other[field.name] }.reduce(:&)
+          struct_array.own_order.fields.map { |field| self[field.name] == other[field.name] }.reduce(:&)
         end
 
         # A test that holds while +other+ is this very thing: the same slot of the same Array.
         def equal?(other)
           return true if super
-          return false unless other.is_a?(Thing) && array.equal?(other.array)
+          return false unless other.is_a?(Thing) && struct_array.equal?(other.struct_array)
 
-          index == other.index
+          slot == other.slot
         end
 
         # Turns this thing to face a direction (Pool::Instance#face).
-        def face(direction, showing: nil) = instance.face(direction, showing: showing).then { self }
+        def face(direction, showing: nil) = pool_instance.face(direction, showing: showing).then { self }
 
         # Draws this thing with another list of colours (Pool::Instance#draw_with).
-        def draw_with(which, showing: nil) = instance.draw_with(which, showing: showing).then { self }
+        def draw_with(which, showing: nil) = pool_instance.draw_with(which, showing: showing).then { self }
 
         # Moves this thing, stopping at solid tiles (Pool::Instance#move).
-        def move(direction_or_dx, dy = nil, by: 1) = instance.move(direction_or_dx, dy, by: by).then { self }
+        def move(direction_or_dx, dy = nil, by: 1) = pool_instance.move(direction_or_dx, dy, by: by).then { self }
 
         # Whether this thing could step that way (Pool::Instance#can_move?).
-        def can_move?(direction, by: 1) = instance.can_move?(direction, by: by)
+        def can_move?(direction, by: 1) = pool_instance.can_move?(direction, by: by)
 
         # Keeps this thing wholly on the screen (Pool::Instance#clamp_to_screen).
-        def clamp_to_screen = instance.clamp_to_screen.then { self }
+        def clamp_to_screen = pool_instance.clamp_to_screen.then { self }
 
         # Whether this thing's box overlaps another's (Bounds#overlaps?).
-        def overlaps?(other) = instance.overlaps?(other)
+        def overlaps?(other) = pool_instance.overlaps?(other.is_a?(Thing) ? other.pool_instance : other)
 
         # The edges of this thing's box (Pool::Instance#left and the rest).
-        def left = instance.left
-        def top = instance.top # :nodoc:
-        def right = instance.right # :nodoc:
-        def bottom = instance.bottom # :nodoc:
+        def left = pool_instance.left
+        def top = pool_instance.top # :nodoc:
+        def right = pool_instance.right # :nodoc:
+        def bottom = pool_instance.bottom # :nodoc:
 
         # The screen-edge tests (Bounds).
-        def off_screen? = instance.off_screen?
-        def off_left? = instance.off_left? # :nodoc:
-        def off_right? = instance.off_right? # :nodoc:
-        def above_top? = instance.above_top? # :nodoc:
-        def below_bottom? = instance.below_bottom? # :nodoc:
+        def off_screen? = pool_instance.off_screen?
+        def off_left? = pool_instance.off_left? # :nodoc:
+        def off_right? = pool_instance.off_right? # :nodoc:
+        def above_top? = pool_instance.above_top? # :nodoc:
+        def below_bottom? = pool_instance.below_bottom? # :nodoc:
 
         # This thing's own slot in the pool (Pool::Instance#index).
-        def index = instance.index
+        def slot = pool_instance.index
       end
     end
   end

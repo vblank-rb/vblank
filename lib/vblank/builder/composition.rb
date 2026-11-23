@@ -112,7 +112,18 @@ module VBlank
       #++
       def pool(name, capacity:, image: nil, facing: nil, frames: nil, rate: nil,
                on_full: :drop, widths: {}, fast: nil, layout: nil, **fields)
-        validate_pool!(name, capacity, fields)
+        declare_pool(name, fields, capacity: capacity, image: image, facing: facing, frames: frames, rate: rate,
+                                   on_full: on_full, widths: widths, fast: fast, layout: layout)
+      end
+
+      # The pool itself, for `pool` and for an Array of Structs kept as one (DSL::StructArray),
+      # which hands its fields as a Hash, so a field may share a name with one of `pool`'s own
+      # words (`capacity`, `rate`). +struct_fields+ marks such an Array: its things read each
+      # field through the field's own handle, never as a method of Pool::Instance, so a field may
+      # share a name with one of those too (`index`, `left`), as a Struct member may in Ruby.
+      def declare_pool(name, fields, capacity:, image: nil, facing: nil, frames: nil, rate: nil,  # :nodoc:
+                       on_full: :drop, widths: {}, fast: nil, layout: nil, struct_fields: false)
+        validate_pool!(name, capacity, fields, struct_fields: struct_fields)
         validate_on_full!(name, on_full)
         validate_pool_widths!(name, fields, widths)
         fields.each { |field, default| check_width_holds_fractions!(name, field, default, widths.fetch(field, :word)) }
@@ -479,14 +490,14 @@ module VBlank
               "width, or declare the field with a whole number."
       end
 
-      def validate_pool!(name, capacity, fields)
+      def validate_pool!(name, capacity, fields, struct_fields: false)
         raise ArgumentError, "A pool needs a name that is a Symbol. Got #{name.inspect}." unless name.is_a?(Symbol)
         unless DSL::Whole.positive?(capacity)
           raise ArgumentError, "pool :#{name} needs a positive capacity. Got #{Messages::PlainWords.words_for_given(capacity)}."
         end
 
         refuse_pool_name_with_stray_underscores!(name)
-        refuse_field_named_like_instance_method!(name, fields)
+        refuse_field_named_like_instance_method!(name, fields) unless struct_fields
       end
 
       # How much memory a pool takes, counted as it is built: every list it is made from, each
