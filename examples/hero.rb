@@ -511,7 +511,7 @@ module Hero
       end
       near = ((px - SIGN_X).abs < READING_REACH_X) && ((py - SIGN_Y).abs < READING_REACH_Y)
       call :open_the_sign if pressed(:a) && !reading && near
-      call :type_a_letter if reading && typed < note.length && (tick & 1) == 0
+      call :type_a_letter if reading && typed < note.length && tick.even?
 
       # THE MAP: a dot wherever you are, a pixel for every tile of the world. It is never
       # cleared while you walk, so it is a map of everywhere you have been.

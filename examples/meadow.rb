@@ -336,8 +336,8 @@ module Meadow
 
         # Down into the cabin door, or up into the cabin's door in the meadow: he stops
         # there and the picture starts to break up. The room is not swapped yet.
-        way_out = room == 0 && y >= deepest - 8 && (x >= (14 * 8) - 8) && x <= 15 * 8
-        way_in = room == 1 && (y <= (46 * 8) - 4) && (x >= (53 * 8) - 8) && x <= 54 * 8
+        way_out = room == 0 && y >= deepest - 8 && x.between?((14 * 8) - 8, 15 * 8)
+        way_in = room == 1 && (y <= (46 * 8) - 4) && x.between?((53 * 8) - 8, 54 * 8)
         if way_out || way_in
           in_door = true
           pixelate_out frames: DOOR_FRAMES, under: :words
