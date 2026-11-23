@@ -242,6 +242,43 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A flag a method sets outright (`def open! = @open = true`) is not marked by the source, so a
+  # test on it through a reader, or one picking a number, would be decided while building. The
+  # build stops at the end, naming the fix.
+  def test_a_flag_set_in_a_method_and_tested_through_a_reader_is_refused
+    refused("s += 1 if latch.open?, then latch.open!", /game_variables :open/) do
+      latch = AnswerLatch.new
+      s = 0
+      game_loop do
+        s += 1 if latch.open?
+        latch.open!
+      end
+    end
+  end
+
+  def test_a_flag_set_in_a_method_and_tested_for_a_number_is_refused
+    refused("s = latch.seen, then latch.open!", /game_variables :open/) do
+      latch = AnswerLatch.new
+      s = 0
+      game_loop do
+        s = latch.seen
+        latch.open!
+      end
+    end
+  end
+
+  # A once-guard asked through a reader guards building work, not game code: left to Ruby.
+  def test_a_once_guard_asked_through_a_reader
+    agrees("plan unless planned?", reads: %i[n], passes: 3) do
+      planner = AnswerPlanner.new(self)
+      n = 0
+      game_loop do
+        planner.step
+        n = planner.steps
+      end
+    end
+  end
+
   def test_two_objects_of_one_class
     agrees("one lamp switched, one left", reads: %i[x y], passes: 3) do
       one = AnswerLamp.new

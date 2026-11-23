@@ -344,7 +344,10 @@ module VBlank
             yield variable unless variable.equal?(current)
             return variable
           end
-          uses.note_read(owner, label, current) unless in_text
+          unless in_text
+            uses.note_read(owner, label, current)
+            uses.note_flag_read(owner, label, current) if Uses::FLAGS.include?(current)
+          end
           current
         end
 
@@ -475,6 +478,22 @@ module VBlank
 
           Builder.in_use
         end
+
+        # A read in game code of +owner+'s plain flag +label+, which held +current+.
+        FlagRead = Data.define(:owner, :label, :current)
+
+        # Where the record of plain flag reads stands now, while game code is recorded, else nil. A
+        # test asks before its own test runs, then takes what was read since (#flag_reads_since):
+        # the flags its answer came from, through a reader (`if door.open?`) as well.
+        def flag_read_mark
+          builder = Builder.in_use
+          builder.instance_variable_uses.flag_read_mark if builder&.recording_game_code?
+        end
+
+        def flag_reads_since(mark) = mark ? Builder.in_use.instance_variable_uses.flag_reads_since(mark) : []
+
+        # A test written for its value, made while building, picked a value by +read+.
+        def note_flag_picks(read) = Builder.in_use.instance_variable_uses.note_flag_picks(read)
 
         # The side of a test of +owner+'s plain flag +label+ written at +site+ ran, and +records+
         # says whether it recorded game code.
@@ -837,6 +856,7 @@ module VBlank
             @uses = {}.compare_by_identity
             @flags = {}.compare_by_identity
             @flag_sides = {}
+            @flag_reads = []
           end
 
           # A side of a test on +owner+'s plain flag +label+, which held +current+, ran: written at
@@ -850,6 +870,22 @@ module VBlank
             flag = flag_of(owner, label)
             flag.tested_at ||= Messages::AuthorSource.author_file_and_line
             flag.tested_nil ||= current.nil?
+          end
+
+          # Game code read +owner+'s plain flag +label+, holding +current+ (InstanceVariables.flag_read_mark).
+          def note_flag_read(owner, label, current) = @flag_reads << FlagRead.new(owner: owner, label: label, current: current)
+
+          def flag_read_mark = @flag_reads.length
+
+          # The flag reads since +mark+, each flag once.
+          def flag_reads_since(mark) = @flag_reads.drop(mark).uniq { |read| [read.owner.object_id, read.label] }
+
+          # A test made while building picked a value by +read+'s flag (`@open ? 1 : 0`): it decides
+          # what the game reads, as a side recording game code does.
+          def note_flag_picks(read)
+            flag = flag_of(read.owner, read.label)
+            flag.tested_at ||= Messages::AuthorSource.author_file_and_line
+            flag.tested_nil ||= read.current.nil?
           end
 
           # ...and one was skipped, which is judged once every routine is recorded (#refuse_game_flags!).

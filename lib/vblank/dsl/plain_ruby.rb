@@ -1554,8 +1554,22 @@ module VBlank
           sides = under_open_test(answer) do
             "#{yes_side_text(node, answer, shut_at, kept)}#{no_side_text(node, answer, shut_at, kept)}"
           end
+          return watched_flag_reads_text(node, answer, kept, "#{promotions}#{sides}") if !watched && @follows_instance_variables
+
           watch = watched ? "#{answer}.watch_flag(#{flag_watch_arguments(node, watched)}); " : ""
           "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{watch}#{promotions}#{sides}#{answer}.#{value_step(kept)})"
+        end
+
+        # A conditional whose test is no instance variable standing alone (`if door.open?`), or
+        # one written for its value (`@open ? 1 : 0`): the plain flags read while its test runs,
+        # through a reader as well, are watched as `if @open` watches its own
+        # (Steps::BuildTest#watch_flag_reads).
+        def watched_flag_reads_text(node, answer, kept, rest)
+          mark = "#{answer}_flag_reads"
+          watch = "#{answer}.watch_flag_reads(#{INSTANCE_VARIABLES}.flag_reads_since(#{mark}), " \
+                  "#{flag_watch_settings(node)}, picks: #{kept ? true : false}); "
+          "(#{mark} = #{INSTANCE_VARIABLES}.flag_read_mark; #{answer} = #{STEPS}.branch_test(#{test_text(node)}); " \
+            "#{watch}#{rest}#{answer}.#{value_step(kept)})"
         end
 
         # The instance variable a conditional tests standing alone (`if @open`, `unless @planned`,
@@ -1576,11 +1590,13 @@ module VBlank
         # nothing whatever runs it, read off the source: nothing written, a `return`, `break` or
         # `next` alone, or a `raise`, which stops the build (`raise ArgumentError, "..." if @written`,
         # a guard on how the game is put together).
-        def flag_watch_arguments(node, name)
+        def flag_watch_arguments(node, name) = "self, :#{name}, #{name}, #{flag_watch_settings(node)}"
+
+        def flag_watch_settings(node)
           other = other_side(node)
           quiet_no = other.nil? || (other.is_a?(Prism::ElseNode) && quiet_side?(other.statements))
           site = "#{@source_label}:#{node.location.start_offset}"
-          "self, :#{name}, #{name}, site: #{site.inspect}, quiet_yes: #{quiet_side?(node.statements)}, quiet_no: #{quiet_no}"
+          "site: #{site.inspect}, quiet_yes: #{quiet_side?(node.statements)}, quiet_no: #{quiet_no}"
         end
 
         def quiet_side?(statements)

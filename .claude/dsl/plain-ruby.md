@@ -193,8 +193,13 @@ instance variables.
   Ruby runs. A side Ruby skips counts as game code unless the build ran that same side somewhere else
   and it recorded nothing, or it holds nothing but a `return`, `break`, `next` or `raise`. So `seen
   += 1 if @open` with `@open = true` in a method game code calls is refused, naming both lines and
-  `game_variables :open` (and `@open = false` where it starts, for one left nil). Marked, it is the
-  game's (above), tested through a method (`door.open?`) or to pick a number (`@open ? 1 : 0`) too.
+  `game_variables :open` (and `@open = false` where it starts, for one left nil). A test whose answer
+  comes from the flag through a reader (`if door.open?`) is watched the same way: the rewrite notes
+  each plain flag read while its test runs (`InstanceVariables.flag_read_mark`,
+  `Steps::BuildTest#watch_flag_reads`). A test written for its value (`@open ? 1 : 0`, `door.open? ?
+  1 : 0`) picks what the game reads, so it counts as deciding the game whatever its sides hold. A
+  once-guard asked through a reader (`plan unless planned?`) is still left alone. Marked, a flag is
+  the game's (above), tested any way.
   Not the game's: a
   once-guard, whose test guards building work and no game code (`plan unless @planned`, with `plan`
   setting `@planned = true` and declaring routines; `return if @laid_out` above `@laid_out = true`;

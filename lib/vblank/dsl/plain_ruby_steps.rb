@@ -449,15 +449,27 @@ module VBlank
           # shows it records nothing (+quiet_yes+, +quiet_no+). Nothing here depends on how the
           # build is run, so every run of a game gets one answer.
           def watch_flag(owner, label, current, site:, quiet_yes:, quiet_no:)
-            @builder = InstanceVariables.builder_watching_flag(owner, label, current)
-            return unless @builder
+            builder = InstanceVariables.builder_watching_flag(owner, label, current)
+            return unless builder
 
-            @owner = owner
-            @label = label
-            @current = current
+            @builder = builder
+            (@watched ||= []) << InstanceVariables::FlagRead.new(owner: owner, label: label, current: current)
             @site = site
             @quiet_yes = quiet_yes
             @quiet_no = quiet_no
+          end
+
+          # The same for a test whose answer came from plain flags read some other way
+          # (InstanceVariables.flag_reads_since): through a reader (`if door.open?`), or in a
+          # test written for its value (`@open ? 1 : 0`, +picks+). A test that picks a value
+          # decides what the game reads, whatever its sides record, so it is noted as one that
+          # guards game code.
+          def watch_flag_reads(reads, site:, quiet_yes:, quiet_no:, picks:)
+            reads.each do |read|
+              next InstanceVariables.note_flag_picks(read) if picks
+
+              watch_flag(read.owner, read.label, read.current, site: site, quiet_yes: quiet_yes, quiet_no: quiet_no)
+            end
           end
 
           private
@@ -469,7 +481,7 @@ module VBlank
             if taken
               @measured = [@builder.statement_mark, site]
             elsif !(side == :yes ? @quiet_yes : @quiet_no)
-              InstanceVariables.note_flag_side_skipped(@owner, @label, @current, site)
+              @watched.each { |read| InstanceVariables.note_flag_side_skipped(read.owner, read.label, read.current, site) }
             end
             taken
           end
@@ -478,7 +490,10 @@ module VBlank
             return unless @measured
 
             mark, site = @measured
-            InstanceVariables.note_flag_side_run(@owner, @label, @current, site, records: @builder.recorded_since?(mark))
+            records = @builder.recorded_since?(mark)
+            @watched.each do |read|
+              InstanceVariables.note_flag_side_run(read.owner, read.label, read.current, site, records: records)
+            end
             @measured = nil
           end
 
@@ -501,6 +516,7 @@ module VBlank
 
           # A flag that turned out to be the game's (BuildTest#watch_flag): both sides run anyway.
           def watch_flag(*, **) = nil
+          def watch_flag_reads(*, **) = nil
 
           def open_yes_side
             @if_node = @condition.open_branch

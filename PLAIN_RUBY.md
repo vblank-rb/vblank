@@ -640,7 +640,6 @@ end
 - `x = 0` inside `game_loop`, a `func` or a method the loop calls is set again every pass.
 - `/` on a negative game number rounds toward zero (`-7 / 2` is -3), where Ruby while building gives -4.
 - `puts` and other harmless Ruby in a game block run once, while building.
-- A `true` or `false` instance variable that game code sets outright in a method of its own (`def open! = @open = true`) stays the value Ruby gave it where game code tests it only through a method (`door.open?`) or only to pick a number (`@open ? 1 : 0`). Write `game_variables :open` in the class's body. One switched from what it holds (`@open = !@open`), or set in a game block, is the game's already.
 - A Struct kept in a name, not in an Array, whose field game code changes (`point.x += 1`) keeps the number Ruby gave it. Write `game_variables :x` in the Struct's block.
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 

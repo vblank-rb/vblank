@@ -232,6 +232,40 @@ class AnswerNamed
   attr_reader :id, :hits
 end
 
+# A door a method of its own opens outright, asked through a reader or for a number.
+class AnswerLatch
+  def initialize
+    @open = false
+  end
+
+  def open! = @open = true
+  def open? = @open
+  def seen = @open ? 1 : 0
+end
+
+# A once-guard asked through a reader: the first step declares a routine, and every step calls it.
+class AnswerPlanner
+  def initialize(build)
+    @build = build
+    @planned = false
+    @steps = 0
+  end
+
+  def planned? = @planned
+
+  def step
+    plan unless planned?
+    @build.call(:answer_planner_count)
+  end
+
+  def plan
+    @planned = true
+    @build.func(:answer_planner_count) { @steps += 1 }
+  end
+
+  attr_reader :steps
+end
+
 # An object whose initialize pushes into Arrays it is handed, not its own.
 class AnswerHanded
   def initialize(notes, points, x)
