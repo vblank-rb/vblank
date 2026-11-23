@@ -46,17 +46,21 @@ class TestProgress < Minitest::Test
   # clock every few hundred, so a three-line program never gets as far as saying anything.
   # It has a routine and a frame in it because that is what the phase choosing what goes in the
   # quick memory has to choose BETWEEN — a program of loose statements gives it nothing to rank.
-  MANY_STATEMENTS = proc do
-    screen :bitmap
-    func(:paint) { 300.times { |n| pixel n % 240, n % 160, :red } }
-    game_loop { call :paint }
+  # Made by a method, not kept in a constant: a constant's block is shareable between Ractors,
+  # and a shareable block's game code cannot be read as normal Ruby.
+  private def many_statements
+    proc do
+      screen :bitmap
+      func(:paint) { 300.times { |n| pixel n % 240, n % 160, :red } }
+      game_loop { call :paint }
+    end
   end
 
   # Build it while a progress is listening, and hand back its phase lines in columns.
   private def phases_of_a_build
     out = StringIO.new
     VBlank.build("SPEAK", console: :gba, code: "ASPK", maker: "01", out: StringIO.new, err: StringIO.new,
-                          progress: Progress.to(out), &MANY_STATEMENTS)
+                          progress: Progress.to(out), &many_statements)
     phases_in(out)
   end
 
@@ -420,7 +424,7 @@ class TestProgress < Minitest::Test
   # never a pause with nothing on the screen.
   def test_a_measured_build_says_each_phase_once
     out = StringIO.new
-    game = VBlank.game("MEASURED", consoles: %i[gba], &MANY_STATEMENTS)
+    game = VBlank.game("MEASURED", consoles: %i[gba], &many_statements)
     game.build_rom(out: StringIO.new, err: StringIO.new, progress: Progress.to(out))
     phases = phases_in(out)
 
