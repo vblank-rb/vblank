@@ -101,9 +101,15 @@ instance variables.
 - **Whether a game is being built is one question** (`Builder::Session`, a thread's build): its
   builder, whether game code is recorded now, and whether parts run as plain Ruby on purpose
   (`Session.running_as_plain_ruby`, the comparison suite's Ruby half). A build opens one and always
-  closes it; a builder made by hand stands until the next. A part's Array of numbers or of Structs
-  made while no game is being built (above `VBlank.game`, after a build) is refused, saying to
-  make the part inside the game's block.
+  closes it, putting back what was current before; a builder made by hand is current until the
+  next (`Session.make_current`). A part's Array of numbers or of Structs made while no game is
+  being built (above `VBlank.game`, after a build with no hand-made builder before it) is refused,
+  saying to make the part inside the game's block.
+- **A variable an unpacking program made** (`part_of:`) stays a variable while the game it is
+  part of is being built, so another program of that game reading it is refused by the data pack.
+  Once that game's build has ended too (`Session#game_ended?` asks the game's session), a later
+  separate build takes it for Ruby's number, as it does a part kept outside the game's block
+  (`ruby_number_of_stale`).
 - **A game instance variable is a game variable from its first number on**, as if `var` had made
   it: `@busy = 0` in `initialize` makes it, starting at 0 at power-on. Every read and change after
   that is the game's, wherever it is: in another routine, in a block another part calls later,

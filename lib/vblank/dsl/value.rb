@@ -936,9 +936,9 @@ module VBlank
       # other variable.
       attr_reader :ruby_start # :nodoc:
 
-      # Has the game whose build made this variable ended (Builder::Session#ended_alone?)? A part
+      # Has the game whose build made this variable ended (Builder::Session#game_ended?)? A part
       # kept outside a game's block outlives that build (InstanceVariables.ruby_number_of_stale).
-      def made_in_ended_game? = @builder.build_session&.ended_alone? || false # :nodoc:
+      def made_in_ended_game? = @builder.build_session&.game_ended? || false # :nodoc:
 
       # Ruby needs a plain whole number from an instance variable's variable while the game is
       # built (`Array.new(part.size)`). Until something changes the variable it holds the number

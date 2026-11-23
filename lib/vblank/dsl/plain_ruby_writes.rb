@@ -513,8 +513,9 @@ module VBlank
         # A variable the author never wrote `var` for, which the out-of-memory error names.
         #
         # A game block runs on the builder, which has `var`. A part of a game is a plain class
-        # that holds one, so the variable comes from the game being built (Builder::Session), under a name nothing has
-        # taken: two parts, or two of one part, each have a local of their own, as in Ruby. The owner is
+        # that holds one, so the variable comes from the game being built (Builder::Session), under
+        # a name nothing has taken: two parts, or two of one part, each have a local of their own,
+        # as in Ruby. The owner is
         # whatever the game's block ran on, whose own `var` may be private, as a method the block called
         # bare would be: __send__ calls it as the block would have.
         #

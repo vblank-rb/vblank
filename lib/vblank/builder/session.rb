@@ -15,20 +15,25 @@ module VBlank
     #
     # A build opens one with #building, which puts back the session before it when the block
     # ends, however it ends. So a program built inside a game's build (a data pack's unpacking)
-    # leaves the game current again, a build that fails leaves nothing behind, and a part made
-    # after a finished build finds no game.
+    # leaves the game current again, and a build that fails leaves nothing behind.
     #
-    # A builder made by hand (`Builder.new` in a test or a tool, with no build open) stands as the
-    # thread's session until another is made by hand: such a builder is driven a verb at a time
-    # and has no end to close it at.
+    # A builder made by hand (`Builder.new` in a test or a tool, with no build open) is made the
+    # thread's current game (#make_current) until another is made by hand: such a builder is driven
+    # a verb at a time and has no end to close it at. A build ends by putting back what was current
+    # before it, so a part made after a finished build finds no game only where no builder made by
+    # hand was current before the build; where one was, the part is that builder's, as it would be
+    # had the build not run. Tests that drive a Builder by hand rely on that, and so does a data
+    # pack built on one (test_pack_cache_parts.rb), whose unpacking reaches the hand-made game's
+    # objects.
     #
     # ### A game's variables after its build
     #
     # A part made outside the game's block (in a constant of a game file) outlives the build that
     # gave it variables, and the next build of the game (for another console) starts it again
-    # from Ruby's number (#ended_alone?). A program built as part of a game (+part_of+, a data
-    # pack's unpacking) is no game of its own: a variable it made, reached from another program of
-    # that game, is still that program's, and the data pack refuses the read.
+    # from Ruby's number (#game_ended?). A program built as part of a game (+part_of+, a data
+    # pack's unpacking) is no game of its own: while that game is being built, a variable the
+    # program made, reached from another program of the game, is still that program's, and the
+    # data pack refuses the read. Once the game's build has ended too, it is Ruby's number again.
     #
     # ### Plain Ruby on purpose
     #
@@ -82,10 +87,10 @@ module VBlank
         self.current = was
       end
 
-      # +builder+ was made by hand: it stands as the thread's session, and the one that stood
-      # before it has ended. With a build open, the build's own builder stays current
-      # (Builder#initialize).
-      def self.stand(builder)
+      # Makes +builder+, made by hand, the thread's current game, and ends the one made by hand
+      # before it. Does nothing while a build opened with #building is open: that build's own
+      # builder stays current (Builder#initialize).
+      def self.make_current(builder)
         return unless current.nil? || current.standing?
 
         current&.end!
@@ -116,8 +121,16 @@ module VBlank
 
       def end! = @ended = true
 
-      # Has this game's build ended, and was it a game of its own (no +part_of+)?
-      def ended_alone? = @ended && @part_of.nil?
+      # Has this game's build ended, with the game it is part of (+part_of+), if any? A data pack's
+      # unpacking ends before its game does, and the game's other programs still reach what it
+      # made; once the game has ended too, a later separate build takes its variables for Ruby's
+      # numbers.
+      def game_ended?
+        return false unless @ended
+        return true if @part_of.nil?
+
+        @part_of.build_session&.game_ended? || false
+      end
     end
   end
 end

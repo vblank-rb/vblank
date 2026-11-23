@@ -304,16 +304,17 @@ module VBlank
       @persisted = []
       @saves = nil             # the save_data records and what saves them (see Saves), made with the first
       # Must come last: plain Ruby asks the session's builder whether it records game code, and a
-      # builder whose making stopped part way could not answer. A builder made by hand stands as
-      # the thread's game; one a build makes is its session's already (Session.building).
-      Session.stand(self)
+      # builder whose making stopped part way could not answer. A builder made by hand is made
+      # the thread's current game; one a build makes is its session's already (Session.building).
+      Session.make_current(self)
     end
 
     # The IR tree built so far (the whole program). Lets tests assert the DSL
     # constructs the right tree without lowering it to a ROM.
     attr_reader :program
 
-    # The Session this builder builds in, which says whether its build has ended (Session#take sets it).
+    # The Session this builder builds in, which says whether its game has ended
+    # (Session#take sets it).
     attr_accessor :build_session # :nodoc:
 
     # The console this game is being built for (a Console::Description): the screen the DSL
