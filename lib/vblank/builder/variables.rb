@@ -10,7 +10,7 @@ module VBlank
     # and yes or no values (`alive = true`) work too.
     #
     # ```ruby
-    # VBlank.game "COUNTER" do
+    # VBlank.game "COUNTER", consoles: %i[gba] do
     #   score = 0
     #   game_loop do
     #     score += 1

@@ -11,11 +11,13 @@ module VBlank
     # the same name.
     #
     # ```ruby
-    # module Dungeon::Torch
-    #   def light_torch(at:) = spotlight(at: at, radius: 30, dark: 80)
+    # module Dungeon
+    #   module Torch
+    #     def light_torch(at:) = spotlight(at: at, radius: 30, dark: 80)
+    #   end
     # end
     #
-    # VBlank.game "DUNGEON" do
+    # VBlank.game "DUNGEON", consoles: %i[gba] do
     #   uses Dungeon::Torch
     #   light_torch at: [40, 40]
     # end
