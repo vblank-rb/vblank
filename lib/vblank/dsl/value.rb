@@ -521,6 +521,11 @@ module VBlank
               "worked out as the game runs.#{at_dsl_line}"
       end
 
+      # This number as text, which `draw_text` draws as `draw_number` would: `draw_text hp.to_s, 8,
+      # 8, :white`. Its digits are not known while the game is built, so it is not a String
+      # (TextWithNumbers).
+      def to_s = TextWithNumbers.new([self])
+
       # Ruby's `<=>` wants -1, 0 or 1 while the game is built, and this number has no value until
       # the game plays. Ruby's `sort`, `max_by` and `clamp` ask it, and so may any Ruby code, so
       # each would build with a wrong answer: refused instead, saying what to write.

@@ -11,6 +11,7 @@ require_relative "dsl/scale"
 require_relative "dsl/changing_word"
 require_relative "dsl/value"
 require_relative "dsl/condition"
+require_relative "dsl/text_with_numbers" # Words with a game number in them, for draw_text
 require_relative "dsl/branch"
 require_relative "dsl/plain_ruby"          # A game block in normal Ruby, read with Prism and rewritten
 require_relative "dsl/plain_ruby_call_changes" # What a call of game code in that block can change

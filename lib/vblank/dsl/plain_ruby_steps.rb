@@ -147,6 +147,22 @@ module VBlank
                             "is a name made in a loop, count with Ruby's `3.times { |i| ... }`, not `repeat`.")
         end
 
+        # A String put together from +pieces+ (`"HP #{hp}"`, see Rewriter#interpolated_string_text),
+        # as Ruby joins them. A number the game works out has no digits while building, so a piece
+        # that is one makes words with a number in them (TextWithNumbers) that `draw_text` draws.
+        def text_of(pieces)
+          pieces.each { |piece| text_piece(piece) if game_test?(piece) }
+          return pieces.map(&:to_s).join if pieces.none? { |piece| piece.is_a?(Value) || piece.is_a?(TextWithNumbers) }
+
+          TextWithNumbers.new(pieces.flat_map do |piece|
+            case piece
+            when TextWithNumbers then piece.parts
+            when Value then [piece]
+            else [piece.to_s]
+            end
+          end)
+        end
+
         # The range of `for x in a..b`, which Ruby runs while building. See Rewriter#for_text.
         def for_range(from, upto, exclusive)
           if [from, upto].any?(Value)

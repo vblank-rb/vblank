@@ -33,6 +33,18 @@ game_loop do
 end
 ```
 
+A number the game keeps can go in drawn text, as Ruby puts one in a String: `"HP #{hp}"` or `hp.to_s`. `draw_text` draws the words, and each number as `draw_number` draws it, where the words before it end. A number takes the room `draw_number` gives it, 4 digits unless `digits:` says otherwise, and is drawn to the right of that room, so a shorter number leaves a gap before it.
+
+```ruby
+screen :bitmap
+hp = 3
+game_loop do
+  hp -= 1 if pressed(:a)
+  clear_screen :black
+  draw_text "HP #{hp}", 10, 10, :white, digits: 2
+end
+```
+
 ## Game variables
 
 A name that game code changes is a number the game keeps; a name nothing in game code changes stays plain Ruby and costs nothing.
@@ -359,7 +371,7 @@ Its locals stay its own, and its constants and methods are shared with the game.
 
 Each refusal is a friendly error that names the line, said before anything is built.
 
-A game number put into a String is refused, since the String is made once, while building.
+Words with a game number in them, `"HP #{hp}"` or `hp.to_s`, are for drawing only: anything else a String does with them is refused, since the number has no digits while the game is built.
 
 Refused:
 
@@ -368,14 +380,14 @@ screen :bitmap
 hp = 3
 game_loop do
   hp -= 1 if pressed(:a)
-  draw_text "HP #{hp}", 10, 10, :white
+  draw_text "HP #{hp}".center(12), 10, 10, :white
 end
 ```
 
 VBlank says:
 
 ```
-This text puts a game number into a String with `#{...}`. Ruby makes the String once, while it builds the game.
+This text holds a number the game works out as it plays, so its letters are not known while the game is built, and it does not answer `center`.
 ```
 
 Write instead:
@@ -385,8 +397,7 @@ screen :bitmap
 hp = 3
 game_loop do
   hp -= 1 if pressed(:a)
-  draw_text "HP", 10, 10, :white
-  draw_number hp, 40, 10, :white
+  draw_text "HP #{hp}", :center, 10, :white
 end
 ```
 

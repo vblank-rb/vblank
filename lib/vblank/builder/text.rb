@@ -177,6 +177,15 @@ module VBlank
       # * `within:` - the columns to place it in, as a range. The default is the screen.
       # * `showing:` - the test that picks the second colour of a pair.
       # * `from:` and `length:` - for a list of character codes, where to start and how many to draw.
+      # * `digits:` - for words with a number the game keeps in them (`"HP #{hp}"`, `hp.to_s`), the
+      #   room each number takes, as `draw_number`'s `digits:`. The default is 4.
+      #
+      # A number the game keeps can go in the words, as Ruby puts one in a String. Each is drawn as
+      # `draw_number` draws it, in the room that gives it, where the words before it end:
+      #
+      # ```ruby
+      # draw_text "HP #{hp}", 8, 8, :white, digits: 3
+      # ```
       #--
       # On a tiled screen the console draws each character as its own little sprite out of a table
       # of 128, so two draws are two sprites for every character where a colour pair is one sprite
@@ -184,7 +193,11 @@ module VBlank
       # are every pixel twice over where a pair paints them once with the colour picked first. A
       # menu's rows cost half as much for it (see the `menu` verb).
       #++
-      def draw_text(text, x, y, color = nil, font: :default, within: nil, showing: nil, from: nil, length: nil)
+      def draw_text(text, x, y, color = nil, font: :default, within: nil, showing: nil, from: nil, length: nil,
+                    digits: DEFAULT_DIGITS)
+        if text.is_a?(DSL::TextWithNumbers)
+          return draw_text_with_numbers(text, x, y, color, font: font, within: within, digits: digits)
+        end
         if text.is_a?(DSL::List)
           refuse_list_in_picture_font!(font)
           return draw_list_text(text, x, y, color, font: font, from: from, length: length, placed: within || showing)
@@ -321,6 +334,31 @@ module VBlank
       def text_height(font: :default) = font_named(font).height
 
       private
+
+      # Words with numbers in them (DSL::TextWithNumbers): each run of words drawn as words, and each
+      # number as `draw_number` draws it, in the `digits:` room that gives it, each a character's gap
+      # after the one before, as the letters of one String are. What is placed by `x` is the whole.
+      def draw_text_with_numbers(text, x, y, color, font:, within:, digits:)
+        refuse_text_with_numbers!("a pair of colours") if color.is_a?(Array)
+        refuse_text_with_numbers!("a font made of pictures") if picture_font?(font) || lettering_font?(font)
+        chosen = IR::FontTable.of(@program).get(font)
+        widths = text.parts.map { |part| part.is_a?(String) ? chosen.text_width(part) : (digits * chosen.cell_w) - chosen.spacing }
+        at = column_for(x, widths.sum + (chosen.spacing * (widths.length - 1)), within, "draw_text")
+        text.parts.zip(widths).each do |part, width|
+          if !part.is_a?(String)
+            draw_number(part, at, y, color, digits: digits, font: font)
+          elsif !part.strip.empty?
+            draw_text(part, at, y, color, font: font)
+          end
+          at += width + chosen.spacing
+        end
+      end
+
+      def refuse_text_with_numbers!(what)
+        raise ArgumentError, "draw_text cannot draw words with a game number in them in #{what}. To fix this, draw the " \
+                             "words and the number apart: `draw_text \"HP\", 8, 8, :white`, then " \
+                             "`draw_number hp, 32, 8, :white`.#{Messages::AuthorSource.at_author_line}"
+      end
 
       # The font a name means: a font of the game's own pictures, else a font of glyphs.
       def font_named(name) = @picture_fonts[name] || @lettering_fonts[name]&.metrics || IR::FontTable.of(@program).get(name)

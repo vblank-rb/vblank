@@ -343,6 +343,7 @@ module VBlank
           when Prism::StatementsNode then statements_text(node)
           when Prism::ClassNode, Prism::ModuleNode then module_text(node)
           when Prism::RangeNode then range_text(node)
+          when Prism::InterpolatedStringNode then text_with_pieces?(node) ? interpolated_string_text(node) : copied_text(node)
           when Prism::ConstantWriteNode then own_class_write_text(node)
           when Prism::ConstantReadNode then own_class_read?(node) ? own_class_local(node.name) : copied_text(node)
           else copied_text(node)
@@ -370,7 +371,37 @@ module VBlank
           "::Range.new(#{sides.join(', ')}, #{node.exclude_end?})"
         end
 
-        RANGE_ENDS_WRITTEN_OUT = [Prism::IntegerNode, Prism::FloatNode, Prism::NilNode].freeze
+        # `"HP #{hp}"`, as the pieces it is made of handed to Steps.text_of, which joins them into
+        # Ruby's String, or into words with a number in them where a piece is a number the game
+        # works out (DSL::TextWithNumbers). A heredoc stays as written (#embedded_text).
+        # Does +node+ put something worked out into the String? Strings written side by side
+        # (`"a #{b}" "c"`) hold each as a part.
+        def text_with_pieces?(node)
+          !heredoc?(node) && node.parts.any? do |part|
+            part.is_a?(Prism::EmbeddedStatementsNode) || part.is_a?(Prism::EmbeddedVariableNode) ||
+              (part.is_a?(Prism::InterpolatedStringNode) && text_with_pieces?(part))
+          end
+        end
+
+        def interpolated_string_text(node)
+          @in_text += 1
+          pieces = node.parts.map do |part|
+            case part
+            when Prism::StringNode then part.unescaped.inspect
+            when Prism::EmbeddedStatementsNode then part.statements ? "(#{rewritten_text(part.statements)})" : '""'
+            when Prism::EmbeddedVariableNode then "(#{rewritten_text(part.variable)})"
+            else "(#{rewritten_text(part)})"
+            end
+          end
+          text = "#{STEPS}.text_of([#{pieces.join(', ')}])"
+          # What follows keeps its line number, however many lines the String took.
+          missing = line_ends_between(node.location.start_offset, node.location.end_offset).length - text.count("\n")
+          text + ("\n" * [missing, 0].max)
+        ensure
+          @in_text -= 1
+        end
+
+        RANGE_ENDS_WRITTEN_OUT =[Prism::IntegerNode, Prism::FloatNode, Prism::NilNode].freeze
 
         def own_class_local(name) = "__plain_ruby_class_#{name}"
 

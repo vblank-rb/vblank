@@ -390,7 +390,7 @@ Each is a friendly error naming the line.
 | `case … in` on a game number with a pattern other than values and ranges | values, ranges and `\|`; or `case` with no subject and `when hp > 3` |
 | `for` from or to a game number | `i = 0`, `while i < n`, `i += 1` at the end of its body |
 | `for` over a list or a pool | `things.each do \|thing\|` |
-| a game number put into a String or Symbol (`"HP #{hp}"`) | `draw_text "HP"` and `draw_number hp` beside it |
+| a game number put into a Symbol (`:"slot#{n}"`) or a heredoc, or words holding one used as a String (`"HP #{hp}".center(9)`) | draw it: `draw_text "HP #{hp}", x, y, :white` (`text.md`) |
 | `nonzero?` used as a number (`lives.nonzero? \|\| 1`, `shown = lives.nonzero?`); `finite?`, `infinite?`, `integer?` on a game number | the test in full: `lives != 0 ? lives : 1` |
 | `.then` on a test | `if` |
 | a number worked out and not kept (`hp + 1` alone, `hp.abs` alone) | `hp += 1`; `hp.abs!` |
