@@ -26,8 +26,8 @@ module VBlank
           #
           # What decides whether a piece goes is the line the picture is on, read as it is asked, so
           # the interrupt's time and the setting up so far are already counted. BLANK_BYTES is what a
-          # blank holds counted from where its copying starts, a few lines in, once the interrupt has
-          # read the controller: the whole lines from there, the rest of that line standing for the
+          # blank holds counted from where its copying starts, a few lines in, once the interrupt and
+          # the wait have ended: the whole lines from there, the rest of that line standing for the
           # edge. A piece that big goes in a blank of its own: rt_blank_room sends a piece it finds
           # no room for at once if the blank's copying has only just started, as no blank has more,
           # and else waits for the next. With the screen still off, before the first pass is shown,
@@ -54,7 +54,7 @@ module VBlank
             LINES = 262
             FIRST_BLANK_LINE = 225
             LAST_BLANK_LINE = LINES - 1
-            # The line a blank's copying starts on: the interrupt has read the controller and the
+            # The line a blank's copying starts on: the interrupt has ended, and the
             # pass's wait has ended.
             COPY_START_LINE = 228
             # The lines left that one look asks for before a piece of a map's changed cells
@@ -244,9 +244,10 @@ module VBlank
               asm.bcc("rt_blank_lines_above")
               asm.beq("rt_blank_lines_above")
               # Before the blank, its interrupt is still to come and takes its lines out of the
-              # window while a copy waits: they are counted as gone already. It reads a controller
-              # by hand, which is most of its time, and a game that reads two, or four through a
-              # Super Multitap, reads each.
+              # window while a copy waits: they are counted as gone already, a few for each
+              # controller the game reads. That is what the interrupt took when it read each
+              # controller by hand; while a copy waits it now only marks the console's own read due
+              # (Frame#emit_auto_read), so the count is more than it needs.
               asm.cmp(FIRST_BLANK_LINE)
               asm.bcs("rt_blank_lines_interrupt_counted")
               interrupt_lines = COPY_START_LINE - FIRST_BLANK_LINE + 1

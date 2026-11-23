@@ -36,17 +36,20 @@ class TestSNESMultitap < Minitest::Test
   # What the third and fourth players cost, against Nintendo's MULTI5 routine. MULTI5 takes the
   # first sixteen bits of controllers 1 to 3 from the console's automatic read, then clocks JOYSER1
   # by hand: sixteen reads to find the tap (fullsnes, "SNES Controllers Multiplayer 5"), and sixteen
-  # more for the last two controllers, both lines a read. The budget is those 32 reads, each at what
-  # a read of both lines costs here (the tap's first loop, rt_tap_read_first_plugs, which is that
-  # same loop). Here the third and fourth players add 24 reads (eight to find the tap, sixteen for
-  # the fourth), the third's line in the loop that reads the second, and two more controllers
-  # turned into IR::Buttons's order and their presses kept.
+  # more for the last two controllers. Here controllers 2 and 3 come from the automatic read too,
+  # and the hand reading is 24 reads: eight to find the tap and sixteen for the fourth. Its budget
+  # is MULTI5's 32 reads, each at what a read costs here (the fourth controller's loop,
+  # rt_tap_read_last_plugs). What else the two players add, their buttons turned into IR::Buttons's
+  # order and their presses kept, is held to a line each, as each of the first two controllers is
+  # (test_snes_controller_cost.rb).
   def test_the_third_and_fourth_players_cost_less_than_multi5s_hand_read
     four = button_clocks(4)
-    extra = four.values.sum - button_clocks(2).values.sum
-    budget = 32 * four.fetch("rt_tap_read_first_plugs") / 16
+    by_hand = four.select { |label, _| label.start_with?("rt_tap_read") }.values.sum
+    budget = 32 * four.fetch("rt_tap_read_last_plugs") / 16
+    kept = four.values.sum - by_hand - button_clocks(2).values.sum
 
-    assert_operator extra, :<, budget, "players 3 and 4 cost #{extra.round} master clocks a frame, MULTI5's hand read #{budget.round}"
+    assert_operator by_hand, :<, budget, "the tap's hand reading costs #{by_hand.round} master clocks a frame, MULTI5's #{budget.round}"
+    assert_operator kept, :<, 2 * 1364, "keeping players 3 and 4 costs #{kept.round} master clocks a frame"
   end
 
   # A game of two that asks how many are connected reads no tap.

@@ -10,7 +10,7 @@
       "data": 1122
     },
     "animate@snes": {
-      "code": 14312,
+      "code": 14975,
       "data": 16281
     },
     "bird": {
@@ -30,7 +30,7 @@
       "data": 0
     },
     "buffered_bounce@snes": {
-      "code": 15771,
+      "code": 16434,
       "data": 555
     },
     "cave": {
@@ -78,7 +78,7 @@
       "data": 880
     },
     "everywhere@snes": {
-      "code": 6317,
+      "code": 6980,
       "data": 2574
     },
     "floating_digits": {
@@ -86,7 +86,7 @@
       "data": 0
     },
     "floating_digits@snes": {
-      "code": 18422,
+      "code": 19085,
       "data": 12275
     },
     "flowers": {
@@ -98,7 +98,7 @@
       "data": 4736
     },
     "flowers@snes": {
-      "code": 5570,
+      "code": 6233,
       "data": 2832
     },
     "font_styles": {
@@ -106,7 +106,7 @@
       "data": 0
     },
     "font_styles@snes": {
-      "code": 15927,
+      "code": 16590,
       "data": 2187
     },
     "fonts": {
@@ -118,7 +118,7 @@
       "data": 826
     },
     "fonts@snes": {
-      "code": 15963,
+      "code": 16626,
       "data": 3089
     },
     "grid_cursor": {
@@ -130,7 +130,7 @@
       "data": 44
     },
     "grid_cursor@snes": {
-      "code": 14866,
+      "code": 15529,
       "data": 555
     },
     "hero": {
@@ -138,7 +138,7 @@
       "data": 0
     },
     "hero@snes": {
-      "code": 55213,
+      "code": 55876,
       "data": 13824
     },
     "jukebox": {
@@ -150,7 +150,7 @@
       "data": 0
     },
     "lake@snes": {
-      "code": 6170,
+      "code": 6833,
       "data": 5636
     },
     "level": {
@@ -162,7 +162,7 @@
       "data": 2404
     },
     "level@snes": {
-      "code": 7972,
+      "code": 8635,
       "data": 3977
     },
     "lit_corridor": {
@@ -182,7 +182,7 @@
       "data": 2108
     },
     "maze@snes": {
-      "code": 6459,
+      "code": 7122,
       "data": 3322
     },
     "meadow": {
@@ -202,7 +202,7 @@
       "data": 15360
     },
     "pacman@snes": {
-      "code": 15464,
+      "code": 16127,
       "data": 7330
     },
     "panorama": {
@@ -218,7 +218,7 @@
       "data": 4448
     },
     "parallax@snes": {
-      "code": 4637,
+      "code": 5300,
       "data": 4829
     },
     "piano": {
@@ -234,7 +234,7 @@
       "data": 44
     },
     "pixels@snes": {
-      "code": 14038,
+      "code": 14701,
       "data": 555
     },
     "pong": {
@@ -254,7 +254,7 @@
       "data": 0
     },
     "raycaster@snes": {
-      "code": 16264,
+      "code": 16927,
       "data": 2667
     },
     "rotozoom_bg": {
@@ -270,7 +270,7 @@
       "data": 7600
     },
     "scoreboard@snes": {
-      "code": 5437,
+      "code": 6100,
       "data": 4908
     },
     "scroll": {
@@ -282,7 +282,7 @@
       "data": 8472
     },
     "scroll@snes": {
-      "code": 4606,
+      "code": 5269,
       "data": 8851
     },
     "sheet": {
@@ -290,7 +290,7 @@
       "data": 0
     },
     "sheet@snes": {
-      "code": 7972,
+      "code": 8635,
       "data": 3977
     },
     "shmup": {
@@ -302,7 +302,7 @@
       "data": 0
     },
     "snake@snes": {
-      "code": 26002,
+      "code": 26665,
       "data": 16690
     },
     "snake_buffered": {
@@ -314,7 +314,7 @@
       "data": 0
     },
     "sparks@snes": {
-      "code": 17908,
+      "code": 18571,
       "data": 611
     },
     "sprite_mover": {
@@ -326,7 +326,7 @@
       "data": 134
     },
     "sprite_mover@snes": {
-      "code": 15096,
+      "code": 15759,
       "data": 2407
     },
     "tiles": {
@@ -338,7 +338,7 @@
       "data": 2776
     },
     "tiles@snes": {
-      "code": 4746,
+      "code": 5409,
       "data": 6855
     },
     "tower": {
@@ -354,7 +354,7 @@
       "data": 3740
     },
     "tower@snes": {
-      "code": 11659,
+      "code": 12322,
       "data": 8091
     },
     "two_rooms": {
@@ -382,7 +382,7 @@
       "data": 9664
     },
     "wanderers@snes": {
-      "code": 10404,
+      "code": 10591,
       "data": 3297
     }
   }

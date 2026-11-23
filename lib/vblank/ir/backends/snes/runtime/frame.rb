@@ -79,6 +79,9 @@ module VBlank
             SECOND_PRESSED = "rt second pressed"
             SECOND_PAD_HELD = "rt second pad held"
             SECOND_PAD_PRESSED = "rt second pad pressed"
+            # 1 when the console's own read of the controllers in this blank is still to be taken
+            # from its registers (#emit_auto_read).
+            PAD_DUE = "rt pad due"
             # How many players past the first are connected, in a game that asks (`players_connected`):
             # the highest player with a button down so far, less one, so nought is the first alone.
             PLAYERS_PAST_FIRST = "rt players past first"
@@ -142,6 +145,9 @@ module VBlank
             # The ports the controllers are read through (fullsnes, "SNES Controllers I/O Ports").
             JOYSER0 = Console::SNESHardware::JOYSER0
             JOYSER1 = Console::SNESHardware::JOYSER1
+            # ...and the registers the console's own read leaves each one in, the first's then the
+            # second's.
+            AUTO_READ_REGISTERS = [Console::SNESHardware::JOY1L, Console::SNESHardware::JOY2L].freeze
 
             # Where in a Super Multitap's four words of the direct page (#emit_tap_bits) each part
             # is: controllers 2, 3 and 4 as read, then whether the tap answered.
@@ -220,6 +226,22 @@ module VBlank
                 controller.to_h.each_value { |name| memory.reserve(name, 2) }
               end
               memory.reserve(PLAYERS_PAST_FIRST, 2) if counts_players
+              memory.reserve(PAD_DUE, 2)
+            end
+
+            # What NMITIMEN holds once the game's buttons have been read at power-on, with the
+            # blank's interrupt on, and held off. The console's read of the controllers stays on
+            # through both, since switching it off part way through leaves its registers half
+            # filled (fullsnes, "SNES Controllers I/O Ports, Automatic Reading").
+            INTERRUPT_HELD_OFF = Console::SNESHardware::AUTO_JOYPAD
+            INTERRUPT_ON = Console::SNESHardware::NMI_ON | INTERRUPT_HELD_OFF
+
+            # NMITIMEN written with +value+, A 16 bits wide before and after.
+            def emit_interrupt_setting(asm, value)
+              asm.sep(0x20)
+              asm.lda(value)
+              asm.sta(asm.abs(Console::SNESHardware::NMITIMEN))
+              asm.rep(0x20)
             end
 
             # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
@@ -353,31 +375,49 @@ module VBlank
             # The same interrupt, as a routine of its own with the buttons' reading written into it
             # rather than called, for a copy of it that runs from work RAM (Runtime::Chip). Its
             # branches are relative and every address it names is fixed, so it runs wherever it is
-            # copied to. A Super Multitap's controllers are turned into IR::Buttons's order bit by
-            # bit here, not through the table rt_buttons_remapped reads, which is in the cartridge
-            # and out of the processor's reach while the chip runs.
+            # copied to. The controllers are turned into IR::Buttons's order bit by bit here, not
+            # through the table rt_buttons_remapped reads, which is in the cartridge and out of the
+            # processor's reach while the chip runs. The chip runs inside a pass, so the console's
+            # own read is taken here at once, as rt_pad_take takes it.
             def emit_interrupt_whole(asm, memory, pad:, tap: nil, extra_buttons: false, controllers: 1)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               emit_interrupt_body(asm, memory) do
-                emit_controller_update(asm, at, pad, CONTROLLERS.first) do
-                  emit_controller_bits(asm, pad, "rt_whole_buttons", JOYSER0, extra_buttons)
-                end
-                if controllers == MULTITAP_CONTROLLERS
-                  emit_tap_bits(asm, tap, "rt_whole_tap")
-                  other_controllers(controllers).each_with_index do |controller, index|
-                    emit_controller_update(asm, at, pad, controller) do
-                      asm.lda(asm.direct(tap + TAP_WORDS.fetch(index + 2)))
-                      asm.sta(asm.direct(pad))
-                      emit_buttons_remapped_in_place(asm, pad, "rt_whole_tap_#{index}", extra_buttons)
-                    end
-                  end
-                  emit_line_latched_again(asm)
-                elsif controllers == 2
-                  emit_controller_update(asm, at, pad, CONTROLLERS[1]) do
-                    emit_controller_bits(asm, pad, "rt_whole_second_buttons", JOYSER1, extra_buttons)
+                emit_auto_read_awaited(asm, "rt_whole_auto_read")
+                asm.stz(at.call(PAD_DUE))
+                remapped = lambda do |controller, label|
+                  emit_controller_update(asm, at, pad, controller) do
+                    asm.lda(controller_word_place(asm, tap, controllers, controller))
+                    asm.sta(asm.direct(pad))
+                    emit_buttons_remapped_in_place(asm, pad, label, extra_buttons)
                   end
                 end
+                remapped.call(CONTROLLERS.first, "rt_whole_auto_read_0")
+                emit_tap_bits_after_auto_read(asm, tap, "rt_whole_tap") if controllers == MULTITAP_CONTROLLERS
+                other_controllers(controllers).each_with_index do |controller, index|
+                  remapped.call(controller, "rt_whole_auto_read_#{index + 1}")
+                end
+                emit_line_latched_again(asm) if controllers == MULTITAP_CONTROLLERS
               end
+            end
+
+            # Where +controller+'s word is, as the console hands it over: through a Super Multitap,
+            # the word #emit_tap_bits_after_auto_read left; else the console's own read's register.
+            def controller_word_place(asm, tap, controllers, controller)
+              player = CONTROLLERS.index(controller) + 1
+              return asm.direct(tap + TAP_WORDS.fetch(player)) if controllers == MULTITAP_CONTROLLERS && player > 1
+
+              asm.abs(AUTO_READ_REGISTERS.fetch(player - 1))
+            end
+
+            # Waits while HVBJOY's bit 0 shows the console still reading the controllers. A 16 bits
+            # wide before and after; +label+ names the loop.
+            def emit_auto_read_awaited(asm, label)
+              asm.sep(0x20)
+              asm.label(label)
+              asm.lda(asm.abs(Console::SNESHardware::HVBJOY))
+              asm.lsr
+              asm.bcs(label)
+              asm.rep(0x20)
             end
 
             # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time,
@@ -445,6 +485,7 @@ module VBlank
               asm.label("rt_sleep_until_vblank")
               asm.stz(at.call(VBLANK))
               asm.label("rt_sleep_until_vblank_wait")
+              emit_due_read_taken(asm, memory, "rt_sleep_until_vblank_read")
               Sound.emit_idle_step(asm, memory)
               asm.lda(at.call(VBLANK))
               asm.beq("rt_sleep_until_vblank_wait")
@@ -469,18 +510,12 @@ module VBlank
             # ends, so none falls between the read and the nought. The game's own count of frames since
             # power-on, at +count_at+, takes them all (nil for a game that keeps none).
             def emit_setting_up_counted(asm, at, count_at)
-              h = Console::SNESHardware
-              asm.sep(0x20)
-              asm.stz(asm.abs(h::NMITIMEN))
-              asm.rep(0x20)
+              emit_interrupt_setting(asm, INTERRUPT_HELD_OFF)
               asm.lda(at.call(FRAMES))
               asm.stz(at.call(FRAMES))
               asm.stz(at.call(FRAMES, 2))
               asm.tay
-              asm.sep(0x20)
-              asm.lda(h::NMI_ON)
-              asm.sta(asm.abs(h::NMITIMEN))
-              asm.rep(0x20)
+              emit_interrupt_setting(asm, INTERRUPT_ON)
               asm.tya
               asm.inc
               asm.sta(at.call(SETTING_UP)) # one more, so nought is a count not taken yet
@@ -537,57 +572,59 @@ module VBlank
               asm.rts
             end
 
-            # BUTTONS. The controller is read by hand, through its serial port: a write of 1 and then
+            # BUTTONS. As each blank begins, the console reads both ports by itself, with NMITIMEN's
+            # bit 0 set: it clocks each controller's sixteen bits into JOY1L/JOY1H and JOY2L/JOY2H,
+            # B at the top (JOYPAD_BITS), in about three lines, while the processor gets on with
+            # other work, and HVBJOY's bit 0 is set until they are all there (fullsnes, "SNES
+            # Controllers I/O Ports, Automatic Reading"; SNESdev wiki, "Controller reading"). The
+            # console's own games read a controller that way, with one load once the bit clears,
+            # and so does this runtime (#emit_auto_read). Each controller is then turned into
+            # IR::Buttons's order through a table worked out as the cartridge is built
+            # (rt_buttons_remapped), a few instructions in place of a test of each button.
+            #
+            # A controller can also be read by hand, through its serial port: a write of 1 and then
             # 0 to JOYSER0 tells it to take hold of its buttons, and each read of the port hands over
             # the next of them in bit 0, B first, then Y, Select, Start, Up, Down, Left, Right, A, X,
             # L, R and four that are always 0. Read sixteen times and turned in from the right, they
-            # come out laid out as the console's own automatic read lays them out (JOYPAD_BITS). That
-            # read happens by itself at the start of the blank and takes three lines; reading by hand
-            # takes a few dozen instructions and needs nothing waited for.
-            #
-            # The second controller is the same read through JOYSER1, the next port along. Both
-            # controllers take hold of their buttons from the one write to JOYSER0, and each read
-            # here is two bytes wide, which walks the next port on too: so the read of the first
-            # controller has already used the second's up, and the second's read starts by telling
-            # them both to take hold again.
-            #
-            # A game for more than two reads a Super Multitap in the second port (#emit_tap_bits),
-            # and turns the three controllers it reads there into IR::Buttons's order through a
-            # table (rt_buttons_remapped) rather than a button at a time.
+            # come out laid out as the automatic read lays them out. That costs sixteen slow reads,
+            # so it is done only where the automatic read cannot serve: once at power-on, before the
+            # console has read anything (rt_buttons_from_power_on, which switches the automatic read
+            # on after it, so the two never clock the ports at once), and for a Super Multitap's
+            # last controller (#emit_tap_bits_after_auto_read). The second controller is the same
+            # read through JOYSER1. Both take hold of their buttons from the one write to JOYSER0,
+            # and each read here is two bytes wide, which walks the next port on too: so the read of
+            # the first controller has already used the second's up, and the second's read starts
+            # by telling them both to take hold again.
             def emit_buttons(asm, memory, reading)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               pad = reading.pad
               # rt_buttons_now: A = the buttons held now, a bit each in IR::Buttons's order.
               emit_controller_read(asm, pad, "rt_buttons_now", JOYSER0, reading.extra_buttons)
               if reading.multitap?
-                asm.label("rt_tap_read")
-                emit_tap_bits(asm, reading.tap, "rt_tap_read")
+                asm.label("rt_tap_read_by_hand")
+                emit_tap_bits(asm, reading.tap, "rt_tap_read_by_hand")
                 asm.rts
-                emit_buttons_remapped_by_table(asm, pad, reading.extra_buttons)
+                asm.label("rt_tap_read")
+                emit_tap_bits_after_auto_read(asm, reading.tap, "rt_tap_read")
+                asm.rts
               elsif reading.controllers == 2
                 emit_controller_read(asm, pad, "rt_second_buttons_now", JOYSER1, reading.extra_buttons)
               end
+              emit_buttons_remapped_by_table(asm, pad, reading.extra_buttons)
               others = other_controllers(reading.controllers)
-
-              # In the interrupt, every frame: the buttons held now, and every one that went down
-              # since the frame before added to those pressed during the pass.
-              asm.label("rt_pad_read")
-              emit_controller_update(asm, at, pad, CONTROLLERS.first) { asm.jsr(asm.abs("rt_buttons_now")) }
-              asm.jsr(asm.abs("rt_tap_read")) if reading.multitap?
-              others.each.with_index(2) do |controller, player|
-                emit_controller_update(asm, at, pad, controller) { emit_buttons_now(asm, reading, player) }
-              end
-              emit_line_latched_again(asm) if reading.multitap?
-              asm.rts
+              emit_auto_read(asm, at, reading)
 
               # Where a pass's wait ends: the buttons for the pass about to start, from every frame
               # the last one took, and how many frames that was. The interrupt is held off while they
               # are taken, so a press it reads cannot fall between the two; one that came while it was
-              # held off is taken as soon as it is allowed again.
+              # held off is taken as soon as it is allowed again. A read of the console's still due is
+              # taken first.
               asm.label("rt_read_buttons")
-              asm.sep(0x20)
-              asm.stz(asm.abs(Console::SNESHardware::NMITIMEN))
-              asm.rep(0x20)
+              emit_interrupt_setting(asm, INTERRUPT_HELD_OFF)
+              asm.lda(at.call(PAD_DUE))
+              asm.beq("rt_read_buttons_none_due")
+              asm.jsr(asm.abs("rt_pad_take"))
+              asm.label("rt_read_buttons_none_due")
               asm.lda(at.call(PAD_PRESSED))
               asm.sta(at.call(PRESSED))
               asm.stz(at.call(PAD_PRESSED))
@@ -604,10 +641,7 @@ module VBlank
               emit_players_counted(asm, at, others.map(&:pressed), "rt_read_buttons_joined") if counted
               asm.lda(at.call(FRAMES))
               asm.tay
-              asm.sep(0x20)
-              asm.lda(Console::SNESHardware::NMI_ON)
-              asm.sta(asm.abs(Console::SNESHardware::NMITIMEN))
-              asm.rep(0x20)
+              emit_interrupt_setting(asm, INTERRUPT_ON)
               asm.tya
               asm.sec
               asm.sbc(at.call(FRAMES_MARK))
@@ -636,7 +670,7 @@ module VBlank
               asm.label("rt_buttons_from_power_on")
               asm.jsr(asm.abs("rt_buttons_now"))
               asm.sta(at.call(HELD))
-              asm.jsr(asm.abs("rt_tap_read")) if reading.multitap?
+              asm.jsr(asm.abs("rt_tap_read_by_hand")) if reading.multitap?
               others.each.with_index(2) do |controller, player|
                 emit_buttons_now(asm, reading, player)
                 asm.sta(at.call(controller.held))
@@ -644,7 +678,76 @@ module VBlank
               # A player holding a button from power-on is connected from the first pass, as the
               # interpreter counts the buttons it is told to hold before the game starts.
               emit_players_counted(asm, at, others.map(&:held), "rt_buttons_from_power_on_joined") if counted
+              # Read by hand, the console's own read is switched on only now, so the two never
+              # clock the ports at once. The interrupt is on by now.
+              emit_interrupt_setting(asm, INTERRUPT_ON)
               asm.rtl
+            end
+
+            # The console's own read of the controllers, taken from its registers.
+            #
+            # It is there from about three lines into the blank (#emit_buttons), so the blank's
+            # interrupt, which comes as the blank begins, would have to wait for it. It does that
+            # only while a pass is running, since then the frame's buttons are wanted before the
+            # pass goes on and nothing else will take them. A game waiting at a frame boundary is
+            # copying its picture to the console as the blank begins, as the console's own games
+            # are, and takes the read once that is done, where its wait ends (rt_read_buttons):
+            # the interrupt only marks it due (PAD_DUE). The copy of the sprite table alone takes
+            # longer than the console's read, so the read is there by then. A wait that runs into
+            # another blank first takes a read still due as it waits (#emit_due_read_taken).
+            #
+            # A Super Multitap's first two plugs come through the second port's two lines, so the
+            # console's read leaves them in JOY2L and JOY4L, as Nintendo's MULTI5 routine takes
+            # them; its last plug alone is read by hand (#emit_tap_bits_after_auto_read).
+            #
+            #   rt_pad_read   in the interrupt: the read marked due, or taken now in a pass
+            #   rt_pad_take   (JSR, the interrupt held off or running): the read taken, once there
+            #   rt_pad_take_due (JSR): a read still due taken, the interrupt held off meanwhile; X kept
+            def emit_auto_read(asm, at, reading)
+              pad = reading.pad
+              asm.label("rt_pad_read")
+              asm.lda(at.call(WAITING))
+              asm.beq("rt_pad_take")
+              asm.lda(at.call(PAD_DUE))
+              asm.bne("rt_pad_take")
+              asm.inc(at.call(PAD_DUE))
+              asm.rts
+
+              asm.label("rt_pad_take")
+              emit_auto_read_awaited(asm, "rt_pad_take_wait")
+              asm.stz(at.call(PAD_DUE))
+              asm.jsr(asm.abs("rt_tap_read")) if reading.multitap?
+              CONTROLLERS.first(reading.controllers).each do |controller|
+                emit_controller_update(asm, at, pad, controller) do
+                  asm.lda(controller_word_place(asm, reading.tap, reading.controllers, controller))
+                  asm.jsr(asm.abs("rt_buttons_remapped"))
+                end
+              end
+              emit_line_latched_again(asm) if reading.multitap?
+              asm.rts
+
+              asm.label("rt_pad_take_due")
+              emit_interrupt_setting(asm, INTERRUPT_HELD_OFF)
+              asm.phx
+              asm.jsr(asm.abs("rt_pad_take"))
+              asm.plx
+              emit_interrupt_setting(asm, INTERRUPT_ON)
+              asm.rts
+            end
+
+            # A read of the console's still due (#emit_auto_read) taken now if it is there, for a
+            # wait that can span a blank: a read left due when the next blank's begins is lost. One
+            # still coming in is left to the wait's next look rather than waited for, since the
+            # wait may be for the blank's copying to start. A 16 bits wide; +label+ names the place
+            # after.
+            def emit_due_read_taken(asm, memory, label)
+              asm.lda(asm.abs(memory[PAD_DUE]))
+              asm.beq(label)
+              asm.lda(asm.abs(Console::SNESHardware::HVBJOY)) # and RDIO, read for nothing
+              asm.lsr
+              asm.bcs(label)
+              asm.jsr(asm.abs("rt_pad_take_due"))
+              asm.label(label)
             end
 
             # A = the buttons held now on +player+'s controller (2 or more), a bit each in
@@ -698,9 +801,21 @@ module VBlank
             # counted as left that are gone. The interrupt latches the line again as it ends
             # (#emit_line_latched_again), so such a reading is the line the interrupt ended on.
             #
+            # On every frame, controllers 2 and 3 come from the console's automatic read instead,
+            # which WRIO's top bit, set, lets through the second port's two lines into JOY2L and
+            # JOY4L (#emit_tap_bits_after_auto_read); only the tap's answer and controller 4 are
+            # read by hand, as MULTI5 does. At power-on, before the console has read anything, all
+            # three are read by hand.
+            #
             # +tap+ is four words of the direct page: controllers 2, 3 and 4 as read, B at the top
             # (JOYPAD_BITS), then whether the tap answered. A is 16 bits wide after, X is used.
-            def emit_tap_bits(asm, tap, label)
+            def emit_tap_bits(asm, tap, label) = emit_tap_bits_read(asm, tap, label, after_auto_read: false)
+
+            # The same, with controllers 2 and 3 taken from the console's read of this blank, once
+            # it is there.
+            def emit_tap_bits_after_auto_read(asm, tap, label) = emit_tap_bits_read(asm, tap, label, after_auto_read: true)
+
+            def emit_tap_bits_read(asm, tap, label, after_auto_read:)
               h = Console::SNESHardware
               answered = tap + TAP_ANSWERED
               asm.sep(0x20)
@@ -719,18 +834,25 @@ module VBlank
               asm.bne("#{label}_seen")
               asm.stz(asm.abs(JOYSER0))
               asm.rep(0x20)
-              asm.stz(asm.direct(tap + TAP_WORDS.fetch(2)))
-              asm.stz(asm.direct(tap + TAP_WORDS.fetch(3)))
               asm.stz(asm.direct(tap + TAP_WORDS.fetch(4)))
-              asm.ldx(16)
-              asm.label("#{label}_first_plugs")
-              asm.lda(asm.abs(JOYSER1))
-              asm.lsr
-              asm.rol(asm.direct(tap + TAP_WORDS.fetch(2)))
-              asm.lsr
-              asm.rol(asm.direct(tap + TAP_WORDS.fetch(3)))
-              asm.dex
-              asm.bne("#{label}_first_plugs")
+              if after_auto_read
+                asm.lda(asm.abs(h::JOY2L))
+                asm.sta(asm.direct(tap + TAP_WORDS.fetch(2)))
+                asm.lda(asm.abs(h::JOY4L))
+                asm.sta(asm.direct(tap + TAP_WORDS.fetch(3)))
+              else
+                asm.stz(asm.direct(tap + TAP_WORDS.fetch(2)))
+                asm.stz(asm.direct(tap + TAP_WORDS.fetch(3)))
+                asm.ldx(16)
+                asm.label("#{label}_first_plugs")
+                asm.lda(asm.abs(JOYSER1))
+                asm.lsr
+                asm.rol(asm.direct(tap + TAP_WORDS.fetch(2)))
+                asm.lsr
+                asm.rol(asm.direct(tap + TAP_WORDS.fetch(3)))
+                asm.dex
+                asm.bne("#{label}_first_plugs")
+              end
               asm.lda(asm.direct(answered))
               asm.and_a(0b10)
               asm.beq("#{label}_none")

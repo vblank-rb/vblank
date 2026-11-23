@@ -499,7 +499,7 @@ module VBlank
               asm.lda(at.call(Frame::FRAMES))
               asm.sta(at.call(ENTRY_WINDOW))
               asm.label("rt_letterbox_wait_window")
-              emit_idle(asm, memory)
+              emit_idle(asm, memory, "rt_letterbox_wait_window_read")
               asm.jsr(asm.abs("rt_letterbox_now"))
               asm.lda(at.call(NOW_IN))
               asm.beq("rt_letterbox_wait_window")
@@ -541,12 +541,12 @@ module VBlank
               asm.phx
               asm.phy
               asm.label("rt_letterbox_next_leave")
-              emit_idle(asm, memory)
+              emit_idle(asm, memory, "rt_letterbox_next_leave_read")
               asm.jsr(asm.abs("rt_letterbox_now"))
               asm.lda(at.call(NOW_IN))
               asm.bne("rt_letterbox_next_leave")
               asm.label("rt_letterbox_next_open")
-              emit_idle(asm, memory)
+              emit_idle(asm, memory, "rt_letterbox_next_open_read")
               asm.jsr(asm.abs("rt_letterbox_now"))
               asm.lda(at.call(NOW_IN))
               asm.beq("rt_letterbox_next_open")
@@ -557,8 +557,11 @@ module VBlank
 
             # What a wait does between two looks at the line: a game with a queue of sound sends
             # some of it. A game without one only looks again, since sleeping until an interrupt
-            # would sleep through the window's first lines.
-            def emit_idle(asm, memory)
+            # would sleep through the window's first lines. A read of the controllers still due is
+            # taken first, since the wait can span a blank (Frame#emit_due_read_taken); +label+ names
+            # the place after it.
+            def emit_idle(asm, memory, label)
+              Frame.emit_due_read_taken(asm, memory, label)
               Sound.emit_idle_step(asm, memory) if memory.reserved?(Sound::QUEUE)
             end
           end

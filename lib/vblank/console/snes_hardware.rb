@@ -157,6 +157,10 @@ module VBlank
       RDMPYH = 0x4217
       JOY1L = 0x4218 # The first controller's buttons, as the console read them in the blank
       JOY1H = 0x4219
+      JOY2L = 0x421A # The second controller's, the same way
+      JOY2H = 0x421B
+      JOY4L = 0x421E # The second port's other line: a Super Multitap's second plug
+      JOY4H = 0x421F
 
       # The copying engine: eight channels, each sixteen registers from $4300 + $10 × channel.
       DMA_BASE = 0x4300
