@@ -380,12 +380,17 @@ module VBlank
           # game's routines are made.
           def reads_far_words? = @reads_far_words || false
 
-          # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
-          # quick way to do it, and a game that does neither builds without it.
-          def fills_byte_lists?
-            lists = lists_kept_as(:byte)
-            names = lists.map(&:name)
-            lists.any?(&:full_of) || @program.walk.any? { |node| node.kind == :list_fill && names.include?(node.name) }
+          # Does the game call rt_list_fill: a `fill`, or a list declared full that is not made full
+          # in line (#emit_list_new)? Then its runtime carries the routine, and a game that does
+          # neither builds without it.
+          def fills_lists?
+            @program.walk.any? do |node|
+              next true if node.kind == :list_fill
+              next false unless node.kind == :list_new && node.full_of && @lists.key?(node.name)
+              next false if held_run_on_list(node.name)
+
+              !@pool_areas.key?(slot_place(node.name).area) && !filled_in_line?(node)
+            end
           end
 
           # Whether the game pushes bytes or takes from a list's front, so wants the routines that do
@@ -1138,8 +1143,47 @@ module VBlank
 
             list_call("rt_list_at_capacity", node)
             return emit_pool_area_filled(node) if @pool_areas.key?(slot_place(node.name).area)
+            return emit_list_filled(node) if filled_in_line?(node)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # Whether list_new +node+ is made full in line (#emit_list_filled): a whole number, into
+          # slots one after another as wide as the list keeps them, as every list but a pool's is.
+          def filled_in_line?(node)
+            slot = slot_place(node.name)
+            node.full_of.is_a?(Integer) && slot.scale == 1 && slot.stride == slot.width
+          end
+
+          # A list made full of its number in line, a store a byte from its first slot, rather
+          # than through rt_list_fill, which first takes its four numbers and checks the run it is
+          # asked for against the list. The run here is the whole list, which needs no checking,
+          # and the bytes are known as the game is built. Every save record's lists of what each copy holds are made this way at power-on,
+          # and the table of where each record lives. A number whose bytes are all the same, as
+          # nought is, is put in A once.
+          def emit_list_filled(node)
+            base, = list_slots(node.name)
+            bytes = (0...slot_place(node.name).width).map { |i| (node.full_of >> (8 * i)) & 0xFF }
+            same = bytes.uniq.length == 1
+            wide = node.capacity > 0x100
+            again = fresh("list_fill")
+            @asm.load(:hl, base)
+            wide ? @asm.load(:bc, node.capacity) : @asm.load(:c, node.capacity & 0xFF)
+            @asm.load(:a, bytes.first) if same
+            @asm.label(again)
+            bytes.each do |byte|
+              @asm.load(:a, byte) unless same
+              @asm.load([:hli], :a)
+            end
+            if wide
+              @asm.dec(:bc)
+              @asm.load(:a, :b)
+              @asm.or_a(:c)
+              @asm.load(:a, bytes.first) if same
+            else
+              @asm.dec(:c)
+            end
+            @asm.jump_relative(:nz, again)
           end
 
           # A pool's list kept in an area of the pool's page made full of its number, a slot at a time

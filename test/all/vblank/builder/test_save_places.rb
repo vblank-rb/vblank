@@ -80,6 +80,42 @@ class TestSavePlaces < Minitest::Test
                  placed({ file: {}, extra: {}, last: {} }, rows))
   end
 
+  # --- no table at all ---
+  #
+  # A chip never written, or with a damaged table, has no table to go by. Each record goes where
+  # it would go from an empty table, and the table is written for the next power-on.
+
+  RECORDS = { file: { copies: 2 }, scores: { bytes: 61 }, extra: {} }.freeze
+
+  private def placed_with_no_table(records, bytes: {})
+    store = SaveImage.new(kilobytes: Layout::MEMORIES.first, bytes: bytes)
+    game_player(save: store).run(game(records), frames: 1)
+    @store = store
+    by_key = records.keys.to_h { |name| [Layout.record_key(name), name] }
+    store.table.to_h { |one| [by_key.fetch(one.key), [one.at, one.copies]] }
+  end
+
+  def test_with_no_table_each_record_goes_where_an_empty_table_puts_it
+    from_empty_table = placed(RECORDS, [])
+
+    assert_equal from_empty_table, placed_with_no_table(RECORDS)
+    assert_equal [START, 2], from_empty_table[:file]
+  end
+
+  # Room a record did not own a moment ago can hold an old save that would pass for good, so
+  # each half's marker is written over.
+  def test_with_no_table_each_half_is_marked_as_never_saved
+    old = (START...(START + 1024)).to_h { |at| [at, 0xFF] }
+    where = placed_with_no_table(RECORDS, bytes: old)
+
+    halves = RECORDS.flat_map do |name, spec|
+      at, copies = where.fetch(name)
+      room = half(spec)
+      (0...(copies * 2)).map { |n| at + (n * room) }
+    end
+    halves.each { |at| assert_equal [0, 0, 0, 0], @store.read_bytes(at + Layout::MARKER_AT, 4), "the half at #{at}" }
+  end
+
   # --- a record the game no longer declares ---
 
   def test_a_dropped_record_keeps_its_room_while_there_is_other_room

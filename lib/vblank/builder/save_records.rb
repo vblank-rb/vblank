@@ -532,8 +532,8 @@ module VBlank
       # marker, or another record's shape, was never this record's, and the copy is empty.
       #
       # The body is summed only for a half that has the marker and the shape, as a retail
-      # cartridge checks a block's signature before its sum: a half never written costs two
-      # reads, not a pass over every byte of it. So setting up at power-on costs what the saves
+      # cartridge checks a block's signature before its sum: a half never written costs one
+      # read, not a pass over every byte of it. So setting up at power-on costs what the saves
       # on the chip hold, which on an empty chip is nothing, and on a slow console that was most
       # of the frames before the first pass.
       def save_data_scan(layout)
@@ -544,16 +544,21 @@ module VBlank
           at = layout.scratch(:"at#{half}")
           record(Build.set(at, @halves.half_at(layout, copy, sd_int(half))))
           here = sd_var(at)
-          # Good starts as marked, and is narrowed to summed only where it was marked.
+          # Good starts as marked, and is narrowed to summed only where it was marked. The shape
+          # is read only behind a marker, so a half never written costs one read.
           good = layout.scratch(:"v#{half}")
-          record(Build.set(good, sd_and(sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::MARKER_AT))), sd_int(IR::SaveLayout::MARKER)),
-                                        sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::SHAPE_AT))), sd_int(layout.shape)))))
+          record(Build.set(good, sd_int(0)))
+          sd_when(sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::MARKER_AT))), sd_int(IR::SaveLayout::MARKER))) do
+            record(Build.set(good, sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::SHAPE_AT))), sd_int(layout.shape))))
+          end
           record(Build.set(started, Build.binop(:|, sd_var(started), sd_var(good))))
+          # The sequence number is read only here too: it is only ever compared for a half that
+          # turns out good.
           sd_when(sd_eq(sd_var(good), sd_int(1))) do
             record(Build.set(good, sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::CHECKSUM_AT))),
                                          Build.save_sum(sd_add(here, sd_int(IR::SaveLayout::HEADER)), sd_int(layout.body)))))
+            record(Build.set(layout.scratch(:"s#{half}"), sd_read(sd_add(here, sd_int(IR::SaveLayout::SEQUENCE_AT)))))
           end
-          record(Build.set(layout.scratch(:"s#{half}"), sd_read(sd_add(here, sd_int(IR::SaveLayout::SEQUENCE_AT)))))
         end
         winner = layout.scratch(:winner)
         record(Build.set(winner, sd_int(-1)))
@@ -571,8 +576,10 @@ module VBlank
         end.else do
           at = @halves.half_at(layout, copy, sd_var(winner))
           record(Build.set(layout.scratch(:at), at))
+          # The winner's sequence number, read above: s0, or s1 for the second half.
+          s0 = sd_var(layout.scratch(:s0))
           record(Build.list_set(layout.directory(:seq), copy,
-                                sd_read(sd_add(sd_var(layout.scratch(:at)), sd_int(IR::SaveLayout::SEQUENCE_AT)))))
+                                sd_add(s0, sd_op(:*, sd_var(winner), sd_op(:-, sd_var(layout.scratch(:s1)), s0)))))
           erased = sd_eq(sd_read(sd_add(sd_var(layout.scratch(:at)), sd_int(IR::SaveLayout::KIND_AT))),
                          sd_int(IR::SaveLayout::ERASED))
           sd_when(erased) { record(Build.list_set(layout.directory(:state), copy, sd_int(state.index(:erased)))) }
@@ -585,8 +592,16 @@ module VBlank
       # good, so a save cut off anywhere leaves the other half as the table. The game's own
       # records are written the same way, but a piece a pass (see SaveJobs); the table is written
       # only at power-on, before the game has anything to show, so it is written whole.
+      #
+      # The half is looked over again once it is in (SaveHalf#emit_half_commit) only where the
+      # table read as good before it was written. A second write in the same power-on goes in the
+      # half that read back names, and only a table the chip already held is written twice: one
+      # the chip did not hold is written once (SavePlaces#save_places_fresh), and its state is
+      # not asked for again before the next power-on.
       def save_data_save(layout)
-        save_data_write(layout, IR::SaveLayout::SAVED) do |body|
+        copy = sd_var(layout.scratch(:copy))
+        held = sd_eq(layout.directory_at(:state, copy), sd_int(IR::SaveLayout::STATES.index(:good)))
+        save_data_write(layout, IR::SaveLayout::SAVED, read_back: held) do |body|
           layout.kept.each { |item| emit_write_kept_item(item, body) }
         end
       end
@@ -625,14 +640,14 @@ module VBlank
 
       # A whole half written in one go, in the safe order (see SaveHalf): opened, the body the
       # block writes, closed.
-      def save_data_write(layout, kind)
+      def save_data_write(layout, kind, read_back: true)
         copy = sd_var(layout.scratch(:copy))
         sd_when(layout.copy_in_range(copy)) do
           record(Build.set(layout.scratch(:at), @halves.half_to_write(layout, copy)))
           here = sd_var(layout.scratch(:at))
           @halves.emit_half_header(layout, here)
           yield sd_add(here, sd_int(IR::SaveLayout::HEADER))
-          @halves.emit_half_commit(layout, here, copy, kind)
+          @halves.emit_half_commit(layout, here, copy, kind, read_back: read_back)
         end
       end
 

@@ -265,9 +265,7 @@ class TestGBCPowerOn < Minitest::Test
   end
 
   # A game that keeps a small save record, as a high-score table is: a list of 61 bytes, so a body
-  # of 65, loaded at power-on. A retail Color cartridge that checks four such blocks at power-on
-  # reaches its main loop's first pass on frame 11, measured in the emulator; setting the record up
-  # must cost no more than that.
+  # of 65, loaded at power-on.
   private def saving_game(record: true)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
@@ -298,25 +296,32 @@ class TestGBCPowerOn < Minitest::Test
   end
 
   # The record's lists (its own, and the table of places every game with a record keeps) move
-  # between save memory and the game as blocks (Runtime::Lists#emit_save_moves). On an empty chip
-  # the record is then made and written: a little under two and a half frames of work, which ends
-  # two or three frame boundaries later, by where in its frame the boot ended.
-  def test_a_small_save_record_on_an_empty_chip_starts_three_frames_after_a_game_with_none
+  # between save memory and the game as blocks (Runtime::Lists#emit_save_moves), and are summed in
+  # a loop kept in registers (Runtime::Saving). On an empty chip the table of places is the one the
+  # build worked out (SavePlaces#save_places_fresh), copied in from tables and written. Either way
+  # setting the record up is under a frame of work, so the first pass is at most one frame
+  # boundary later than a game with none, by where in its frame the boot ended.
+  #
+  # The game with none first passes on frame 2, so frame 3 is also held as a ceiling of its own:
+  # a change that slowed both boots alike would keep the gap and still fail.
+  FIRST_PASS_WITH_RECORD = 3
+
+  def test_a_small_save_record_on_an_empty_chip_starts_within_a_frame_of_a_game_with_none
     without = first_pass_frame(saving_game(record: false))
     with_record = first_pass_frame(saving_game)
 
-    assert_operator with_record, :<=, without + 3, "the first pass, on an empty chip"
-    assert_operator with_record, :<=, 11, "retail's own first pass is on frame 11"
+    assert_operator with_record, :<=, without + 1, "the first pass, on an empty chip"
+    assert_operator with_record, :<=, FIRST_PASS_WITH_RECORD, "the first pass, on an empty chip"
   end
 
-  def test_a_small_save_record_with_a_good_save_starts_two_frames_after_a_game_with_none
+  def test_a_small_save_record_with_a_good_save_starts_within_a_frame_of_a_game_with_none
     program = saving_game
     good = Reference.save_into(SaveImage.new, program, :high, 0, scores: (1..61).to_a)
     without = first_pass_frame(saving_game(record: false))
     with_record = first_pass_frame(program, save: good)
 
-    assert_operator with_record, :<=, without + 2, "the first pass, with a good save"
-    assert_operator with_record, :<=, 11, "retail's own first pass is on frame 11"
+    assert_operator with_record, :<=, without + 1, "the first pass, with a good save"
+    assert_operator with_record, :<=, FIRST_PASS_WITH_RECORD, "the first pass, with a good save"
   end
 
   # Every frame holds the note, at one loudness. The 256Hz wave's place against the frame comes

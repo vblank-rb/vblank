@@ -22,7 +22,7 @@
       "data": 0
     },
     "breakout@gbc": {
-      "code": 12467,
+      "code": 12487,
       "data": 45392
     },
     "buffered_bounce": {
@@ -42,7 +42,7 @@
       "data": 0
     },
     "chip_band@gbc": {
-      "code": 13940,
+      "code": 13533,
       "data": 13736
     },
     "clock": {
@@ -70,7 +70,7 @@
       "data": 0
     },
     "everywhere@gbc": {
-      "code": 8654,
+      "code": 8247,
       "data": 3392
     },
     "everywhere@genesis": {
@@ -94,7 +94,7 @@
       "data": 0
     },
     "flowers@gbc": {
-      "code": 7152,
+      "code": 6719,
       "data": 4736
     },
     "flowers@snes": {
@@ -134,12 +134,12 @@
       "data": 555
     },
     "hero": {
-      "code": 81040,
+      "code": 81580,
       "data": 0
     },
     "hero@snes": {
-      "code": 54800,
-      "data": 13807
+      "code": 55172,
+      "data": 13824
     },
     "jukebox": {
       "code": 72434,
@@ -194,7 +194,7 @@
       "data": 0
     },
     "pacman@gbc": {
-      "code": 8777,
+      "code": 8370,
       "data": 14272
     },
     "pacman@ps1": {
@@ -246,7 +246,7 @@
       "data": 0
     },
     "pong_gbc@gbc": {
-      "code": 14653,
+      "code": 14246,
       "data": 25888
     },
     "raycaster": {
@@ -266,7 +266,7 @@
       "data": 0
     },
     "scoreboard@gbc": {
-      "code": 8359,
+      "code": 7952,
       "data": 7600
     },
     "scoreboard@snes": {
@@ -346,7 +346,7 @@
       "data": 0
     },
     "tower@gbc": {
-      "code": 9014,
+      "code": 8607,
       "data": 16032
     },
     "tower@genesis": {
@@ -370,7 +370,7 @@
       "data": 0
     },
     "wanderers@gbc": {
-      "code": 8388,
+      "code": 7981,
       "data": 5616
     },
     "wanderers@genesis": {

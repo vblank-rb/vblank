@@ -60,6 +60,38 @@ class TestListFillWord < Minitest::Test
     assert_equal [0, 0, -1, 0, 0, SIZE], interpreted(game)
   end
 
+  # Wider slots take the value's low bytes, as many as a slot keeps: a list of halves and one of
+  # words, each declared full of a number below nought, then a run of each filled with a number
+  # worked out as the game runs. A list of more than 256 is made full too.
+  def test_halves_and_words_are_filled_with_the_low_bytes_of_the_value
+    builder = Builder.new
+    builder.instance_eval do
+      halves = list :halves, capacity: 40, width: :half, full_of: -3
+      words = list :words, capacity: 40, width: :word, full_of: -70_000
+      long = list :long, capacity: 300, width: :half, full_of: 0x1234
+      shade = var :shade, 0x12345
+      last = var :last, 0
+      readings = %i[half_first half_run half_after word_first word_run word_after].to_h { |name| [name, var(name, 0)] }
+      game_loop do
+        halves.fill shade, from: 7, count: 30
+        words.fill shade * -3, from: 7, count: 30
+        readings[:half_first] = halves[6]
+        readings[:half_run] = halves[36]
+        readings[:half_after] = halves[37]
+        readings[:word_first] = words[0]
+        readings[:word_run] = words[7]
+        readings[:word_after] = words[39]
+        last = long[299]
+      end
+    end
+    builder.finalize_program
+    run = game_player.run(builder.program, frames: 3)
+
+    assert_equal [-3, 0x2345, -3, -70_000, -0x12345 * 3, -70_000],
+                 %i[half_first half_run half_after word_first word_run word_after].map { |name| run[name] }
+    assert_equal 0x1234, run[:last]
+  end
+
   private def refused(&game)
     builder = Builder.new
     assert_raises(ArgumentError) { builder.instance_eval(&game) }.message

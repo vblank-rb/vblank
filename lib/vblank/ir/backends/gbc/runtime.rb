@@ -91,23 +91,24 @@ module VBlank
           # +clips+ is the game's recordings (GBC::Clips), or nil for a game that plays none.
           # +count_at+ is where a game that counts the frames its screen is off for keeps
           # IR::Frames::COUNT (Frame#emit_add_dark_frames). +banked_colors+ means its backgrounds' colour
-          # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ means
-          # it fills a list of bytes (Lists#emit_byte_fill), and +queues+ that it pushes bytes or takes
+          # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +fills+ means
+          # it fills a list through rt_list_fill (Lists#emit_fill), and +queues+ that it pushes bytes or takes
           # from a list's front (Lists#emit_queue_routines), and +half_queues+ that it pushes onto a list
           # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
           # means its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
           # sprite layer is on there. +indexes_in_banks+ means the tables of where its pictures, its
           # screens' tiles and colours and its maps are kept are in a bank (GBC#roomier_view).
           # +byte_divides+ means it divides by a byte written in it (Lowering#divides_by_written_bytes?).
-          # +save_list_moves+ means it moves a whole list to or from save memory (Lists#emit_save_moves).
+          # +saves+ means it reads or writes save memory (Runtime::Saving). +save_list_moves+ means it moves
+          # a whole list to or from save memory (Lists#emit_save_moves).
           # +list_packs+ means it copies a list's items into a list of bytes as one run (Lists#emit_list_pack).
           # +clamps_outside+ means it holds a number between ends of up to two bytes
           # (Lowering#clamps_outside?). +far_words+ means it reads a picked cell from a banked table
           # (Lowering#reads_far_words?). +walks_colors+ is as for #reserve.
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
-                       count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
-                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, save_list_moves: false, list_packs: false,
+                       count_at: nil, banked_colors: false, fills: false, queues: false, half_queues: false,
+                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, saves: false, save_list_moves: false, list_packs: false,
                        clamps_outside: false, far_words: false, walks_colors: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
@@ -121,7 +122,7 @@ module VBlank
             Int32.emit(asm, memory, byte_divides: byte_divides)
             Calls.emit(asm, memory, clamps_outside: clamps_outside, far_words: far_words)
             Frame.emit(asm, memory, together: together, count_at: count_at, songs: songs)
-            Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues, half_queues: half_queues,
+            Lists.emit(asm, memory, fills: fills, queues: queues, half_queues: half_queues,
                                     save_moves: save_list_moves, packs: list_packs)
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
@@ -139,7 +140,7 @@ module VBlank
                                     by_rank: music&.effects_by_rank || [], fades: music&.fades? || false,
                                     slides: music&.slides? || false, pans: music&.pans? || false,
                                     carries: music&.carries? || false)
-            Saving.emit(asm, memory)
+            Saving.emit(asm, memory) if saves
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown
             Rumble.emit(asm, memory) if Rumble.any?(memory)
             KeptSprites.emit(asm, memory, lends: art.lends?, tall_pieces: art.tall_pieces?) if KeptSprites.any?(memory)

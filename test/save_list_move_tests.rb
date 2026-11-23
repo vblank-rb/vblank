@@ -66,6 +66,30 @@ module SaveListMoveTests
     assert_empty played.list(:back)
   end
 
+  # A list of a hundred words, 400 bytes, come round its ring: it starts 16 bytes short of 8K, so
+  # the run crosses several 256-byte pages and a bank's end on the Color, and its ring's end falls
+  # in a page of its own. The bytes are summed where they landed, as a save's checksum is.
+  private def long_round_the_ring
+    pushes = (1..70).map { |n| list_push(:ring, n * 1_001) }
+    more = (71..130).map { |n| list_push(:ring, -n * 77) }
+    program(set(:slot, 0), set(:seen, 0), set(:sum, 0),
+            list_new(:ring, 100, width: :word), list_new(:back, 100, width: :word),
+            *pushes, *Array.new(30) { list_drop(:ring, from: :front) }, *more,
+            save_store_list(:ring, at: 0x1FF0, width: :word, index: :slot),
+            save_load_list(:back, at: 0x1FF0, count: 100, most: 100, width: :word, index: :slot),
+            set(:seen, list_len(:back)),
+            set(:sum, save_sum(int(0x1FF0), int(400))),
+            loop_(wait_vblank), console: moved_on)
+  end
+
+  def test_a_long_list_round_its_ring_across_pages_and_a_bank_is_whole_and_summed
+    wanted = Reference.new(save: SaveImage.new).run(long_round_the_ring, frames: 2)
+    played = assert_moves_as_the_interpreter(long_round_the_ring)
+
+    assert_equal 100, played[:seen]
+    assert_equal wanted[:sum], played[:sum]
+  end
+
   def test_a_count_past_the_steps_most_is_held_to_it
     played = assert_moves_as_the_interpreter(round_the_ring(:byte, at: 0x400, count: 99))
 

@@ -34,6 +34,19 @@ module VBlank
               asm.load([Console::GBCHardware::MBC_RAM_BANK], :a)
             end
 
+            # One byte of rt_save_sum: the byte at BC added into the low sum, DE, and the low sum
+            # into the high sum, HL. +label+ is where a byte with no carry out of E goes on.
+            def emit_sum_byte(asm, label)
+              asm.load(:a, [:bc])
+              asm.inc(:bc)
+              asm.add_a(:e)
+              asm.load(:e, :a)
+              asm.jump_relative(:nc, label)
+              asm.inc(:d)
+              asm.label(label)
+              asm.add_hl(:de)
+            end
+
             def emit(asm, memory)
               h = Console::GBCHardware
               arg2 = ->(i) { Calls.arg(memory, i, 2) }
@@ -89,12 +102,19 @@ module VBlank
 
               # (at, length): low += byte, high += low, each 16 bits.
               #
-              # The loop over the bytes is the routine's whole cost, so it keeps what it can in
-              # registers, as a retail game's checksum loop does: the place in HL, the bytes left
-              # in BC, the low sum in DE, and only the high sum in the quick memory, for want of a
-              # fourth pair. The end of a bank is tested in line, and rt_save_next (which tests
-              # it again) called only there. Four reads and writes of the quick memory a byte,
-              # where keeping every number there took fourteen and a call.
+              # The loop over the bytes is the routine's whole cost, so it keeps every number it
+              # works on in registers: the place in BC, the low sum in DE, the high sum in HL,
+              # where one ADD HL,DE adds the low sum into it.
+              # That leaves no pair for the bytes left, so the bytes are taken in runs that stay
+              # inside one 256-byte page of the memory, and a run ends when the low byte of the
+              # place reaches where it stops. The end of a bank is always the end of a page, so it
+              # is only ever met between runs. Within a run the bytes go four to a turn, so the
+              # test for the run's end is made once for four, after one at a time up to a
+              # multiple of four. Eleven machine cycles a byte and a test (Pan Docs, "CPU
+              # Instruction Set"), where testing the bank and keeping the high sum in the quick
+              # memory took thirty-four.
+              left = memory.args + 24 # 16 bits: the bytes left after the run under way
+              stop = memory.args + 26 # the place's low byte where the run under way stops
               asm.label("rt_save_sum")
               asm.load_hl_sp(2)
               asm.load(:b, 8)
@@ -103,47 +123,91 @@ module VBlank
               asm.load(:hl, arg2.call(1))
               asm.load(:a, Frame::SAVE_READ_OUTSIDE)
               asm.call("rt_save_at")
-              asm.xor_a(:a)
-              asm.load_high(memory.args + 26, :a) # the high sum
-              asm.load_high(memory.args + 27, :a)
-              asm.load(:d, :a) # the low sum
-              asm.load(:e, :a)
+              asm.load(:b, :h) # the place
+              asm.load(:c, :l)
+              asm.load(:hl, 0) # the high sum
+              asm.load(:de, 0) # the low sum
               asm.load_high(:a, arg2.call(1) + 3)
               asm.bit(7, :a)
-              asm.jump_relative(:nz, "rt_save_sum_done") # a length below nought: no bytes
+              asm.jump(:nz, "rt_save_sum_done") # a length below nought: no bytes
               # The length's low 16 bits: rt_save_at has held the place and the length inside
               # the 32K, so the high ones are nought.
               asm.load_high(:a, arg2.call(1))
-              asm.load(:c, :a)
+              asm.load_high(left, :a)
+              asm.load(:l, :a)
               asm.load_high(:a, arg2.call(1) + 1)
-              asm.load(:b, :a)
-              asm.or_a(:c)
-              asm.jump_relative(:z, "rt_save_sum_done")
-              asm.label("rt_save_sum_byte")
-              asm.load(:a, :h)
-              asm.cp_a((h::SRAM + BANK_SIZE) >> 8)
-              asm.call(:z, "rt_save_next")
-              asm.load(:a, [:hli])
-              asm.add_a(:e)
-              asm.load(:e, :a)
-              asm.jump_relative(:nc, "rt_save_sum_low")
-              asm.inc(:d)
-              asm.label("rt_save_sum_low")
-              asm.load_high(:a, memory.args + 26)
-              asm.add_a(:e)
-              asm.load_high(memory.args + 26, :a)
-              asm.load_high(:a, memory.args + 27)
-              asm.adc_a(:d)
-              asm.load_high(memory.args + 27, :a)
-              asm.dec(:bc)
+              asm.load_high(left + 1, :a)
+              asm.or_a(:l)
+              asm.load(:l, 0) # the high sum again, the flags kept
+              asm.jump(:z, "rt_save_sum_done")
+              # One run: up to the end of the page BC is in, or of the bytes left if sooner. Past
+              # the end of a bank, the next one is put in view, as rt_save_next does for HL.
+              asm.label("rt_save_sum_run")
               asm.load(:a, :b)
-              asm.or_a(:c)
+              asm.cp_a((h::SRAM + BANK_SIZE) >> 8)
+              asm.jump_relative(:nz, "rt_save_sum_in_bank")
+              asm.load(:b, h::SRAM >> 8)
+              asm.load_high(:a, memory.args + 28)
+              asm.inc(:a)
+              asm.load_high(memory.args + 28, :a)
+              emit_ram_bank(asm, memory)
+              asm.label("rt_save_sum_in_bank")
+              asm.load_high(:a, left + 1)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_sum_page")
+              asm.load_high(:a, left)
+              asm.add_a(:c) # where the bytes left end, when that is inside this page
+              asm.jump_relative(:c, "rt_save_sum_page")
+              asm.load_high(stop, :a)
+              asm.xor_a(:a)
+              asm.load_high(left, :a) # none left after this run
+              asm.jump_relative("rt_save_sum_ones")
+              # The rest of the page: 256 - C bytes taken off what is left, which is
+              # left - 256 + C, and the run stops where C comes round to nought.
+              asm.label("rt_save_sum_page")
+              asm.load_high(:a, left)
+              asm.add_a(:c)
+              asm.load_high(left, :a)
+              asm.load_high(:a, left + 1)
+              asm.adc_a(0)
+              asm.dec(:a)
+              asm.load_high(left + 1, :a)
+              asm.xor_a(:a)
+              asm.load_high(stop, :a)
+              # A byte at a time until what is left of the run is a multiple of four.
+              asm.label("rt_save_sum_ones")
+              asm.load_high(:a, stop)
+              asm.sub_a(:c)
+              asm.and_a(3)
+              asm.jump_relative(:z, "rt_save_sum_byte")
+              emit_sum_byte(asm, "rt_save_sum_one")
+              asm.load_high(:a, stop) # a run of fewer than four ends here
+              asm.cp_a(:c)
+              asm.jump_relative(:z, "rt_save_sum_next")
+              asm.jump_relative("rt_save_sum_ones")
+              # A run is never empty, so a run of a whole page, which starts and stops where C
+              # is nought, is not taken for one.
+              asm.label("rt_save_sum_byte")
+              4.times { |i| emit_sum_byte(asm, "rt_save_sum_four_#{i}") }
+              asm.load_high(:a, stop)
+              asm.cp_a(:c)
               asm.jump_relative(:nz, "rt_save_sum_byte")
+              asm.label("rt_save_sum_next")
+              asm.load_high(:a, left)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_sum_run")
+              asm.load_high(:a, left + 1)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_sum_run")
               asm.label("rt_save_sum_done")
               asm.load(:a, :e)
               asm.load_high(memory.args + 24, :a)
               asm.load(:a, :d)
               asm.load_high(memory.args + 25, :a)
+              asm.load(:a, :l)
+              asm.load_high(memory.args + 26, :a)
+              asm.load(:a, :h)
+              asm.load_high(memory.args + 27, :a)
               asm.call("rt_save_off")
               asm.load(:hl, memory.args + 24)
               asm.jump("rt_load32")
@@ -156,9 +220,49 @@ module VBlank
               # or the game stopped with what went wrong (A) — the place and the size as the
               # fault's two numbers. Inside, the memory is switched on, the place's bank is in view,
               # and HL is where the place is seen.
+              #
+              # A place and a count that both fit in 16 bits, which is every place in the 32K and
+              # every count a save asks for, are checked with one 16-bit sum; only a number with
+              # its high bytes set (below nought, or far past the end) takes the 32-bit check.
               asm.label("rt_save_at")
               asm.push(:af)
               asm.push(:de)
+              asm.push(:hl)
+              asm.inc(:de)
+              asm.inc(:de)
+              asm.load(:a, [:de])
+              asm.load(:b, :a)
+              asm.inc(:de)
+              asm.load(:a, [:de])
+              asm.or_a(:b)
+              asm.load(:b, :a)
+              asm.inc(:hl)
+              asm.inc(:hl)
+              asm.load(:a, [:hli])
+              asm.or_a(:b)
+              asm.or_a([:hl])
+              asm.pop(:hl)
+              asm.pop(:de)
+              asm.push(:de)
+              asm.jump_relative(:nz, "rt_save_at_wide")
+              asm.load(:a, [:hli]) # BC = the count's low 16 bits
+              asm.load(:c, :a)
+              asm.load(:b, [:hl])
+              asm.load(:a, [:de]) # + the place's: where it ends
+              asm.add_a(:c)
+              asm.load(:c, :a)
+              asm.inc(:de)
+              asm.load(:a, [:de])
+              asm.adc_a(:b)
+              asm.jump_relative(:c, "rt_save_outside")
+              asm.cp_a(SIZE >> 8)
+              asm.jump_relative(:c, "rt_save_inside")
+              asm.jump_relative(:nz, "rt_save_outside")
+              asm.load(:a, :c)
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_save_inside")
+              asm.jump_relative("rt_save_outside")
+              asm.label("rt_save_at_wide")
               asm.push(:hl)
               asm.load(:h, :d)
               asm.load(:l, :e)
