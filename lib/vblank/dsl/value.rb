@@ -121,6 +121,11 @@ module VBlank
       # A hidden variable for a name nothing had set yet (see PlainRuby::Steps.promote).
       attr_accessor :unwritten # :nodoc:
 
+      # For a number `<=>` built (PlainRuby::Steps.compare): the pairs of numbers it compared, in
+      # the order they decide, each the left side's node and the right side's. A sort reads a
+      # Struct's order from them (SortOrder.key_from_comparison). nil for any other number.
+      attr_accessor :compared_pairs # :nodoc:
+
       def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name) # :nodoc:
 
       # Was this variable made by normal Ruby with no `var` line: a name given a number (`hp = 10`,
@@ -543,6 +548,22 @@ module VBlank
         raise PlainRuby::Refused, "`<=>` compares two numbers while the game is built, and this number is worked out " \
                                   "as the game plays. To fix this, compare with `<`, `>` or `==`, or use `max` or " \
                                   "`min`.#{at_dsl_line}"
+      end
+
+      # `self <=> other` as a number the game works out as it plays: 1, 0 or -1, as Ruby's.
+      # Written `a <=> b` in game code, which the rewrite hands to PlainRuby::Steps.compare; Ruby's
+      # own callers of `<=>` still get the refusal above.
+      #--
+      # Two comparisons, each 1 or 0, the second taken from the first: no divide, and both are
+      # the plain compare every console's build already makes.
+      #++
+      def sign_against(other) # :nodoc:
+        right = align!(other, "compare")
+        greater = Build.binop(:>, @node, right)
+        less = Build.binop(:<, @node.copy, right.copy)
+        Value.new(@builder, Build.binop(:-, greater, less)).tap do |sign|
+          sign.compared_pairs = [[@node, right]]
+        end
       end
 
       # Let a plain number stand on the LEFT of an operator: `160 / distance` is how a

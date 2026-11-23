@@ -367,13 +367,37 @@ module VBlank
           kept
         end
 
-        # `left <=> right`, Ruby's, unless either side is a number the game works out, which has no
-        # -1, 0 or 1 while building: refused then, saying what to write.
+        # `left <=> right` written in game code. On plain values it is Ruby's. With a number the
+        # game works out on a side it is that number's sign against the other, a number the game
+        # works out too (Value#sign_against). Two Arrays compare item by item, as Ruby's do.
         def compare(left, right)
+          return compare_arrays(left, right) if left.is_a?(Array) && right.is_a?(Array) && (left + right).any?(Value)
           return left <=> right unless [left, right].any?(Value)
+          return left.sign_against(right) if left.is_a?(Value)
+          return -right.sign_against(left) if left.is_a?(Numeric)
 
-          refuse_game_code!("`<=>` compares two numbers while the game is built, and a number here is worked out as " \
-                            "the game plays. To fix this, compare with `<`, `>` or `==`, or use `max` or `min`.")
+          refuse_unknown_compare!
+        end
+
+        # `[a1, a2] <=> [b1, b2]`: the first pair decides, and each after it breaks the ties of
+        # those before. Each pair's sign is -1, 0 or 1, so weighing the first twice the next, and
+        # so on, keeps its lead, and the sign of the sum is the answer. The pairs are kept on it.
+        def compare_arrays(left, right)
+          refuse_unknown_compare! unless left.size == right.size && !left.empty?
+
+          signs = left.zip(right).map { |one, other| compare(one, other) }
+          refuse_unknown_compare! unless signs.all? { |sign| sign.is_a?(Value) || sign.is_a?(Integer) }
+          weights = signs.each_index.map { |at| 1 << (signs.size - 1 - at) }
+          sum = signs.zip(weights).map { |sign, weight| weight == 1 ? sign : sign * weight }.reduce(:+) # rubocop:disable Performance/Sum -- sum would add a 0 the game works out too
+          answer = sum.is_a?(Value) ? sum.sign_against(0) : sum <=> 0
+          answer.compared_pairs = signs.flat_map { |sign| sign.is_a?(Value) ? sign.compared_pairs.to_a : [] } if answer.is_a?(Value)
+          answer
+        end
+
+        def refuse_unknown_compare!
+          refuse_game_code!("`<=>` here compares a number the game works out with something that is not a number, " \
+                            "or two Arrays of different sizes. To fix this, compare two numbers, or two Arrays of " \
+                            "numbers of the same size.")
         end
 
         def refuse_game_code!(message)

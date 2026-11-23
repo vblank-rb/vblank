@@ -218,7 +218,7 @@ end
 
 An Array used only while the game is built stays Ruby's, and so does an Array of sprites or anything but numbers. A Ruby loop in a game block runs while building too, so an Array it fills with numbers known then is Ruby's, laid out again on every pass.
 
-Such an Array can hold numbers the game works out, as in `[a, b].max`. The game then works out `max`, `min`, `minmax`, `count`, `any?`, `all?`, `none?` and `include?` as it plays, and gives Ruby's answer. A question that needs a test's answer while building is refused, naming the line: `find`, `select` and the others that pick items by a test the game decides, and `<=>` on a number the game works out, wherever Ruby asks it: `sort`, `max_by`, `clamp` or code of your own. A Range of such numbers, `low..high`, still builds.
+Such an Array can hold numbers the game works out, as in `[a, b].max`. The game then works out `max`, `min`, `minmax`, `count`, `any?`, `all?`, `none?` and `include?` as it plays, and gives Ruby's answer. A question that needs a test's answer while building is refused, naming the line: `find`, `select` and the others that pick items by a test the game decides, and `<=>` on a number the game works out where Ruby asks it: `sort`, `max_by`, `clamp` or code of your own outside the game. A Range of such numbers, `low..high`, still builds. `a <=> b` written in game code is a number the game works out, -1, 0 or 1, as Ruby's, and so is `[a, b] <=> [c, d]`.
 
 ```ruby
 screen :bitmap

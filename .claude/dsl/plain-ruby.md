@@ -208,9 +208,11 @@ end
   or whose block makes a game test) are worked out as the game plays (PlainRuby::ItemQuestions: a
   compare and pick per item, or a hidden count). Those that pick items by a game test (`find`,
   `select`, `reject`, `partition`, `max_by`...) are refused, and `<=>` on a game number is refused
-  whoever asks it (`sort`, `max_by`, `clamp`, a gem, `<=>` written out), except Range.new: a Range
-  of game numbers still builds, written as `Range.new` by the rewrite where an end is not a number
-  written out.
+  where Ruby asks it (`sort`, `max_by`, `clamp`, a gem), except Range.new: a Range of game numbers
+  still builds, written as `Range.new` by the rewrite where an end is not a number written out.
+  **`a <=> b` written in game code is a game number**, -1, 0 or 1 (`Steps.compare`,
+  `Value#sign_against`: `(a > b) - (a < b)`, two compares, no divide), and `[a, b] <=> [c, d]` the
+  sign of the pairs' signs weighed 2 and 1, so the first decides and the next breaks ties.
 - **The list's name** is its local's (`trail`, `trail_2` for a second local of that name in one block
   or file), and in a file loaded with `VBlank.require_game_file`, the file's name first
   (`walker_trail` in `walker.rb`). A profile, a save and a test read it by that name. A `list` line

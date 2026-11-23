@@ -457,18 +457,37 @@ class TestPlainRubyArrays < Minitest::Test
     assert_match(/`<=>`/, error.message)
   end
 
-  # `<=>` written out, and Ruby's `clamp` and `max_by`, which ask it, are refused the same way.
-  def test_the_spaceship_written_out_or_asked_by_clamp_or_max_by_is_refused
-    written = assert_raises(VBlank::DSL::PlainRuby::Refused) do
-      played(frames: 1) do
-        a = 3
-        kept = 0
-        game_loop do
-          a += 1
-          kept = a <=> 7
-        end
+  # `<=>` written in game code with a game number on a side is a game number, -1, 0 or 1, as
+  # Ruby's: here against numbers below, level with and above it, negatives too, both ways round,
+  # and Arrays of them, the first items deciding and the next breaking the ties.
+  def test_the_spaceship_written_out_gives_rubys_answer
+    player = played(frames: 1) do
+      a = -3
+      below = 9
+      level = 9
+      above = 9
+      flipped = 9
+      first_decides = 9
+      tie_broken = 9
+      all_level = 9
+      game_loop do
+        a += 0
+        below = a <=> -7
+        level = a <=> -3
+        above = a <=> 2
+        flipped = 2 <=> a
+        first_decides = [a, 5] <=> [-4, 9]
+        tie_broken = [a, 5] <=> [-3, 9]
+        all_level = [a, 5] <=> [-3, 5]
       end
     end
+
+    names = %i[below level above flipped first_decides tie_broken all_level]
+    assert_equal [1, 0, -1, 1, 1, -1, 0], names.map { |name| player[name] }
+  end
+
+  # Ruby's `clamp` and `max_by` ask `<=>` while building, which a game number cannot answer.
+  def test_the_spaceship_asked_by_clamp_or_max_by_is_refused
     clamped = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       played(frames: 1) do
         a = 3
@@ -490,7 +509,7 @@ class TestPlainRubyArrays < Minitest::Test
       end
     end
 
-    [written, clamped, picked].each { |error| assert_match(/`<=>`/, error.message) }
+    [clamped, picked].each { |error| assert_match(/`<=>`/, error.message) }
   end
 
   # `<=>` asked by Ruby code the rewrite never reads (a helper of the game's in a plain file, a
