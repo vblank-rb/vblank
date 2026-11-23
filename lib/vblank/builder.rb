@@ -1414,6 +1414,10 @@ module VBlank
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
 
+    # Is the body being built now a routine's that is not a scene's? It runs wherever it is
+    # called, inside a walk of a pool among them. DSL::StructArray#shift asks.
+    def building_callable_routine? = !@building_routine.nil? && @building_scene.nil? # :nodoc:
+
     # The outermost body of game code being recorded now: the routine, scene or loop it is in,
     # nil while setting up. DSL::PlainRuby::InstanceVariables::Uses tells two routines apart by it.
     def recorded_routine_body = @container_stack[1]

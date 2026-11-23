@@ -269,6 +269,7 @@ module VBlank
           @names = LocalNames.new(node, library_file: !@follows_instance_variables)
           @promotion = @names.promotion
           @heredoc_parts = heredoc_parts_in(node).sort_by { |part| part.location.start_offset }
+          @own_classes = @block_node ? own_classes_in(node) : Set.new
           rewritten_text(node)
         end
 
@@ -341,8 +342,34 @@ module VBlank
           when Prism::ParenthesesNode, Prism::BeginNode then grouped_text(node)
           when Prism::StatementsNode then statements_text(node)
           when Prism::ClassNode, Prism::ModuleNode then module_text(node)
+          when Prism::ConstantWriteNode then own_class_write_text(node)
+          when Prism::ConstantReadNode then own_class_read?(node) ? own_class_local(node.name) : copied_text(node)
           else copied_text(node)
           end
+        end
+
+        # The constants a game block gives a class with fields of its own, `Spark = Struct.new(:x)`
+        # (BlockChecks.makes_class?). A block runs once for each build, so a constant would be set
+        # again on every build, and two builds at once in Ractors would each set it: each of these
+        # is a local of the block instead, read wherever the block names the constant.
+        def own_classes_in(node)
+          own = node.is_a?(Prism::ConstantWriteNode) && BlockChecks.makes_class?(node.value) ? [node.name] : []
+          inner = node.compact_child_nodes.reject { |child| child.is_a?(Prism::DefNode) }
+          own.to_set.merge(inner.flat_map { |child| own_classes_in(child).to_a })
+        end
+
+        def own_class_local(name) = "__plain_ruby_class_#{name}"
+
+        # A method cannot see the block's locals, so one keeps the constant as written.
+        def own_class_read?(node) = @own_classes.include?(node.name) && !@in_method
+
+        # `Spark = Struct.new(...)` in a game block, as the local of #own_classes_in, its class told
+        # the name it was given for the build's messages.
+        def own_class_write_text(node)
+          return copied_text(node) unless @own_classes.include?(node.name)
+
+          "#{own_class_local(node.name)} = ::VBlank::DSL::PlainRuby::StructSettings.own_class(:#{node.name}, " \
+            "(#{rewritten_text(node.value)}))"
         end
 
         # A `class` or `module` whose code reads or writes an instance variable at an index the game
@@ -490,6 +517,7 @@ module VBlank
           return bits_text(node) if Steps::BIT_JOINS.include?(node.name) && node.receiver && node.arguments
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
           return game_variables_text(node) if game_variables_call?(node)
+          return "#{ARRAYS}.ruby_array#{copied_text(node, from: node.message_loc.end_offset)}" if ruby_array_with_room?(node)
           return "#{INSTANCE_VARIABLES}.followed_struct(#{copied_text(node)})" if struct_made?(node)
           if @follows_instance_variables && @whole_statements.key?(node)
             return attribute_methods_text(node) if attribute_call?(node)
@@ -512,6 +540,12 @@ module VBlank
         # `game_variables :busy`, which no object answers: InstanceVariables keeps the names.
         def game_variables_call?(node)
           @follows_instance_variables && node.name == :game_variables && node.receiver.nil? && node.block.nil?
+        end
+
+        # `Array.new(capacity: 4)` that game code never changes, so it stays Ruby's (a game's own is
+        # made by #game_array_text before this is reached). Ruby's `Array.new` takes no settings.
+        def ruby_array_with_room?(node)
+          Arrays.makes_array?(node) && node.arguments&.arguments.to_a.any?(Prism::KeywordHashNode)
         end
 
         # `Struct.new(:count)`, whose named fields InstanceVariables follows as it follows named
@@ -910,17 +944,18 @@ module VBlank
           "#{ARRAYS}::Declaration.new(name: #{game_array_list_name(node).inspect}, local: :#{node.name}, " \
             "grows: #{@names.game_array_grown?(node)}, source: #{@source_label.inspect}, " \
             "declared_at: #{place_text(node).inspect}, fraction_at: #{(fraction_put && place_text(fraction_put)).inspect}, " \
-            "#{things_text(@names.game_array_things_made(node))})"
+            "#{things_text(@names.game_array_things_made(node), @names.thing_field_fractions(node))})"
         end
 
         # What an Array of things made from a class holds (Arrays::Declaration#things): each class
         # written out, read when the line runs, so one defined further down the file is there, and
-        # the fields a put shows a fraction for.
-        def things_text(made)
+        # the fields a put shows a fraction for, with +fields_given_fractions+, those a walk gives
+        # one (LocalNames#thing_field_fractions).
+        def things_text(made, fields_given_fractions = [])
           return "things: nil, thing_fractions: []" if made.empty?
 
-          classes = made.map { |put| put.receiver.slice }.uniq.join(", ")
-          fractions = made.flat_map { |put| @names.fraction_fields_of(put) }.uniq
+          classes = made.map { |put| rewritten_text(put.receiver) }.uniq.join(", ")
+          fractions = (made.flat_map { |put| @names.fraction_fields_of(put) } + fields_given_fractions).uniq
           "things: -> { [#{classes}] }, thing_fractions: #{fractions.inspect}"
         end
 

@@ -33,9 +33,9 @@ module Dive
     EVERY = 14        # frames between one bubble and the next
     FROM_BACK = 2     # where on the diver they come off
 
-    # One bubble, drawn where it is.
+    # One bubble, drawn where it is, in the layer the diver swims in.
     Bubble = Struct.new(:x, :y) do
-      drawn_as :bubble
+      drawn_as :bubble, layer: :swimmers
     end
 
     SUIT = <<~ART
@@ -65,9 +65,7 @@ module Dive
         build.sprite :diver, at: STARTS_AT,
                              facing: { right: :diver_right, left: build.mirror(:diver_right) }
       end
-      build.layer(:swimmers) do
-        @bubbles = Array.new(capacity: BUBBLES)
-      end
+      @bubbles = Array.new(capacity: BUBBLES)
       @since_last = build.var(:since_last, 0)
     end
 

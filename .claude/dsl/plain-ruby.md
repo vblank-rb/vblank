@@ -222,13 +222,23 @@ end
   how many it holds for), `empty?`, `any?`. A walk hands an object of the game's own Struct, so its
   methods run, and each field holds the pool's number for that thing: `s.y += s.vy` changes it. It
   answers `face`, `draw_with`, `move`, `can_move?`, `clamp_to_screen`, `overlaps?`, the edges and
-  the screen-edge tests, and `index`. `Array.new` takes `capacity:` (needed) and `fast:`. In the
-  Struct's block, `drawn_as :spark` (or `facing:`/`frames:`/`rate:`, a mirrored picture written `VBlank.mirror(:fish_right)`) draws each as a sprite (refused
-  without `x` and `y`) and `narrow :x, y: :byte` sets widths. A part's instance variable works the
-  same (`@enemies = Array.new(capacity: 8)`, `@enemies << Enemy.new(...)` in the same class and
-  file), named as its variable would be, `enemies_part_enemies`. Refused: no capacity, a size or a
-  start on `Array.new`, a `Data` class, two kinds in one Array, a member left nil, any other Array
-  method. A full Array drops the new thing (as `on_full: :drop`).
+  the screen-edge tests, and `index`. `==`/`eql?` compare every field (a test), `equal?` the slot.
+  A thing given a name (`pick = s if s.x == 10`) keeps its slot in a hidden variable, so the name
+  stays on it after the walk. `Array.new` takes `capacity:` (needed) and `fast:`; one that game code
+  never changes stays Ruby's, its `capacity:` dropped. A thing put in may come from a local
+  (`s = Spark.new(...)`) or another Array's walk. In the Struct's block (Struct and Data classes
+  only), `drawn_as :spark` (or `facing:`/`frames:`/`rate:`, and `layer:` for the layer it stands in)
+  draws each as a sprite (refused without `x` and `y`); a `facing:` missing left or down takes the
+  opposite's picture mirrored or turned upside down. `narrow :x, y: :byte` sets widths. A field holds
+  fractions where a put or a walk's write shows one (`s.vy = 0.5`); a fraction the build cannot see
+  is refused advising `.to_f`. The Struct's methods are read as game code wherever its file is (a
+  method not made with `def` is refused). A `Spark = Struct.new` in a game block is a local of the
+  block, so each build has its own class. A part's instance variable works the same
+  (`@enemies = Array.new(capacity: 8)`, `@enemies << Enemy.new(...)` in the same class and file),
+  named as its variable would be, `enemies_part_enemies`. Refused: no capacity, a size or a start
+  on `Array.new`, a `Data` class, two kinds in one Array, a member left nil, any other Array method.
+  `shift` takes the oldest live thing, during a walk too. A full Array drops the new thing (as
+  `on_full: :drop`).
 
 ## Changing a variable
 

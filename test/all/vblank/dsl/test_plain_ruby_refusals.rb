@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "open3"
 require "stringio"
 require "test_helper"
 require "fixtures/game_with_plain_helper/game"
@@ -11,6 +12,9 @@ class TestPlainRubyRefusals < Minitest::Test
   OWN_NUMBER = 7
 
   Refused = VBlank::DSL::PlainRuby::Refused
+
+  # The Ruby running the suite, read once: a test in a Ractor cannot ask for it.
+  RUBY = RbConfig.ruby
 
   # Read from each test's Ractor, as an example's game is.
   SHARED_GAME = VBlank.game("SHARED", consoles: %i[gba]) do
@@ -220,6 +224,15 @@ class TestPlainRubyRefusals < Minitest::Test
     end
 
     assert_kind_of Builder, builder
+  end
+
+  # Only a constant given a Struct of the game's is the game's own: `Dir = Dir` is still Ruby's.
+  def test_a_constant_the_block_gives_an_outside_constant_is_refused
+    game = File.join(__dir__, "../../../fixtures/own_constant_game/game.rb")
+    _out, err, status = Open3.capture3(RUBY, game)
+
+    refute_predicate status, :success?
+    assert_includes err, "`Dir` is not part of your game"
   end
 
   def test_a_gem_nobody_has_heard_of_is_refused_the_same_way

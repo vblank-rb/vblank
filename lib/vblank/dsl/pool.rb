@@ -881,6 +881,28 @@ module VBlank
         self
       end
 
+      # Retire the oldest live thing, when there is one: what `shift` does to an Array of Structs.
+      # During a walk a removed thing stays in the chain until the walk ends, so the first thing
+      # in the chain may be dead, and the oldest live one is found by stepping past the dead.
+      # Outside a walk the first is live, so +during_walk+ false, where the build knows no walk can
+      # be under way, removes the first and builds no steps.
+      def remove_oldest(during_walk: true) # :nodoc:
+        unless during_walk
+          remove_at(Value.new(@builder, Build.var_ref(head_var))) if count > 0
+          return self
+        end
+
+        record(Build.set(unlink_var, Build.var_ref(head_var)))
+        finished = Value.new(@builder, Build.var_ref(unlink_var)) == NONE
+        @builder.repeat(@capacity, stop_when: finished) do
+          live = Build.binop(:==, Build.list_get(active_list, Build.var_ref(unlink_var)), Build.int(1))
+          found = Build.if_(live, Build.call(removal_routine), Build.set(unlink_var, Build.int(NONE)))
+          found.else = Build.else_(Build.set(unlink_var, Build.list_get(next_list, Build.var_ref(unlink_var))))
+          record(found)
+        end
+        self
+      end
+
       # The chain is kept by four routines of the pool's, each declared the first time it is
       # needed and called from every place that needs it: removing a thing, putting a spawn at
       # the end, taking a slot out of the middle, and freeing what a walk removed. Each is a
@@ -994,12 +1016,21 @@ module VBlank
       def field_ref_at_node(field, index_node) # :nodoc:
         FieldRef.new(builder: @builder, list: field_list(field), index: index_node,
                      pool: @name, field: field, fraction_bits: field_bits(field),
-                     names: @field_names[field])
+                     names: @field_names[field], advice: @kind_advice&.call(field))
       end
 
       # What a field keeps, without building a handle to ask it (see FieldRef.scale).
       def field_scale(field) # :nodoc:
-        FieldRef.scale(pool: @name, field: field, bits: field_bits(field), names: @field_names[field])
+        FieldRef.scale(pool: @name, field: field, bits: field_bits(field), names: @field_names[field],
+                       advice: @kind_advice&.call(field))
+      end
+
+      # What a number of the wrong kind for a field is told, in place of the pool's own words:
+      # +advice+ is handed a field and gives Value's `declaring:` and `mixing:` for it. An Array of
+      # Structs kept as a pool (StructArray) speaks of the Struct, which is what its game wrote.
+      def explain_kinds_with(&advice) # :nodoc:
+        @kind_advice = advice
+        self
       end
 
       # What a field holds, taken from the default it was declared with. Writing `vy: 0.0`

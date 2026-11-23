@@ -34,7 +34,9 @@ module VBlank
       # @param fraction_bits [Integer, nil] what the field holds, from its declared default —
       #   a pool field written `vy: 0.0` carries a fraction the way a variable does
       # @param names [NameSet, nil] the names the field holds, for a field declared with one
-      def initialize(builder:, list:, index:, pool:, field:, fraction_bits: nil, names: nil)
+      # @param advice [Hash, nil] `declaring:` and `mixing:`, said in place of a pool's own advice
+      #   about a number of the wrong kind (Pool#explain_kinds_with)
+      def initialize(builder:, list:, index:, pool:, field:, fraction_bits: nil, names: nil, advice: nil)
         @list_name = list
         @index_node = index
         @pool = pool
@@ -43,8 +45,13 @@ module VBlank
         # (b.x + 5, b.y > 100) exactly like a variable read. It carries no variable name,
         # so the mutators below override Value's (which write to a named variable).
         super(builder, read, name: nil, fraction_bits: fraction_bits, names: names,
-                             declaring: self.class.fraction_declaration_advice(pool, field),
-                             mixing: self.class.mixed_kinds_advice(pool, field))
+                             **(advice || self.class.kind_advice(pool, field)))
+      end
+
+      # What a number of the wrong kind for a pool field is told, as Value's `declaring:` and
+      # `mixing:`.
+      def self.kind_advice(pool, field) # :nodoc:
+        { declaring: fraction_declaration_advice(pool, field), mixing: mixed_kinds_advice(pool, field) }
       end
 
       # A handle, not a working-out: it stands for one slot of one field, so writing one
@@ -55,9 +62,8 @@ module VBlank
       # a `spawn` was given against the fields they are going into, and it has no instance
       # to hold a handle for — nor any need of one. On the class so that a field's own two
       # sentences are written once and both callers say the same thing.
-      def self.scale(pool:, field:, bits:, names: nil) # :nodoc:
-        Scale.new(bits: bits, declaring: fraction_declaration_advice(pool, field), mixing: mixed_kinds_advice(pool, field),
-                  names: names)
+      def self.scale(pool:, field:, bits:, names: nil, advice: nil) # :nodoc:
+        Scale.new(bits: bits, names: names, **(advice || kind_advice(pool, field)))
       end
 
       # How to make this field hold a fraction: declare it in the default it is declared with,

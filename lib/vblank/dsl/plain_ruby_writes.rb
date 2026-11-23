@@ -39,6 +39,10 @@ module VBlank
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
                   shares: false, before_plain_start: 0, owner: nil, starting: false)
           Steps.refuse_number_question_as_number!(value)
+          # A thing of an Array of Structs given a name keeps its slot, so the name stays on that
+          # thing after its walk moves on.
+          return value.array.kept(value, current) if value.is_a?(StructArray::Thing)
+
           share_argument(value, owner, label) if shares && owner
           if owner
             InstanceVariables.refuse_nil_written_under_game_test!(owner, current, label, tests)

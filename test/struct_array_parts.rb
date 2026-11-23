@@ -36,5 +36,19 @@ class FlockPart
   end
 end
 
+# An arrow drawn facing right. Facing left, it is the same picture mirrored.
+Arrow = Struct.new(:x, :y) do
+  drawn_as facing: { right: :arrow }
+end
+
+# A tile in the layer at the back, and one in the layer at the front.
+BackTile = Struct.new(:x, :y) do
+  drawn_as :green_tile, layer: :back
+end
+
+FrontTile = Struct.new(:x, :y) do
+  drawn_as :red_tile, layer: :front
+end
+
 # No place to draw at.
 Flag = Struct.new(:color)

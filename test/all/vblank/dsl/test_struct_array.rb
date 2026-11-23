@@ -4,6 +4,7 @@ require "test_helper"
 
 VBlank.require_game_file "../../../struct_array_parts"
 require "struct_array_plain_parts"
+require "fixtures/own_struct_games"
 
 # An Array of Structs that game code changes is a pool (DSL::StructArray), and plays as the same
 # game written with `pool`. Each test plays a tiny game and reads what it leaves, on every lowering.
@@ -139,6 +140,246 @@ class TestStructArray < Minitest::Test
     end
 
     assert_equal [6], player.pool(:drops, :y).compact
+  end
+
+  # `Spark = Struct.new(...)` in the game block makes a class for that build alone: building it
+  # twice warns of no constant set twice, and leaves no constant behind.
+  def test_a_struct_the_game_block_makes_is_its_own_on_every_build
+    original = $stderr
+    $stderr = StringIO.new
+    falls = 2.times.map do
+      player = game_player
+      player.run(OwnStructGames::FALLING.program(console: VBlank::Testing.console), frames: 3)
+      player.pool(:sparks, :y).compact
+    end
+    warned = $stderr.string
+    $stderr = original
+
+    assert_equal [[3], [3]], falls
+    refute_match(/already initialized/, warned)
+    refute OwnStructGames.const_defined?(:Spark, false)
+  end
+
+  # Three things, the first and the third alike. Walked against each other, `==` and `eql?` hold
+  # for two things whose fields are all equal, as a Struct's do, and `equal?` for a thing and itself.
+  def test_things_compare_as_rubys_structs_do
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      same = 0
+      alike = 0
+      itself = 0
+      game_loop do
+        sparks << Spark.new(1, 2, 3)
+        sparks << Spark.new(4, 5, 6)
+        sparks << Spark.new(1, 2, 3)
+        sparks.each { |a| sparks.each { |b| same += 1 if a == b } }
+        sparks.each { |a| sparks.each { |b| alike += 1 if a.eql?(b) } }
+        sparks.each { |a| sparks.each { |b| itself += 1 if a.equal?(b) } }
+      end
+    end
+
+    assert_equal [5, 5, 3], %i[same alike itself].map { |name| player[name] }
+  end
+
+  # A thing kept past its walk is still that thing: `pick` is the spark at x 10, read after the
+  # walk, and a change to it after the walk changes that spark.
+  def test_a_thing_kept_past_its_walk_is_still_that_thing
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      picked = 0
+      game_loop do
+        sparks << Spark.new(10, 0, 0)
+        sparks << Spark.new(20, 0, 0)
+        pick = nil
+        sparks.each { |s| pick = s if s.x == 10 }
+        picked = pick.x
+        pick.y = 7
+      end
+    end
+
+    assert_equal 10, player[:picked]
+    assert_equal [[10, 7, 0], [20, 0, 0]], live_sparks(player)
+  end
+
+  # The Struct's file is not read as game code, and its methods run as game code all the same:
+  # Ruby's `?:` on a test the game makes picks a side as the game plays. From x 4: 5, 6, then 9.
+  def test_a_structs_method_from_a_plain_file_asks_its_tests_as_the_game_plays
+    player = played(frames: 3) do
+      movers = Array.new(capacity: 2)
+      started = 0
+      game_loop do
+        if started == 0
+          movers << PlainMover.new(4)
+          started = 1
+        end
+        movers.each(&:step)
+      end
+    end
+
+    assert_equal [9], player.pool(:movers, :x).compact
+  end
+
+  def test_a_structs_method_made_with_define_method_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        movers = Array.new(capacity: 2)
+        game_loop { movers << PlainBlockMover.new(4) }
+      end
+    end
+
+    assert_match(/struct_array_plain_parts\.rb:\d+/, error.message)
+    assert_match(/`def`/, error.message)
+  end
+
+  # Filled only while building, the Array stays Ruby's, and its `capacity:` is only room.
+  def test_an_array_filled_only_while_building_stays_rubys
+    player = played(frames: 1) do
+      walls = Array.new(capacity: 4)
+      walls << Spark.new(1, 2, 3)
+      walls << Spark.new(4, 5, 6)
+      total = 0
+      game_loop { walls.each { |wall| total += wall.x } }
+    end
+
+    assert_equal 5, player[:total]
+  end
+
+  # A thing kept in a local first, or walked from another Array, makes an Array of Structs too.
+  def test_a_thing_put_in_from_a_local_or_another_array_makes_an_array_of_structs
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      fallen = Array.new(capacity: 4)
+      game_loop do
+        spark = Spark.new(10, 0, 0)
+        sparks << spark
+        sparks << Spark.new(20, 9, 0)
+        sparks.each { |s| fallen << s if s.y > 5 }
+      end
+    end
+
+    assert_equal [[10, 0, 0], [20, 9, 0]], live_sparks(player)
+    assert_equal [20], player.pool(:fallen, :x).compact
+  end
+
+  # A fraction given to a field in a walk makes that field hold fractions, as a fraction put into
+  # an Array of numbers does.
+  def test_a_fraction_given_to_a_field_in_a_walk_makes_it_hold_fractions
+    player = played(frames: 2) do
+      sparks = Array.new(capacity: 4)
+      started = 0
+      game_loop do
+        if started == 0
+          sparks << Spark.new(10, 0, 0)
+          started = 1
+        end
+        sparks.each do |s|
+          s.vy = 0.5
+          s.y += 0.5
+        end
+      end
+    end
+
+    assert_equal [[10, 1.0, 0.5]], live_sparks(player)
+  end
+
+  # A fraction from a method's answer goes into a field the build saw only whole numbers for: the
+  # advice is in Ruby's words, `.to_f` where the thing is made.
+  def test_a_fraction_the_build_cannot_see_is_refused_with_plain_ruby_advice
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        sparks = Array.new(capacity: 4)
+        game_loop { sparks << Spark.new(1, 2, PlainSpeeds.half(self)) }
+      end
+    end
+
+    assert_match(/`vy`/, error.message)
+    assert_match(/`\.to_f`/, error.message)
+    refute_match(/pool/, error.message)
+  end
+
+  # Two `shift`s during a walk take out the two oldest, as two outside one do.
+  def test_two_shifts_in_a_walk_take_out_two_things
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      left = 0
+      game_loop do
+        [1, 2, 3, 4].each { |x| sparks << Spark.new(x, 0, 0) }
+        sparks.each do |s|
+          if s.x == 1
+            sparks.shift
+            sparks.shift
+          end
+        end
+        left = sparks.size
+      end
+    end
+
+    assert_equal 2, player[:left]
+    assert_equal [3, 4], live_sparks(player).map(&:first)
+  end
+
+  # An arrow whose picture faces right, turned left: the picture is mirrored, so its painted left
+  # half shows on the right.
+  def test_a_thing_drawn_facing_right_faces_left_as_its_picture_mirrored
+    player = played(frames: 2) do
+      screen :tiled
+      image(:arrow, "#" => :green, "." => :transparent) { "####....\n" * 8 }
+      arrows = Array.new(capacity: 2)
+      started = 0
+      game_loop do
+        if started == 0
+          arrows << Arrow.new(20, 0)
+          started = 1
+        end
+        arrows.each { |arrow| arrow.face :left }
+      end
+    end
+
+    green = Color.resolve(:green)
+    assert_equal green, player.screen.pixel(27, 4)
+    refute_equal green, player.screen.pixel(20, 4)
+  end
+
+  # Two tiles at one place, each in its Struct's layer: the one in the front layer shows, though
+  # its Array is made last.
+  def test_a_thing_drawn_in_a_layer_stands_at_that_layers_depth
+    player = played(frames: 2) do
+      screen :tiled
+      layers :back, :front
+      image(:green_tile, "#" => :green) { "########\n" * 8 }
+      image(:red_tile, "#" => :red) { "########\n" * 8 }
+      fronts = Array.new(capacity: 1)
+      backs = Array.new(capacity: 1)
+      started = 0
+      game_loop do
+        if started == 0
+          backs << BackTile.new(20, 0)
+          fronts << FrontTile.new(20, 0)
+          started = 1
+        end
+      end
+    end
+
+    assert_equal Color.resolve(:red), player.screen.pixel(23, 4)
+  end
+
+  # A routine runs wherever it is called, so its `shift`, called twice in a walk, takes out two too.
+  def test_two_shifts_by_a_routine_called_in_a_walk_take_out_two_things
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      func(:drop_oldest) { sparks.shift }
+      game_loop do
+        [1, 2, 3, 4].each { |x| sparks << Spark.new(x, 0, 0) }
+        sparks.each do |s|
+          if s.x == 1
+            call :drop_oldest
+            call :drop_oldest
+          end
+        end
+      end
+    end
+
+    assert_equal [3, 4], live_sparks(player).map(&:first)
   end
 
   def test_an_array_of_structs_with_no_capacity_is_refused

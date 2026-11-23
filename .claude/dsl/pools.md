@@ -11,7 +11,9 @@ verb here; the entries after it tell each one in full.
 
 - **A game writes a pool as an Array of Structs**: `Spark = Struct.new(:x, :y, :vy) { drawn_as :spark }`,
   `sparks = Array.new(capacity: 32)`, then `sparks << Spark.new(x, 0, 1.5)`, `sparks.each { |s| s.y += s.vy }`,
-  `sparks.delete_if { |s| s.y > 160 }` and `sparks.shift if sparks.size == 32` for a full one. That
+  `sparks.delete_if { |s| s.y > 160 }` and `sparks.shift if sparks.size == 32` for a full one.
+  `drawn_as :spark, layer: :swimmers` puts each in a layer, and `drawn_as facing: { right: :fish }`
+  faces left as that picture mirrored. That
   builds the `pool` below, and everything here holds for it; `plain-ruby.md` ("Arrays") names each
   Array verb and what it is in pool terms. The `pool` verb stays, as what the Array is built as.
 

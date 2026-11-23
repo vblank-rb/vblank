@@ -119,6 +119,10 @@ module VBlank
           # holds a value known while building.
           attr_accessor :iteration_parameter
 
+          # For the first parameter of a walk over a local (`sparks.each { |s| ... }`), the read of
+          # that local: the parameter holds a thing of it (LocalNames#things_made_by).
+          attr_accessor :walked_from
+
           # Is this name a game's own list (LocalNames#game_array?)?
           def game_array?
             changed_as_array && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && Arrays.makes_array?(write.node.value) }
@@ -201,6 +205,7 @@ module VBlank
         # on nothing is one of VBlank's, never the game's (#game_call?).
         def initialize(block_node, library_file: false)
           @library_file = library_file
+          @root = block_node
           @methods_defined = methods_defined_in(block_node)
           @locals_by_node = {}.compare_by_identity
           @outside_writes = []
@@ -253,6 +258,7 @@ module VBlank
                                           .compare_by_identity
           @module_of_instance_variable_write = {}.compare_by_identity
           @next_block_iterates = false
+          @next_block_walks = nil
           read_names(block_node, [], false)
         end
 
@@ -290,7 +296,60 @@ module VBlank
         # written out, `Spark.new(...)` or `Spark[...]`: what makes it an Array of Structs.
         def game_array_things_made(node)
           puts = @locals_by_node[node]&.array_puts || []
-          puts.select { |put| LocalNames.thing_made?(put) }.sort_by { |put| put.location.start_offset }
+          puts.flat_map { |put| things_made_by(put) }.uniq.sort_by { |put| put.location.start_offset }
+        end
+
+        # The fields of the things of the game Array +node+ names that a walk over it gives a value
+        # showing a fraction (#fraction_written?): `s.vy = 0.5` or `s.y += 0.5` in
+        # `sparks.each { |s| ... }`. What makes those fields hold fractions.
+        def thing_field_fractions(node, at = @root)
+          inner = at.compact_child_nodes.flat_map { |child| thing_field_fractions(node, child) }
+          receiver, field, value = thing_field_write(at)
+          return inner unless receiver && thing_of?(receiver, node) && fraction_written?(value)
+
+          [field] + inner
+        end
+
+        # Does +read+ name a thing a walk of the game Array +node+ names hands over?
+        def thing_of?(read, node)
+          walked = @locals_by_node[read]&.walked_from
+          !walked.nil? && @locals_by_node[walked].equal?(@locals_by_node[node])
+        end
+
+        # `s.vy = value` or `s.vy += value` on a local: the local's read, the field and the value.
+        def thing_field_write(node)
+          case node
+          when Prism::CallOperatorWriteNode
+            [node.receiver, node.read_name, node.value] if node.receiver.is_a?(Prism::LocalVariableReadNode)
+          when Prism::CallNode
+            return unless node.attribute_write? && node.receiver.is_a?(Prism::LocalVariableReadNode)
+
+            [node.receiver, node.name.to_s.delete_suffix("=").to_sym, node.arguments.arguments.last]
+          end
+        end
+
+        # The verbs whose block is handed each thing of the Array they are called on, first.
+        WALK_VERBS = %i[each reverse_each each_with_index delete_if reject! count any?].freeze
+
+        # `sparks.each { |s| ... }`, a walk over what a local holds.
+        def walk_of_local?(call) = call.receiver.is_a?(Prism::LocalVariableReadNode) && WALK_VERBS.include?(call.name)
+
+        # The things made from a class written out that +put+ may be: itself (`Spark.new(...)`),
+        # what a local it reads was given (`spark = Spark.new(...)`, then `<< spark`), or a thing
+        # of another Array a walk hands over (`sparks.each { |s| fallen << s }`).
+        def things_made_by(put, seen = Set.new.compare_by_identity)
+          return [put] if LocalNames.thing_made?(put)
+          return [] unless put.is_a?(Prism::LocalVariableReadNode)
+
+          local = @locals_by_node[put]
+          return [] if local.nil? || seen.include?(local)
+
+          seen << local
+          if local.walked_from
+            walked = @locals_by_node[local.walked_from]
+            return walked ? walked.array_puts.flat_map { |each_put| things_made_by(each_put, seen) } : []
+          end
+          local.writes.flat_map { |write| write.node.respond_to?(:value) ? things_made_by(write.node.value, seen) : [] }
         end
 
         # The things made from a class written out that the code put into the instance variable
@@ -308,7 +367,7 @@ module VBlank
         def note_instance_variable_thing_put(node)
           return unless node.receiver.is_a?(Prism::InstanceVariableReadNode) && Arrays::GROWING_VERBS.include?(node.name)
 
-          things = Arrays.put_values(node).select { |put| LocalNames.thing_made?(put) }
+          things = Arrays.put_values(node).flat_map { |put| things_made_by(put) }
           @instance_variable_things[@open_modules.last][node.receiver.name].concat(things)
         end
 
@@ -802,6 +861,7 @@ module VBlank
             # Any other block may be kept and run later: a game verb's, a pool's `each`, a part's.
             @bodies_run_later << child if child.is_a?(Prism::BlockNode)
             game_block = child.is_a?(Prism::BlockNode) && GAME_VERBS.include?(node.name)
+            @next_block_walks = node.receiver if child.is_a?(Prism::BlockNode) && walk_of_local?(node)
             @next_block_placed = true if game_block
             @next_block_game = game_block
             read_names(child, scopes, in_game_code || game_block)
@@ -915,8 +975,13 @@ module VBlank
           @next_block_game = false
           iterates = @next_block_iterates
           @next_block_iterates = false
-          parameter_names(node.parameters).each do |name|
-            scope[name] = Local.new(name, parameter: true).tap { |local| local.iteration_parameter = iterates }
+          walked_from = @next_block_walks
+          @next_block_walks = nil
+          parameter_names(node.parameters).each_with_index do |name, position|
+            scope[name] = Local.new(name, parameter: true).tap do |local|
+              local.iteration_parameter = iterates
+              local.walked_from = walked_from if position.zero?
+            end
           end
           # A method or a lambda runs where it is called, not on the side of an `if` it is written in.
           sides = [Prism::DefNode, Prism::LambdaNode].any? { |kind| node.is_a?(kind) } ? [] : @sides_apart

@@ -22,6 +22,7 @@ require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as i
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
 require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is
 require_relative "dsl/plain_ruby_struct_settings" # What a Struct's block says about an Array of it
+require_relative "dsl/plain_ruby_struct_methods"  # A Struct's methods, read as game code wherever written
 # A handle that does its work in game words is written in normal Ruby, as a game is, so it comes in
 # the way a part of a game does. Everything above this line is what that needs.
 VBlank.require_game_file "dsl/bounds"

@@ -46,9 +46,10 @@ module Dive
     ART
 
     # One fish: where it is, how fast it swims, and which species it is. Each is a sprite
-    # facing the way it swims; the left-facing picture is the right one mirrored.
+    # facing the way it swims, in the layer the diver swims in. Only the right-facing picture
+    # is named: facing left is that picture mirrored, which the build makes itself.
     One = Struct.new(:x, :y, :speed, :kind) do
-      drawn_as facing: { right: :fish_right, left: VBlank.mirror(:fish_right) }
+      drawn_as facing: { right: :fish_right }, layer: :swimmers
     end
 
     def initialize(build)
@@ -59,9 +60,7 @@ module Dive
       # when it returns. The whole shoal is in this dive, so `colors_in_use` says so, and all
       # six species keep their groups for as long as the dive lasts.
       build.colors_in_use SPECIES
-      build.layer(:swimmers) do
-        @shoal = Array.new(capacity: SHOAL)
-      end
+      @shoal = Array.new(capacity: SHOAL)
       SHOAL_AT.each_with_index do |(x, y, speed), which|
         @shoal << One.new(x, y, speed, which % SPECIES.length)
       end

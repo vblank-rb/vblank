@@ -217,16 +217,29 @@ module VBlank
                          "`VBlank.require_game_file \"#{name}\"`. (at #{File.basename(from)}:#{line})"
         end
 
-        # The constants the block reads, but not one it gives a value itself (`Spark = Struct.new(...)`),
-        # which is the game's own.
+        # The constants the block reads, but not one it gives a class of its own made with
+        # `Struct.new(...)` or `Data.define(...)`, which is the game's. What such a line reads to
+        # make the class is checked as any other line is.
         def constants_named(node = @block_node)
-          own = constants_written(@block_node)
+          own = constants_given_classes(@block_node)
           constants_read(node).reject { |name, _| own.include?(name) }
         end
 
-        def constants_written(node)
-          own = node.is_a?(Prism::ConstantWriteNode) ? [node.name] : []
-          own + node.compact_child_nodes.flat_map { |child| constants_written(child) }
+        def constants_given_classes(node)
+          own = node.is_a?(Prism::ConstantWriteNode) && self.class.makes_class?(node.value) ? [node.name] : []
+          own + node.compact_child_nodes.flat_map { |child| constants_given_classes(child) }
+        end
+
+        # Is +node+ `Struct.new(...)` or `Data.define(...)`, a class with fields?
+        def self.makes_class?(node)
+          return false unless node.is_a?(Prism::CallNode)
+
+          receiver = node.receiver
+          named = case receiver
+                  when Prism::ConstantReadNode then receiver.name
+                  when Prism::ConstantPathNode then receiver.parent.nil? ? receiver.name : nil
+                  end
+          (named == :Struct && node.name == :new) || (named == :Data && node.name == :define)
         end
 
         def constants_read(node)

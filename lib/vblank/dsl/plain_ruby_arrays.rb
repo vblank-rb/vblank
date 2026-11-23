@@ -75,7 +75,10 @@ module VBlank
         # out while building. Items that are not all numbers stay a Ruby Array, as
         # #list_from_literal says: `Array.new(3) { |n| var :"shown#{n}", 0 }` is three variables.
         def list_from_new(owner, declaration, *given, capacity: nil, **settings, &block)
-          return StructArray.declare(owner, declaration, given, capacity, settings, block) if declaration.things
+          # `TABLE[i]` reads like `Spark[...]`, but TABLE is a table of numbers, not a class.
+          if declaration.things&.call&.any?(Module)
+            return StructArray.declare(owner, declaration, given, capacity, settings, block)
+          end
 
           refuse_unknown_settings!(settings)
           size = given.first
@@ -88,6 +91,13 @@ module VBlank
           return items unless list_items?(items)
 
           declare(owner, declaration, items, capacity, settings)
+        end
+
+        # `Array.new(capacity: 4)` that game code never changes: Ruby's own Array, which grows as
+        # it needs to, so the settings for a game's Array are left out.
+        def ruby_array(*given, capacity: nil, **settings, &block)
+          refuse_unknown_settings!(settings.except(*StructArray::SETTINGS))
+          Array.new(*given, &block)
         end
 
         # `name = [items...]`, as the list it makes, holding those items and room for no more.
@@ -228,8 +238,8 @@ module VBlank
           return unless items.any? { |item| item.is_a?(Array) || item.is_a?(Hash) }
 
           Steps.refuse_game_code!("`#{name}` holds an Array or a Hash as an item. A list the game keeps holds " \
-                                  "numbers only. To fix this, keep each row in an Array of its own, or use a " \
-                                  "`pool` for things with many numbers each.")
+                                  "numbers only. To fix this, keep each row in an Array of its own, or keep things " \
+                                  "with many numbers each as an Array of Structs.")
         end
 
         def refuse_too_many_items!(name, count, room)
