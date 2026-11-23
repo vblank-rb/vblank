@@ -319,16 +319,16 @@ class TestGBCPowerOn < Minitest::Test
     assert_operator with_record, :<=, 11, "retail's own first pass is on frame 11"
   end
 
-  # Read as the note most of ten frames hold: at some places setting up can end, the wave voice
-  # stands taller for a frame and a half every seven frames (the 256Hz wave's place against the
-  # frame comes round every seven), and no note is read there.
+  # Every frame holds the note, at one loudness. The 256Hz wave's place against the frame comes
+  # round every seven frames, so ten frames put an edge of the wave at every place a frame can end.
   def test_a_recording_started_while_the_game_sets_up_is_heard_once_it_runs
     program = counting_game(3_000, plays: true)
     first = game_player.run(program, frames: 3)[:first]
     heard = console_voice(program, :wave, frames: first + 20)
-    pitches = (first + 5..first + 14).filter_map { |frame| heard.held_note(frame)&.pitch }
+    frames = (first + 5..first + 14).to_a
+    loudness = frames.map { |frame| heard.loudness(frame) }
 
-    assert_operator pitches.length, :>=, 5, "frames that hold one note"
-    assert_in_delta 256, pitches.sort[pitches.length / 2], 4
+    frames.each { |frame| assert_in_delta 256, heard.held_note(frame)&.pitch.to_f, 4, "the note on frame #{frame}" }
+    assert_operator loudness.max - loudness.min, :<=, SoundComparison::LOUDNESS_SLACK, "the loudness of each frame: #{loudness.map(&:round)}"
   end
 end

@@ -796,6 +796,56 @@ mgba_core_video_buffer_argb(VALUE self)
 /* Core#audio_buffer                                         */
 /* --------------------------------------------------------- */
 
+/* Keep the open steps of the sound in place across a read.
+ *
+ * The emulator hands its sound to blip_buf as steps (blip_add_delta), each at the moment it
+ * happened, and closes a stretch of them into samples ready to read every so many of the
+ * console's clocks (blip_end_frame): every 0x1000 on the Game Boy (CLOCKS_PER_BLIP_FRAME in
+ * mGBA's src/gb/audio.c), every 0x800 on the Advance (CLOCKS_PER_FRAME in src/gba/audio.c). A
+ * frame of the console ends wherever it ends inside such a stretch, so when a frame's sound is
+ * read, the steps of the stretch still open already sit in the buffer past the samples ready.
+ *
+ * blip_buf is written to be read only as a stretch closes. Reading takes the samples out and
+ * moves the buffer down behind them, but only BLIP_EXTRA_SAMPLES past them (remove_samples in
+ * blip_buf.c, buf_extra); a step further on stays at the place it was, which now stands a whole
+ * read later. A stretch on the Advance reaches a few samples, inside that. On the Game Boy it
+ * reaches several times further, so every step in the last part of it before a frame's end was
+ * heard a frame late: the wave voice playing a recording lost an edge of its wave whenever one
+ * fell there, and stood far taller for a frame and a half, until the edge came back a frame on.
+ *
+ * So after each read, the rest of the open stretch is moved down by as much as was read, where
+ * remove_samples left it. blip_t is blip_buf's own and not in mGBA's headers; BlipBuffer is its
+ * layout (blip_buf.c 1.1.0, which mGBA carries in src/third-party/blip_buf), with the buffer of
+ * ints straight after it, and it is checked against blip_samples_avail before it is trusted. */
+struct BlipBuffer {
+    unsigned long long factor;
+    unsigned long long offset;
+    int avail;
+    int size;
+    int integrator;
+};
+#define BLIP_EXTRA_SAMPLES 18   /* blip_buf.c's buf_extra: half_width * 2 + end_frame_extra */
+#define BLIP_OPEN_REACH 64      /* further than any open stretch reaches: the Game Boy's is under 60 */
+
+static void
+read_blip_keeping_open_steps(struct blip_t *blip, int16_t *out, int count)
+{
+    struct BlipBuffer *m = (struct BlipBuffer *)blip;
+    int laid_out = m->avail == blip_samples_avail(blip) && m->avail <= m->size && count <= m->avail;
+    int from = m->avail + BLIP_EXTRA_SAMPLES; /* the first place remove_samples leaves where it is */
+    int reach = laid_out ? m->size + BLIP_EXTRA_SAMPLES - from : 0;
+    if (reach > BLIP_OPEN_REACH) reach = BLIP_OPEN_REACH;
+
+    blip_read_samples(blip, out, count, 1);
+    if (reach <= 0 || count <= 0) return;
+
+    /* remove_samples cleared the places these move to; the places they leave are cleared here */
+    int *samples = (int *)(m + 1);
+    int left_behind = count < reach ? count : reach;
+    memmove(&samples[from - count], &samples[from], (size_t)reach * sizeof(int));
+    memset(&samples[from + reach - left_behind], 0, (size_t)left_behind * sizeof(int));
+}
+
 static VALUE
 mgba_core_audio_buffer(VALUE self)
 {
@@ -817,9 +867,9 @@ mgba_core_audio_buffer(VALUE self)
     VALUE str = rb_str_new(NULL, byte_size);
     int16_t *buf = (int16_t *)RSTRING_PTR(str);
 
-    /* stereo=1: write every other sample for interleaving */
-    blip_read_samples(left,  buf,     avail, 1);
-    blip_read_samples(right, buf + 1, avail, 1);
+    /* Every other sample, for interleaving */
+    read_blip_keeping_open_steps(left,  buf,     avail);
+    read_blip_keeping_open_steps(right, buf + 1, avail);
 
     return str;
 }

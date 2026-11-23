@@ -143,11 +143,12 @@ class TestGBCClips < Minitest::Test
     b.program
   end
 
+  # Read on every frame, not as the note most of them hold.
   def test_a_recording_over_a_wave_part_keeps_its_own_pitch
     heard = console_voice(clip_over_a_wave_part, :wave, frames: 80)
 
-    assert_in_delta 256, pitch_held_through(heard, 34..46), 4, "the recording, through the part's next note"
-    assert_in_delta 440, pitch_held_through(heard, 62..76), 6, "the part's own note once the recording is over"
+    (34..46).each { |frame| assert_in_delta 256, heard.held_note(frame)&.pitch.to_f, 4, "the recording on frame #{frame}" }
+    (62..76).each { |frame| assert_in_delta 440, heard.held_note(frame)&.pitch.to_f, 6, "the part's own note on frame #{frame}" }
   end
 
   # A wave note held across a recording: one A440 held four seconds, and a recording of a little under
