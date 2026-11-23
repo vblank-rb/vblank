@@ -166,10 +166,10 @@ module VBlank
         # The range of `for x in a..b`. Ruby asks it for `each`, so a range on plain numbers runs
         # while building, and one with a number the game keeps at an end is a loop the game runs
         # (Counts.range). See Rewriter#for_text.
-        def for_range(from, upto, exclusive) = Counts.range(from, upto, exclusive)
+        def for_range(from, upto, exclusive, jumps = nil) = Counts.range(from, upto, exclusive, jumps)
 
         # What `for x in things` goes over, which Ruby runs while building. See Rewriter#for_text.
-        def for_collection(collection)
+        def for_collection(collection, _jumps = nil)
           return collection unless collection.is_a?(List) || collection.is_a?(Pool)
 
           refuse_game_code!("A `for` loop cannot go over a list or a pool. Ruby runs a `for` loop while it builds " \
@@ -312,8 +312,9 @@ module VBlank
           end
         end
 
-        def loop_while(written = nil, &test) = LoopTest.new(test, stops_when: false, written: written)
-        def loop_until(written = nil, &test) = LoopTest.new(test, stops_when: true, written: written)
+        # +jumps+ are the `break` and `next` words written in the loop's own body (Jumps).
+        def loop_while(written = nil, jumps: nil, &test) = LoopTest.new(test, stops_when: false, written: written, jumps: jumps)
+        def loop_until(written = nil, jumps: nil, &test) = LoopTest.new(test, stops_when: true, written: written, jumps: jumps)
 
         # How many rounds a loop Ruby runs while building may go before it is taken as one that
         # never stops. A loop that lays out a table or a row of sprites goes round a few thousand
@@ -369,7 +370,7 @@ module VBlank
         # `left <=> right`, Ruby's, unless either side is a number the game works out, which has no
         # -1, 0 or 1 while building: refused then, saying what to write.
         def compare(left, right)
-          return left <=> right unless [left, right].any? { |side| side.is_a?(Value) }
+          return left <=> right unless [left, right].any?(Value)
 
           refuse_game_code!("`<=>` compares two numbers while the game is built, and a number here is worked out as " \
                             "the game plays. To fix this, compare with `<`, `>` or `==`, or use `max` or `min`.")
@@ -523,16 +524,31 @@ module VBlank
                   "put the test in the `if` or `while` around this code.")
         end
 
+        # A `break` or `next` in a `begin ... end while` body, under +tests+. Its first round runs
+        # before the loop's test, so it is no loop yet: under a test the game makes, refused.
+        def refuse_jump_in_do_while!(word, tests)
+          return unless tests.any?(&:game?)
+
+          refuse_game_code!("`#{word}` is in a `begin ... end while` loop, under a test the game makes. The game " \
+                            "runs the first round of that loop before the loop starts, so the `#{word}` has no " \
+                            "loop to #{word} from. To fix this, write the loop as `loop do`, and end its body " \
+                            "with `break unless` and the test: `loop do ... break unless i < n end`.")
+        end
+
         # A `while` or `until`, whose test is asked again each time round. On a plain value that
         # is all it is. On a game test the body runs once, recording itself into a loop in the
         # game, and the second asking closes that loop.
         class LoopTest
-          def initialize(test, stops_when:, written: nil)
+          def initialize(test, stops_when:, written: nil, jumps: nil)
             @test = test
             @stops_when = stops_when
             @written = written
+            @jumps = jumps && Jumps.new(jumps)
             @build_rounds = 0
           end
+
+          # A `break` or `next` in this loop's own body (Jumps#jump!). True when Ruby makes it.
+          def jump!(word, tests, with_value: false) = @jumps.jump!(word, tests, with_value: with_value)
 
           # The block runs once it is known this is a game's loop, and before the loop opens.
           def go_round(&before_loop)
@@ -588,8 +604,23 @@ module VBlank
               mark = statement_mark
               @game_loop = stopping_test(@test.call)
             end
-            @game_loop.open_repeat(MOST_PASSES, test_statements: take_statements_since(mark))
+            test_statements = take_statements_since(mark)
+            test_statements = open_jumps(test_statements) if @jumps
+            @game_loop.open_repeat(MOST_PASSES, test_statements: test_statements)
+            @jumps&.start_round!
             true
+          end
+
+          # The loop stops on its own test, or once a `break` in it ran. A test that records
+          # statements of its own (`while (calls += 1) < most`) runs them only while no `break`
+          # has: Ruby does not ask the test again after one. Hands back those statements.
+          def open_jumps(test_statements)
+            @jumps.open_game!(@builder)
+            leave = @jumps.leave_test
+            return test_statements unless leave
+
+            @game_loop |= leave
+            test_statements.empty? ? [] : [@jumps.unless_left(test_statements)]
           end
 
           # Where the builder in use records next, or nil with none: a plain Ruby loop outside a

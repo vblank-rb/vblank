@@ -323,7 +323,8 @@ module VBlank
       @program.screen_size = screen_size if screen_size
       @console = @program.described_console
       @container_stack = [@program]
-      @shown_while = []        # the conditions open right here, for a declaration that is only presented under them
+      @jump_guards = []        # the tests open after a `break` or `next` in a loop the game runs (#open_jump_guard)
+      @shown_while = []       # the conditions open right here, for a declaration that is only presented under them
 
       # Persisted variables (from `save_var`), in declaration order — each is
       # { name:, default:, slot: }, the slot being its place in save memory. Drives
@@ -1177,10 +1178,45 @@ module VBlank
       open_container(if_node.else, Build.binop(:==, if_node.cond.copy, Build.int(0)))
     end
 
+    # A side that ran a `break` or `next` closes the test the jump opened in it, and what is
+    # recorded after the side goes in the same test, until the round ends (#open_jump_guard).
     def close_branch
+      guard = close_jump_guards
       @shown_while.pop
       @container_stack.pop
+      reopen_jump_guard(guard) if guard
     end
+
+    # A `break` or `next` in a loop the game runs set +flag+ (PlainRuby::Jumps): what is recorded
+    # from here to the end of the round runs only while +flag+ is still 0.
+    def open_jump_guard(flag) # :nodoc:
+      @jump_guards.push(open_branch(Build.binop(:==, DSL::Value.node_for(flag), Build.int(0))))
+    end
+
+    # Closes the jump tests open where the builder records, and hands back the last, or nil.
+    def close_jump_guards # :nodoc:
+      closed = nil
+      while @container_stack.last.equal?(@jump_guards.last)
+        closed = @jump_guards.pop
+        @shown_while.pop
+        @container_stack.pop
+      end
+      closed
+    end
+
+    # The statement just recorded, moved back to +mark+, where the lines before it started
+    # (PlainRuby::Jumps: a hidden number set to 0 at the start of a round already recorded).
+    def move_last_statement_to(mark) # :nodoc:
+      container, statement = last_statement_place
+      take_back_statement(container, statement)
+      children = mark.container.children
+      at = mark.last ? children.index { |each_statement| each_statement.equal?(mark.last) } + 1 : 0
+      children.insert(at, statement)
+      statement.parent = mark.container
+    end
+
+    # The same jump test again, where the builder records now: the side that jumped has closed.
+    def reopen_jump_guard(guard) = @jump_guards.push(open_branch(guard.cond.copy)) # :nodoc:
 
     def take_back_branch(if_node)
       @container_stack.last.children.delete_at(-1) if @container_stack.last.children.last.equal?(if_node)
@@ -1239,6 +1275,7 @@ module VBlank
     end
 
     def close_repeat
+      close_jump_guards
       @game_whiles -= 1
       @open_repeat_container_counts.pop.times { @container_stack.pop }
     end

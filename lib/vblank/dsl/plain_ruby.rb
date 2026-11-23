@@ -218,6 +218,11 @@ module VBlank
         INSTANCE_VARIABLES = "::VBlank::DSL::PlainRuby::InstanceVariables"
         ARRAYS = "::VBlank::DSL::PlainRuby::Arrays"
         COUNTS = "::VBlank::DSL::PlainRuby::Counts"
+        LOOP_JUMPS = "::VBlank::DSL::PlainRuby::Jumps"
+        # The loops written as Ruby syntax, whose bodies keep their own `break` and `next`.
+        LOOP_NODES = [Prism::WhileNode, Prism::UntilNode, Prism::ForNode].freeze
+        # The jump target of a `begin ... end while` body, which is no loop's on its first round.
+        DO_WHILE_TARGET = :do_while
         # Ruby's counting loops on a number, which Counts answers (#counted_loop_text).
         COUNTING_LOOPS = %i[times upto downto step].freeze
         NEW_VALUE = "__plain_ruby_new"
@@ -261,6 +266,10 @@ module VBlank
           # Each run of statements being rewritten, the outermost first, with how many tests were
           # open as it began. A block, a lambda or a method starts with none.
           @open_statements = []
+          # The loops around what is being rewritten, the innermost last (#with_jump_target), and
+          # the blocks of counting loops and `loop do` that are loops of their own (#counted_loop_text).
+          @jump_targets = []
+          @jump_target_blocks = {}.compare_by_identity
         end
 
         def rewritten_block = rewritten(@block_node)
@@ -516,9 +525,12 @@ module VBlank
           outer_statements = @open_statements
           outer_initialize = @in_initialize
           outer_method = @in_method
+          outer_targets = @jump_targets
           @block_tests = node.is_a?(Prism::DefNode) ? [] : @block_tests + outer
           @open_tests = []
           @open_statements = []
+          target = @jump_target_blocks.delete(node)
+          @jump_targets = target ? [[target, 0]] : []
           @in_initialize = node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil?
           @in_method ||= node.is_a?(Prism::DefNode)
           @tail_ternaries[node.body.body.last] = true if method_body?(node)
@@ -530,6 +542,7 @@ module VBlank
           @open_statements = outer_statements
           @in_initialize = outer_initialize
           @in_method = outer_method
+          @jump_targets = outer_targets
         end
 
         def method_body?(node) = node.is_a?(Prism::DefNode) && node.body.is_a?(Prism::StatementsNode)
@@ -546,11 +559,27 @@ module VBlank
 
         # Plain Ruby jumps as it always has. Under a test the game makes, the step refuses it.
         # The `if true` is for Ruby's parser, which will not let a jump stand as a value.
+        #
+        # A `break` or `next` in a loop's own body asks the loop (Jumps#jump!), handing it the tests
+        # open inside the loop: a loop the game runs records the jump, and one Ruby runs while
+        # building lets Ruby make it, as long as none of those tests is the game's.
         def jump_text(node)
+          target = @jump_targets.last
+          return loop_jump_text(node, *target) if target && !node.is_a?(Prism::ReturnNode)
           return copied_text(node) if @open_tests.empty?
 
           refusals = @open_tests.map { |test| "#{test}.refuse_jump!(:#{jump_word(node)})" }.join("; ")
           "(#{refusals}; if true then #{copied_text(node)} end)"
+        end
+
+        def loop_jump_text(node, loop, depth)
+          tests = "[#{@open_tests[depth..].join(', ')}]"
+          if loop == DO_WHILE_TARGET
+            return "(#{STEPS}.refuse_jump_in_do_while!(:#{jump_word(node)}, #{tests}); if true then #{copied_text(node)} end)"
+          end
+
+          value = node.arguments ? ", with_value: true" : ""
+          "(if #{loop}.jump!(:#{jump_word(node)}, #{tests}#{value}) then #{copied_text(node)} end)"
         end
 
         def call_text(node)
@@ -577,6 +606,7 @@ module VBlank
           end
           return listed_attribute_methods_text(node) if listed_attribute_call?(node)
           return counted_loop_text(node) if node.receiver && node.block.is_a?(Prism::BlockNode)
+          return endless_loop_text(node) if endless_loop?(node)
 
           copied_text(node)
         end
@@ -584,19 +614,46 @@ module VBlank
         # The numbers Ruby counts with given a block, `n.times { }`, `0.upto(n) { }` or
         # `(0...n).each { }`, answered by Counts: Ruby's own on plain numbers, a loop the game runs
         # where either end is a number the game keeps.
+        #
+        # A `break` or `next` in the block is the loop's (#jump_text), as Ruby's is: the block is
+        # the loop's body, handed the loop's Jumps.
         def counted_loop_text(node)
           range = range_written(node.receiver)
+          return copied_text(node) unless range || COUNTING_LOOPS.include?(node.name)
+
+          made = block_jumps_text(node)
           start =
             if range
               from = range.left ? argument(range.left) : "nil"
               upto = range.right ? argument(range.right) : "nil"
-              "#{COUNTS}.range(#{from}, #{upto}, #{range.exclude_end?})"
-            elsif COUNTING_LOOPS.include?(node.name)
-              "#{COUNTS}.start(#{argument(node.receiver)})"
+              "#{COUNTS}.range(#{from}, #{upto}, #{range.exclude_end?}#{made})"
+            else
+              "#{COUNTS}.start(#{argument(node.receiver)}#{made})"
             end
-          return copied_text(node) unless start
-
           start + copied_text(node, from: node.receiver.location.end_offset)
+        end
+
+        # `loop do ... end` with a `break` in it, which Counts.endless makes a loop the game runs
+        # in game code.
+        def endless_loop?(node)
+          node.receiver.nil? && node.name == :loop && node.arguments.nil? && node.block.is_a?(Prism::BlockNode) &&
+            jump_words(node.block.body).include?(:break)
+        end
+
+        def endless_loop_text(node)
+          "#{COUNTS}.endless(#{block_jumps_text(node).delete_prefix(', ')})" +
+            copied_text(node, from: node.message_loc.end_offset)
+        end
+
+        # `, __plain_ruby_7 = Jumps.new([:break])` for a call whose block holds a `break` or a
+        # `next`, the block marked as that loop's body; "" for one with neither.
+        def block_jumps_text(node)
+          jumps = jumps_text(node.block.body)
+          return "" unless jumps
+
+          target = fresh_name
+          @jump_target_blocks[node.block] = target
+          ", #{target} = #{jumps}"
         end
 
         # `a..b` or `(a...b)` written as it is.
@@ -1345,10 +1402,23 @@ module VBlank
         # `found or next`. The right side of a join goes in a block, and a `next` or `break` in that
         # block would leave only it, so a join that jumps is written out with no block at all.
         def jump_after_join_text(node, step, jump)
+          return loop_jump_after_join_text(node, step) if @jump_targets.last && !jump.is_a?(Prism::ReturnNode)
+
           left = "__plain_ruby_#{@answers += 1}"
           right = "(#{rewritten_text(node.right)})"
           sides = step == "join_either" ? "#{left} : #{right}" : "#{right} : #{left}"
           "(#{left} = #{argument(node.left)}; #{STEPS}.answer_before_jump(#{left}, :#{jump_word(jump)}) ? #{sides})"
+        end
+
+        # `found && break` or `found || next` in a loop's own body: the right side is a side of a
+        # test on the left, as `break if found` is, so a test the game makes can guard the jump.
+        def loop_jump_after_join_text(node, step)
+          test = fresh_name
+          left = argument(node.left)
+          left = "#{STEPS}.opposite(#{left})" if step == "join_either"
+          right = under_open_test(test) { rewritten_text(node.right) }
+          "(#{test} = #{STEPS}.branch_test(#{left}); if #{test}.open_yes_side; #{test}.close_side((#{right})); end; " \
+            "#{test}.answer)"
         end
 
         # The jump this node would make from where it stands. A block of its own keeps its jumps.
@@ -1373,10 +1443,47 @@ module VBlank
           test = "__plain_ruby_#{@answers += 1}"
           shut_at = node.closing_loc&.start_offset || node.location.end_offset
           promotions = promotions_text(node, [node.statements], test)
-          body = under_open_test(test) { side_body_text(node, shut_at) }
+          # A body run once before the loop's test (`begin ... end while`) is no loop's yet, so
+          # its jumps stay Ruby's, and one under a game test is refused naming the form.
+          words = jump_words(node.statements)
+          target = node.begin_modifier? ? DO_WHILE_TARGET : test unless words.empty?
+          body = under_open_test(test) { with_jump_target(target) { side_body_text(node, shut_at) } }
           first = node.begin_modifier? ? "#{body}; " : ""
-          "(#{test} = #{STEPS}.#{step}(#{as_written(node.predicate)}) { #{rewritten_text(node.predicate)} }; #{first}" \
-            "while #{test}.go_round#{" { #{promotions} }" unless promotions.empty?}; #{body}; end)"
+          jumps = words.empty? || node.begin_modifier? ? "" : ", jumps: #{words.inspect}"
+          "(#{test} = #{STEPS}.#{step}(#{as_written(node.predicate)}#{jumps}) { #{rewritten_text(node.predicate)} }; " \
+            "#{first}while #{test}.go_round#{" { #{promotions} }" unless promotions.empty?}; #{body}; end)"
+        end
+
+        # The `break` and `next` words written in a loop's own +body+: not in a block, a method or
+        # another loop inside it, whose jumps are their own.
+        def jump_words(body, found = [])
+          return found if body.nil?
+
+          found << :break if body.is_a?(Prism::BreakNode)
+          found << :next if body.is_a?(Prism::NextNode)
+          body.compact_child_nodes.each do |child|
+            next if (OWN_SCOPES + LOOP_NODES).any? { |kind| child.is_a?(kind) }
+
+            jump_words(child, found)
+          end
+          found.uniq
+        end
+
+        # The Jumps a loop whose own +body+ holds a `break` or a `next` is handed, made new; nil
+        # for a loop with neither.
+        def jumps_text(body)
+          words = jump_words(body)
+          "#{LOOP_JUMPS}.new(#{words.inspect})" unless words.empty?
+        end
+
+        # The loop whose body is being rewritten, for the `break` and `next` in it to name
+        # (#jump_text): +target+ is the name of its LoopTest or Jumps as the rewritten block runs.
+        # A loop with no jumps of its own is still pushed, as nil, so none further out is named.
+        def with_jump_target(target)
+          @jump_targets.push(target && [target, @open_tests.length])
+          yield
+        ensure
+          @jump_targets.pop
         end
 
         # What a pair of parentheses holds, when that is one conditional.
@@ -1574,19 +1681,24 @@ module VBlank
         # `for x in list`. Ruby runs it while the game is built, as it runs `each`. A range with a
         # number the game keeps at an end has no length yet, so Steps.for_range refuses it, and
         # Steps.for_collection refuses a game's own list or pool, whose items the game holds.
+        #
+        # A `break` or `next` in its body is the loop's (#jump_text): the range is handed the
+        # loop's Jumps, made where the range is.
         def for_text(node)
           collection = node.collection
-          unless collection.is_a?(Prism::RangeNode)
-            return between(node.location.start_offset, collection.location.start_offset) +
-                   "#{STEPS}.for_collection(#{argument(collection)})" +
-                   copied_text(node, from: collection.location.end_offset)
-          end
-
-          from = collection.left ? argument(collection.left) : "nil"
-          upto = collection.right ? argument(collection.right) : "nil"
-          range = "#{STEPS}.for_range(#{from}, #{upto}, #{collection.exclude_end?})"
-          between(node.location.start_offset, collection.location.start_offset) + range +
-            copied_text(node, from: collection.location.end_offset)
+          jumps = jumps_text(node.statements)
+          target = jumps && fresh_name
+          made = target ? ", #{target} = #{jumps}" : ""
+          given =
+            if collection.is_a?(Prism::RangeNode)
+              from = collection.left ? argument(collection.left) : "nil"
+              upto = collection.right ? argument(collection.right) : "nil"
+              "#{STEPS}.for_range(#{from}, #{upto}, #{collection.exclude_end?}#{made})"
+            else
+              "#{STEPS}.for_collection(#{argument(collection)}#{made})"
+            end
+          between(node.location.start_offset, collection.location.start_offset) + given +
+            with_jump_target(target) { copied_text(node, from: collection.location.end_offset) }
         end
 
         def else_arm_text(node)

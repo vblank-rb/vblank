@@ -325,6 +325,14 @@ end
 - **A loop can start on plain numbers and become the game's.** `at = 3`, then `while at < size` with a
   body that moves `at` on under a game test (`if found then … else at += 17 end`): the first round is
   Ruby's, written out once, and the rounds after it are a loop in the game.
+- **`break` and `next` in a loop the game runs do what Ruby says** (`PlainRuby::Jumps`): a `while`,
+  an `until`, a counting loop over a game number, `for`, and `loop do`. A `loop do` is Ruby's, its
+  rounds written out while building, until a jump in it sits under a game test: that round is the
+  last written out, and the rounds after it are a loop in the game (`Counts.endless`). The loop keeps a hidden number the jump sets; what follows the jump, to the end of the round, runs
+  only while it is 0, and the loop's test stops on a `break`. That costs a store and a test where a
+  jump would cost a branch. `found && break` and `found || next` are sides of a test, as
+  `break if found` is. In a loop Ruby runs while building they are Ruby's own, unless a game test
+  stands between the jump and the loop, which is refused.
 - **A loop on plain numbers inside a loop of the game's is written out on every round**: `column = 0`,
   then `while column < 2` with `column += 1`, in the body of `while row < rows`.
 - **A loop Ruby runs while building that goes round a million times is refused** at its line, as one
@@ -362,7 +370,11 @@ Each is a friendly error naming the line.
 
 | written | write instead |
 |---|---|
-| `return`, `break` or `next` leaving a game block, or under a game test (`found \|\| next`, `loop do … break if … end`) | put the test in an `if` or `while` around the code |
+| `return`, `break` or `next` leaving a game block (not a loop in it), or `return` under a game test | put the test in an `if` or `while` around the code |
+| `break` or `next` under a game test in a loop Ruby runs while building (`3.times { break if hp > 2 }`) | a loop the game runs: `while`, or a count the game keeps |
+| `break 5` (a value) in a loop the game runs | set a variable before the `break` |
+| `break` or `next` under a game test in a `begin … end while` body | `loop do … break unless i < n end` |
+| a `loop do` made the game's whose body reads a plain value that changes each round (`steps.next`) | an Array the game keeps, read at a number the game counts |
 | a local set outside the game block and changed inside it | move the line that sets it into the block |
 | an object (a String, an Array) changed under a game test | keep a number, symbol or `true`/`false`, and pick with it |
 | a plain number the build could not follow to a game test (a slot at a key worked out on the line, `counts[i + 1] += 1`) changed under that test | a game variable where it is first set: `var :counts, 0` |

@@ -355,6 +355,29 @@ end
 
 A step the game works out is refused: write the step as a number. A range that ends at a game number goes round with `each`, `step` or `for`; other methods on it, such as `map`, are refused.
 
+`break` and `next` work in every loop, as in Ruby: `break` leaves the loop, and `next` goes round again. A `loop do` runs while building, as Ruby runs it, until its `break` or `next` is under a test the game makes. From that round on, it is a loop the game runs. Then its body cannot read a plain value that changes on each round, such as `steps.next`: that is refused.
+
+```ruby
+screen :bitmap
+wanted = 3
+found = 0
+game_loop do
+  wanted += 1 if pressed(:a)
+  at = 0
+  found = 0
+  while at < 10
+    at += 1
+    next if at.odd?          # skip the odd numbers
+    if at * at > wanted * 4  # the first even number past the mark
+      found = at
+      break
+    end
+  end
+end
+```
+
+A `break` that gives a value, as in `break 5`, is refused in a loop the game runs. Set a variable before the `break`.
+
 ## Splitting a game into files
 
 A file of game code is loaded with `VBlank.require_game_file`, never `require_relative`, and is read as game code as a whole.
@@ -579,7 +602,7 @@ game_loop do
 end
 ```
 
-Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test; a local set outside the game block and changed inside it; an instance variable game code changes and reads back that nobody named; a constant from outside the game, `system`, `eval` and the like.
+Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable game code changes and reads back that nobody named; a constant from outside the game, `system`, `eval` and the like.
 
 ## What builds and means something else
 

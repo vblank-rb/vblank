@@ -280,7 +280,7 @@ class TestPlainRubyRefusals < Minitest::Test
   def test_jumping_out_of_game_code_is_refused
     assert_refused("`break`") do
       n = 0
-      game_loop { n += 1; while n > 0; break if n == 3; n -= 1; end }
+      game_loop { break if n == 3; n += 1 }
     end
     assert_refused("`next`") do
       n = 0
