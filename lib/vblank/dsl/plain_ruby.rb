@@ -325,7 +325,7 @@ module VBlank
           return "#{STEPS}.plain_pattern_subject(#{argument(node)})" if @pattern_subjects.delete(node)
 
           case node
-          when Prism::IfNode, Prism::UnlessNode then conditional_text(node)
+          when Prism::IfNode, Prism::UnlessNode then conditional_text(node, kept: ternary_read?(node))
           when Prism::CaseNode then case_text(node)
           when Prism::CaseMatchNode then case_match_text(node)
           when Prism::EmbeddedStatementsNode then embedded_text(node)
@@ -1576,6 +1576,15 @@ module VBlank
         # the last line of a method or of a block whose verb reads its last line. `x = (case ...)`
         # is no statement: the parentheses are.
         def value_unused?(node) = @whole_statements.key?(node) && !@answer_tails.key?(node)
+
+        # A ternary whose number something reads where it stands, inside a sum or as a verb's
+        # argument: its sides keep their answer as `x = test ? a : b` does (Steps' picked_value),
+        # since a test the game makes has no answer of its own to hand on. One standing alone, or
+        # ending a method (#conditional_text's :tail), is left as it was.
+        def ternary_read?(node)
+          node.is_a?(Prism::IfNode) && node.if_keyword_loc.nil? && !value_unused?(node) &&
+            !@tail_ternaries.key?(node)
+        end
 
         # A `case` that picks a scene by a number: a subject, `when`s of whole numbers or
         # constants, each arm one `call :name` and nothing else, and no `else` or an empty one.

@@ -75,6 +75,24 @@ class TestPlainRuby < Minitest::Test
     assert_equal [7, 9], [player[:a], player[:b]]
   end
 
+  # A ternary on a game test read inside a sum, or handed to a verb, gives Ruby's number.
+  def test_a_ternary_inside_a_sum_or_an_argument_gives_rubys_number
+    player = played(frames: 5) do
+      a = 0
+      bits = 0
+      at = 0
+      game_loop do
+        a += 1
+        bits = (bits * 2) + (a > 3 ? 1 : 0)
+        at = 100 + (a.odd? ? 10 : 20)
+        draw_rect_at 0, (a > 2 ? 10 : 20), 4, 4, :red
+      end
+    end
+
+    # a runs 1 to 5: bits 0, 0, 0, 1, 1 is 0b00011; a is odd last.
+    assert_equal [3, 110], [player[:bits], player[:at]]
+  end
+
   def test_unless_and_trailing_unless_run_when_the_test_fails
     player = played(frames: 2) do
       n = 1
