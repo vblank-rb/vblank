@@ -54,8 +54,9 @@ module VBlank
             # The cells of the background changed during the pass, written in the blank after it:
             # how many, then for each where it is in the console's grid (16 bits), its tile and its
             # colours. A pass that fills it goes on in the far list (FAR_CELLS). Kept to what the
-            # blank has time for beside the sprites and the rest of the pass's picture: a cell is 35
-            # of the blank's 2280 instruction cycles, so the blank holds fewer than this keeps. One it
+            # blank has time for beside the sprites and the rest of the pass's picture: a cell is about
+            # 25 of the blank's 2280 instruction cycles (#emit_cells_in_fours), so the blank holds
+            # fewer than this keeps. One it
             # does not reach waits for the display at the top of the frame it shows, which is still
             # whole for a bar low on the screen.
             # Its count's top bit is FAR_CELLS_IN_USE, set while the far list holds cells too, so a
@@ -1412,6 +1413,9 @@ module VBlank
               asm.load(:b, :a)
               asm.xor_a(:a)
               asm.load([:hli], :a)
+              asm.label("rt_picture_cells_from")
+              asm.load(:a, 1) # the colours' bank, which a group of four starts in and each cell leaves
+              asm.load_high(h::VBK, :a)
               # As long as the blank lasts each goes straight in. With the display off every cell goes
               # in now. What the blank does not reach goes in while the display draws, between its
               # lines, cell by cell for as long as each is on lines the display has not reached yet
@@ -1422,6 +1426,7 @@ module VBlank
               # wait copies them in the blanks after, and the pass is shown once all of it is in, as
               # a pass that runs late is.
               asm.label("rt_picture_cells_next")
+              emit_cells_in_fours(asm)
               asm.load_high(:a, h::LY)
               asm.cp_a(h::SCREEN_HEIGHT)
               asm.jump_relative(:nc, "rt_picture_cells_in_blank")
@@ -1441,6 +1446,7 @@ module VBlank
               end
               asm.dec(:b)
               asm.jump_relative(:nz, "rt_picture_cells_next")
+              asm.label("rt_picture_cells_done")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
               asm.ret
@@ -1454,7 +1460,7 @@ module VBlank
               asm.load(:b, :a)
               asm.load(:a, FAR_CELLS_IN_USE)
               asm.load([:hli], :a)
-              asm.call("rt_picture_cells_next")
+              asm.call("rt_picture_cells_from")
               asm.jump("rt_picture_cells_far")
 
               # The B cells from HL on, moved to the front of CELLS for the next blank, in order.
@@ -1825,6 +1831,83 @@ module VBlank
                 asm.ei
                 asm.ret
               end
+            end
+
+            # Four of CELLS's cells at once, at the top of rt_picture_cells_next, while four are left and
+            # the blank has two whole lines or more to go; otherwise on to the one-cell write below it.
+            #
+            # ### Why four, and why only above the last two lines
+            # The blank is ten lines of 456 dots (Pan Docs, "LCD Status": mode 1), 2280 instruction
+            # cycles at double speed, and video memory can be written all through it. A cell written on
+            # its own reads the line (LY) first, so it never starts after the blank ends, and switches
+            # the video memory bank (VBK) twice, to put its tile in bank 0 and its colours in bank 1:
+            # 35 cycles. Interrupts stay on while cells are written, so a recording's samples are not
+            # held back, and the timer's tick that ends a recording's note can take 150 cycles or more
+            # (rt_clip_tick). A line two or more above the last (LY 151 or less) leaves at least the
+            # last two whole lines, 456 cycles, which four cells and such a tick fit in with room to
+            # spare, so four are written with one look at the line. From LY 152 only the last line is
+            # sure, 228 cycles, which the tick and four cells together can pass, and the last cell
+            # would land in line 0, where the display reads video memory and the write is lost.
+            #
+            # And the bank is switched once a cell: the first of each pair starts in bank 1 with its
+            # colours and ends in bank 0 with its tile, the second the other way round, so the four
+            # start and end in bank 1, as the one-cell write leaves it. A cell changed twice in the
+            # pass still ends with its last value: each cell is whole before the next. About 25 cycles
+            # a cell.
+            #
+            # On the last two lines, or while the display draws or is off, cells go one at a time below.
+            def emit_cells_in_fours(asm)
+              h = Console::GBCHardware
+              asm.load(:a, :b)
+              asm.cp_a(4)
+              asm.jump_relative(:c, "rt_picture_cells_one")
+              asm.load_high(:a, h::LY)
+              asm.sub_a(h::SCREEN_HEIGHT)
+              asm.cp_a(h::LINES - h::SCREEN_HEIGHT - 2) # 144 to 151: the last two lines still to come
+              asm.jump_relative(:nc, "rt_picture_cells_one")
+              2.times do
+                emit_cell_colors_first(asm)
+                emit_cell_tile_first(asm)
+              end
+              asm.load(:a, :b)
+              asm.sub_a(4)
+              asm.load(:b, :a)
+              asm.jump_relative(:nz, "rt_picture_cells_next")
+              asm.jump_relative("rt_picture_cells_done")
+              asm.label("rt_picture_cells_one")
+            end
+
+            # The cell at HL written from the colours' bank (VBK 1): its colours, then its tile in bank 0.
+            # HL on to the next cell.
+            def emit_cell_colors_first(asm)
+              emit_cell_place(asm)
+              asm.inc(:hl)
+              asm.load(:a, [:hld]) # its colours, HL back to its tile
+              asm.load([:de], :a)
+              asm.xor_a(:a)
+              asm.load_high(Console::GBCHardware::VBK, :a)
+              asm.load(:a, [:hli])
+              asm.load([:de], :a)
+              asm.inc(:hl)
+            end
+
+            # The cell at HL written from the tiles' bank (VBK 0): its tile, then its colours in bank 1.
+            def emit_cell_tile_first(asm)
+              emit_cell_place(asm)
+              asm.load(:a, [:hli])
+              asm.load([:de], :a)
+              asm.load(:a, 1)
+              asm.load_high(Console::GBCHardware::VBK, :a)
+              asm.load(:a, [:hli])
+              asm.load([:de], :a)
+            end
+
+            # DE = the place in the grid of the cell at HL, HL on to its tile.
+            def emit_cell_place(asm)
+              asm.load(:a, [:hli])
+              asm.load(:e, :a)
+              asm.load(:a, [:hli])
+              asm.load(:d, :a)
             end
 
             # rt_picture_cells_late: the B cells from HL on that the blank did not reach, while the display
