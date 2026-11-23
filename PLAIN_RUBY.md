@@ -97,6 +97,7 @@ A method's own names are set each time the method runs, as in Ruby.
 A part of a game is a plain class. An instance variable that game code may change is a number the game keeps, as a local is. VBlank finds these in the source: a line that works one out from what it holds (`@lit = 1 - @lit`, `@ticks += 1`, `@counts[at] += 1`), wherever it is, and a line that sets one inside a `func`, `game_loop` or other game block. Any other instance variable is plain Ruby, and so is one of these until game code first reads or changes it: a count bumped while the game is built stays a Ruby number there.
 
 ```ruby
+# A lamp whose on-or-off number the game keeps
 class Lamp
   def initialize(build)
     @lit = 0
@@ -114,6 +115,7 @@ The number is named after the class and the instance variable: `lamp_lit` for `@
 A Hash or Array of numbers that game code changes is a number for each key, where every key is known while building: a number, a symbol or a constant written out, or the name a Ruby loop over something written out gives.
 
 ```ruby
+# One count for each side, kept by the game
 class Tilt
   SIDES = %i[left right].freeze
 
@@ -178,21 +180,8 @@ What these cost:
 - `sum`, `min`, `max` and `include?` cost more the more items the Array holds.
 - `rom.profile` lists every line that makes a hidden number.
 
-`sort!` puts the items in order, the smallest first, as Ruby's does. `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` put the biggest first. Items that are level keep their order. A sort moves items back one at a time, so it costs little for a list that is nearly in order and more the more items move. `rom.profile` lists each line that sorts and what it costs. For the smallest item alone, `min` costs less. For a list that rarely changes, sort it when it changes, not on every pass. `sort` and `sort_by`, which make a new Array, are refused: write `sort!`.
-
 ```ruby
-screen :bitmap
-scores = Array.new(5, 0)
-t = 0
-game_loop do
-  t += 1
-  scores[t % 5] = (t * 37) % 100
-  scores.sort! { |a, b| b <=> a }
-  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
-end
-```
-
-```ruby
+# Add up a growing list, and find its best
 screen :bitmap
 scores = Array.new(capacity: 8)
 total = 0
@@ -205,7 +194,23 @@ game_loop do
 end
 ```
 
+`sort!` puts the items in order, the smallest first, as Ruby's does. `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` put the biggest first. Items that are level keep their order. A sort moves items back one at a time, so it costs little for a list that is nearly in order and more the more items move. `rom.profile` lists each line that sorts and what it costs. For the smallest item alone, `min` costs less. For a list that rarely changes, sort it when it changes, not on every pass. `sort` and `sort_by`, which make a new Array, are refused: write `sort!`.
+
 ```ruby
+# Keep the last five scores, biggest first
+screen :bitmap
+scores = Array.new(5, 0)
+t = 0
+game_loop do
+  t += 1
+  scores[t % 5] = (t * 37) % 100
+  scores.sort! { |a, b| b <=> a }
+  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
+end
+```
+
+```ruby
+# Change one item at a time, in place
 screen :bitmap
 ripple = Array.new(8, 0.0)       # 8 items, each 0.0: numbers with a fraction
 marks = [3, 1, 4]                # 3 items, and room for no more
@@ -227,6 +232,7 @@ Two more settings can be left out, and change only what the list costs:
 Whether an Array holds fractions is read from what goes into it: its start, and every value game code puts in with `<<`, `push`, `[]=` and the like. A Float, a name given one, or `.to_f` makes it an Array of fractions. A whole number written out, such as `0`, fits either kind.
 
 ```ruby
+# A fraction going in makes an Array of fractions
 screen :bitmap
 speeds = Array.new(capacity: 8)
 vx = 0.5
@@ -241,6 +247,7 @@ An Array used only while the game is built stays Ruby's, and so does an Array of
 Such an Array can hold numbers the game works out, as in `[a, b].max`. The game then works out `max`, `min`, `minmax`, `count`, `any?`, `all?`, `none?` and `include?` as it plays, and gives Ruby's answer. A question that needs a test's answer while building is refused, naming the line: `find`, `select` and the others that pick items by a test the game decides, and `<=>` on a number the game works out where Ruby asks it: `sort`, `max_by`, `clamp` or code of your own outside the game. A Range of such numbers, `low..high`, still builds. `a <=> b` written in game code is a number the game works out, -1, 0 or 1, as Ruby's, and so is `[a, b] <=> [c, d]`.
 
 ```ruby
+# Arrays that stay plain Ruby
 screen :bitmap
 steps = [1, 2]
 steps << 3                       # changed while building: a Ruby Array of three
@@ -276,6 +283,7 @@ Each refused limit is refused before the game is built, naming the line. Several
 Many things of one kind, each with fields (bullets, enemies, sparks), are an Array of Structs. Where game code puts `Spark.new(...)` into an Array and changes it, the game keeps it as a pool, and each thing a walk hands the block is a `Spark` whose fields change where they stand.
 
 ```ruby
+# A shower of sparks, each falling at its own speed
 Spark = Struct.new(:x, :y, :vy) do
   def fall
     self.y += vy
@@ -331,6 +339,7 @@ A method's argument is a copy: changing it inside the method leaves the caller's
 Numbers have `abs`, `clamp` and `approach`, and `abs!`, `clamp!` and `approach!` change the number they are called on.
 
 ```ruby
+# Keep a number between 0 and 100
 screen :bitmap
 x = 10
 game_loop do
@@ -387,6 +396,7 @@ Ruby's counting loops go round as often as Ruby says: `n.times { |i| }`, `a.upto
 `rom.profile` lists each such loop with its line, its size and what the build chose.
 
 ```ruby
+# One loop counted by a game number, one written out
 screen :bitmap
 lives = 3
 game_loop do
@@ -402,6 +412,7 @@ A step the game works out is refused: write the step as a number. A range that e
 `break` and `next` work in every loop, as in Ruby: `break` leaves the loop, and `next` goes round again. A `loop do` runs while building, as Ruby runs it, until its `break` or `next` is under a test the game makes. From that round on, it is a loop the game runs. Then its body cannot read a plain value that changes on each round, such as `steps.next`: that is refused.
 
 ```ruby
+# Find the first even number past a mark, skipping and stopping
 screen :bitmap
 wanted = 3
 found = 0
@@ -664,7 +675,6 @@ game_loop do
 end
 ```
 
-- `x = 0` inside `game_loop`, a `func` or a method the loop calls is set again every pass.
 - `/` on a negative game number rounds toward zero (`-7 / 2` is -3), where Ruby while building gives -4.
 - `puts` and other harmless Ruby in a game block run once, while building.
 - A Struct kept in a name, not in an Array, whose field game code changes (`point.x += 1`) keeps the number Ruby gave it. Write `game_variables :x` in the Struct's block.
