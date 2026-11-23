@@ -91,7 +91,7 @@ module VBlank
     # tests in Ractors. Loaded by the first tests that want it, two starting together could find its
     # core's class made but its methods not yet given it (Diagnostics::Emulator.snes_loaded? asks
     # only for the class), and the second test's core then failed to open.
-    Diagnostics::Emulator.load_snes! if RUN.console == :snes
+    Diagnostics::Emulator.load_snes! if Console::KITS[RUN.console].is_a?(Console::SNESKit)
 
     # Standard output unbuffered, so a test in a Ractor can start a program. In Ruby 4.0, before
     # it starts one it flushes the process's standard output, and if words are waiting it takes the
