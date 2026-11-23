@@ -1034,11 +1034,24 @@ module VBlank
           if @names.first_write?(node)
             prefix = between(node.location.start_offset, node.value.location.start_offset)
             return "#{prefix}#{WRITES}.start_variable_while_recording(self, (#{value_text(node.value)}), " \
-                   ":#{@names.variable_name_of(node)}, #{RECORDING_TEST_SOURCE}#{source_option_text})"
+                   ":#{@names.variable_name_of(node)}, #{RECORDING_TEST_SOURCE}#{source_option_text}" \
+                   "#{walked_option_text(node)})"
           end
 
           tests = promoted_in_block?(node) ? @block_tests : []
           "(#{variable_while_recording_text(node)}; #{under_open_tests(tests) { variable_write_text(node) }})"
+        end
+
+        # What the blocks that change the name +node+ starts are called on, read where it starts
+        # (Writes.start_variable_while_recording's +walked+): in a part's method, which runs on no
+        # builder, a walk over an Array the game keeps is what makes the name the game's. Given only
+        # where each is an instance variable or a constant, which can be read before the block runs.
+        def walked_option_text(node)
+          receivers = @names.unplaced_receivers(node)
+          readable = [Prism::InstanceVariableReadNode, Prism::ConstantReadNode, Prism::ConstantPathNode]
+          return "" if receivers.empty? || !receivers.all? { |receiver| readable.any? { |kind| receiver.is_a?(kind) } }
+
+          ", walked: -> { [#{receivers.map(&:slice).uniq.join(', ')}] }"
         end
 
         # The name made the game variable it is to be, if game code is being recorded as this runs.

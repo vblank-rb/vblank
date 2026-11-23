@@ -486,10 +486,28 @@ module VBlank
 
         # The first line of such a name. Run while game code is recorded (in a method a game loop
         # calls), it sets the variable there, so each pass starts it afresh as Ruby's line would.
-        def start_variable_while_recording(owner, value, name, recording, source: nil)
+        #
+        # A part of a game is no builder, so +recording+ (Builder::Session.records_for?) is false
+        # in its methods, and Ruby planning there (`budget = 0`, then `loads.map { ... budget ...
+        # }`) stays Ruby's. Recording alone cannot decide for a part: that planning runs while game
+        # code is recorded too. Where the blocks that change the name walk an Array the game keeps
+        # (+walked+, the things they are called on: `sum = 0`, then `@points.each { |point| sum +=
+        # point.x }`), and game code is being recorded, the name is the game's, as it is in the
+        # game block. It is decided at the name's first line, before the walk, so the sum starts
+        # afresh on every call as Ruby's does.
+        def start_variable_while_recording(owner, value, name, recording, source: nil, walked: nil)
+          recording ||= walked && walks_game_array?(walked.call)
           return value unless Promotion.unplaced_change(value, recording).promoted?
 
           give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0, source: source), value)
+        end
+
+        # Is game code being recorded, and one of +walked+ an Array the game keeps: a list, a pool,
+        # or an Array of Structs?
+        def walks_game_array?(walked)
+          return false unless Builder::Session.recording?
+
+          walked.any? { |each| each.is_a?(List) || each.is_a?(Pool) || each.is_a?(StructArray) }
         end
 
         # A variable the author never wrote `var` for, which the out-of-memory error names.

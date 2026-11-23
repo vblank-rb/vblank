@@ -154,6 +154,11 @@ module VBlank
           # that local: the parameter holds a thing of it (LocalNames#things_made_by).
           attr_accessor :walked_from
 
+          # What each block only running can place, that changes this name, is called on: `@points`
+          # of `@points.each { |point| sum += point.x }`, or nil where the call has no receiver
+          # (LocalNames#unplaced_receivers).
+          def unplaced_receivers = (@unplaced_receivers ||= [])
+
           # Is this name a game's own list (LocalNames#game_array?)?
           def game_array?
             changed_as_array && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && Arrays.makes_array?(write.node.value) }
@@ -260,6 +265,8 @@ module VBlank
           @names_used = Hash.new(0)
           @iterating_in_game_code = false
           @scopes_placed = {}.compare_by_identity
+          # What each scope of a block only running can place is called on (#note_unplaced_receivers).
+          @unplaced_receivers = {}.compare_by_identity
           @names_moved_in_game_code = {}
           @next_block_placed = false
           # The scopes a game verb's block opens (`repeat`, `game_loop`), whose lines are recorded
@@ -403,6 +410,10 @@ module VBlank
           @instance_variable_things[@module_of_instance_variable_write[write]][write.name]
             .sort_by { |put| put.location.start_offset }
         end
+
+        # What the blocks only running can place, that change the name +write+ writes, are called on
+        # (Local#unplaced_receivers), for its first line in a part's method (Rewriter#walked_option_text).
+        def unplaced_receivers(write) = @locals_by_node[write]&.unplaced_receivers.to_a
 
         # `@enemies << Enemy.new(...)` (#instance_variable_things_made).
         def note_instance_variable_thing_put(node)
@@ -907,6 +918,7 @@ module VBlank
 
             # Any other block may be kept and run later: a game verb's, a pool's `each`, a part's.
             @bodies_run_later << child if child.is_a?(Prism::BlockNode)
+            @next_block_receiver = node.receiver if child.is_a?(Prism::BlockNode)
             game_block = child.is_a?(Prism::BlockNode) && GAME_VERBS.include?(node.name)
             @next_block_walks = node.receiver if child.is_a?(Prism::BlockNode) && walk_of_local?(node)
             @next_block_placed = true if game_block
@@ -1110,6 +1122,8 @@ module VBlank
         def read_block(node, scopes, in_game_code)
           scope = {}
           @scopes_placed[scope] = true if @next_block_placed
+          @unplaced_receivers[scope] = @next_block_receiver unless @next_block_placed
+          @next_block_receiver = nil
           @game_block_scopes[scope] = true if @next_block_game
           @next_block_placed = false
           @next_block_game = false
@@ -1168,10 +1182,21 @@ module VBlank
           @writes_in_methods[node] = true if @in_method
           local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes),
                                     from_game_block?(node, scopes))
+          note_unplaced_receivers(local, node, scopes)
           local.reads << node unless WHOLE_WRITES.any? { |kind| node.is_a?(kind) }
           @locals_by_node[node] = local
           @loops_around[node] = @open_loops unless @open_loops.empty?
           @tests_around[node] = @open_tests.dup unless @open_tests.empty?
+        end
+
+        # The receivers of the blocks only running can place between +node+ and its name's scope
+        # (Local#unplaced_receivers).
+        def note_unplaced_receivers(local, node, scopes)
+          return unless node.depth.positive?
+
+          scopes.last(node.depth).each do |scope|
+            local.unplaced_receivers << @unplaced_receivers[scope] if @unplaced_receivers.key?(scope)
+          end
         end
 
         def part_kept?(node)

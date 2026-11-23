@@ -287,10 +287,26 @@ end
 class AnswerFilled
   def initialize
     @points = Array.new(capacity: 4)
-    2.times { |i| @points << AnswerPoint.new(i, 0, 0) }
+    2.times { |i| @points << AnswerPoint.new(i + 1, 0, 0) }
   end
 
   def count = @points.size
+
+  WEIGHTS = [3, 4].freeze
+
+  # A local summed over a Ruby Array, in a method game code calls: Ruby's own sum, while building.
+  def weight
+    sum = 0
+    WEIGHTS.each { |each_weight| sum += each_weight }
+    sum
+  end
+
+  # A local summed over a walk, in a method game code calls.
+  def total_x
+    sum = 0
+    @points.each { |point| sum += point.x }
+    sum
+  end
 end
 
 # A spot whose number never changes after it is made.

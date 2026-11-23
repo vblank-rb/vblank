@@ -1005,6 +1005,26 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A part's method a game loop calls, summing over the part's Array of Structs: the sum starts
+  # afresh on every call, and adds every thing, as Ruby's does.
+  def test_a_local_summed_over_a_walk_in_a_parts_method
+    agrees("sum = 0; @points.each { sum += ... }; sum, in a method", reads: %i[m], passes: 2) do
+      filled = AnswerFilled.new
+      m = 0
+      game_loop { m = filled.total_x }
+    end
+  end
+
+  # The same lines over a Ruby Array of the class's own stay Ruby's planning, worked out while
+  # building.
+  def test_a_local_summed_over_a_ruby_array_in_a_parts_method
+    agrees("sum = 0; WEIGHTS.each { sum += ... }; sum, in a method", reads: %i[m], passes: 2) do
+      filled = AnswerFilled.new
+      m = 0
+      game_loop { m = filled.weight + filled.total_x }
+    end
+  end
+
   # `@counter ||= ...` makes it the first time the line runs and keeps it after, in Ruby too.
   def test_a_changing_object_kept_with_or_equals_in_the_game_loop
     agrees("@counter ||= AnswerCounter.new", reads: %i[m], passes: 3) do
