@@ -11,6 +11,10 @@ module VBlank
     #   SNAPSHOTS = VBlank::Playthroughs::SnapshotCache.new(".cache/snapshots")
     #   tape.compare(ours, original, starting_after: 4194, snapshots: SNAPSHOTS)
     #
+    # A probe a test steps itself opens there the same way, from the same snapshot:
+    #
+    #   Probe.open("original.sfc", tape: tape, starting_after: 4194, snapshots: SNAPSHOTS)
+    #
     # A snapshot is the emulator's own record of the whole console (Diagnostics::Verifier#save_state):
     # every byte of its memory and where its processor is. Put back, the console plays on from that
     # frame as if it had played every frame before it.
@@ -55,6 +59,13 @@ module VBlank
       # The buttons held over a stretch of frames: how many frames, and the key mask
       # (Playthrough.key_mask).
       Presses = Data.define(:frames, :keys)
+
+      # What +tape+ holds down on frames 1 to +frame+, as the list of Presses #console_after takes.
+      def self.presses_up_to(tape, frame)
+        tape.presses_within(1..frame).map do |stretch|
+          Presses.new(frames: stretch.frames.size, keys: Playthrough.key_mask(stretch.buttons))
+        end
+      end
 
       attr_reader :folder
 

@@ -109,6 +109,21 @@ module SnapshotStartTests
     end
   end
 
+  # A probe opened on the same cartridge after the same presses loads the comparison's snapshot.
+  def test_a_probe_opens_from_the_snapshot_a_comparison_made
+    game = walker
+    with_snapshots do |snapshots, folder|
+      tape.compare(game, game, starting_after: START_AFTER, snapshots: snapshots)
+      stepped = VBlank::Playthroughs::Probe.open(game, tape: tape, starting_after: START_AFTER, snapshots: snapshots) do |probe|
+        probe.step(10)
+        probe.reader.frames_played
+      end
+
+      assert_equal 1, snapshot_files(folder).size
+      assert_equal 10, stepped
+    end
+  end
+
   # A snapshot the emulator will not take is played to again from power-on, and made again.
   def test_a_snapshot_that_fails_to_load_is_played_to_again
     ours = walker
@@ -160,18 +175,33 @@ module SnapshotStartTests
     assert_match "starting_after", error.message
   end
 
-  # The strict rule for torn frames, and a block that works out a part of the screen, look at the
-  # frames before one, which a start does not.
+  # A part of the screen given as rectangles, for stretches of frames, or by a block that reads the
+  # running cartridges, finds from a start what it finds from power-on with the frames before the
+  # start left out. The block is asked from the frame after the start.
+  def test_a_start_looks_at_the_parts_it_is_given
+    ours = walker
+    late = walker(late: true)
+    by_block = ->(first, _second) { first.var(:passes).even? ? [[0, 0, 240, 160]] : [[0, 0, 120, 160]] }
+    with_snapshots do |snapshots|
+      [{ looking_at: [[0, 40, 240, 40]] }, { looking_at: { 1..350 => [[0, 0, 120, 160]] } },
+       { looking_at: by_block }, { ignoring_rectangles: ->(_first, _second, frame) { frame.odd? ? [[200, 0, 40, 160]] : [] } }]
+        .each do |part|
+          from_power_on = tape.compare(ours, late, ignoring_frames: [1..START_AFTER], **part)
+          started = tape.compare(ours, late, starting_after: START_AFTER, snapshots: snapshots, **part)
+
+          assert from_power_on.drift?, "the late build differs inside #{part.keys.first}"
+          assert_equal outcome(from_power_on), outcome(started), part.keys.first.to_s
+        end
+    end
+  end
+
+  # The strict rule for torn frames looks at the frames before one, which a start does not.
   def test_a_start_with_settings_that_look_back_is_refused
     torn = assert_raises(ArgumentError) do
       tape.compare(walker, walker, starting_after: START_AFTER, forgiving_torn_frames_of: :second)
     end
-    by_block = assert_raises(ArgumentError) do
-      tape.compare(walker, walker, starting_after: START_AFTER, ignoring_rectangles: ->(_first, _second) { [] })
-    end
 
     assert_match "forgiving_torn_frames_of", torn.message
-    assert_match "ignoring_rectangles", by_block.message
   end
 
   def test_a_start_with_lead_ins_is_refused

@@ -615,8 +615,13 @@ module VBlank
       # game, whose presses are not known until it has played, so nothing can say which snapshot it
       # reaches. Two lined up step by step count passes from power-on, which a snapshot does not hold.
       # On the same script there is no tape to start part way through. The strict rule for torn
-      # frames, and a block that works out a part of the screen, look at the frames before one to
-      # decide it, and the frames before the start are not looked at.
+      # frames looks at the frames before one to decide it, and the frames before the start are not
+      # looked at.
+      #
+      # A block that works out a part of the screen is allowed: what it reads of the two running
+      # cartridges is the same on a console put back from a snapshot. It is asked from the frame
+      # after the start, so a block that keeps what it saw on the frame before starts with nothing
+      # there, as it does on the first frame of a comparison from power-on.
       private def refuse_settings_wrong_for_start!
         if @snapshots && !@snapshots.is_a?(SnapshotCache)
           raise ArgumentError, "`snapshots:` was #{@snapshots.inspect}. It must be a SnapshotCache: " \
@@ -637,7 +642,6 @@ module VBlank
         said << @step_count.setting_name if @step_count
         said << "`same: :script`" if same_script?
         said << "`forgiving_torn_frames_of:`" if @torn_side
-        said << "a block for `looking_at:` or `ignoring_rectangles:`" if @likeness.looked_at.chosen_by_block?
         return if said.empty?
 
         raise ArgumentError, "The comparison was given `starting_after:` and #{said.join(' and ')}. A comparison that " \
@@ -677,9 +681,7 @@ module VBlank
       # Each cartridge switched on and brought to the frame +start+ of +tape+ without being looked
       # at: from a snapshot where the comparison was given +snapshots+, else played there.
       private def started_after(tape, start)
-        presses = tape.presses_within(1..start).map do |stretch|
-          SnapshotCache::Presses.new(frames: stretch.frames.size, keys: Playthrough.key_mask(stretch.buttons))
-        end
+        presses = SnapshotCache.presses_up_to(tape, start)
         starts.each { |side| refuse_snapshot_without_save_memory!(side) }
         starts.map do |side|
           open = -> { Playthrough.power_on(side.cartridge, save: side.save) }

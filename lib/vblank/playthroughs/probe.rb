@@ -51,6 +51,24 @@ module VBlank
     # (Diagnostics::Verifier): the picture, its pixels and colours, the sound, each console its own
     # way. Step the cartridge through the probe, never the reader, or #frame goes out of step.
     #
+    # ### Opening part way through a tape
+    #
+    # A test that asks about a moment deep in a game opens the probe there: given a +tape+ and
+    # +starting_after+ (a frame of it, or the name of one of its moments), the probe plays the
+    # tape's presses up to that frame before it is handed over, and #frame reads that frame, so
+    # frames still count from power-on. Given +snapshots+ as well (a SnapshotCache), the console is
+    # put on that frame from a snapshot kept on disk, made the first time and loaded every time
+    # after, under the same key a comparison's start uses, so the two share one.
+    #
+    #   SNAPSHOTS = VBlank::Playthroughs::SnapshotCache.new(".cache/snapshots")
+    #   Probe.open("original.sfc", tape: tape, starting_after: 4194, snapshots: SNAPSHOTS) do |probe|
+    #     probe.frame                  # => 4194
+    #     probe.step(300)              # the emulator steps 300 frames, not 4494, once a snapshot is kept
+    #   end
+    #
+    # A snapshot is loaded with no frame played from it, so the picture is there after the first
+    # #step; what memory holds is there at once.
+    #
     # A probe is a side of a film as it stands (Diagnostics::Film): it answers what a film asks of a
     # side (#step with `keys:`, #screenshot, #last_frame_samples, #close), so a probe driven to the
     # moment worth filming is filmed from its next frame, and the film closes it, save folder and all.
@@ -84,8 +102,10 @@ module VBlank
 
       # A probe on +cartridge+ for the length of the block, closed when it ends; without a block, the
       # probe, for the caller to close.
-      def self.open(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false)
-        probe = new(cartridge, labels: labels, save: save, save_dir: save_dir, multitap: multitap)
+      def self.open(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false, tape: nil, starting_after: nil,
+                    snapshots: nil)
+        probe = new(cartridge, labels: labels, save: save, save_dir: save_dir, multitap: multitap, tape: tape,
+                               starting_after: starting_after, snapshots: snapshots)
         return probe unless block_given?
 
         begin
@@ -95,15 +115,18 @@ module VBlank
         end
       end
 
-      def initialize(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false)
+      def initialize(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false, tape: nil, starting_after: nil,
+                     snapshots: nil)
         @labels = labels.to_h { |name, place| [name.to_s, label_from(place)] }
         refuse_multitap_on_built!(cartridge) if multitap
+        start = start_frame(tape, starting_after, snapshots)
         @owns_save_dir = save_dir.nil?
         @save_dir = save_dir || Dir.mktmpdir("vblank-probe")
         cartridge = Diagnostics::CartridgeFile.new(cartridge, multitap: multitap) unless cartridge.respond_to?(:console)
         @kit = Console.for(cartridge.console)
-        @reader = Diagnostics::Verifier.new(cartridge, frames: 0, save: save, save_dir: @save_dir)
-        @frame = 0
+        refuse_snapshot_without_save_memory!(cartridge) if snapshots
+        @reader = reader_after(cartridge, save, tape, start, snapshots)
+        @frame = start
       rescue StandardError
         FileUtils.remove_entry(@save_dir, true) if @owns_save_dir && @save_dir
         raise
@@ -282,6 +305,70 @@ module VBlank
       end
 
       private
+
+      # The reader over +cartridge+, switched on and brought to frame +start+ of +tape+: from a
+      # snapshot in +snapshots+ where one is given, else by playing the presses from power-on.
+      def reader_after(cartridge, save, tape, start, snapshots)
+        open = -> { Diagnostics::Verifier.new(cartridge, frames: 0, save: save, save_dir: @save_dir) }
+        return open.call if start.zero?
+
+        presses = SnapshotCache.presses_up_to(tape, start)
+        return snapshots.console_after(presses, cartridge, save: save, &open) if snapshots
+
+        open.call.tap { |reader| presses.each { |held| reader.step(held.frames, keys: held.keys) } }
+      end
+
+      # The frame of +tape+ the probe opens on, 0 for power-on: +starting_after+ as a number, or the
+      # frame of the moment it names.
+      def start_frame(tape, starting_after, snapshots)
+        refuse_unusable_start!(tape, starting_after, snapshots)
+        return 0 if starting_after.nil?
+
+        frame = if starting_after.is_a?(Symbol)
+                  tape.moments.fetch(starting_after) do
+                    raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
+                                         "no moment of that name. Its moments are #{tape.moments.keys.map(&:inspect).join(', ')}."
+                  end
+                else
+                  starting_after
+                end
+        return frame if frame <= tape.frames
+
+        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{tape.frames} frames. " \
+                             "To fix this, give a frame of the tape, #{tape.frames} or less."
+      end
+
+      def refuse_unusable_start!(tape, starting_after, snapshots)
+        if snapshots && !snapshots.is_a?(SnapshotCache)
+          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
+                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
+        end
+        if starting_after.nil?
+          return if tape.nil? && snapshots.nil?
+
+          raise ArgumentError, "The probe was given #{[('`tape:`' if tape), ('`snapshots:`' if snapshots)].compact.join(' and ')} " \
+                               "and no `starting_after:`. They are used only to open the probe after a frame of the tape. " \
+                               "Give `starting_after:` the frame, or remove them."
+        end
+        unless tape.is_a?(Tape)
+          raise ArgumentError, "The probe was given `starting_after:` and no `tape:`. The presses up to the frame come " \
+                               "from a tape. Give `tape:` the tape (Tape.read(path)), or remove `starting_after:`."
+        end
+        return if starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
+
+        raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
+                             "number 1 or more, or the name of one of its moments."
+      end
+
+      # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
+      # holding the save it was switched on with (Console::Kit#snapshot_leaves_out_save_memory?).
+      def refuse_snapshot_without_save_memory!(cartridge)
+        return unless @kit.snapshot_leaves_out_save_memory?(cartridge)
+
+        raise ArgumentError, "The cartridge keeps a save, and a snapshot of a #{@kit.title} does not hold what it " \
+                             "saved. A probe opened from a snapshot would play with the save it had at power-on. " \
+                             "To fix this, remove `snapshots:`, and the cartridge is played to the start."
+      end
 
       def step_holding_buttons(frames, buttons) = step_with_mask(frames, Playthrough.key_mask(Array(buttons)))
 

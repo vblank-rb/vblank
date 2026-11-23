@@ -28,7 +28,9 @@ module VBlank
       #                                                (and the frame's number, if it takes three)
       #                                                and asked on every frame, those left out too,
       #                                                in order, so it can remember the frame before
-      #                                                (once a step, for two lined up step by step)
+      #                                                (once a step, for two lined up step by step;
+      #                                                from the frame after the start, for one
+      #                                                started after a frame of its tape)
       #
       # A rectangle given in a list or for a stretch has to lie on the screen, since a part off
       # it is a slip. One a block answers is cut to the screen, since a part that moves with
@@ -99,10 +101,6 @@ module VBlank
         # Whether the part looked at can be different on different frames: a stretch or a
         # block. Only a comparison frame by frame has frames to give it for.
         def changes_with_frame? = choices.any?(&:changes_with_frame?)
-
-        # Whether a block works out a part of the screen on each frame: it is asked from the first
-        # frame on, and may keep what it saw on the frame before.
-        def chosen_by_block? = choices.any?(&:chosen_by_block?)
 
         # Whether every pixel is looked at on every frame.
         def whole_screen? = !changes_with_frame? && fixed_part.count == pixels
@@ -207,9 +205,6 @@ module VBlank
           def rectangles = @list
 
           def changes_with_frame? = @list.nil?
-
-          # Whether a block works the rectangles out, frame by frame.
-          def chosen_by_block? = !@block.nil?
 
           # Each stretch's frames on +tape+, beside its rectangles.
           def frame_ranges_on(tape)

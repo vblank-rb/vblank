@@ -37,4 +37,18 @@ class TestSnapshotStartsOnTheGenesis < Minitest::Test
       end
     end
   end
+
+  def test_a_probe_on_a_cartridge_that_keeps_a_save_is_refused_a_snapshot
+    Dir.mktmpdir("vblank-snapshots") do |folder|
+      snapshots = VBlank::Playthroughs::SnapshotCache.new(folder)
+      with_saving_cartridge(folder) do |path|
+        error = assert_raises(ArgumentError) do
+          VBlank::Playthroughs::Probe.open(path, tape: tape, starting_after: 10, snapshots: snapshots)
+        end
+
+        assert_match "keeps a save", error.message
+        assert_match "Genesis", error.message
+      end
+    end
+  end
 end
