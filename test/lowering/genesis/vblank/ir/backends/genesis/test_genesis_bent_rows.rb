@@ -56,6 +56,102 @@ class TestGenesisBentRows < Minitest::Test
     [lines, sent]
   end
 
+  # A frame's 68000 cycles: 262 lines of 488.
+  FRAME_CYCLES = 262 * 488
+
+  # What working out a row of a bend may cost, its block a table read at the row and a variable,
+  # masked (Lowering::Bends#emit_bend_rows_held). No retail game is measured for this yet, so it is a
+  # budget from the M68000 User's Manual's instruction times: a 68000 line loop written by hand for
+  # this block (the row in a register, the variable added, masked, a byte entry read and widened to a
+  # word, written through (A1)+, DBRA) takes 48 cycles a row. The build keeps a game's numbers 32 bits
+  # wide, so its mask, its entry and its sum are long ones, which adds a few instructions' worth; 80
+  # is that loop and half again.
+  ROW_CYCLES_MOST = 80
+
+  private def rippled(name, bent)
+    VBlank.game(name, consoles: %i[genesis]) do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(28) { "#" * 40 }
+      ripple = table :ripple, (0...64).map { |i| (Math.sin(i * 2 * Math::PI / 64) * 3).round }
+      phase = var :phase, 0
+      water.scroll_each_row { |row| ripple[(row + phase) & 63] } if bent
+      game_loop { phase += 1 }
+    end
+  end
+
+  # The game's own code's share of each frame, over PASSES passes.
+  private def game_share(game)
+    rom = game.build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
+    rom.profile(out: StringIO.new, frames: PASSES).game.sum(&:share)
+  end
+
+  # The rows of a bend against the same game bending nothing: what the two differ by is the rows alone.
+  def test_a_row_of_a_bend_costs_no_more_than_its_budget
+    rows = (game_share(rippled("RIPPLE ROWS", true)) - game_share(rippled("RIPPLE NONE", false))) * FRAME_CYCLES
+    per_row = rows / VBlank::Console::GENESIS.screen_height
+
+    assert_operator per_row, :<=, ROW_CYCLES_MOST, "a row of the bend costs #{per_row.round} cycles"
+  end
+
+  # A block that reads a variable and a table, held in registers for its rows, still answers as the
+  # interpreter does, the variable changing every pass.
+  def test_a_rippled_plane_shows_what_the_interpreter_shows
+    game_player.run(rippled("RIPPLE SHOWN", true).program(console: :genesis), frames: 12)
+  end
+
+  # A block that writes a variable it reads, with a loop of its own, is held only in what it never
+  # writes: the count goes on from row to row, and the loop takes the register after the rows'.
+  def test_a_block_that_counts_and_loops_shows_what_the_interpreter_shows
+    game = VBlank.game("RIPPLE COUNTS", consoles: %i[genesis]) do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(28) { "#" * 40 }
+      ripple = table :ripple, (0...64).map { |i| (i * 7) % 13 }
+      phase = var :phase, 0
+      count = var :count, 0
+      water.scroll_each_row do |row|
+        repeat(2) { count += 1 }
+        ripple[(row + phase + count) & 63]
+      end
+      game_loop { phase += 1 }
+    end
+    game_player.run(game.program(console: :genesis), frames: 12)
+  end
+
+  # A block that walks a pool beside reading three tables and two variables: a walk keeps its place in
+  # registers the held rows would hold reads in, so such a block's rows are worked out in work RAM, and
+  # every row still answers as the interpreter's.
+  def test_a_block_that_walks_a_pool_shows_what_the_interpreter_shows
+    game = VBlank.game("RIPPLE WALKS", consoles: %i[genesis]) do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(28) { "#" * 40 }
+      ripple = table :ripple, (0...64).map { |i| (i * 7) % 13 }
+      other = table :other, (0...64).map { |i| (i * 5) % 11 }
+      third = table :third, (0...64).map { |i| (i * 3) % 7 }
+      phase = var :phase, 3
+      tilt = var :tilt, 5
+      sum = var :sum, 0
+      things = pool :thing, a: 0, capacity: 4
+      things.spawn(a: 1)
+      things.spawn(a: 2)
+      water.scroll_each_row do |row|
+        sum = 0
+        things.each { |t| sum += t.a }
+        (ripple[(row + phase) & 63] + other[(row + tilt) & 63] + third[row & 63] + sum) & 31
+      end
+      game_loop do
+        phase += 1
+        tilt += 2
+      end
+    end
+    game_player.run(game.program(console: :genesis), frames: 8)
+  end
+
   # The bent plane in front, the straight one behind, both on screen, against the interpreter on every pass.
   def test_a_bent_plane_and_a_straight_one_show_what_the_interpreter_shows
     game_player.run(two_planes("BENT BESIDE STILL").program(console: :genesis), frames: 12)

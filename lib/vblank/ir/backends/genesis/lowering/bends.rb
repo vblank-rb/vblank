@@ -68,7 +68,11 @@ module VBlank
 
             # Rows +first+ to +past+ - 1 of +bend+: its row in its variable, its steps, the row's offset
             # kept, and on to the next, leaving the variable at +past+. A single row leaves it at that row.
+            # Many rows whose block allows it are worked out with the row in a register
+            # (#emit_bend_rows_held).
             def emit_bend_rows(bend, first, past)
+              return emit_bend_rows_held(bend, first, past) if past - first > 1 && bend_rows_held?(bend)
+
               top = fresh("bend_row")
               store_number(bend.row, first)
               place_label(top)
@@ -78,6 +82,103 @@ module VBlank
 
               emit_increment(bend.row)
               jump_if(Build.binop(:<, Build.var_ref(bend.row), Build.int(past)), top)
+            end
+
+            # The rows of a bend worked out as a 68000 game fills a line table: the line it is on in a
+            # data register, and an address register walking the table, each row's offset written
+            # through it and the register moved on in the same instruction, MOVE.W D0,(A1)+. In work
+            # RAM, the row is read for the block, read again to find its slot, added to and compared
+            # there on every row; in a register each of those is a quarter of the time or less, and
+            # the slot costs nothing to find (M68000 User's Manual, "Instruction Execution Times":
+            # a long read through d16(An) 16 cycles against 4 from a data register, ADDQ.L 20 cycles
+            # on memory against 8 on a register). The rows left are counted down in D6 by DBRA, which
+            # takes one from it and branches in one instruction, 10 cycles, where a compare and a
+            # branch take 18.
+            #
+            # What the block reads and never writes is held too, as such a loop holds it: up to two of
+            # its variables in D3 and D4, read from work RAM once before the rows, and up to two of
+            # its tables' addresses in A2 and A3, so a row reads the entry through the register with
+            # no LEA of the table's address first.
+            #
+            # It is done where the block allows it, as a loop's count is held (#with_counter_held):
+            # every step of it, and its answer, are written in place with D0, D1, D2 and A0 alone, so
+            # nothing it calls can overwrite the registers held and no pass can end inside it, and
+            # none of its steps writes the row. The row goes back to its variable once the rows are
+            # done, so what comes after reads it as before.
+            def emit_bend_rows_held(bend, first, past)
+              register, left = COUNTER_REGISTERS.first(2).map { |number| @asm.d(number) }
+              top = fresh("bend_row")
+              @asm.moveq(first, register)
+              @asm.move(:w, @asm.imm(past - first - 1), left)
+              @asm.lea(at(bend_table(bend), first * 2), @asm.a(1))
+              hold_bend_reads(bend)
+              @counters_held[bend.row] = register
+              # Must be held as a count is, so a loop in the block takes the register after it.
+              @counters_held[BEND_ROWS_LEFT] = left
+              @indexes_checked.delete(bend.row)
+              begin
+                place_label(top)
+                with_index_below(bend.row, past) do
+                  bend.body.each { |child| statement(child) }
+                  value(bend.offset)
+                end
+                @asm.move(:w, @asm.d(0), @asm.post(1))
+                # The row runs from +first+ up to +past+, never above a word, and only this loop
+                # writes the register, so its low word is the whole of it.
+                @asm.addq(:w, 1, register)
+                @asm.dbra(left, top)
+              ensure
+                @counters_held.delete(bend.row)
+                @counters_held.delete(BEND_ROWS_LEFT)
+                @reads_held = nil
+                @tables_held = nil
+              end
+              @asm.move(:l, register, var(bend.row))
+            end
+
+            # The data registers a bend's rows hold the block's variables in, and the address
+            # registers they hold its tables' addresses in (#emit_bend_rows_held).
+            BEND_READ_REGISTERS = [3, 4].freeze
+            BEND_TABLE_REGISTERS = [2, 3].freeze
+
+            # The rows left, held beside the row: a name no variable of a game's has.
+            BEND_ROWS_LEFT = :"bend rows left"
+
+            # The block's variables and tables held for its rows, each loaded into its register.
+            def hold_bend_reads(bend)
+              nodes = bend_nodes(bend)
+              written = bend_writes(nodes)
+              read = nodes.filter_map { |node| node.kind == :copy ? node.src : (node.name if node.kind == :var_ref) }
+              held = (read.uniq - written - [bend.row]).first(BEND_READ_REGISTERS.length)
+              @reads_held = held.zip(BEND_READ_REGISTERS).to_h do |name, number|
+                @asm.move(:l, var(name), @asm.d(number))
+                [name, @asm.d(number)]
+              end
+              tables = nodes.filter_map { |node| node.name if node.kind == :table_get }.uniq.first(BEND_TABLE_REGISTERS.length)
+              @tables_held = tables.zip(BEND_TABLE_REGISTERS).to_h do |name, number|
+                @asm.lea(@asm.abs_l(table_label(@tables.fetch(name).name)), @asm.a(number))
+                [name, number]
+              end
+            end
+
+            # Every node of +bend+'s block and its answer.
+            def bend_nodes(bend) = [*bend.body, bend.offset].grep(Node).flat_map { |part| part.walk.to_a }
+
+            # The variables the steps among +nodes+ write: what each sets, and a loop's count.
+            def bend_writes(nodes)
+              nodes.flat_map { |node| [LightScenes.written_var(node), (node.index if node.kind == :repeat)] }.compact
+            end
+
+            # Can +bend+'s rows be worked out with the row held (#emit_bend_rows_held)? Only with
+            # no other count held, as the rows are worked out at a wait, outside every loop, and with
+            # no walk of a pool in the block: a held walk (#emit_stepped_walk) keeps its place in D3,
+            # D4, A3 and A4, which are the reads' and the tables' here.
+            def bend_rows_held?(bend)
+              @counters_held ||= {}
+              nodes = bend_nodes(bend)
+              @counters_held.empty? && !@held_walk &&
+                bend.body.all? { |child| statement_keeps_counters?(child) } && value_keeps_counters?(bend.offset) &&
+                !bend_writes(nodes).include?(bend.row) && nodes.none? { |node| node.kind == :repeat && node.pool_walk }
             end
 
             # The rows' loop stops with the variable at the height; a game that never waits leaves it at

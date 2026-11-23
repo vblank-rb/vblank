@@ -503,8 +503,9 @@ module VBlank
           end
 
           # The operand that names that place: a distance from A5; or the data register a loop is
-          # keeping it in while its body is written (#with_counter_held).
-          def var(name) = @counters_held&.fetch(name, nil) || at(place_of(name))
+          # keeping it in while its body is written (#with_counter_held), or a bend's rows are keeping
+          # it in while they read it (Bends#emit_bend_rows_held).
+          def var(name) = @counters_held&.fetch(name, nil) || @reads_held&.fetch(name, nil) || at(place_of(name))
 
           def at(address, plus = 0) = @asm.disp(5, Memory.displacement(address) + plus)
 
@@ -1806,18 +1807,20 @@ module VBlank
             count = table.values.length
             bytes, signed = table_keeping(table)
             value(index_inside?(node.index, count) ? node.index : LoweringPlan.index_kept_in_range(node.index, count))
-            @asm.lea(@asm.abs_l(table_label(table.name)), @asm.a(0))
-            emit_table_entry(bytes, signed, count * bytes <= 0x7FFF ? :w : :l)
+            base = @tables_held&.fetch(node.name, nil)
+            @asm.lea(@asm.abs_l(table_label(table.name)), @asm.a(0)) unless base
+            emit_table_entry(bytes, signed, count * bytes <= 0x7FFF ? :w : :l, base || 0)
           end
 
-          # D0 the entry the index in D0 names in the table A0 points at, widened by its size and sign.
+          # D0 the entry the index in D0 names in the table A(+base+) points at (A0 unless the table is
+          # held, Bends#emit_bend_rows_held), widened by its size and sign.
           # The index is inside the table by now, so one whose entries end within 32K is scaled and
           # added as a word (+index_size+ :w), which is quicker. An entry with no sign is read into
           # D1, emptied first, and moved across: fewer cycles than reading it into D0 and masking
           # off what the index left above it.
-          def emit_table_entry(bytes, signed, index_size)
+          def emit_table_entry(bytes, signed, index_size, base = 0)
             (bytes.bit_length - 1).times { @asm.add(index_size, @asm.d(0), @asm.d(0)) }
-            entry = @asm.idx(0, 0, 0, index_size)
+            entry = @asm.idx(base, 0, 0, index_size)
             return @asm.move(:l, entry, @asm.d(0)) if bytes == 4
 
             size = Runtime::Lists::SLOT_SIZES.fetch(bytes)
