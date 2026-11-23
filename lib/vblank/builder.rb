@@ -1588,12 +1588,12 @@ module VBlank
       (@part_starts || []).each do |start|
         next unless part_start_code?(start)
 
-        refuse_array_of_part_made_every_pass!(name, start.keeper) unless start.kept
+        refuse_array_in_repeated_part!(name, start.keeper) unless start.kept
         start.made << name
       end
     end
 
-    def refuse_array_of_part_made_every_pass!(name, keeper)
+    def refuse_array_in_repeated_part!(name, keeper)
       if keeper
         raise DSL::PlainRuby::Refused,
               "This line makes a new object and keeps it in a `#{keeper}`, and its `initialize` makes the Array " \
@@ -1608,7 +1608,7 @@ module VBlank
             "above the game loop, or keep it in an instance variable, like `@part ||= Part.new(...)`, so it is " \
             "made one time.#{Messages::AuthorSource.at_author_line}"
     end
-    private :refuse_array_of_part_made_every_pass!
+    private :refuse_array_in_repeated_part!
 
     # Records what the block records (a push into the Array +name+, or its making) so it runs only
     # on the first pass of the part being made, where #making_part is open, the part made +name+

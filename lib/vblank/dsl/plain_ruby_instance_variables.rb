@@ -619,7 +619,7 @@ module VBlank
 
         def refuse_part_made_every_pass!(owner, keeper)
           name = owner.class.name || "this class"
-          raise Refused, part_in_part_made_every_pass_message(name, keeper) if keeper
+          raise Refused, nested_repeated_part_message(name, keeper) if keeper
 
           raise Refused, "This line makes a new `#{name}` in code that runs every frame. Its numbers change " \
                          "as the game plays, and in Ruby each new one starts again from `initialize`. To fix " \
@@ -629,7 +629,7 @@ module VBlank
         end
 
         # +name+ is kept with `||=` in a +keeper+ that is itself made again on every pass.
-        def part_in_part_made_every_pass_message(name, keeper)
+        def nested_repeated_part_message(name, keeper)
           "This line makes a new `#{name}` and keeps it in a `#{keeper}`. But the `#{keeper}` is made in code " \
             "that runs every frame, so in Ruby a new `#{keeper}` is made on every pass, and it makes a new " \
             "`#{name}`. Each new `#{name}` starts again from `initialize`. To fix this, make the `#{keeper}` " \
