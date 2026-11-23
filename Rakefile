@@ -133,8 +133,8 @@ task "test:lowering:gba" => :clear_coverage
 # a run plays games as, not its lowering:
 #
 # - the GBA run reads the Advance's cartridge back in libmgba (test/lowering/gba/), and its tests of
-#   the reader and of playthroughs read a Super Nintendo cartridge in bsnes and a PlayStation
-#   program in Beetle PSX too;
+#   the reader and of playthroughs read a Super Nintendo cartridge in bsnes, a Genesis cartridge in
+#   Genesis Plus GX and a PlayStation program in Beetle PSX too;
 # - the Game Boy Color run plays the Color's cartridges in libmgba too;
 # - the Super Nintendo, Genesis and PlayStation runs play theirs in bsnes, Genesis Plus GX and
 #   Beetle PSX;
@@ -144,7 +144,7 @@ task "test:lowering:gba" => :clear_coverage
 #
 # The JavaScript and Ruby runs build none: their sound is held sample for sample to the C build's
 # (test/runtime_sounds.rb), so they run on a machine with no emulator and no C compiler for one.
-task "test:lowering:gba" => %i[compile_emulator compile_snes_core compile_ps1_core]
+task "test:lowering:gba" => %i[compile_emulator compile_snes_core compile_genesis_core compile_ps1_core]
 task "test:lowering:gbc" => :compile_emulator
 task "test:lowering:native:gba" => :compile_emulator
 task "test:lowering:snes" => :compile_snes_core
