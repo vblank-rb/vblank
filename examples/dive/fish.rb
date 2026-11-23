@@ -45,6 +45,12 @@ module Dive
       ................
     ART
 
+    # One fish: where it is, how fast it swims, and which species it is. Each is a sprite
+    # facing the way it swims; the left-facing picture is the right one mirrored.
+    One = Struct.new(:x, :y, :speed, :kind) do
+      drawn_as facing: { right: :fish_right, left: VBlank.mirror(:fish_right) }
+    end
+
     def initialize(build)
       @build = build
       declare_art
@@ -53,12 +59,11 @@ module Dive
       # when it returns. The whole shoal is in this dive, so `colors_in_use` says so, and all
       # six species keep their groups for as long as the dive lasts.
       build.colors_in_use SPECIES
-      @fish = build.layer(:swimmers) do
-        build.pool :fish, x: 0, y: 0, speed: 0, kind: 0, capacity: SHOAL,
-                          facing: { right: :fish_right, left: build.mirror(:fish_right) }
+      build.layer(:swimmers) do
+        @shoal = Array.new(capacity: SHOAL)
       end
       SHOAL_AT.each_with_index do |(x, y, speed), which|
-        @fish.spawn x: x, y: y, speed: speed, kind: which % SPECIES.length
+        @shoal << One.new(x, y, speed, which % SPECIES.length)
       end
     end
 
@@ -71,7 +76,7 @@ module Dive
     # there are different ones. +surface+ is where the top of the sea is on screen, so a
     # fish coming back round from below arrives under it rather than in the sky.
     def update(sank, surface)
-      @fish.each do |fish|
+      @shoal.each do |fish|
         fish.x += fish.speed
         fish.y -= sank
         if fish.speed > 0

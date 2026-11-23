@@ -11,6 +11,6 @@ class TestSparksOnSNES < Minitest::Test
   def test_the_sparks_fall_and_recycle_like_the_interpreter
     run = game_player.run(Sparks::GAME.program(console: game_console), frames: 120)
 
-    refute_empty run.pool(:spark, :y), "sparks are falling"
+    refute_empty run.pool(:sparks, :y), "sparks are falling"
   end
 end

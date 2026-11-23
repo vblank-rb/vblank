@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-# The enemies — another part of the game, in its own file. A POOL of them: one
-# declaration says "up to this many of a thing with these fields", and `each` runs the
-# same behaviour over whichever are alive. Nothing here keeps parallel arrays of
-# positions and states that could fall out of step, because there is nothing to keep.
+# The enemies — another part of the game, in its own file. An Array of Structs, which the
+# game keeps as a pool: one line says "up to this many of a thing with these fields", and
+# `each` runs the same behaviour over whichever are alive. Nothing here keeps parallel
+# arrays of positions and states that could fall out of step, because there is nothing to keep.
 #
-# They also FLAP, and turn to face the ship they are diving at. `facing:` gives the pool
+# They also FLAP, and turn to face the ship they are diving at. `drawn_as facing:` gives each
 # a picture per direction and a list of frames for each, and `rate:` says how fast to run
 # through them — the same words a single `sprite` takes, spelled the same way. What is
 # different is that the direction and the place in the cycle belong to each INSTANCE: one
@@ -21,6 +21,12 @@ module Shmup
     LIVE = 3   # how many are in the air at once
     SPEED = 1
     SIZE  = 16
+
+    # One enemy: where it is. It faces left or right, each a pair of pictures flapped through
+    # every 8 frames, and which way it leans is its own.
+    Enemy = Struct.new(:x, :y) do
+      drawn_as facing: { left: %i[flap_l1 flap_l2], right: %i[flap_r1 flap_r2] }, rate: 8
+    end
 
     # Two frames of a flap, and a mirrored pair so an enemy can lean the way it drifts.
     # A wing down...
@@ -70,11 +76,9 @@ module Shmup
       build.image(:flap_r1, "." => :transparent, "#" => :orange) { WINGS_DOWN }
       build.image(:flap_r2, "." => :transparent, "#" => :orange) { WINGS_UP }
 
-      # One line for the whole flock: the fields each enemy carries, how many can be in
-      # the air, and the pictures they show. `drift` is which way this one is leaning,
-      # which is also which pair of pictures it draws from.
-      @enemies = build.pool :enemy, x: 0, y: 0, capacity: LIVE, rate: 8,
-                                    facing: { left: %i[flap_l1 flap_l2], right: %i[flap_r1 flap_r2] }
+      # One line for the whole flock: how many can be in the air. What each carries and the
+      # pictures it shows are `Enemy`'s, below.
+      @enemies = Array.new(capacity: LIVE)
       spawn_flock
     end
 
@@ -115,7 +119,7 @@ module Shmup
     # The opening flock, spread across the screen. A new game calls it once the pool is empty
     # again, which `start_over` does with the rest of the play.
     def spawn_flock
-      LIVE.times { |i| @enemies.spawn x: 36 + (i * 72), y: i * 52 }
+      LIVE.times { |i| @enemies << Enemy.new(36 + (i * 72), i * 52) }
     end
 
     private

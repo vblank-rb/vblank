@@ -177,11 +177,11 @@ class TestDiveExample < Minitest::Test
   # the same line of the game asking where the surface is, which is why neither one needs
   # a picture to prove it: a bubble that is still there is still being drawn.
   def test_no_bubbles_come_off_a_diver_whose_head_is_out
-    assert_empty surfaced.sprites(:bubble), "bubbles are still rising from a diver in the air"
+    assert_empty surfaced.sprites(:diver_bubbles), "bubbles are still rising from a diver in the air"
   end
 
   def test_bubbles_rise_from_a_diver_under_water
-    refute_empty swimming_down_for(START_AT + 30).sprites(:bubble), "no bubbles come off the diver at all"
+    refute_empty swimming_down_for(START_AT + 30).sprites(:diver_bubbles), "no bubbles come off the diver at all"
   end
 
   # --- the air gauge ---
@@ -223,7 +223,7 @@ class TestDiveExample < Minitest::Test
   # picture rather than six.
   def test_the_fish_wear_their_own_colours
     i = swimming_down_for(START_AT + 30)
-    seen = i.sprites(:fish).filter_map { |f| i.screen.pixel(f.x + FLANK_ACROSS, f.y + FLANK_DOWN) }
+    seen = i.sprites(:fish_shoal).filter_map { |f| i.screen.pixel(f.x + FLANK_ACROSS, f.y + FLANK_DOWN) }
 
     assert_operator seen.length, :>=, SPECIES, "not every fish is being drawn"
     assert_operator seen.uniq.length, :>=, SPECIES, "the fish are all drawn in the same colours"

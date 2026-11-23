@@ -22,7 +22,7 @@ class TestSNESSuperFXBoard < Minitest::Test
   PLAIN_DIGESTS = {
     Tiles => "7b72cdbe7f29294a0f84279e14be255f426bf004b3a1a9affc8edbd1c7ebbeed",
     BufferedBounce => "c4d93628a16831a2b5254fb9ea94a75b48e5b8afd491c573f69f1c08bab1112f",
-    Sparks => "aa9ed3860c279c84efddd561f06271347b3918df77aca852cbf847faa57b8eea"
+    Sparks => "cef50cfc6247b855e01f996579ee57c9c2b6919c081ba4fff0e3da8ebb3bd2c5"
   }.freeze
 
   def test_a_plain_cartridge_is_byte_for_byte_what_it_was
@@ -52,7 +52,7 @@ class TestSNESSuperFXBoard < Minitest::Test
   def test_a_game_plays_on_the_super_fx_board_as_on_the_interpreter
     run = game_player.run(Sparks::GAME.program(console: :snes, variant: :superfx), frames: 60)
 
-    refute_empty run.pool(:spark, :y), "sparks are falling"
+    refute_empty run.pool(:sparks, :y), "sparks are falling"
   end
 
   # What the console sees in the chip's RAM after a tiny cartridge stores +byte+ at $70:0000, read

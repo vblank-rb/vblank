@@ -223,7 +223,7 @@ end
   methods run, and each field holds the pool's number for that thing: `s.y += s.vy` changes it. It
   answers `face`, `draw_with`, `move`, `can_move?`, `clamp_to_screen`, `overlaps?`, the edges and
   the screen-edge tests, and `index`. `Array.new` takes `capacity:` (needed) and `fast:`. In the
-  Struct's block, `drawn_as :spark` (or `facing:`/`frames:`/`rate:`) draws each as a sprite (refused
+  Struct's block, `drawn_as :spark` (or `facing:`/`frames:`/`rate:`, a mirrored picture written `VBlank.mirror(:fish_right)`) draws each as a sprite (refused
   without `x` and `y`) and `narrow :x, y: :byte` sets widths. A part's instance variable works the
   same (`@enemies = Array.new(capacity: 8)`, `@enemies << Enemy.new(...)` in the same class and
   file), named as its variable would be, `enemies_part_enemies`. Refused: no capacity, a size or a

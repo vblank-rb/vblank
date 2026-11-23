@@ -159,7 +159,7 @@ class TestDiveExampleCartridge < Minitest::Test
   # colours come from which group of colours the fish's table entry names, so this reads
   # the entries rather than the pixels.
   def test_the_console_gives_each_fish_its_own_colours
-    worn = console(frames: START_AT + 10, keys: holding_start).sprites(:fish).map(&:colors)
+    worn = console(frames: START_AT + 10, keys: holding_start).sprites(:fish_shoal).map(&:colors)
 
     assert_operator worn.length, :>=, SPECIES, "not every fish reached the console"
     assert_operator worn.uniq.length, :>=, SPECIES, "the console drew the fish all one colour"

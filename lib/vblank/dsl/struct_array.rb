@@ -59,7 +59,7 @@ module VBlank
         @builder = builder
         @kind = kind
         @local = declaration.local
-        drawing = PlainRuby::StructSettings.drawing_of(kind)
+        drawing = turned_pictures(PlainRuby::StructSettings.drawing_of(kind))
         fields = kind.members.to_h { |member| [member, fraction_field?(member, declaration) ? 0.0 : 0] }
         name = builder.plain_array_list_name(*name_and_owner(owner, declaration))
         widths = PlainRuby::StructSettings.widths_of(kind)
@@ -179,6 +179,18 @@ module VBlank
         label = :"@#{declaration.local}"
         [PlainRuby::InstanceVariables.variable_name(owner, label),
          Builder::ListOwner.new(owner: [:object, owner.object_id, label], at: at)]
+      end
+
+      # +setting+ with each picture named turned (`VBlank.mirror(:fish_right)`) turned by the build,
+      # in a Hash or a list at any depth.
+      def turned_pictures(setting)
+        case setting
+        when Hash then setting.transform_values { |value| turned_pictures(value) }
+        when Array then setting.map { |value| turned_pictures(value) }
+        when Graphics::TurnedPicture
+          setting.way == :mirrored ? @builder.mirror(setting.source) : @builder.upside_down(setting.source)
+        else setting
+        end
       end
 
       # The thing +instance+ is, as an object of the game's Struct.

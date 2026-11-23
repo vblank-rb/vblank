@@ -62,7 +62,7 @@
       "data": 5044
     },
     "dive": {
-      "code": 56888,
+      "code": 56900,
       "data": 0
     },
     "everywhere": {
@@ -310,11 +310,11 @@
       "data": 0
     },
     "sparks": {
-      "code": 3004,
+      "code": 2976,
       "data": 0
     },
     "sparks@snes": {
-      "code": 17880,
+      "code": 17878,
       "data": 611
     },
     "sprite_mover": {

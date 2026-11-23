@@ -12,8 +12,9 @@
 # keeps no pixels of its own: half the sprite memory of a diver drawn both ways, and half
 # the art.
 #
-# The bubbles are a pool: one line says "up to this many of a thing with these fields",
-# and `each` runs the same behaviour over whichever are alive. They are in the same layer
+# The bubbles are an Array of Structs, which the game keeps as a pool: one line says "up to
+# this many of a thing with these fields", and a walk runs the same behaviour over whichever
+# are alive. They are in the same layer
 # as the diver, so they are under the water too — which is right, because they have not
 # reached the surface yet.
 module Dive
@@ -31,6 +32,11 @@ module Dive
     BUBBLE_RISE = 2   # pixels a frame
     EVERY = 14        # frames between one bubble and the next
     FROM_BACK = 2     # where on the diver they come off
+
+    # One bubble, drawn where it is.
+    Bubble = Struct.new(:x, :y) do
+      drawn_as :bubble
+    end
 
     SUIT = <<~ART
       ................
@@ -59,8 +65,8 @@ module Dive
         build.sprite :diver, at: STARTS_AT,
                              facing: { right: :diver_right, left: build.mirror(:diver_right) }
       end
-      @bubbles = build.layer(:swimmers) do
-        build.pool :bubble, x: 0, y: 0, capacity: BUBBLES, image: :bubble
+      build.layer(:swimmers) do
+        @bubbles = Array.new(capacity: BUBBLES)
       end
       @since_last = build.var(:since_last, 0)
     end
@@ -83,29 +89,29 @@ module Dive
 
     def reset
       @diver.move_to(*STARTS_AT)
-      @bubbles.each(&:remove)
+      @bubbles.clear
     end
 
     private
 
     # A bubble every so often, from the diver's tank — and only while the tank is under
     # water, because a diver with their head in the air is breathing it rather than
-    # letting it go. The pool quietly ignores a spawn it has no room for, so there is no
-    # test here for being full.
+    # letting it go. With all of them up, a new one waits for room.
     def breathe_out(surface)
       @since_last += 1
       if @since_last >= EVERY && @diver.y > surface
         @since_last = 0
-        @bubbles.spawn x: @diver.x + FROM_BACK, y: @diver.y
+        @bubbles << Bubble.new(@diver.x + FROM_BACK, @diver.y) if @bubbles.size < BUBBLES
       end
     end
 
     # Up, and gone when they reach the top of the sea. Deep down the surface is somewhere
-    # overhead and this reads as the top of the screen, which is the same test.
+    # overhead and this reads as the top of the screen, which is the same test. One walk
+    # moves each and takes it out: the block's last line is the test `delete_if` asks.
     def rise(surface)
-      @bubbles.each do |bubble|
+      @bubbles.delete_if do |bubble|
         bubble.y -= BUBBLE_RISE
-        bubble.remove if bubble.y < surface
+        bubble.y < surface
       end
     end
 

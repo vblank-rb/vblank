@@ -10,6 +10,6 @@ class TestSparksOnSuperFX < Minitest::Test
   def test_the_sparks_fall_like_the_interpreter
     run = game_player.run(Sparks::GAME.program(console: :snes, variant: :superfx), frames: 60)
 
-    refute_empty run.pool(:spark, :y), "sparks are falling"
+    refute_empty run.pool(:sparks, :y), "sparks are falling"
   end
 end
