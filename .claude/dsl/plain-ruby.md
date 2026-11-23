@@ -202,8 +202,32 @@ instance variables.
   kept with `@point ||= Point.new` (`InstanceVariables.followed_field?`). A Struct made by game code
   that runs again keeps its fields Ruby's, since Ruby makes it new on those passes; a field of one
   read or written outside the test or routine that made it is refused
-  (`refuse_field_outside_making!`), and a change to such a field never changes the game variable it
-  was made from (`Writes.change` with `field:`). Any other field is plain Ruby.
+  (`refuse_field_outside_making!`), a `func` the loop making it calls included. Any other field is
+  plain Ruby. `point[:x]`, `point[0]`, `point[:x] = 1`, `to_a`, `values`, `values_at`, `dig`,
+  `to_h`, `each`, `each_pair`, `select`, and pattern matching (`deconstruct`,
+  `deconstruct_keys`) come through the same reader and writer, and so every Enumerable method
+  through `each`. `point.x, point.y = point.y, point.x` reads every field before it gives any,
+  as Ruby does (`Rewriter#reads_target?`), and marks each attribute it gives as changing.
+- **A field keeps a copy of a game number, as in Ruby**: `Point.new(score, 0)` or `point.x =
+  score` holds the number `score` had on that line, while setting up or in game code, followed
+  or not. A field given a game number that is not a place of its own (a name's or an instance
+  variable's variable, a working-out; not a `var` handle or a sprite's `x`) gets a variable of its
+  own at its first read through the Struct, set where the field was given the number
+  (`InstanceVariables.copy_field_number!`, `Builder#record_at`): a hidden one (`rom.profile` names it)
+  for a Ruby field, the field's named one for a followed field. Nothing is kept where nothing
+  was recorded between the two, so `sparks << Spark.new(x, y, 1)` costs nothing. A field changed
+  under a test the game makes is given its variable at the test (`Writes.promote_attribute`).
+  A `Data.define` class in a game file or block keeps the same copy for each field, beside the
+  object, since it cannot change (`copy_data_field_number!`): its readers, `to_h` and
+  `deconstruct_keys` hand it. A copy is made wherever anything was recorded between the two,
+  whether or not that could change the number.
+- **A name given a new Struct or Data object in game code, where game code read the one it held,
+  is refused** (`Writes.refuse_object_replaced!`): the build records the line once, so the read
+  found the old one, where Ruby's finds the one an earlier pass made. Keep one Struct and change
+  its fields. A `Data.define` class in a game file notes its reads for this (`followed_struct`),
+  so `point = point.with(x: point.x + 1)` is refused naming a Struct as the fix.
+- Two Structs of one class are numbered in the order they were made (`start_fields` counts
+  each), as parts are, so a save made before finds each under its name.
 - **A game block's instance variable that a `func` or scene sets, read in game code while it holds
   nil with a method nil does not answer called on it** (`@point.x`), is refused naming where to give
   it a first value (`Rewriter#nil_failing_reads`, `InstanceVariables.refuse_nil_set_in_routine!`):

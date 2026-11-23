@@ -14,6 +14,8 @@ module VBlank
         copy: ["keeps the number it got on this line, as Ruby does.",
                IR::Guardrails::Checks::IwramBudget::COPY_ADVICE],
         swap: ["keeps one number while the others are written.", nil],
+        field: ["keeps the number a Struct's field was given, as Ruby does.",
+                "Unneeded if the field is read before the numbers it was given from change."],
         picked: ["keeps the number the test picked.", nil],
         cell_number: ["keeps the cell number set_cell works out. Every such line of the routine uses this one.", nil],
         cell_block:["keeps a place or a size of this block of cells. It is worked out one time for all the block.",

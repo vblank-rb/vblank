@@ -42,6 +42,9 @@ AnswerCard = Struct.new(:x, :y, :index)
 # what a walk hands its block (move) and with `pool`'s own words (capacity, rate).
 AnswerBox = Struct.new(:left, :move, :capacity, :rate)
 
+# A point that cannot change: a new one is made with `with`.
+AnswerFixedPoint = Data.define(:x, :y)
+
 # A lamp game code switches, with no game_variables line.
 class AnswerLamp
   def initialize

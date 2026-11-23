@@ -727,6 +727,7 @@ module VBlank
             read_children(node, scopes, in_game_code)
           when Prism::MultiWriteNode
             note_unpacked_values(node, node.value)
+            note_changing_attribute_targets(node, node.value, in_game_code)
             read_children(node, scopes, in_game_code)
             note_unpacked_variables(node)
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
@@ -949,6 +950,19 @@ module VBlank
           return unless in_game_code || reads_attribute?(value, node.receiver.slice, name)
 
           @changing_attributes << name
+        end
+
+        # The same for each attribute `a, b = ...` gives a value (`point.x, point.y = point.y,
+        # point.x`), the right side +value+ read as one.
+        def note_changing_attribute_targets(targets, value, in_game_code)
+          [*targets.lefts, targets.rest, *targets.rights].compact.each do |target|
+            target = target.expression if target.is_a?(Prism::SplatNode)
+            next note_changing_attribute_targets(target, value, in_game_code) if target.is_a?(Prism::MultiTargetNode)
+            next unless target.is_a?(Prism::CallTargetNode) && target.name != :[]=
+
+            name = target.name.to_s.delete_suffix("=").to_sym
+            @changing_attributes << name if in_game_code || reads_attribute?(value, target.receiver.slice, name)
+          end
         end
 
         # Does +node+ read the attribute +name+ of the receiver written +receiver+?

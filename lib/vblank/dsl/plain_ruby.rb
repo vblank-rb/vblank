@@ -746,13 +746,16 @@ module VBlank
         end
 
         # `Struct.new(:count)`, whose named fields InstanceVariables follows as it follows named
-        # instance variables.
+        # instance variables, or `Data.define(:x)`, whose reads it notes (InstanceVariables.followed_struct).
         def struct_made?(node)
-          return false unless @follows_instance_variables && node.name == :new
+          return false unless @follows_instance_variables
 
+          made = { new: :Struct, define: :Data }[node.name]
           receiver = node.receiver
-          (receiver.is_a?(Prism::ConstantReadNode) && receiver.name == :Struct) ||
-            (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil? && receiver.name == :Struct)
+          return false unless made
+
+          (receiver.is_a?(Prism::ConstantReadNode) && receiver.name == made) ||
+            (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil? && receiver.name == made)
         end
 
         # In a method, `def self.setup` above all, it would run on whatever the method runs on, and
@@ -1407,10 +1410,16 @@ module VBlank
           end.join(", ")
         end
 
+        # Does +value+ read a place one of +targets+ is given first, so it must be read before
+        # any is given? An attribute written before (`point.x, point.y = point.y, point.x`) counts for a read of
+        # that attribute on any object, since the source cannot tell which objects are the same.
         def reads_target?(value, targets)
           names = targets.filter_map { |target| target.name if target.respond_to?(:name) }
           reads = [Prism::LocalVariableReadNode, Prism::InstanceVariableReadNode]
           return true if reads.any? { |kind| value.is_a?(kind) } && names.include?(value.name)
+
+          attributes = targets.grep(Prism::CallTargetNode).map { |target| target.name.to_s.delete_suffix("=").to_sym }
+          return true if value.is_a?(Prism::CallNode) && value.receiver && value.arguments.nil? && attributes.include?(value.name)
 
           value.compact_child_nodes.any? { |child| reads_target?(child, targets) }
         end

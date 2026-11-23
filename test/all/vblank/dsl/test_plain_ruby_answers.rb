@@ -456,6 +456,244 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A Struct made while setting up from a number game code changes holds a copy of it.
+  def test_a_struct_made_from_a_changing_number_keeps_a_copy
+    agrees("AnswerPoint.new(score, 0, 0), then score += 1 and point.x += 10", reads: %i[n m], passes: 3) do
+      score = 0
+      point = AnswerPoint.new(score, 0, 0)
+      n = m = 0
+      game_loop do
+        score += 1
+        point.x += 10
+        n = point.x
+        m = score
+      end
+    end
+  end
+
+  def test_two_structs_made_from_one_number_keep_a_copy_each
+    agrees("two AnswerPoints made from one number", reads: %i[n m], passes: 3) do
+      start = 0
+      a = AnswerPoint.new(start, 0, 0)
+      b = AnswerPoint.new(start, 0, 0)
+      n = m = 0
+      game_loop do
+        start += 0
+        a.x += 1
+        b.x += 5
+        n = a.x
+        m = b.x
+      end
+    end
+  end
+
+  # A Struct made in the loop from a game number holds the number it had there.
+  def test_a_struct_made_in_the_game_loop_from_a_number_changed_after
+    agrees("fresh = AnswerPoint.new(passes, 0, 0); passes += 5", reads: %i[n], passes: 3) do
+      n = passes = 0
+      game_loop do
+        passes += 1
+        fresh = AnswerPoint.new(passes, 0, 0)
+        passes += 5
+        n = fresh.x
+      end
+    end
+  end
+
+  def test_a_field_of_a_struct_made_in_the_game_loop_set_from_a_number_changed_after
+    agrees("fresh.x = passes; passes += 5", reads: %i[n], passes: 3) do
+      n = passes = 0
+      game_loop do
+        passes += 1
+        fresh = AnswerPoint.new(0, 0, 0)
+        fresh.x = passes
+        passes += 5
+        n = fresh.x
+      end
+    end
+  end
+
+  def test_a_field_of_a_struct_made_in_the_game_loop_set_from_a_kept_field
+    agrees("fresh.x = kept.x; fresh.x += 10; kept.x += 1", reads: %i[n m], passes: 3) do
+      kept = AnswerPoint.new(1, 0, 0)
+      n = m = 0
+      game_loop do
+        fresh = AnswerPoint.new(0, 0, 0)
+        fresh.x = kept.x
+        fresh.x += 10
+        kept.x += 1
+        n = kept.x
+        m = fresh.x
+      end
+    end
+  end
+
+  def test_a_field_of_a_struct_made_in_the_game_loop_set_under_a_game_test
+    agrees("fresh.x = passes if passes == 2", reads: %i[n], passes: 3) do
+      n = passes = 0
+      game_loop do
+        passes += 1
+        fresh = AnswerPoint.new(0, 0, 0)
+        fresh.x = passes if passes == 2
+        n = fresh.x
+      end
+    end
+  end
+
+  def test_a_struct_field_read_by_its_key_before_game_code_changes_it
+    agrees("n = point[:x], then point.x += 1", reads: %i[n], passes: 3) do
+      point = AnswerPoint.new(1, 0, 0)
+      n = 0
+      game_loop do
+        n = point[:x]
+        point.x += 1
+      end
+    end
+  end
+
+  # Ruby makes a new one on every pass, after the read: each pass after the first reads the one the
+  # pass before made, which the game cannot follow.
+  def test_a_struct_replaced_on_every_pass_after_it_is_read_is_refused
+    refused("n = point.x; point = AnswerPoint.new(100, 0, 0); point.x += 1", /new `AnswerPoint`.*change its fields/m) do
+      point = AnswerPoint.new(1, 0, 0)
+      n = 0
+      game_loop do
+        n = point.x
+        point = AnswerPoint.new(100, 0, 0)
+        point.x += 1
+      end
+    end
+  end
+
+  # Read only after the line that gives it a new one, each pass reads its own.
+  def test_a_struct_replaced_on_every_pass_before_it_is_read
+    agrees("point = AnswerPoint.new(100, 0, 0); point.x += 1; n = point.x", reads: %i[n], passes: 3) do
+      point = AnswerPoint.new(1, 0, 0)
+      n = 0
+      game_loop do
+        point = AnswerPoint.new(100, 0, 0)
+        point.x += 1
+        n = point.x
+      end
+    end
+  end
+
+  def test_a_struct_read_whole_with_to_a
+    agrees("point.x += 1; n = point.to_a.first", reads: %i[n], passes: 3) do
+      point = AnswerPoint.new(1, 0, 0)
+      n = 0
+      game_loop do
+        point.x += 1
+        n = point.to_a.first
+      end
+    end
+  end
+
+  # Ruby works out the right side whole before it gives any field a number.
+  def test_two_fields_swapped
+    agrees("point.x, point.y = point.y, point.x", reads: %i[n m], passes: 3) do
+      point = AnswerPoint.new(1, 2, 0)
+      n = m = 0
+      game_loop do
+        point.x, point.y = point.y, point.x
+        point.x += 10
+        n = point.x
+        m = point.y
+      end
+    end
+  end
+
+  def test_fields_of_two_structs_swapped
+    agrees("a.x, b.x = b.x, a.x", reads: %i[n m], passes: 3) do
+      a = AnswerPoint.new(1, 0, 0)
+      b = AnswerPoint.new(2, 0, 0)
+      n = m = 0
+      game_loop do
+        a.x, b.x = b.x, a.x
+        a.x += 10
+        n = a.x
+        m = b.x
+      end
+    end
+  end
+
+  # Every way Ruby reads a Struct's fields reads the number each field was given.
+  def test_a_struct_made_from_a_changing_number_read_every_way
+    agrees("pattern, dig, values_at, each, each_pair, sum, to_h", reads: %i[a b c d e f g], passes: 3) do
+      score = 0
+      points = Array.new(7) { AnswerPoint.new(score, 0, 0) } # one for each way, so none reads first for another
+      a = b = c = d = e = f = g = 0
+      game_loop do
+        score += 1
+        case points[0]
+        in { x: } then a = x
+        end
+        case points[1]
+        in [first, *] then b = first
+        end
+        c = points[2].dig(:x)
+        d = points[3].values_at(0).first
+        e = 0
+        points[4].each { |field| e += field }
+        f = 0
+        points[5].each_pair { |_, field| f += field }
+        g = points[6].sum
+      end
+    end
+  end
+
+  # A Data object keeps the number it was made from, as a Struct does.
+  def test_a_data_object_made_from_a_changing_number_keeps_a_copy
+    agrees("AnswerFixedPoint.new(x: score), then score += 1", reads: %i[n], passes: 3) do
+      score = 0
+      point = AnswerFixedPoint.new(x: score, y: 0)
+      n = 0
+      game_loop do
+        score += 1
+        n = point.x
+      end
+    end
+  end
+
+  def test_a_data_object_made_in_the_game_loop_from_a_number_changed_after
+    agrees("fresh = AnswerFixedPoint.new(x: score); score += 5", reads: %i[n], passes: 3) do
+      score = 0
+      n = 0
+      game_loop do
+        score += 1
+        fresh = AnswerFixedPoint.new(x: score, y: 0)
+        score += 5
+        n = fresh.x
+      end
+    end
+  end
+
+  # A Data object cannot change, so a new one each pass is its only way to count.
+  def test_a_data_object_made_again_with_with_is_refused
+    refused("point = point.with(x: point.x + 1)", /Data class.*Struct/m) do
+      point = AnswerFixedPoint.new(x: 1, y: 0)
+      n = 0
+      game_loop do
+        point = point.with(x: point.x + 1)
+        n = point.x
+      end
+    end
+  end
+
+  # Made on every pass and read in a routine the loop calls, which could be called from anywhere:
+  # refused, in words true of the loop that makes it.
+  def test_a_struct_made_in_the_game_loop_read_in_a_routine_is_refused
+    refused("point made each pass, read in a func", /makes again on each pass.*in the game loop/m) do
+      n = 0
+      point = nil
+      func(:answer_reads_fresh_point) { n = point.x }
+      game_loop do
+        point = AnswerPoint.new(7, 0, 0)
+        call :answer_reads_fresh_point
+      end
+    end
+  end
+
   def test_the_game_blocks_own_instance_variable
     agrees("@score += 2 in the game block", reads: %i[s], passes: 3) do
       @score = 0
@@ -833,6 +1071,20 @@ class TestPlainRubyAnswers < Minitest::Test
     end, frames: 1)
 
     assert_equal [0, 1], [player[:answer_lamp_lit], player[:answer_lamp_lit_2]]
+  end
+
+  # The same for two Structs: the second changed first still reads as the second.
+  def test_structs_of_one_class_are_named_in_the_order_they_were_made
+    player = game_player.run(built_program do
+      first = AnswerPoint.new(1, 0, 0)
+      second = AnswerPoint.new(5, 0, 0)
+      game_loop do
+        second.x += 1
+        first.x += 2
+      end
+    end, frames: 1)
+
+    assert_equal [3, 6], [player[:answer_point_x], player[:answer_point_x_2]]
   end
 
   def test_swap

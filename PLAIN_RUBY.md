@@ -148,6 +148,24 @@ end
 
 Such an Array read at an index the game works out, in the file whose class holds it, is a list the game keeps, as the next section tells. Such a Hash at a key the game works out is refused.
 
+A Struct's fields work the same way: `point.x += 1` in game code makes `x` of a Struct made above the game loop a number the game keeps, read any way Ruby reads a Struct (`point.x`, `point[:x]`, `to_a`, `each`, `dig`, a pattern). `point.x, point.y = point.y, point.x` swaps them. A field keeps its own copy of a number, as in Ruby: `Point.new(score, 0)` or `point.x = score` holds the number `score` had on that line, and a later change to `score` leaves the field alone. A `Data` object made from a number keeps it the same way.
+
+```ruby
+# A point made from the score, which keeps the score it was given
+Point = Struct.new(:x, :y)
+screen :bitmap
+score = 0
+point = Point.new(score, 50)
+game_loop do
+  score += 1
+  point.x += 2
+  clear_screen :black
+  draw_rect_at point.x, point.y, 2, 2, :white
+end
+```
+
+A line in game code that gives a name a new Struct, after game code read the one the name held, stops with a message: in Ruby, that read gets the one an earlier pass made. Keep one Struct and change its fields. A `Data` object cannot change, so the same line with `point.with(x: point.x + 1)` stops too: use a Struct.
+
 ## Arrays
 
 An Array that game code changes is a list the game keeps, named after its local, and Ruby's Array verbs work on it as Ruby says.
@@ -694,7 +712,7 @@ end
 - `/` on a negative game number rounds toward zero (`-7 / 2` is -3), where Ruby while building gives -4.
 - `puts` and other harmless Ruby in a game block run once, while building.
 - VBlank builds each `func` and scene after the game loop. An instance variable that only a `func` or a scene gives a value, used in the loop as `@point.x`, stops with a message: give it its first value above the game loop.
-- A Struct made in a `game_loop`, a scene or a `func` under an `if`, and used after that `if` or in another routine, stops with a message, since Ruby can keep the one an earlier pass made. Make it above the game loop, or keep it with `@point ||= Point.new(...)`.
+- A Struct made in a `game_loop`, a scene or a `func` under an `if`, and used after that `if` or in another routine (a `func` the loop calls, too), stops with a message, since Ruby can keep the one an earlier pass made. Make it above the game loop, or keep it with `@point ||= Point.new(...)`.
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 
 ## When plain Ruby is not enough

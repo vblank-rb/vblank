@@ -730,9 +730,15 @@ module VBlank
         # written again to come through #read_field and #write_field, which follow a field the class
         # names (`game_variables :count` in the block of `Struct.new`, or in a class made from one)
         # as a named instance variable is, and leave every other field to Ruby. A field is kept as
-        # `:@count`, the label its instance variable would have, so one list of names serves. Written
-        # as source, since a method made from a block cannot be called from another Ractor.
+        # `:@count`, the label its instance variable would have, so one list of names serves. `[]`
+        # and `[]=` by a field's name or place, `to_a` and `to_h` come the same way. Written as
+        # source, since a method made from a block cannot be called from another Ractor.
+        #
+        # `Data.define(:x, :y)` makes a class whose readers note each read game code makes
+        # (Uses#note_object_read), so a line giving a name a new one where game code read the old
+        # one is refused (Writes.refuse_object_replaced!).
         def followed_struct(made)
+          return followed_data(made) if made.is_a?(Class) && made < Data
           return made unless made.is_a?(Class) && made < Struct
 
           accessors = Module.new
@@ -741,7 +747,59 @@ module VBlank
           accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
             def initialize(...)
               super
-              ::VBlank::DSL::PlainRuby::InstanceVariables.start_named_fields(self)
+              ::VBlank::DSL::PlainRuby::InstanceVariables.start_fields(self)
+            end
+
+            def [](key) = ::VBlank::DSL::PlainRuby::InstanceVariables.read_field(self, ::VBlank::DSL::PlainRuby::InstanceVariables.field_at(self, key))
+
+            def []=(key, given)
+              ::VBlank::DSL::PlainRuby::InstanceVariables.write_field(self, ::VBlank::DSL::PlainRuby::InstanceVariables.field_at(self, key), given)
+            end
+
+            def to_a = members.map { |member| self[member] }
+            alias deconstruct to_a
+            alias values to_a
+            def to_h(&) = members.to_h { |member| [member, self[member]] }.to_h(&)
+            def values_at(*places) = to_a.values_at(*places)
+
+            def each(&)
+              return to_enum(:each) unless block_given?
+
+              to_a.each(&)
+              self
+            end
+
+            def each_pair
+              return to_enum(:each_pair) unless block_given?
+
+              members.each { |member| yield member, self[member] }
+              self
+            end
+
+            def select(&)
+              return to_enum(:select) unless block_given?
+
+              to_a.select(&)
+            end
+            alias filter select
+
+            def dig(key, *keys)
+              return super unless key.is_a?(Integer) || members.include?(key.to_s.to_sym)
+
+              found = self[key]
+              keys.empty? || found.nil? ? found : found.dig(*keys)
+            end
+
+            # Ruby's own answer, from the fields as #[] reads them.
+            def deconstruct_keys(keys)
+              return to_h if keys.nil?
+              return {} if keys.length > members.length
+
+              keys.each_with_object({}) do |key, found|
+                break found unless members.include?(key)
+
+                found[key] = self[key]
+              end
             end
           RUBY
           made.members.each do |field|
@@ -754,6 +812,62 @@ module VBlank
           end
           made.prepend(accessors)
           made
+        end
+
+        # A Data class's readers, `to_h` and `deconstruct_keys` hand the copy of a game number a
+        # field keeps (#copy_data_field_number!), as a Struct's do.
+        def followed_data(made)
+          readers = Module.new
+          readers.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+            def initialize(...)
+              super
+              ::VBlank::DSL::PlainRuby::InstanceVariables.start_data_fields(self)
+            end
+
+            def to_h(&)
+              copies = super().to_h do |member, held|
+                [member, ::VBlank::DSL::PlainRuby::InstanceVariables.copy_data_field_number!(self, member, held)]
+              end
+              copies.to_h(&)
+            end
+            def deconstruct_keys(keys) = to_h.slice(*(keys || members))
+          RUBY
+          made.members.each do |field|
+            readers.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+              def #{field} = ::VBlank::DSL::PlainRuby::InstanceVariables.copy_data_field_number!(self, :#{field}, super)
+            RUBY
+          end
+          made.prepend(readers)
+          made
+        end
+
+        # What +field+ of +holder+, a Struct, holds as it is, with no copy made: Ruby's own reader,
+        # which a followed Struct's `[]` stands in front of (#followed_struct). Looked up on each
+        # call, since a method kept in a constant cannot be shared with another Ractor.
+        def field_as_held(holder, field) = Struct.instance_method(:[]).bind_call(holder, field)
+
+        # ...and Ruby's own writer.
+        def hold_in_field(holder, field, value) = Struct.instance_method(:[]=).bind_call(holder, field, value)
+
+        # The member of +holder+, a Struct, that `[]` names by +key+: a Symbol or a String names
+        # it, a whole number counts its place. Any other key is handed on as it is, for Ruby's
+        # own error, except a game number, which the build cannot pick a field by.
+        def field_at(holder, key)
+          case key
+          when Integer then holder.members[key] || key
+          when String then key.to_sym
+          when Value
+            Steps.refuse_game_code!("This line picks a field of a `#{holder.class.name || 'Struct'}` by a number " \
+                                    "the game works out. VBlank picks a field while it builds the game. To fix " \
+                                    "this, name the field, like `#{holder.members.first}`.")
+          else key
+          end
+        end
+
+        # Game code read a field of +holder+, a Struct or a Data object (Writes.refuse_object_replaced!).
+        def note_object_read(holder)
+          builder = Builder.in_use
+          builder.instance_variable_uses.note_object_read(holder) if builder&.recording_game_code?
         end
 
         # Is +field+ of +holder+, a Struct, one its class names?
@@ -781,18 +895,106 @@ module VBlank
 
         def read_field(holder, field)
           refuse_field_outside_making!(holder, field)
-          return holder[field] unless followed_field?(holder, field)
+          note_object_read(holder)
+          current = copy_field_number!(holder, field)
+          return current unless followed_field?(holder, field)
 
-          read_value(holder, holder[field], :"@#{field}") { |variable| holder[field] = variable }
+          read_value(holder, current, :"@#{field}") { |variable| hold_in_field(holder, field, variable) }
         end
 
         def write_field(holder, field, given)
           refuse_field_outside_making!(holder, field)
-          return holder[field] = given unless followed_field?(holder, field)
+          unless followed_field?(holder, field)
+            note_field_given(holder, field) if given.is_a?(Value)
+            return hold_in_field(holder, field, given)
+          end
 
           label = :"@#{field}"
           current = field_before_write(holder, field)
-          holder[field] = Writes.write(current, given, [], label, moves: true, owner: holder) { |value| value }
+          hold_in_field(holder, field, Writes.write(current, given, [], label, moves: true, owner: holder) { |value| value })
+        end
+
+        # What +field+ of +holder+, a Struct, holds as game code reads or writes it. A Ruby Struct
+        # holds a number, never a place: `AnswerPoint.new(score, 0)` or `point.x = score` keeps the
+        # number `score` had on that line, and a later change to `score` leaves the field alone. So
+        # a field given a game number that is not a place of its own (a name's variable, an
+        # instance variable's, a working-out) is given a variable of its own here, set to that
+        # number where the field was given it (#note_field_given), however much game code was
+        # recorded since. A `var` handle or a sprite's `x` is a place, kept as it is, as an Array
+        # keeps one (Arrays.named_place?). Where nothing was recorded since the field was given
+        # it, the number is still the same, and nothing is needed: so a Struct put straight into
+        # an Array costs nothing.
+        #
+        # It records the copy where the field was given its number and puts it in the field.
+        def copy_field_number!(holder, field)
+          current = field_as_held(holder, field)
+          copied = recorded_field_copy(holder, field, current)
+          copied.equal?(current) ? current : hold_in_field(holder, field, copied)
+        end
+
+        # The same for +field+ of +holder+, a Data object, which held +current+ as it was made. A
+        # Data object cannot change, so the copy is kept beside it (Uses#data_field_copy).
+        def copy_data_field_number!(holder, field, current)
+          builder = Builder.in_use
+          return current unless builder
+
+          note_object_read(holder)
+          uses = builder.instance_variable_uses
+          kept = uses.data_field_copy(holder, field)
+          return kept if kept
+
+          copied = recorded_field_copy(holder, field, current)
+          uses.keep_data_field_copy(holder, field, copied) unless copied.equal?(current)
+          copied
+        end
+
+        # +current+, or the variable of its own that +field+ of +holder+ needs (#copy_field_number!),
+        # recorded where the field was given +current+.
+        def recorded_field_copy(holder, field, current)
+          builder = Builder.in_use
+          return current unless builder && copied_into_field?(holder, field, current)
+
+          mark = builder.instance_variable_uses.field_given_at(holder, field)
+          return current if mark && !builder.recorded_since?(mark)
+
+          mark ? builder.record_at(mark) { own_field_variable(holder, field, current) } : own_field_variable(holder, field, current)
+        end
+
+        # +holder+, a Data object, is just made: each field noted as given its number here.
+        def start_data_fields(holder)
+          return unless Builder.in_use
+
+          holder.to_h.each { |field, value| note_field_given(holder, field) if value.is_a?(Value) }
+        end
+
+        # Does +value+, given to +field+ of +holder+, stand for a number the field keeps a copy of
+        # (#copy_field_number!)?
+        def copied_into_field?(holder, field, value)
+          return false unless value.is_a?(Value)
+          return false if Writes.own_variable?(value, holder, :"@#{field}")
+
+          !Steps.variable?(value) || value.number_in_ruby?
+        end
+
+        # A variable of +field+'s own, set to +value+ where the builder records: named as the
+        # field's game variable is where game code follows the field (#followed_field?), else a
+        # hidden one.
+        def own_field_variable(holder, field, value)
+          label = :"@#{field}"
+          own = if followed_field?(holder, field)
+                  variable_starting_like(holder, label, value)
+                else
+                  Builder.in_use.hidden_variable(:field, like: value)
+                end
+          Writes.store_in_variable(own, value)
+          Writes.keep_as_own(own, holder, label)
+        end
+
+        # +field+ of +holder+ is given what it holds now, on the line the builder records: where a
+        # copy of it is set, if game code needs one (#copy_field_number!).
+        def note_field_given(holder, field)
+          builder = Builder.in_use
+          builder&.instance_variable_uses&.note_field_given(holder, field, builder.statement_mark)
         end
 
         # A Struct made by game code that runs again keeps Ruby's numbers, which are right only on
@@ -807,35 +1009,42 @@ module VBlank
           return if made_in.nil? || builder.recording_inside?(made_in)
 
           name = holder.class.name || "Struct"
-          raise Refused, "This line uses `#{field}` of a `#{name}` that game code made, but the code that made it " \
-                         "does not run on every pass that runs this line: it is under an `if`, or in another " \
-                         "`func` or scene. In Ruby the `#{name}` can come from an earlier pass, and VBlank cannot " \
-                         "follow it. To fix this, make the `#{name}` above the game loop, or keep it in an instance " \
-                         "variable, like `@point ||= #{name}.new(...)`.#{Messages::AuthorSource.at_author_line}"
+          raise Refused, "This line uses `#{field}` of an object of `#{name}` that game code makes again on each " \
+                         "pass. The code that makes it is in another place than this line: under an `if` that ends " \
+                         "before this line, or in the game loop, another `func` or a scene. So in Ruby this line can " \
+                         "use the object from an earlier pass, and VBlank cannot follow which one. To fix this, make the `#{name}` above " \
+                         "the game loop, or keep it in an instance variable, like `@point ||= #{name}.new(...)`." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # What Writes.attribute finds in a named field about to be written: as #value_before_write.
         def field_before_write(holder, field)
-          value_before_write(holder, holder[field], :"@#{field}") { |variable| holder[field] = variable }
+          value_before_write(holder, copy_field_number!(holder, field), :"@#{field}") { |variable| hold_in_field(holder, field, variable) }
         end
 
-        # Each named field of +holder+, just made, given its game variable (#first_variable).
-        def start_named_fields(holder)
+        # +holder+, a Struct, is just made: counted as the next of its class, which names its
+        # variables in the order they were made (Uses#made_name), each field noted as given its
+        # number here (#note_field_given), and each named one given its game variable
+        # (#first_variable).
+        def start_fields(holder)
           builder = Builder.in_use
-          if builder&.recording_game_code?
-            builder.instance_variable_uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil)
-          end
+          return unless builder
+
+          uses = builder.instance_variable_uses
+          uses.note_object_made(holder)
+          uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil) if builder.recording_game_code?
           holder.members.each do |field|
+            note_field_given(holder, field) if field_as_held(holder, field).is_a?(Value)
             next unless named_field?(holder, field)
 
-            current = holder[field]
+            current = field_as_held(holder, field)
             made = first_variable(holder, nil, current, :"@#{field}")
             # Made from a game variable or a working-out: a variable of its own, holding that number.
-            if made.nil? && Builder.in_use && (current.is_a?(Value) || current.is_a?(Condition))
+            if made.nil? && (current.is_a?(Value) || current.is_a?(Condition))
               made = variable_starting_like(holder, :"@#{field}", current)
               Writes.store_in_variable(made, current)
             end
-            holder[field] = made if made
+            hold_in_field(holder, field, made) if made
           end
         end
 
@@ -968,6 +1177,9 @@ module VBlank
             @made_count = Hash.new(0)
             @made_every_pass = {}.compare_by_identity
             @made_in_game_code = {}.compare_by_identity
+            @fields_given = {}.compare_by_identity
+            @objects_read = {}.compare_by_identity
+            @data_field_copies = {}.compare_by_identity
             @kept_sites = {}.compare_by_identity
             @unsaved_by_class = {}
             @chosen_by_class = {}
@@ -1181,6 +1393,21 @@ module VBlank
           end
 
           def made_in_game_code?(holder) = @made_in_game_code.key?(holder)
+
+          # +field+ of +holder+, a Struct, was given what it holds at +mark+ (InstanceVariables.copy_field_number!).
+          def note_field_given(holder, field, mark) = (@fields_given[holder] ||= {})[field] = mark
+
+          def field_given_at(holder, field) = @fields_given[holder]&.[](field)
+
+          # Game code read a field of +holder+, a Struct or a Data object.
+          def note_object_read(holder) = @objects_read[holder] = true
+
+          def object_read?(holder) = @objects_read.key?(holder)
+
+          # The variable of its own +field+ of +holder+, a Data object, keeps (InstanceVariables.copy_data_field_number!).
+          def data_field_copy(holder, field) = @data_field_copies[holder]&.[](field)
+
+          def keep_data_field_copy(holder, field, copy) = (@data_field_copies[holder] ||= {})[field] = copy
 
           # One line of game code that keeps a part with `||=`: what it makes, as written, and where.
           KeptSite = Data.define(:made, :at)

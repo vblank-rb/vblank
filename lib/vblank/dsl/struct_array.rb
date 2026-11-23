@@ -85,7 +85,7 @@ module VBlank
       def <<(thing)
         refuse_other_thing!(thing)
         values = @kind.members.to_h do |member|
-          value = thing[member]
+          value = PlainRuby::InstanceVariables.copy_field_number!(thing, member)
           refuse_field_with_no_value!(member) if value.nil?
           [member, value]
         end
@@ -626,6 +626,15 @@ module VBlank
         attr_writer :own_slot # :nodoc:
 
         def own_slot? = @own_slot || false # :nodoc:
+
+        # A field of this thing: the pool's place for it, as it is. A game's Struct copies a game
+        # number into a field (PlainRuby::InstanceVariables.copy_field_number!), and a thing's field is a
+        # place already.
+        def [](key) = PlainRuby::InstanceVariables.field_as_held(self, key) # :nodoc:
+
+        def []=(key, value) # :nodoc:
+          PlainRuby::InstanceVariables.hold_in_field(self, key, value)
+        end
 
         # For a thing `min` or `max` handed back: the hidden yes or no of whether the Array held
         # any thing then. As a test the thing is that, as Ruby's nil answer for an empty Array is

@@ -43,6 +43,7 @@ module VBlank
           # thing after its walk moves on.
           return value.struct_array.kept(value, current) if value.is_a?(StructArray::Thing)
 
+          refuse_object_replaced!(label, current, value)
           share_argument(value, owner, label) if shares && owner
           if owner
             InstanceVariables.refuse_nil_written_under_game_test!(owner, current, label, tests)
@@ -112,11 +113,15 @@ module VBlank
         # +owner+ is #write's.
         def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil,
                    starting: false, field: nil)
-          # A field of a Struct that stays Ruby's holds a number of its own in Ruby, even where the
-          # game variable it was made from is in it (`Point.new(score, 0)`): the change gives it
-          # one, and leaves that variable alone. Such a Struct is made by game code where this line
-          # runs (InstanceVariables.refuse_field_outside_making!), so a test around it is its own.
-          return yield(current.public_send(operator, amount)) if field && InstanceVariables.ruby_field?(*field)
+          # A field of a Struct that stays Ruby's holds a plain number, which the change works out
+          # as Ruby does, or a variable of its own (InstanceVariables.copy_field_number!), which it changes.
+          # A test opened since the Struct was made has given the field its variable
+          # (#promote_attribute), so a plain number here is under the tests it was made under.
+          if field && InstanceVariables.ruby_field?(*field)
+            return change_variable(current, operator, amount) if own_variable?(current, field.first, :"@#{field.last}")
+
+            return yield(current.public_send(operator, amount))
+          end
 
           current = InstanceVariables.change_target(owner, current, label, starting: starting) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
@@ -160,10 +165,9 @@ module VBlank
         def attribute(receiver, name)
           # A field of a Struct the game follows, read without counting as a read the game makes.
           return InstanceVariables.field_before_write(receiver, name) if InstanceVariables.followed_field?(receiver, name)
-          # Any other field of a Struct is Ruby's, and a game variable in it was handed in
-          # (`Point.new(score, 0)`): the write gives the field a number of its own, as Ruby does,
-          # and leaves that variable alone.
-          return if receiver.is_a?(Struct)
+          # Any other field of a Struct is Ruby's: a plain number, or a variable of its own holding
+          # the number it was given (InstanceVariables.copy_field_number!), which the write sets.
+          return InstanceVariables.copy_field_number!(receiver, name) if receiver.is_a?(Struct) && receiver.members.include?(name)
 
           current = receiver.public_send(name) if receiver.respond_to?(name)
           Steps.variable?(current) || !receiver.class.name.to_s.start_with?("VBlank::") ? current : nil
@@ -208,7 +212,10 @@ module VBlank
 
           # A named field of a Struct is followed as an instance variable is.
           field = InstanceVariables.named_field?(receiver, name) ? { owner: receiver, label: :"@#{name}" } : {}
-          receiver.public_send(:"#{name}=", promote_place(current, test, *outer, **field))
+          promoted = promote_place(current, test, *outer, **field)
+          # Any other field's variable is its own too (InstanceVariables.copy_field_number!).
+          promoted = keep_as_own(promoted, receiver, :"@#{name}") if field.empty? && receiver.is_a?(Struct) && Steps.variable?(promoted) && !promoted.equal?(current)
+          receiver.public_send(:"#{name}=", promoted)
         end
 
         # Put +value+ in a game variable. A yes or no is kept as 1 or 0, and a test's answer is
@@ -310,6 +317,32 @@ module VBlank
         # Is +variable+ a hidden one made for +name+ (#promote, Steps.kept_answer), or one made for
         # no name in particular (a pick, a join)?
         def owned_by?(variable, name) = name.nil? || variable.owner_name.nil? || variable.owner_name == name
+
+        # A line of game code gives the name +label+, which holds +current+, a Struct or a Data object
+        # game code read, another one (+value+). The build records each line once, so a read above
+        # this line found +current+, where in Ruby, on every pass after the first, it finds what
+        # this line gave the name on the pass before. The game cannot follow that. A Data object
+        # cannot change, so this is the only way to change its numbers, and the fix is a Struct.
+        def refuse_object_replaced!(label, current, value)
+          return unless fields_object?(current) && fields_object?(value) && !value.equal?(current)
+
+          builder = Builder.in_use
+          return unless builder&.recording_game_code? && builder.instance_variable_uses.object_read?(current)
+
+          kind = current.class.name || current.class.superclass.name
+          fix = if current.is_a?(Data)
+                  "`#{kind}` is a Data class, so its objects cannot change. To fix this, make `#{kind}` a Struct, " \
+                    "keep one, and change its fields, like `#{label}.#{current.members.first} += 1`."
+                else
+                  "To fix this, keep one `#{kind}` and change its fields, like `#{label}.#{current.members.first} = 1`."
+                end
+          raise Refused, "This line gives `#{label}` a new `#{kind}`, and game code read the `#{kind}` that " \
+                         "`#{label}` held before. In Ruby, that read gets the `#{kind}` an earlier pass gave " \
+                         "`#{label}`. VBlank cannot follow that. #{fix}#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # Is +value+ an object with fields, a Struct or a Data object of the game's?
+        def fields_object?(value) = (value.is_a?(Struct) || value.is_a?(Data)) && !value.is_a?(StructArray::Thing)
 
         # Is +current+ a variable made for +owner+'s +label+ (#keep_as_own)? +owner+ is nil in
         # VBlank's own files, where any variable made for a place counts.

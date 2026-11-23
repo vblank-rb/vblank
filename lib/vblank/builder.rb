@@ -1259,6 +1259,21 @@ module VBlank
       children.slice!((start + 1)..)
     end
 
+    # Records what the block records at +mark+, an earlier place, rather than where the builder
+    # records now: just after the statement +mark+ names, in its container, however much was
+    # recorded there since. Returns what the block returns.
+    def record_at(mark) # :nodoc:
+      now = statement_mark
+      answer = yield
+      made = take_statements_since(now)
+      children = mark.container.children
+      start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+      raise IR::InvariantError, "statements were put back at a place that is no longer recorded" unless start
+
+      children.insert(start + 1, *made)
+      answer
+    end
+
     # A `repeat` with a stop test, likewise opened and closed rather than given a block.
     #
     # +test_statements+ are what working the test out recorded: a read's check of its place, the
