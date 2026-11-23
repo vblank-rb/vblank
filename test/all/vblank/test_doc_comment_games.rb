@@ -280,7 +280,7 @@ class TestDocCommentGames < Minitest::Test
     end
 
     assert_empty problems, problems.join("\n")
-    assert_operator all_examples.count { |example| !example.fence.empty? }, :>=, 20
+    assert_operator all_examples.count { |example| !example.fence.empty? }, :>=, 23
   end
 
   def test_every_marked_picture_shows_what_its_marker_promises

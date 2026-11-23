@@ -9,6 +9,35 @@ module VBlank
       # alternates and is not random, so the same hit shakes the same way every time. Afterwards the
       # picture is put back exactly where it was.
       #
+      # ```ruby picture=loop frames=60
+      # VBlank.game "SHAKE", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image :crate, "#" => :orange,
+      #                 "+" => :yellow do
+      #     side = "#" * 16 + "\n"
+      #     face = "##" + "+" * 12 + "##\n"
+      #     side * 2 + face * 12 + side * 2
+      #   end
+      #   image :ground, "=" => rgb(8, 12, 8) do
+      #     ("=" * 32 + "\n") * 8
+      #   end
+      #   sprite :ground, at: [88, 88]
+      #   sprite :ground, at: [120, 88]
+      #   sprite :crate, at: [104, 72]
+      #   sprite :crate, at: [120, 72]
+      #   sprite :crate, at: [112, 56]
+      #   frame = 0
+      #   game_loop do
+      #     frame = (frame + 1) % 60
+      #     # a hard knock once a second, and
+      #     # still between knocks
+      #     if frame == 25
+      #       shake_screen intensity: 3, frames: 10
+      #     end
+      #   end
+      # end
+      # ```
+      #
       # ```ruby
       # shake_screen intensity: 3, frames: 8
       # ```

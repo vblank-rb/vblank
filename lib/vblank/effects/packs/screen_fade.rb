@@ -11,6 +11,28 @@ module VBlank
       # begins, and the framework walks the amount for you on every frame from there. The picture is
       # not redrawn and nothing is lost: it is all still there under the colour.
       #
+      # ```ruby picture=loop frames=90
+      # VBlank.game "FADE", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image :lamp, "#" => rgb(31, 20, 4),
+      #                "o" => :yellow do
+      #     full = "#" * 32 + "\n"
+      #     band = "#" * 8 + "o" * 16 + "#" * 8
+      #     full * 8 + (band + "\n") * 16 +
+      #       full * 8
+      #   end
+      #   sprite :lamp, at: [104, 64]
+      #   frame = 0
+      #   game_loop do
+      #     frame = (frame + 1) % 90
+      #     # dark over half a second, a pause,
+      #     # then back over half a second
+      #     fade_out frames: 30 if frame == 1
+      #     fade_in frames: 30 if frame == 46
+      #   end
+      # end
+      # ```
+      #
       # ```ruby
       # fade_out                  # to black, over half a second
       # state = GAME_OVER if fade_level == 100
