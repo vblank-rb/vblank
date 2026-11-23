@@ -492,11 +492,14 @@ module VBlank
       # column costs about ten glyph blits of ROM — fine for a HUD; a run-time
       # glyph-by-index draw op would collapse each column to a single blit. With
       # +leading_zeros+ every column draws, as the ones column does.
+      #
+      # What a line keeps lives only while that line draws, so the lines of one routine share
+      # where they keep it (Builder#step_variable), and a routine of a hundred numbers keeps three
+      # words, not three hundred.
       def draw_live_number(value, x, y, color, digits, font, leading_zeros)
-        source = next_number_var
-        store!(source, value)
-        digit = next_number_var
-        started = next_number_var
+        source = number_source(value)
+        digit = step_variable(:number_digit).name
+        started = step_variable(:number_started).name unless leading_zeros
         store!(started, 0) unless leading_zeros
 
         cell = IR::FontTable.of(@program).get(font).cell_w
@@ -538,7 +541,22 @@ module VBlank
         place == 1 ? ref : Build.binop(:/, ref, Build.int(place))
       end
 
-      # A fresh hidden variable name for one draw_number call's working state.
+      # The variable a live number's digits are read from: the number, copied once as the line
+      # starts, into a variable the routine's lines share.
+      #
+      # A copy even of a variable, because every column reads it. On the Advance a timer's handler
+      # can stop the line between two columns and change the variable, and a clock going from 10
+      # to 9 there would show 19.
+      #
+      # A fraction keeps a copy of its own, since the variable it is copied into holds a fraction
+      # from then on.
+      def number_source(value)
+        source = value.is_a?(DSL::Value) && value.fraction? ? next_number_var : step_variable(:number_source).name
+        store!(source, value)
+        source
+      end
+
+      # A fresh hidden variable name for one draw_number call's fraction.
       # Named per call site, reused every frame.
       def next_number_var
         @number_seq += 1

@@ -382,8 +382,7 @@ module VBlank
       # is a test and a copy for each, and written at every column of every number that is most
       # of a cartridge's code.
       def draw_live_number_in_pictures(value, x, y, font, cell, numerals, blank, digits, leading_zeros)
-        source = next_number_var
-        store!(source, value)
+        source = number_source(value)
         # A tear-free screen draws a picture only at a column it can prove even. Columns known
         # to be even are handed over halved and doubled in the routine, which proves it.
         halved = x.even? && cell.even?
