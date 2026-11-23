@@ -355,6 +355,15 @@ module VBlank
           kept
         end
 
+        # `left <=> right`, Ruby's, unless either side is a number the game works out, which has no
+        # -1, 0 or 1 while building: refused then, saying what to write.
+        def compare(left, right)
+          return left <=> right unless [left, right].any? { |side| side.is_a?(Value) }
+
+          refuse_game_code!("`<=>` compares two numbers while the game is built, and a number here is worked out as " \
+                            "the game plays. To fix this, compare with `<`, `>` or `==`, or use `max` or `min`.")
+        end
+
         def refuse_game_code!(message)
           raise Refused, "#{message}#{Messages::AuthorSource.at_author_line}"
         end

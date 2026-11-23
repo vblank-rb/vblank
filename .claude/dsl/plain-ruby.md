@@ -203,6 +203,14 @@ end
   one that is the answer of a branch (`queue.empty? ? 0 : queue.shift`) or a method. That keeps the
   item in a hidden variable, a word of memory (`rom.profile` lists the line); `queue.shift` alone keeps
   nothing.
+- **Ruby's questions about items holding game numbers** (`[a, b].max`, `min`, `minmax`, `count`,
+  `any?`, `all?`, `none?`, `include?`, on an Array, Range or Hash of Ruby's that holds a game number
+  or whose block makes a game test) are worked out as the game plays (PlainRuby::ItemQuestions: a
+  compare and pick per item, or a hidden count). Those that pick items by a game test (`find`,
+  `select`, `reject`, `partition`, `max_by`...) are refused, and `<=>` on a game number is refused
+  whoever asks it (`sort`, `max_by`, `clamp`, a gem, `<=>` written out), except Range.new: a Range
+  of game numbers still builds, written as `Range.new` by the rewrite where an end is not a number
+  written out.
 - **The list's name** is its local's (`trail`, `trail_2` for a second local of that name in one block
   or file), and in a file loaded with `VBlank.require_game_file`, the file's name first
   (`walker_trail` in `walker.rb`). A profile, a save and a test read it by that name. A `list` line

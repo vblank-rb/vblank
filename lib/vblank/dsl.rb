@@ -20,6 +20,7 @@ require_relative "dsl/plain_ruby_promotion" # Which names in that block become g
 require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
+require_relative "dsl/plain_ruby_item_questions" # Ruby's questions about items, such as max, in that block
 require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is
 require_relative "dsl/plain_ruby_struct_settings" # What a Struct's block says about an Array of it
 require_relative "dsl/plain_ruby_struct_methods"  # A Struct's methods, read as game code wherever written

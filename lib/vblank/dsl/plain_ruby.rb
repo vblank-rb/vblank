@@ -342,6 +342,7 @@ module VBlank
           when Prism::ParenthesesNode, Prism::BeginNode then grouped_text(node)
           when Prism::StatementsNode then statements_text(node)
           when Prism::ClassNode, Prism::ModuleNode then module_text(node)
+          when Prism::RangeNode then range_text(node)
           when Prism::ConstantWriteNode then own_class_write_text(node)
           when Prism::ConstantReadNode then own_class_read?(node) ? own_class_local(node.name) : copied_text(node)
           else copied_text(node)
@@ -357,6 +358,19 @@ module VBlank
           inner = node.compact_child_nodes.reject { |child| child.is_a?(Prism::DefNode) }
           own.to_set.merge(inner.flat_map { |child| own_classes_in(child).to_a })
         end
+
+        # `low..high` with an end that may be a game number, as `Range.new(low, high)`: making a
+        # Range asks its ends `<=>`, which a game number answers only for Range.new (Value#<=>).
+        # Ends written out as numbers, or left out, stay as written.
+        def range_text(node)
+          ends = [node.left, node.right]
+          return copied_text(node) if ends.all? { |side| side.nil? || RANGE_ENDS_WRITTEN_OUT.any? { |kind| side.is_a?(kind) } }
+
+          sides = ends.map { |side| side ? argument(side) : "nil" }
+          "::Range.new(#{sides.join(', ')}, #{node.exclude_end?})"
+        end
+
+        RANGE_ENDS_WRITTEN_OUT = [Prism::IntegerNode, Prism::FloatNode, Prism::NilNode].freeze
 
         def own_class_local(name) = "__plain_ruby_class_#{name}"
 
@@ -518,6 +532,10 @@ module VBlank
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
           return game_variables_text(node) if game_variables_call?(node)
           return "#{ARRAYS}.ruby_array#{copied_text(node, from: node.message_loc.end_offset)}" if ruby_array_with_room?(node)
+          return item_question_text(node) if item_question?(node)
+          if node.name == :<=> && node.receiver && node.arguments
+            return "#{STEPS}.compare(#{argument(node.receiver)}, #{rewritten_text(node.arguments)})"
+          end
           return "#{INSTANCE_VARIABLES}.followed_struct(#{copied_text(node)})" if struct_made?(node)
           if @follows_instance_variables && @whole_statements.key?(node)
             return attribute_methods_text(node) if attribute_call?(node)
@@ -540,6 +558,21 @@ module VBlank
         # `game_variables :busy`, which no object answers: InstanceVariables keeps the names.
         def game_variables_call?(node)
           @follows_instance_variables && node.name == :game_variables && node.receiver.nil? && node.block.nil?
+        end
+
+        # `[a, b].max`, `scores.count { |n| n > 5 }`: a question about the items of whatever the
+        # receiver turns out to be, which ItemQuestions answers as Ruby would, or works out as the
+        # game plays where Ruby could not. VBlank's own files are left as they are.
+        def item_question?(node)
+          @follows_instance_variables && !node.receiver.nil? && ItemQuestions::VERBS.include?(node.name) &&
+            !node.safe_navigation?
+        end
+
+        def item_question_text(node)
+          given = node.arguments ? ", #{rewritten_text(node.arguments)}" : ""
+          given += ", #{rewritten_text(node.block)}" if node.block.is_a?(Prism::BlockArgumentNode)
+          block = node.block.is_a?(Prism::BlockNode) ? " #{rewritten_text(node.block)}" : ""
+          "::VBlank::DSL::PlainRuby::ItemQuestions.ask(#{argument(node.receiver)}, :#{node.name}#{given})#{block}"
         end
 
         # `Array.new(capacity: 4)` that game code never changes, so it stays Ruby's (a game's own is

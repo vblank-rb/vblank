@@ -369,4 +369,147 @@ class TestPlainRubyArrays < Minitest::Test
 
     assert_match(/`unshift` is a method of a Ruby Array/, error.message)
   end
+
+  # Ruby's questions about an Array written out of game numbers, which stays Ruby's, each asked
+  # with the items both ways round: the game works out Ruby's answer as it plays.
+  def test_questions_about_an_array_of_game_numbers_give_rubys_answers
+    player = played(frames: 1) do
+      a = 3
+      b = 7
+      big = 0
+      big_back = 0
+      small = 0
+      small_back = 0
+      low = 0
+      high = 0
+      over_five = 0
+      some = 0
+      every = 0
+      no_ten = 0
+      has_seven = 0
+      game_loop do
+        a += 0
+        b += 0
+        big = [a, b].max
+        big_back = [b, a].max
+        small = [a, b].min
+        small_back = [b, a].min
+        low, high = [b, a].minmax
+        over_five = [a, b].count { |n| n > 5 }
+        some = 1 if [a, b].any? { |n| n > 5 }
+        every = 1 if [a, b].all? { |n| n > 5 }
+        no_ten = 1 if [a, b].none? { |n| n > 10 }
+        has_seven = 1 if [a, b].include?(7)
+      end
+    end
+
+    assert_equal [7, 7, 3, 3, 3, 7, 1, 1, 0, 1, 1],
+                 %i[big big_back small small_back low high over_five some every no_ten has_seven].map { |name| player[name] }
+  end
+
+  # A Ruby question whose block makes a test the game decides as it plays, where Ruby needs the
+  # answer while building, is refused rather than answered wrong.
+  def test_a_block_test_ruby_needs_while_building_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        a = 3
+        b = 7
+        first = 0
+        game_loop do
+          a += 1
+          first = [a, b].find { |n| n > 5 }
+        end
+      end
+    end
+
+    assert_match(/`find`/, error.message)
+  end
+
+  # Ruby sorts and compares with `<=>`, which needs its answer while building.
+  def test_comparing_game_numbers_with_the_spaceship_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        a = 3
+        b = 7
+        first = 0
+        game_loop do
+          a += 1
+          first = [b, a].sort.first
+        end
+      end
+    end
+
+    assert_match(/`<=>`/, error.message)
+  end
+
+  # `<=>` written out, and Ruby's `clamp` and `max_by`, which ask it, are refused the same way.
+  def test_the_spaceship_written_out_or_asked_by_clamp_or_max_by_is_refused
+    written = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        a = 3
+        kept = 0
+        game_loop do
+          a += 1
+          kept = a <=> 7
+        end
+      end
+    end
+    clamped = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        a = 3
+        kept = 0
+        game_loop do
+          a += 1
+          kept = 9.clamp(a, 20)
+        end
+      end
+    end
+    picked = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        a = 3
+        kept = 0
+        game_loop do
+          a += 1
+          kept = [a, 7].max_by { |n| n }
+        end
+      end
+    end
+
+    [written, clamped, picked].each { |error| assert_match(/`<=>`/, error.message) }
+  end
+
+  # `<=>` asked by Ruby code the rewrite never reads (a helper of the game's in a plain file, a
+  # gem) is refused too: only making a Range gets an answer.
+  def test_the_spaceship_asked_by_any_other_ruby_code_is_refused
+    ordered = ->(x, y) { x <=> y } # written outside the game block, so never rewritten
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        a = 3
+        kept = 0
+        game_loop do
+          a += 1
+          kept = ordered.call(a, 7)
+        end
+      end
+    end
+
+    assert_match(/`<=>`/, error.message)
+  end
+
+  # A Range made of game numbers still builds: Ruby asks its ends `<=>` to make it.
+  def test_a_range_of_game_numbers_still_builds
+    player = played(frames: 1) do
+      low = 2
+      high = 9
+      kept = 0
+      game_loop do
+        low += 1
+        high += 1
+        span = (low..high)
+        kept = span.end - span.begin
+      end
+    end
+
+    assert_equal 7, player[:kept]
+  end
 end

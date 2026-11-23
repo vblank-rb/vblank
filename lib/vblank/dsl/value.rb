@@ -29,7 +29,7 @@ module VBlank
     # bigger nodes, so nothing is committed to the program until a Condition's
     # `if` (or a change to a variable) runs.
     #
-    # Deliberately no `<=>` / Comparable: those demand a build-time -1/0/1, but a
+    # Deliberately no working `<=>` (it is refused) and no Comparable: those demand a build-time -1/0/1, but a
     # Value's magnitude isn't known until the ROM runs — which is exactly why the
     # comparison operators return a Condition (a runtime test), not a Ruby boolean.
     # Comparable would also redefine < > == to derive from `<=>` and hand back
@@ -519,6 +519,25 @@ module VBlank
               "`1 << bit` and `0x8000 >> bit` do not work. Put the value on the left " \
               "instead — `(row >> bit) & 1` reads one bit, and `bit` can still be " \
               "worked out as the game runs.#{at_dsl_line}"
+      end
+
+      # Ruby's `<=>` wants -1, 0 or 1 while the game is built, and this number has no value until
+      # the game plays. Ruby's `sort`, `max_by` and `clamp` ask it, and so may any Ruby code, so
+      # each would build with a wrong answer: refused instead, saying what to write.
+      #--
+      # The one question answered is Range.new's: Ruby makes a Range by asking its two ends `<=>`
+      # (`low..high`), and a Range is only a pair of ends, so it gets the 0 it needs, and what a
+      # game does with the Range is answered where it is used. The rewrite writes a Range of game
+      # numbers as `Range.new` (Rewriter#range_text), since a Range written out is made with no
+      # frame to tell it by. A plain number on the left hands the question on through its own
+      # `<=>`, so two frames are read.
+      #++
+      def <=>(_other)
+        return 0 if caller_locations(1, 2).any? { |frame| frame.label == "Range#initialize" }
+
+        raise PlainRuby::Refused, "`<=>` compares two numbers while the game is built, and this number is worked out " \
+                                  "as the game plays. To fix this, compare with `<`, `>` or `==`, or use `max` or " \
+                                  "`min`.#{at_dsl_line}"
       end
 
       # Let a plain number stand on the LEFT of an operator: `160 / distance` is how a
