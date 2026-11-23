@@ -219,9 +219,9 @@ module VBlank
         rewritten = "#{opening}#{rewriter.rewritten(root)}"
         return rewritten if library
 
-        InstanceVariables.record_changing_attributes(rewriter.changing_attributes)
-        InstanceVariables.record_readers(list_readers: rewriter.readers_at_worked_out_keys,
-                                         changed_readers: rewriter.readers_with_changed_slots)
+        InstanceVariables.record_file_names(File.expand_path(path), changing_attributes: rewriter.changing_attributes,
+                                                                    list_readers: rewriter.readers_at_worked_out_keys,
+                                                                    changed_readers: rewriter.readers_with_changed_slots)
 
         checks = BlockChecks.new(root, file: path, allow: [])
         checks.refuse_outside_calls_in_file!

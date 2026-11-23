@@ -119,13 +119,13 @@ module VBlank
         # reads any of them, however the methods that read and change them are ordered.
         #
         # +attributes+ are the game block's: the attributes it may change on any object through a
-        # writer (LocalNames#changing_attributes). A game file's are kept for every build
-        # (#record_changing_attributes).
+        # writer (LocalNames#changing_attributes). A game file's are kept for the builds that load
+        # it (#record_file_names).
         #
         # +list_readers+ and +changed_readers+ are the game block's too: the readers whose answer it
         # reads at an index it may work out, and whose slots it changes
         # (LocalNames#readers_at_worked_out_keys, #readers_with_changed_slots). A game file's are
-        # kept for every build (#record_readers).
+        # kept as its attributes are.
         def mark_changing(owner, labels, attributes: [], list_readers: [], changed_readers: [])
           case owner
           when Builder
@@ -139,30 +139,60 @@ module VBlank
           nil
         end
 
-        # The attributes game files may change through a writer (LocalNames#changing_attributes),
-        # as `:level`. Files are loaded in the main Ractor, before any game is built, and every
-        # Ractor reads the same names, as CallChanges.game_method_names.
-        def self.changing_attributes_in_files = @changing_attributes_in_files || Set.new.freeze
+        # What one game file's source names, as it loads: the attributes it may change through a
+        # writer (LocalNames#changing_attributes, as `:level`), the readers it reads at an index it
+        # may work out (LocalNames#readers_at_worked_out_keys, as `:counts`), and those whose slots it
+        # changes (LocalNames#readers_with_changed_slots). Each a frozen Set of Symbols.
+        FileNames = Data.define(:changing_attributes, :list_readers, :changed_readers)
 
-        def self.record_changing_attributes(names)
-          return if names.empty? || Ractor.current != Ractor.main
+        # Nothing named, for a build that loads no file naming anything.
+        NO_FILE_NAMES = Ractor.make_shareable(FileNames.new(changing_attributes: Set.new, list_readers: Set.new,
+                                                            changed_readers: Set.new))
 
-          @changing_attributes_in_files = Ractor.make_shareable(changing_attributes_in_files | names)
-        end
-
-        # The readers game files read at an index they may work out (LocalNames#readers_at_worked_out_keys),
-        # and those whose slots they change (LocalNames#readers_with_changed_slots), as `:counts`,
-        # kept as #changing_attributes_in_files is.
-        def self.list_readers_in_files = @list_readers_in_files || Set.new.freeze
-
-        def self.changed_readers_in_files = @changed_readers_in_files || Set.new.freeze
-
-        def self.record_readers(list_readers:, changed_readers:)
+        # #record_file_names's record, kept per file, so a build counts only the files it loads.
+        #
+        # A file loaded while no game is being built (above `VBlank.game`, which is how a game brings
+        # its parts in) counts for every build. A file a game's own block loads, with
+        # `VBlank.require_game_file`, counts for that build and for each later build that loads it
+        # too (Builder::Session#note_game_file), so one game's file does not change how another game
+        # builds. Files are recorded in the main Ractor, and every Ractor reads the same records, as
+        # CallChanges.game_method_names.
+        def self.record_file_names(path, changing_attributes:, list_readers:, changed_readers:)
           return if Ractor.current != Ractor.main
 
-          @list_readers_in_files = Ractor.make_shareable(list_readers_in_files | list_readers) unless list_readers.empty?
-          @changed_readers_in_files = Ractor.make_shareable(changed_readers_in_files | changed_readers) unless changed_readers.empty?
+          names = FileNames.new(changing_attributes: Set.new(changing_attributes), list_readers: Set.new(list_readers),
+                                changed_readers: Set.new(changed_readers))
+          if Builder::Session.note_game_file(path)
+            @names_of_build_files = Ractor.make_shareable(names_of_build_files.merge(path => names))
+          else
+            @names_of_every_build = Ractor.make_shareable(join_file_names([names_of_every_build, names]))
+          end
         end
+
+        # The files loaded while a game was being built, each with what it names.
+        def self.names_of_build_files = @names_of_build_files || {}.freeze
+
+        # What the files loaded while no game was being built name, together.
+        def self.names_of_every_build = @names_of_every_build || NO_FILE_NAMES
+
+        # What the files the game being built counts name, together (#record_file_names).
+        def self.names_in_files
+          paths = Builder::Session.game_files
+          return names_of_every_build if paths.empty?
+
+          join_file_names([names_of_every_build, *names_of_build_files.values_at(*paths).compact])
+        end
+
+        def self.join_file_names(all)
+          FileNames.new(**FileNames.members.to_h { |member| [member, all.map(&member).reduce(:|)] })
+        end
+        private_class_method :join_file_names
+
+        def self.changing_attributes_in_files = names_in_files.changing_attributes
+
+        def self.list_readers_in_files = names_in_files.list_readers
+
+        def self.changed_readers_in_files = names_in_files.changed_readers
 
         def refuse_unsaved_naming_nothing!
           raise Refused, "`game_variables saved: false` names no instance variable, so it marks nothing. To fix " \

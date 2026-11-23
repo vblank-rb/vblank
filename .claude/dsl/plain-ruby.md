@@ -103,7 +103,10 @@ instance variables.
   (`Session.running_as_plain_ruby`, the comparison suite's Ruby half). A build opens one and always
   closes it; a builder made by hand stands until the next. A part's Array of numbers or of Structs
   made while no game is being built (above `VBlank.game`, after a build) is refused, saying to
-  make the part inside the game's block.
+  make the part inside the game's block. The names a game file's source shows (attributes changed
+  through a writer, readers indexed at a worked-out place or changed through, `InstanceVariables.
+  record_file_names`) count for every build when the file loads with no build open, and only for
+  the builds whose block loads it otherwise (`Session.note_game_file`).
 - **A game instance variable is a game variable from its first number on**, as if `var` had made
   it: `@busy = 0` in `initialize` makes it, starting at 0 at power-on. Every read and change after
   that is the game's, wherever it is: in another routine, in a block another part calls later,

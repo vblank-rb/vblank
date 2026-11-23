@@ -556,10 +556,16 @@ module VBlank
     # A file of VBlank's own library has its rewritten text kept on disk (Cartridge::GameFileCache),
     # since the rewrite is most of what loading it costs. A game's file is checked as well as
     # rewritten, and that depends on the game, so it is always rewritten.
+    #
+    # Brought in by a game's own block, the file is that build's (Builder::Session#note_game_file),
+    # even when an earlier build brought it in already.
     def require_game_file(name)
       from = caller_locations(1, 1).first.path
       path = File.expand_path("#{name}.rb", File.dirname(from))
-      return false if $LOADED_FEATURES.include?(path)
+      if $LOADED_FEATURES.include?(path)
+        Builder::Session.note_game_file(path)
+        return false
+      end
 
       RubyVM::InstructionSequence.compile(rewritten_game_file(path, File.dirname(from)), path, nil, 1).eval
       $LOADED_FEATURES << path
