@@ -15,7 +15,7 @@ verb has one of two answers there, decided once in `Console::PS1Answers`:
 This file is `Console::PS1Answers.reference` written out (`ruby tools/console_answers.rb`), and
 a test fails when the two differ. The Advance's answers are in `.claude/dsl/game-boy-advance.md`.
 
-- `screen` — works: `screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from `screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen bits in each pixel, the same colours as on the Advance. `tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` works too: the chip draws the turned background as a textured shape. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet. `shown_rows:` is refused: a PlayStation can write its video memory at any time, so rows that do not show give it no more time.
+- `screen` — works: `screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from `screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen bits in each pixel, the same colours as on the Advance. `tear_free: true` keeps two pictures, one drawn while the other shows. The build does not make `screen :rotozoom` yet: it refuses it and says so. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet. `shown_rows:` is refused: a PlayStation can write its video memory at any time, so rows that do not show give it no more time.
 - `setting` — works: the same as on the Advance.
 - `feature?` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a PlayStation.
@@ -37,7 +37,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `pixel` — works: the same as on the Advance.
 - `fill_rect` — works: the same as on the Advance.
 - `draw_rect_at` — works: the same as on the Advance.
-- `draw_column_at` — works: the same as on the Advance.
+- `draw_column_at` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
 - `place` — works: a place is data in the program.
 - `viewer` — works: a viewer is variables.
 - `change_picture` — works: every picture the place lists is in video memory from the start, so a change copies nothing.
@@ -47,7 +47,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
-- `camera` — works: the same as on the Advance.
+- `camera` — works: on a screen drawn from tiles, the camera moves every background and every sprite. On a painted (bitmap) screen, this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
 - `redraw_on_change` — works: the same as on the Advance.
 - `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. A painted screen that fades is drawn with a number for each colour, 256 colours at most. At the end of each pass, the graphics chip copies it onto the screen through a list of those colours. When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: the same as on the Advance.
@@ -55,17 +55,17 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `fade_out` — works: the same as on the Advance.
 - `flash_screen` — works: the same as on the Advance.
 - `fade_level` — works: the same as on the Advance.
-- `shake_screen` — works: the same as on the Advance.
-- `pixelate` — works: the build does not make `pixelate` yet. Until it does, the build refuses a game that pixelates, and names `pixelate`.
+- `shake_screen` — works: see `camera`.
+- `pixelate` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
 - `pixelate_in` — works: see `pixelate`.
 - `pixelate_out` — works: see `pixelate`.
 - `pixelate_size` — works: the same as on the Advance.
-- `spotlight` — works: how the graphics chip darkens everything outside a circle is decided when the light is made: until then the build refuses a light and says so.
-- `iris_in` — works: the iris is the game's light closing (see `spotlight`).
+- `spotlight` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
+- `iris_in` — works: the iris is the game's light closing, and this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
 - `iris_out` — works: see `iris_in`.
 - `iris_shut?` — works: see `iris_in`.
-- `pulse` — works: the graphics chip draws the sprite bigger or smaller as a textured shape.
-- `camera_follows` — works: the same as on the Advance.
+- `pulse` — works: the graphics chip can draw a sprite bigger or smaller, but this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
+- `camera_follows` — works: see `camera`.
 - `image` — works: a picture is kept in video RAM. A picture of 16 colours or fewer takes 4 bits a pixel, and one of 256 or fewer takes 8, each pixel a number into a list of its colours. Pictures share a list where their colours fit in one. A picture of more colours takes 16 bits a pixel. A game whose pictures do not fit in video RAM beside the screen is refused when it is built.
 - `color` — works: a colour has fifteen bits, as on the Advance.
 - `rgb` — works: see `color`.
@@ -78,18 +78,18 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. It can follow those lists (`draw_with({ hero: :hero })`), or draw them all with one other list (`draw_with({ hero: :white, cape: :white })`). On a painted screen, a sprite with `over_picture: true` is drawn over a copy of the picture as it goes to the screen, so the picture stays as the game painted it. The build does not make a sprite painted into the picture yet: it refuses it and says so.
+- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. The build does not make a sprite that turns or resizes yet: it refuses it and says so. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. It can follow those lists (`draw_with({ hero: :hero })`), or draw them all with one other list (`draw_with({ hero: :white, cape: :white })`). On a painted screen, a sprite with `over_picture: true` is drawn over a copy of the picture as it goes to the screen, so the picture stays as the game painted it. The build does not make a sprite painted into the picture yet: it refuses it and says so.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: the same as on the Advance.
-- `picture_groups` — works: the same as on the Advance.
+- `picture_groups` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
 - `pool` — works: the same as on the Advance.
 - `box` — works: the same as on the Advance.
-- `tiles` — works: the same as on the Advance.
-- `background` — works: `cells_in_front: true` is refused: this build does not make it yet. a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. A background of more colours takes 16 bits a pixel, and its colours cannot change. `hide` leaves the background out of the drawing, and `show` draws it again. `show_only_inside` holds it to the chip's drawing area, and a background that turns or resizes is drawn as a textured shape. On a painted screen, a background is painted into the picture where it is put up. The build does not make one there that moves or changes yet. A game can show a painted screen and one drawn from tiles at different times; the build does not make a fade or a tint in such a game yet. It refuses each of these and says so.
+- `tiles` — works: the build does not make tiles that the game paints from a list (`changed`) yet. It refuses them and says so.
+- `background` — works: a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. A background of more colours takes 16 bits a pixel, and its colours cannot change. The build does not make these yet: `cells_in_front: true`, `held: true`, `hide`, `show`, `show_only_inside`, `scroll_each_row`, and a background that turns or resizes. It refuses each of them and says so. On a painted screen, a background is painted into the picture where it is put up. The build does not make one there that moves or changes yet. A game can show a painted screen and one drawn from tiles at different times; the build does not make a fade or a tint in such a game yet. It refuses each of these and says so.
 - `status_bar` — works: the same as on the Advance.
-- `canvas` — works: the same as on the Advance.
-- `tile_pictures` — works: the same as on the Advance.
-- `sprite_tiles` — works: the same as on the Advance.
+- `canvas` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
+- `tile_pictures` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
+- `sprite_tiles` — works: this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
 - `layers` — works: a layer holds a background or sprites. A layer of backgrounds can be see-through by three amounts only. They are the amounts the graphics chip can mix. The first is half of the layer over half of what is behind it: `transparency:` from 50 to 56, or `shows: 50, shows_behind: 50`. The second is all of the layer added to all of what is behind it: `shows: 100, shows_behind: 100`. The third is a quarter of the layer added to all of what is behind it: `shows: 25, shows_behind: 100`. A layer can also be solid (`transparency: 0`) or not seen at all (`transparency: 100`). The build refuses other amounts. An amount the game works out as it runs is refused too. A see-through layer of sprites is refused: this build does not make it yet.
 - `layer` — works: see `layers`.
 - `draw_text` — works: the same as on the Advance.
@@ -99,12 +99,12 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `text_height` — works: the same as on the Advance.
 - `menu` — works: the same as on the Advance.
 - `var` — works: a variable is the same 32-bit whole number as on the Advance.
-- `save_var` — works: kept on the memory card in the first slot.
-- `save_data` — works: kept on the memory card in the first slot.
+- `save_var` — works: a PlayStation keeps a save on a memory card, but this build does not make it yet. The build refuses a game that uses it and says why (see Not made yet).
+- `save_data` — works: see `save_var`.
 - `part` — works: the same as on the Advance.
 - `start_over` — works: the same as on the Advance.
 - `clock` — **refused**: a PlayStation has no clock chip. Ask the player for the time on a screen of the game's own, if the game needs it.
-- `saves_keep_everything` — works: the same as on the Advance.
+- `saves_keep_everything` — works: see `save_var`.
 - `list` — works: the same as on the Advance.
 - `func` — works: `fast:` means nothing on a PlayStation, which runs all of its code alike.
 - `call` — works: the same as on the Advance.
@@ -156,5 +156,5 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`; the steps `draw_column_at`, `camera`
 - fades, lights and screen effects: the verbs `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `pixelate`, `shade_outside`
-- sprites and tiled backgrounds: the verbs `canvas`, `tile_pictures`, `sprite_tiles`, `picture_groups`; the steps `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `show_held_tiles`, `show_picture_group`
+- sprites and tiled backgrounds: the verbs `canvas`, `tile_pictures`, `sprite_tiles`, `picture_groups`, `pulse`; the steps `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `show_held_tiles`, `show_picture_group`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`

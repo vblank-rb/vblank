@@ -26,6 +26,12 @@ module VBlank
 
       PLAIN = "the same as on the Advance."
 
+      # What a verb whose hardware the PlayStation has answers while its build does not make it yet
+      # (VERBS_NOT_MADE_YET). It stays a verb that works, since the console can do it; the build
+      # refuses it by name until it is made.
+      NOT_MADE = "this build does not make it yet. The build refuses a game that uses it and says why " \
+                 "(see Not made yet)."
+
       # The amounts a see-through layer can be seen through by. The graphics chip mixes a texel with the
       # pixel under it in a few fixed ways (PS1Hardware::SEMI_TRANSPARENCY_MODES), never by the Advance's
       # sixteenths, so a layer's two shares (IR::SeeThrough.weights) must be one of those, or need no mix
@@ -44,8 +50,8 @@ module VBlank
                       "The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from " \
                       "`screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen " \
                       "bits in each pixel, the same colours as on the Advance. " \
-                      "`tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` " \
-                      "works too: the chip draws the turned background as a textured shape. `pixel_size: 2` " \
+                      "`tear_free: true` keeps two pictures, one drawn while the other shows. The build does not " \
+                      "make `screen :rotozoom` yet: it refuses it and says so. `pixel_size: 2` " \
                       "is refused: the build does not show a painted screen bigger yet. `shown_rows:` is " \
                       "refused: a PlayStation can write its video memory at any time, so rows that do not " \
                       "show give it no more time."),
@@ -73,7 +79,7 @@ module VBlank
         pixel: works,
         fill_rect: works,
         draw_rect_at: works,
-        draw_column_at: works,
+        draw_column_at: works(NOT_MADE),
         place: works("a place is data in the program."),
         viewer: works("a viewer is variables."),
         change_picture: works("every picture the place lists is in video memory from the start, so a change " \
@@ -96,7 +102,8 @@ module VBlank
         clear_screen: works,
         inside: works,
         grid: works,
-        camera: works,
+        camera: works("on a screen drawn from tiles, the camera moves every background and every sprite. On a " \
+                     "painted (bitmap) screen, #{NOT_MADE}"),
         redraw_on_change: works,
 
         # --- fades, tints and screen effects ---
@@ -111,19 +118,17 @@ module VBlank
         fade_out: works,
         flash_screen: works,
         fade_level: works,
-        shake_screen: works,
-        pixelate: works("the build does not make `pixelate` yet. Until it does, the build refuses a game that " \
-                        "pixelates, and names `pixelate`."),
+        shake_screen: works("see `camera`."),
+        pixelate: works(NOT_MADE),
         pixelate_in: works("see `pixelate`."),
         pixelate_out: works("see `pixelate`."),
         pixelate_size: works,
-        spotlight: works("how the graphics chip darkens everything outside a circle is decided when the light is " \
-                         "made: until then the build refuses a light and says so."),
-        iris_in: works("the iris is the game's light closing (see `spotlight`)."),
+        spotlight: works(NOT_MADE),
+        iris_in: works("the iris is the game's light closing, and #{NOT_MADE}"),
         iris_out: works("see `iris_in`."),
         iris_shut?: works("see `iris_in`."),
-        pulse: works("the graphics chip draws the sprite bigger or smaller as a textured shape."),
-        camera_follows: works,
+        pulse: works("the graphics chip can draw a sprite bigger or smaller, but #{NOT_MADE}"),
+        camera_follows: works("see `camera`."),
 
         # --- pictures and sprites ---
         image: works("a picture is kept in video RAM. A picture of 16 colours or fewer takes 4 bits a pixel, and one of " \
@@ -146,8 +151,8 @@ module VBlank
         upside_down: works,
         blit: works,
         sprite: works("a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is " \
-                      "no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a " \
-                      "textured shape. A sprite whose poses are drawn from different lists of colors shows each " \
+                      "no limit of sprites on a row of the screen. The build does not make a sprite that turns or " \
+                      "resizes yet: it refuses it and says so. A sprite whose poses are drawn from different lists of colors shows each " \
                       "pose in the colors of its own list. It can follow those lists (`draw_with({ hero: :hero })`), " \
                       "or draw them all with one other list (`draw_with({ hero: :white, cape: :white })`). On a painted screen, a sprite with `over_picture: true` is " \
                       "drawn over a copy of the picture as it goes to the screen, so the picture stays as the game " \
@@ -155,27 +160,27 @@ module VBlank
                       "says so."),
         draw_in_order: works,
         hide_sprites: works,
-        picture_groups: works,
+        picture_groups: works(NOT_MADE),
         pool: works,
         box: works,
 
         # --- backgrounds and layers ---
-        tiles: works,
-        background: works("`cells_in_front: true` is refused: this build does not make it yet. " \
-                          "a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. " \
+        tiles: works("the build does not make tiles that the game paints from a list (`changed`) yet. It refuses " \
+                     "them and says so."),
+        background: works("a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. " \
                           "Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 " \
                           "colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. " \
                           "A background of more colours takes 16 bits a pixel, and its colours cannot change. " \
-                          "`hide` leaves the background out of the drawing, and `show` draws it again. " \
-                          "`show_only_inside` holds it to the chip's drawing area, and a background that turns or " \
-                          "resizes is drawn as a textured shape. On a painted screen, a background is painted into the " \
+                          "The build does not make these yet: `cells_in_front: true`, `held: true`, `hide`, `show`, " \
+                          "`show_only_inside`, `scroll_each_row`, and a background that turns or resizes. It " \
+                          "refuses each of them and says so. On a painted screen, a background is painted into the " \
                           "picture where it is put up. The build does not make one there that moves or changes yet. A " \
                           "game can show a painted screen and one drawn from tiles at different times; the build does " \
                           "not make a fade or a tint in such a game yet. It refuses each of these and says so."),
         status_bar: works,
-        canvas: works,
-        tile_pictures: works,
-        sprite_tiles: works,
+        canvas: works(NOT_MADE),
+        tile_pictures: works(NOT_MADE),
+        sprite_tiles: works(NOT_MADE),
         layers: works("a layer holds a background or sprites. #{SEE_THROUGH_AMOUNTS} An amount the game works " \
                       "out as it runs is refused too. A see-through layer of sprites is refused: this build does " \
                       "not make it yet."),
@@ -192,12 +197,12 @@ module VBlank
 
         # --- numbers and logic ---
         var: works("a variable is the same 32-bit whole number as on the Advance."),
-        save_var: works("kept on the memory card in the first slot."),
-        save_data: works("kept on the memory card in the first slot."),
+        save_var: works("a PlayStation keeps a save on a memory card, but #{NOT_MADE}"),
+        save_data: works("see `save_var`."),
         part: works, start_over: works,
         clock: refused("a PlayStation has no clock chip. Ask the player for the time on a screen of the game's own, " \
                        "if the game needs it."),
-        saves_keep_everything: works,
+        saves_keep_everything: works("see `save_var`."),
         list: works,
         func: works("`fast:` means nothing on a PlayStation, which runs all of its code alike."),
         call: works,
@@ -358,7 +363,7 @@ module VBlank
       VERBS_NOT_MADE_YET = Ractor.make_shareable({
         "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen],
         "fades, lights and screen effects" => %i[pixelate pixelate_in pixelate_out spotlight iris_in iris_out],
-        "sprites and tiled backgrounds" => %i[canvas tile_pictures sprite_tiles picture_groups],
+        "sprites and tiled backgrounds" => %i[canvas tile_pictures sprite_tiles picture_groups pulse],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })
 
