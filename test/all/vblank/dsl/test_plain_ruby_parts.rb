@@ -334,8 +334,17 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/variable name :lit_held, and another variable of the game has that name/, error.message)
   end
 
-  def test_a_named_array_of_numbers_at_an_index_the_game_works_out_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(CountsByNumberPart, :counts_by_number_tick) }
+  # The index is a game variable holding 1, so each pass counts up the second item. The list is
+  # named as the variable for each key would be: the part's name, then the instance variable's.
+  def test_a_named_array_of_numbers_at_an_index_the_game_works_out_plays_as_a_list
+    player = played(CountsByNumberPart, :counts_by_number_tick, frames: 3)
+
+    assert_equal [0, 3], player.list(:counts_by_number_part_counts)
+  end
+
+  # A named Hash has no list to be, so a key the game works out is still refused.
+  def test_a_named_hash_of_numbers_at_a_key_the_game_works_out_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(CountsByKeyPart, :counts_by_key_tick) }
 
     assert_match(/worked out as the game plays/, error.message)
   end

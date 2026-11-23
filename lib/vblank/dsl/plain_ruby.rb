@@ -515,7 +515,24 @@ module VBlank
           return "#{INSTANCE_VARIABLES}.refuse_named_in_method!" if @in_method
 
           names = node.arguments ? ", #{rewritten_text(node.arguments)}" : ""
-          "#{INSTANCE_VARIABLES}.name_game_variables(self#{names})"
+          naming = "#{INSTANCE_VARIABLES}.name_game_variables(self#{names})"
+          lists = labels_named_by(node) & @names.instance_variables_at_worked_out_keys.to_a
+          return naming if lists.empty?
+
+          "(#{naming}; #{INSTANCE_VARIABLES}.keep_arrays_as_lists(self, #{lists.inspect}))"
+        end
+
+        # The instance variables a `game_variables` line names, as `:@counts`: each symbol, and
+        # each key of a name given one of its own (`states: :lit_state`).
+        def labels_named_by(node)
+          node.arguments&.arguments.to_a.flat_map do |argument|
+            case argument
+            when Prism::SymbolNode then [argument.unescaped.to_sym]
+            when Prism::KeywordHashNode, Prism::HashNode
+              argument.elements.grep(Prism::AssocNode).map(&:key).grep(Prism::SymbolNode).map { |key| key.unescaped.to_sym }
+            else []
+            end
+          end.map { |name| :"@#{name}" }
         end
 
         # What each of Ruby's attribute calls makes: a reader, a writer, or both.

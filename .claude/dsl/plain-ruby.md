@@ -113,10 +113,15 @@ instance variables.
   `@tilt_counters[side] += 1` and `if @tilt_counters[side] > 2` in game code, inside `SIDES.each do
   |side|`. A profile reads `tilt_tilt_counters_left` for a `Tilt`: the variable's name, `_`, then
   the key, so `game_variables states: :cave_light_state` with keys 0 to 3 (a Hash's or an Array's)
-  reads `cave_light_state_0` to `cave_light_state_3`. The key must be known while
-  building; a key the game works out (`@counts[which]`, `which` a game number) is refused: keep
-  those numbers in a local Array the game changes, which is a list (`counts = Array.new(4, 0)`,
-  "Arrays" above).
+  reads `cave_light_state_0` to `cave_light_state_3`. That holds where every key is known while
+  building: a number, a symbol, a String or a constant written out, or the name a Ruby loop over
+  something written out gives (`SIDES.each do |side|`, `3.times do |i|`).
+- **A named Array of numbers read at an index the game may work out is a list** (`lists.md`):
+  `@counts = [0, 0]` in `initialize`, then `@counts[which] += 1` in game code, with any other index
+  than those above, written in the same file as the class's `game_variables :counts` line. It holds
+  its items and room for no more, holds fractions where a start is a Float, and a profile reads it
+  by the name its variables would have had, `counts_by_number_part_counts`. A named Hash at a key
+  the game works out is still refused: a Hash has no list to be.
 - **A Struct's fields are named the same way**, in the block of `Struct.new` (`Box = Struct.new(:count,
   :step) { game_variables :count }`) or in the body of a class made from one. Then `box.count += 1` in
   game code changes a game variable, `box_count` in a profile. A field nobody names is plain Ruby.
@@ -194,8 +199,9 @@ end
 - A list holds numbers, so `[[0, 0], [0, 0]]`, an Array of Hashes and an item of nil are refused.
 - Ruby's other Array methods (`unshift`, `insert`, `concat`, `sort!`, `map`, `uniq`) are refused by
   name, listing those that work. They put nothing in as far as the fraction rule goes.
-- **A named instance variable's Array** (`game_variables :counts`) is still a game variable for each
-  key (next section), not a list.
+- **A named instance variable's Array** (`game_variables :counts`) is a game variable for each index
+  where every index is known while building, and a list where the game may work one out
+  ("Instance variables" above).
 
 ## Changing a variable
 
@@ -321,7 +327,7 @@ Each is a friendly error naming the line.
 | `game_variables saved: false` with no names | the names on the same line, `game_variables :busy, saved: false` |
 | `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
 | `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
-| a named Hash or Array of numbers at a key the game works out | a key known while building, or a local Array: `counts = Array.new(4, 0)` |
+| a named Hash of numbers at a key the game works out | a key known while building, or an Array: `@counts = [0, 0]` or `counts = Array.new(4, 0)` |
 | an Array game code pushes to with no `capacity:` (`trail = []`, `Array.new(4, 0)` then `trail << x`) | `Array.new(capacity: 8)`, or `Array.new(4, 0, capacity: 8)` |
 | `Array.new(capacity: n)` or `Array.new(n, 0)` with `n` a number the game works out | a number or a constant known while building |
 | `Array.new(8)` with no start, on an Array the game changes | `Array.new(8, 0)`, or `Array.new(capacity: 8)` for an empty one |

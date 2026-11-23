@@ -12,8 +12,8 @@
 class EndWaiter
   def initialize(builder, prefix) = @ended = builder.var(:"#{prefix}_ended", 0)
 
-  def step(&ends)
-    @ended += 1 if ends.call
+  def step
+    @ended += 1 if yield
   end
 end
 
@@ -482,7 +482,7 @@ class OwnNamedLightsPart
   end
 end
 
-# A named Array of numbers, at an index the game works out: refused at the line.
+# A named Array of numbers, at an index the game works out: a list the game keeps.
 class CountsByNumberPart
   game_variables :counts
 
@@ -490,6 +490,17 @@ class CountsByNumberPart
     @counts = [0, 0]
     @which = builder.var(:counts_by_number_which, 1)
     builder.func(:counts_by_number_tick) { @counts[@which] += 1 }
+  end
+end
+
+# A named Hash of numbers, at a key the game works out: refused at the line.
+class CountsByKeyPart
+  game_variables :counts
+
+  def initialize(builder)
+    @counts = { 0 => 0, 1 => 0 }
+    @which = builder.var(:counts_by_key_which, 1)
+    builder.func(:counts_by_key_tick) { @counts[@which] += 1 }
   end
 end
 

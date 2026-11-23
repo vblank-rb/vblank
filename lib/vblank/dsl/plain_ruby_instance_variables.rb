@@ -36,6 +36,10 @@ module VBlank
         # The constant a class keeps the variable names it chose in, as `{ :@states => :lit_state }`.
         CHOSEN_NAMES_CONSTANT = :VBLANK_GAME_VARIABLE_NAMES
 
+        # The constant a class keeps in the named instance variables whose Array of numbers is a
+        # list the game keeps (#keep_arrays_as_lists), as `:@counts`.
+        LISTS_CONSTANT = :VBLANK_GAME_VARIABLE_LISTS
+
         # The constant a class keeps the instance variables it marks `saved: false` in, as `:@busy`.
         UNSAVED_NAMES_CONSTANT = :VBLANK_UNSAVED_GAME_VARIABLES
 
@@ -67,6 +71,20 @@ module VBlank
             # A class reopened while a game builds: the build's cache of class names is out of date.
             uses&.clear_class_name_cache
           else refuse_named_outside_class!(owner)
+          end
+          nil
+        end
+
+        # Of the instance variables a `game_variables` line names, +labels+ are read or written by
+        # the code around it at an index that may be worked out as the game plays
+        # (LocalNames#instance_variables_at_worked_out_keys). An Array of numbers one of them is
+        # given becomes a list the game keeps (#first_variable), not a variable for each index,
+        # since only a list can be read at an index the game works out. One read only at indexes
+        # known while building stays a variable for each.
+        def keep_arrays_as_lists(owner, labels)
+          case owner
+          when Builder then owner.instance_variable_uses.keep_arrays_as_lists_on_builder(labels)
+          when Module then name_in_module(owner, labels, constant: LISTS_CONSTANT)
           end
           nil
         end
@@ -397,7 +415,8 @@ module VBlank
         # The game variable a named instance variable holding +current+ is: made now from a number
         # it still holds as Ruby, or the one it holds already.
         def game_variable_of(owner, current, label)
-          return current if Steps.variable?(current) || current.is_a?(Condition)
+          return current if Steps.variable?(current) || current.is_a?(Condition) || current.is_a?(List)
+          return list_of(owner, label, current) if list_kept?(owner, label, current)
           return make_variable(owner, label, current) if STARTS.any? { |kind| current.is_a?(kind) }
           return game_variables_in(owner, label, current) if numbers_collection?(current)
 
@@ -418,6 +437,7 @@ module VBlank
           builder = Builder.in_use
           return unless current.nil? && builder && !owner.is_a?(Module)
           return unless builder.instance_variable_uses.named?(owner, label)
+          return list_of(owner, label, value) if list_kept?(owner, label, value)
           return game_variables_in(owner, label, value) if numbers_collection?(value)
           return unless STARTS.any? { |kind| value.is_a?(kind) }
 
@@ -437,6 +457,27 @@ module VBlank
           return false unless (held.is_a?(Hash) || held.is_a?(Array)) && !values.empty?
 
           values.all? { |value| Steps.variable?(value) || STARTS.any? { |kind| value.is_a?(kind) } }
+        end
+
+        # Is +held+, given to +owner+'s named +label+, an Array of numbers kept as a list
+        # (#keep_arrays_as_lists)?
+        def list_kept?(owner, label, held)
+          held.is_a?(Array) && !held.empty? && held.all?(Numeric) &&
+            Builder.in_use.instance_variable_uses.kept_as_list?(owner, label)
+        end
+
+        # The list a named Array of numbers is, holding its items, with room for no more, and
+        # named as its variable would be (`counts_by_number_part_counts`).
+        def list_of(owner, label, held)
+          builder = Builder.in_use
+          # Each object keeps its own: a second one of the class takes the next free list name.
+          held_by = Builder::ListOwner.new(owner: [:object, owner.object_id, label],
+                                           at: Messages::AuthorSource.author_file_and_line)
+          name = builder.plain_array_list_name(variable_name(owner, label), held_by)
+          settings = held.any?(Float) ? { holds: 0.0 } : {}
+          list = builder.declare_list(name, capacity: held.length, **settings)
+          held.each { |item| list.push(item) }
+          list
         end
 
         # A named hash or array of numbers is a game variable for each key, each starting from the
@@ -483,7 +524,7 @@ module VBlank
                                       "that is worked out as the game plays. Ruby finds a slot while it builds the " \
                                       "game, so it cannot find this one. To fix this, use a key known while " \
                                       "building, like a symbol from a Ruby loop (`SIDES.each do |side|`), or keep " \
-                                      "the numbers in a game's own list.")
+                                      "the numbers in an Array: the game can read an Array at an index it works out.")
             end
 
             super
@@ -664,6 +705,7 @@ module VBlank
           def initialize
             @named_on_builder = Set.new
             @unsaved_on_builder = Set.new
+            @lists_on_builder = Set.new
             @chosen_on_builder = {}
             @names_by_class = {}
             @unsaved_by_class = {}
@@ -757,6 +799,16 @@ module VBlank
             @named_on_builder.merge(labels)
             @unsaved_on_builder.merge(unsaved)
             @chosen_on_builder = InstanceVariables.merge_chosen_names(@chosen_on_builder, chosen)
+          end
+
+          def keep_arrays_as_lists_on_builder(labels) = @lists_on_builder.merge(labels)
+
+          # Is an Array of numbers +owner+'s +label+ is given a list the game keeps
+          # (InstanceVariables.keep_arrays_as_lists)?
+          def kept_as_list?(owner, label)
+            return @lists_on_builder.include?(label) if owner.is_a?(Builder)
+
+            InstanceVariables.names_in_module(owner.class, constant: LISTS_CONSTANT).include?(label)
           end
 
           # Did a line naming +owner+'s +label+ (in its class or an ancestor) set `saved: false`?

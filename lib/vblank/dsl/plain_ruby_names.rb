@@ -54,6 +54,11 @@ module VBlank
         # Writes by game code to a local of the scope the block sits in.
         attr_reader :outside_writes
 
+        # The instance variables read or written at an index that may be worked out as the game
+        # plays, as `:@counts` (#note_instance_variable_index): any but a number, a symbol, a String
+        # or a constant written out, or a parameter of a Ruby loop over something written out.
+        attr_reader :instance_variables_at_worked_out_keys
+
         # Every method, lambda and game block: code that runs when it is called, or as the game
         # plays, after the lines around it.
         attr_reader :bodies_run_later
@@ -105,6 +110,10 @@ module VBlank
           # What game code puts into what the name holds, as an Array: the nodes of each value
           # given `<<`, `push`, `[]=` and the like (Arrays.put_values).
           def array_puts = (@array_puts ||= [])
+
+          # A parameter of a Ruby loop over something written out (`SIDES.each do |side|`), which
+          # holds a value known while building.
+          attr_accessor :iteration_parameter
 
           # Is this name a game's own list (LocalNames#game_array?)?
           def game_array?
@@ -231,6 +240,8 @@ module VBlank
           # Every method, lambda and game block: code that runs when it is called, or as the game
           # plays, after the lines around it (Promotion#run_later?).
           @bodies_run_later = []
+          @instance_variables_at_worked_out_keys = Set.new
+          @next_block_iterates = false
           read_names(block_node, [], false)
         end
 
@@ -578,7 +589,10 @@ module VBlank
           when Prism::IndexOperatorWriteNode, Prism::CallOperatorWriteNode
             read_children(node, scopes, in_game_code)
             read_place_change(node)
-            note_array_change(node, in_game_code) if node.is_a?(Prism::IndexOperatorWriteNode)
+            if node.is_a?(Prism::IndexOperatorWriteNode)
+              note_array_change(node, in_game_code)
+              note_instance_variable_index(node)
+            end
           when Prism::LocalVariableReadNode then
             local = scopes[-1 - node.depth]&.[](node.name)
             local&.reads&.push(node)
@@ -733,6 +747,7 @@ module VBlank
           end
           read_place_change(node) if node.name == :[]= || node.attribute_write?
           note_array_change(node, in_game_code)
+          note_instance_variable_index(node)
           record_bang_call_change(node)
           note_func_block(node) if node.name == :func
           record_game_call(node) if game_call?(node)
@@ -740,8 +755,38 @@ module VBlank
           @locals_by_node[LocalNames.side_not_nil(node)]&.asked_nil = true if LocalNames.nil_comparison?(node)
         end
 
+        # `@counts[which]`, `@counts[which] = 1` or `@counts[which] += 1`, where +which+ may be worked
+        # out as the game plays (#instance_variables_at_worked_out_keys).
+        def note_instance_variable_index(node)
+          return unless node.receiver.is_a?(Prism::InstanceVariableReadNode)
+
+          keys = case node
+                 when Prism::IndexOperatorWriteNode then node.arguments&.arguments.to_a
+                 else
+                   return unless %i[[] []=].include?(node.name)
+
+                   given = node.arguments&.arguments.to_a
+                   node.name == :[]= ? given[0...-1] : given
+                 end
+          return if keys.all? { |key| key_known_while_building?(key) }
+
+          @instance_variables_at_worked_out_keys << node.receiver.name
+        end
+
+        def key_known_while_building?(key)
+          case key
+          when Prism::IntegerNode, Prism::SymbolNode, Prism::StringNode, Prism::ConstantReadNode,
+               Prism::ConstantPathNode then true
+          when Prism::LocalVariableReadNode then @locals_by_node[key]&.iteration_parameter || false
+          else false
+          end
+        end
+
         # A local changed by game code with an Array verb, `trail << x` or `trail[0] += 1`
         # (Local#game_array?).
+        #
+        # A change inside a Ruby loop in game code (`3.times { |n| xs << n * 8 }`) runs while
+        # building, so it is the game's only where it puts in a value the build cannot know then.
         def note_array_change(node, in_game_code)
           verb = node.is_a?(Prism::IndexOperatorWriteNode) ? :[]= : node.name
           return unless (in_game_code || @iterating_in_game_code) && Arrays::CHANGING_VERBS.include?(verb)
@@ -749,12 +794,29 @@ module VBlank
           local = node.receiver.is_a?(Prism::LocalVariableReadNode) && @locals_by_node[node.receiver]
           return unless local
 
+          puts = Arrays.put_values(node)
+          return if !in_game_code && puts.all? { |put| known_while_building?(put) }
+
           local.changed_as_array = true
           local.grown_as_array = true if Arrays::GROWING_VERBS.include?(verb)
-          local.array_puts.concat(Arrays.put_values(node))
+          local.array_puts.concat(puts)
         end
 
-        def ruby_iteration?(call) =RUBY_ITERATORS.include?(call.name) && written_out?(call.receiver)
+        # Is +node+ a value the build knows as it runs the line: a key known while building
+        # (#key_known_while_building?), or a sum of such values?
+        def known_while_building?(node)
+          case node
+          when Prism::FloatNode then true
+          when Prism::ParenthesesNode then !node.body.nil? && known_while_building?(node.body)
+          when Prism::StatementsNode then node.body.all? { |part| known_while_building?(part) }
+          when Prism::CallNode
+            ARITHMETIC.include?(node.name) && !node.receiver.nil? &&
+              [node.receiver, *node.arguments&.arguments].all? { |part| known_while_building?(part) }
+          else key_known_while_building?(node)
+          end
+        end
+
+        def ruby_iteration?(call) = RUBY_ITERATORS.include?(call.name) && written_out?(call.receiver)
 
         # Is this a constant, a number, a list or a range in the source, or a call on one?
         def written_out?(node)
@@ -773,6 +835,7 @@ module VBlank
           outer = @iterating_in_game_code
           @iterating_in_game_code = outer || in_game_code
           @next_block_placed = true
+          @next_block_iterates = true
           read_names(block, scopes, false)
         ensure
           @iterating_in_game_code = outer
@@ -787,7 +850,11 @@ module VBlank
           @game_block_scopes[scope] = true if @next_block_game
           @next_block_placed = false
           @next_block_game = false
-          parameter_names(node.parameters).each { |name| scope[name] = Local.new(name, parameter: true) }
+          iterates = @next_block_iterates
+          @next_block_iterates = false
+          parameter_names(node.parameters).each do |name|
+            scope[name] = Local.new(name, parameter: true).tap { |local| local.iteration_parameter = iterates }
+          end
           # A method or a lambda runs where it is called, not on the side of an `if` it is written in.
           sides = [Prism::DefNode, Prism::LambdaNode].any? { |kind| node.is_a?(kind) } ? [] : @sides_apart
           with_sides_apart(sides) { inside_region(node) { read_children(node, scopes + [scope], in_game_code) } }
