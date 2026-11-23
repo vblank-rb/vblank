@@ -1104,6 +1104,9 @@ module VBlank
           @outside_writes << node if scope.nil? && in_game_code
           return unless scope
 
+          # `c ||= Counter.new` keeps a part, never a number of the game's (Rewriter#kept_local?).
+          in_game_code = false if part_kept?(node)
+
           local = (scope[node.name] ||= Local.new(node.name, parameter: false))
           record_change(local, node)
           @writes_in_game_code[node] = true if in_game_code || @iterating_in_game_code
@@ -1114,6 +1117,10 @@ module VBlank
           @locals_by_node[node] = local
           @loops_around[node] = @open_loops unless @open_loops.empty?
           @tests_around[node] = @open_tests.dup unless @open_tests.empty?
+        end
+
+        def part_kept?(node)
+          node.is_a?(Prism::LocalVariableOrWriteNode) && node.value.is_a?(Prism::CallNode) && node.value.name == :new
         end
 
         # Notes each argument of +call+, an object being made (`Menus.new(...)`), that is a local

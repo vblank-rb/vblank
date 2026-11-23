@@ -537,6 +537,116 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # The keeper is made again on every pass, so in Ruby its `@inner ||=` makes a new counter each time.
+  def test_an_object_keeping_a_changing_object_made_in_the_game_loop_is_refused
+    refused("AnswerKeeper.new.bump in game_loop", /AnswerKeeper.*above the game loop/m) do
+      m = 0
+      game_loop do
+        keeper = AnswerKeeper.new
+        m = keeper.bump
+      end
+    end
+  end
+
+  def test_an_object_handing_out_a_kept_changing_object_made_in_the_game_loop_is_refused
+    refused("AnswerLazyKeeper.new(1).counter in game_loop", /AnswerLazyKeeper.*above the game loop/m) do
+      m = 0
+      game_loop do
+        keeper = AnswerLazyKeeper.new(1)
+        m = keeper.counter.bump
+      end
+    end
+  end
+
+  # Kept itself, the keeper keeps its counter too, in Ruby as in the game.
+  def test_an_object_keeping_a_changing_object_kept_with_or_equals
+    agrees("@keeper ||= AnswerKeeper.new", reads: %i[m n], passes: 3) do
+      m = n = 0
+      game_loop do
+        @keeper ||= AnswerKeeper.new
+        @lazy ||= AnswerLazyKeeper.new(1)
+        m = @keeper.bump
+        n = @lazy.counter.bump
+      end
+    end
+  end
+
+  def test_an_object_keeping_a_changing_object_made_above_the_game_loop
+    agrees("AnswerKeeper.new above game_loop", reads: %i[m n], passes: 3) do
+      keeper = AnswerKeeper.new
+      lazy = AnswerLazyKeeper.new(1)
+      m = n = 0
+      game_loop do
+        m = keeper.bump
+        n = lazy.counter.bump
+      end
+    end
+  end
+
+  # Which `||=` runs first decides what `@counter` holds in Ruby; the game cannot follow that.
+  def test_one_instance_variable_kept_as_different_objects_in_two_routines_is_refused
+    refused("@counter ||= two classes in two funcs", /@counter.*AnswerTallCounter/m) do
+      m = k = passes = 0
+      func(:answer_keeps_counter) { m = (@counter ||= AnswerCounter.new).bump }
+      func(:answer_keeps_tall_counter) { k = (@counter ||= AnswerTallCounter.new).bump }
+      game_loop do
+        passes += 1
+        call :answer_keeps_tall_counter
+        call :answer_keeps_counter if passes > 1
+      end
+    end
+  end
+
+  def test_one_instance_variable_kept_as_the_same_object_in_two_routines
+    agrees("@counter ||= one class in two funcs", reads: %i[m k], passes: 3) do
+      m = k = passes = 0
+      func(:answer_keeps_counter_first) { m = (@counter ||= AnswerCounter.new).bump }
+      func(:answer_keeps_counter_second) { k = (@counter ||= AnswerCounter.new).bump }
+      game_loop do
+        passes += 1
+        call :answer_keeps_counter_second
+        call :answer_keeps_counter_first if passes > 1
+      end
+    end
+  end
+
+  # A local from above the loop keeps what `||=` gave it, in Ruby too.
+  def test_a_changing_object_kept_in_a_local_from_above_the_game_loop
+    agrees("c = nil above, c ||= AnswerCounter.new in game_loop", reads: %i[m], passes: 3) do
+      m = 0
+      c = nil
+      game_loop do
+        c ||= AnswerCounter.new
+        m = c.bump
+      end
+    end
+  end
+
+  # Set back to nil in the loop, Ruby makes a new counter on the next pass.
+  def test_a_changing_object_kept_in_a_local_the_game_loop_sets_again_is_refused
+    refused("c ||= AnswerCounter.new; c = nil in game_loop", /above the game loop/) do
+      m = 0
+      c = nil
+      game_loop do
+        c ||= AnswerCounter.new
+        m = c.bump
+        c = nil if m == 2
+      end
+    end
+  end
+
+  # A local the loop sets itself is new on every pass.
+  def test_a_changing_object_kept_in_a_local_of_the_game_loop_is_refused
+    refused("c = nil; c ||= AnswerCounter.new in game_loop", /above the game loop/) do
+      m = 0
+      game_loop do
+        c = nil
+        c ||= AnswerCounter.new
+        m = c.bump
+      end
+    end
+  end
+
   def test_a_fraction_asked_a_verb_a_game_number_does_not_answer_is_refused
     refused("@x.floor after @x += 0.5", /does not answer `floor`/) do
       fraction = AnswerFraction.new

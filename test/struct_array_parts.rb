@@ -46,6 +46,17 @@ class HatcheryPart
   def lay = @eggs << Spark.new(9, 0, 0)
 end
 
+# A count that starts at 5 and goes up by one each time `bump` is called.
+class KeptTally
+  def initialize
+    @count = 5
+  end
+
+  def bump = @count += 1
+
+  attr_reader :count
+end
+
 # An object whose initialize pushes into Arrays it is handed, not its own.
 class HandedPush
   def initialize(notes, sparks, x)

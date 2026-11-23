@@ -117,6 +117,8 @@ scene :play do
 end
 ```
 
+A local of the game's own block, set above the game loop, keeps a part the same way: `counter = nil` above it, then `counter ||= Counter.new` in it. A part kept by another part with `||=` is kept only if that other part is kept too: a part made on every pass makes what it keeps on every pass as well. One name kept with `||=` on two lines that make different things (`@enemy ||= Bat.new` in one routine, `@enemy ||= Rat.new` in another) stops with a message, since Ruby keeps whichever runs first.
+
 A part kept so starts from the numbers its `initialize` gives, and what its `initialize` puts into an Array it makes there goes in on the first pass alone. `rom.profile` names the hidden number that keeps it to once, and a save that keeps the Array keeps that number too; to skip it, make the part above the game loop. A part whose numbers never change (a spot that only answers questions) can be made anywhere. A push in `initialize` into an Array the part was handed runs each time the line making the part runs, as in Ruby, and so does everything else `initialize` does in the game, such as drawing or putting up a picture.
 
 The number is named after the class and the instance variable: `lamp_lit` for `@lit` of a `Lamp`, and `score` for the game block's own `@score`. A profile and a test read it by that name. Written in the class's body, `game_variables busy: :lamp_wait` gives the number a name of the game's own, and `game_variables :damage, saved: false` marks numbers a save never keeps.

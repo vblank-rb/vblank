@@ -228,6 +228,33 @@ class AnswerSpot
   def left = @x - 1
 end
 
+# A counter that starts at 50, kept in the same instance variable as an AnswerCounter elsewhere.
+class AnswerTallCounter
+  def initialize
+    @n = 50
+  end
+
+  def bump = @n += 1
+end
+
+# Keeps a counter with `||=` as it is made; nothing of its own changes.
+class AnswerKeeper
+  def initialize
+    @inner ||= AnswerCounter.new
+  end
+
+  def bump = @inner.bump
+end
+
+# Makes its counter the first time it is asked; nothing of its own changes.
+class AnswerLazyKeeper
+  def initialize(x)
+    @x = x
+  end
+
+  def counter = @counter ||= AnswerCounter.new
+end
+
 # A fraction counted up, and asked for its whole part with a verb a game's number does not answer.
 class AnswerFraction
   def initialize

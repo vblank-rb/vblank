@@ -207,6 +207,37 @@ class TestStructArray < Minitest::Test
     assert_equal [0, 1, 9], loaded.pool(:hatchery_part_eggs, :x).compact.sort
   end
 
+  # A part kept with `||=` in a scene, its number changed and saved: a fresh power-on loads it,
+  # and the part's `initialize` does not set it back to its start.
+  def test_a_part_kept_in_a_scene_and_saved_keeps_its_number_after_a_load
+    program = Builder.new.tap do |builder|
+      builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc do
+        files = save_data(:file) { keep part: :play }
+        files[0].load
+        shown = 0
+        scene :play do
+          tally = (@tally ||= KeptTally.new)
+          if pressed(:a)
+            tally.bump
+            files[0].save
+          end
+          shown = tally.count
+        end
+        mode = :play
+        game_loop do
+          mode = :play
+          call mode
+        end
+      end, checked: false))
+      builder.finalize_program
+    end.program
+    store = SaveImage.new
+    game_player(save: store).input_each_frame(&presses_from_first_pass({ 2 => :a, 4 => :a })).run(program, frames: 8)
+    loaded = game_player(save: store).run(program, frames: 2)
+
+    assert_equal 7, loaded[:shown]
+  end
+
   # Only the part's own making is once: a push in another of its methods, called on every pass,
   # puts a thing in on every pass.
   def test_a_part_kept_in_the_game_loop_pushes_from_its_other_methods_every_pass

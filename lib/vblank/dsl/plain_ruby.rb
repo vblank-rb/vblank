@@ -353,7 +353,8 @@ module VBlank
           when Prism::MultiWriteNode then multi_write_text(node)
           when Prism::InstanceVariableOrWriteNode then instance_variable_or_text(node)
           when Prism::InstanceVariableAndWriteNode then instance_variable_logic_text(node, "join_both")
-          when Prism::LocalVariableOrWriteNode then logic_write_text(node, "join_either")
+          when Prism::LocalVariableOrWriteNode
+            kept_local?(node) ? kept_part_text(node, "nil") : logic_write_text(node, "join_either")
           when Prism::LocalVariableAndWriteNode then logic_write_text(node, "join_both")
           when Prism::InstanceVariableReadNode then instance_variable_read_text(node)
           when Prism::DefinedNode then defined_text(node)
@@ -1022,16 +1023,57 @@ module VBlank
 
         # `@x ||= var :x, 0`, the same as `@x = var :x, 0` the first time.
         def instance_variable_or_text(node)
-          return kept_part_text(node) if @follows_instance_variables && node.value.is_a?(Prism::CallNode) && node.value.name == :new
+          return kept_part_text(node, "self") if @follows_instance_variables && part_made?(node.value)
           return instance_variable_logic_text(node, "join_either") unless LocalNames.makes_variable?(node.value)
 
           "#{node.name} ||= #{WRITES}.keep_as_own((#{value_text(node.value)}), self, :#{node.name})"
         end
 
+        def part_made?(value) = value.is_a?(Prism::CallNode) && value.name == :new
+
         # `@counter ||= Counter.new`: made the first time the line runs and kept after, as Ruby does,
         # so a part with changing numbers may be made so in game code (InstanceVariables.keeping_part).
-        def kept_part_text(node)
-          "#{node.name} ||= #{INSTANCE_VARIABLES}.keeping_part { #{rewritten_text(node.value)} }"
+        # +owner+ is the text of the object keeping it, `nil` for a local (#kept_local?). Every pass
+        # of the line is noted first, the ones Ruby skips too (InstanceVariables.note_kept_part).
+        def kept_part_text(node, owner)
+          "(#{INSTANCE_VARIABLES}.note_kept_part(#{owner}, :#{node.name}, #{node.value.slice.inspect}); " \
+            "#{node.name} ||= #{INSTANCE_VARIABLES}.keeping_part(#{owner}) { #{rewritten_text(node.value)} })"
+        end
+
+        # `c ||= Counter.new` in a block of the game's, where `c` is a local of the game's own block,
+        # given nothing in any other block: the block of the game runs once, as it is set up, so
+        # `c` keeps one part in Ruby across every pass, as the game does. A local of the block
+        # running every frame, or one another block sets, is new or changed on a pass, and is left to
+        # the refusal of a changing part made every pass.
+        def kept_local?(node)
+          return false unless @follows_instance_variables && @block_node && part_made?(node.value)
+          return false unless node.depth.positive? && scopes_around(@block_node, node)[-1 - node.depth].equal?(@block_node)
+
+          local_writes_in(@block_node, node.name).none? { |write| !write.equal?(node) && write.depth.positive? }
+        end
+
+        # The blocks, lambdas and methods under +root+ (itself one) that hold +node+, the innermost last.
+        def scopes_around(root, node)
+          scopes = []
+          at = root
+          while at
+            scopes << at if OWN_SCOPES.any? { |kind| at.is_a?(kind) }
+            at = at.compact_child_nodes.find { |child| holds?(child, node) && !child.equal?(node) }
+          end
+          scopes
+        end
+
+        def holds?(outer, inner)
+          outer.location.start_offset <= inner.location.start_offset && inner.location.end_offset <= outer.location.end_offset
+        end
+
+        LOCAL_WRITES = [Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
+                        Prism::LocalVariableAndWriteNode, Prism::LocalVariableTargetNode].freeze
+
+        # Every write under +node+ of a local named +name+.
+        def local_writes_in(node, name)
+          own = LOCAL_WRITES.any? { |kind| node.is_a?(kind) } && node.name == name ? [node] : []
+          own + node.compact_child_nodes.flat_map { |child| local_writes_in(child, name) }
         end
 
         # `@x ||= value` and `@x &&= value`. On an instance variable the game names, in game code,

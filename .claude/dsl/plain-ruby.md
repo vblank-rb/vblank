@@ -114,7 +114,13 @@ instance variables.
   `InstanceVariables.keeping_part`, `Builder#keeping_part`): made the first time the line runs, in
   Ruby and in the game, and the same part after, its scene's re-entries included, which is how
   `examples/dive.rb` and `examples/shmup.rb` make their scene's parts so what they show belongs to
-  the scene. Every part its `initialize` makes is kept with it. A line of its `initialize` gives the
+  the scene. Every part its `initialize` makes is kept with it. A local of the game's own block,
+  given nothing in another block, keeps one the same way (`c = nil` above the loop, `c ||=
+  Counter.new` in it; `Rewriter#kept_local?`). A `||=` on a part that is itself made every pass
+  (`Uses#made_every_pass?`) keeps nothing, since Ruby's is new on every pass with it: a changing
+  part kept so is refused naming the holder (`Builder#keeping_in_part_made_every_pass`). One name
+  kept on two lines of game code that make different things is refused, since Ruby keeps whichever
+  line runs first (`Uses#refuse_kept_as_another!`). A line of its `initialize` gives the
   start, as `var` does: `@screen ||= FadedScreen.new(...)` in `scene :copyright do`, with `@phase =
   WAITING` in `initialize`, starts the phase at WAITING and does not set it back on every pass. A
   first number given anywhere else in game code, a method `initialize` calls included, is set there

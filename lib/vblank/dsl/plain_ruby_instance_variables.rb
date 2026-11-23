@@ -567,24 +567,55 @@ module VBlank
 
           uses = builder.instance_variable_uses
           uses.note_object_made(owner)
-          refuse_part_made_every_pass!(owner) if builder.made_every_pass? && uses.changing_part?(owner)
+          if builder.made_every_pass?
+            uses.note_made_every_pass(owner)
+            refuse_part_made_every_pass!(owner, builder.keeper_made_every_pass) if uses.changing_part?(owner)
+          end
           builder.making_part(&)
         end
 
         # `@counter ||= Counter.new` (Rewriter#kept_part_text): the part made in the block, and
         # every part its `initialize` makes, is kept after its first pass (Builder#keeping_part).
-        def keeping_part(&)
+        #
+        # +owner+ is the object whose instance variable keeps it, or nil for a local. An owner made
+        # again on every pass (Uses#made_every_pass?) is new in Ruby on every pass, and so is what
+        # its `||=` keeps: that part is made every pass too, and refused if it changes.
+        def keeping_part(owner, &)
           builder = Builder.in_use
-          builder ? builder.keeping_part(&) : yield
+          return yield unless builder
+          return builder.keeping_part(&) unless builder.instance_variable_uses.made_every_pass?(owner)
+
+          builder.keeping_in_part_made_every_pass(owner.class.name || "this class", &)
         end
 
-        def refuse_part_made_every_pass!(owner)
+        # Runs before every `||=` that keeps a part (Rewriter#kept_part_text), even one Ruby skips
+        # since +label+ holds something already: two lines in game code that keep different
+        # things in one name are refused (Uses#refuse_kept_as_another!).
+        def note_kept_part(owner, label, made)
+          builder = Builder.in_use
+          return unless builder&.recording_game_code?
+
+          builder.instance_variable_uses.refuse_kept_as_another!(owner, label, made)
+        end
+
+        def refuse_part_made_every_pass!(owner, keeper)
           name = owner.class.name || "this class"
-          raise Refused, "This line makes a new `#{name}` on every pass, since it is in code that runs every " \
-                         "frame. Its numbers change as the game plays, and in Ruby each new one starts again " \
-                         "from `initialize`. To fix this, make it above the game loop, or keep it in an instance " \
-                         "variable, like `@part ||= #{name}.new(...)`, so it is made one time." \
+          raise Refused, part_in_part_made_every_pass_message(name, keeper) if keeper
+
+          raise Refused, "This line makes a new `#{name}` in code that runs every frame. Its numbers change " \
+                         "as the game plays, and in Ruby each new one starts again from `initialize`. To fix " \
+                         "this, make it above the game loop, or keep it in an instance variable, like " \
+                         "`@part ||= #{name}.new(...)`, so it is made one time." \
                          "#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # +name+ is kept with `||=` in a +keeper+ that is itself made again on every pass.
+        def part_in_part_made_every_pass_message(name, keeper)
+          "This line makes a new `#{name}` and keeps it in a `#{keeper}`. But the `#{keeper}` is made in code " \
+            "that runs every frame, so in Ruby a new `#{keeper}` is made on every pass, and it makes a new " \
+            "`#{name}`. Each new `#{name}` starts again from `initialize`. To fix this, make the `#{keeper}` " \
+            "above the game loop, or keep it in an instance variable too, like `@part ||= #{keeper}.new(...)`." \
+            "#{Messages::AuthorSource.at_author_line}"
         end
 
         # A Hash or an Array of numbers (`@tilt_counters = { left: 0, right: 0 }`), or one already
@@ -873,6 +904,8 @@ module VBlank
             @changing_by_class = {}
             @made_order = {}.compare_by_identity
             @made_count = Hash.new(0)
+            @made_every_pass = {}.compare_by_identity
+            @kept_sites = {}.compare_by_identity
             @unsaved_by_class = {}
             @chosen_by_class = {}
             @makers_by_name = {}
@@ -1062,6 +1095,30 @@ module VBlank
 
           # +owner+'s `initialize` runs: it is the next object of its class, counted from 1.
           def note_object_made(owner) = @made_order[owner] ||= (@made_count[owner.class] += 1)
+
+          # +owner+ is made by code that runs every frame and not kept (Builder#made_every_pass?),
+          # so Ruby makes a new one on every pass.
+          def note_made_every_pass(owner) = @made_every_pass[owner] = true
+
+          def made_every_pass?(owner) = @made_every_pass.key?(owner)
+
+          # One line of game code that keeps a part with `||=`: what it makes, as written, and where.
+          KeptSite = Data.define(:made, :at)
+
+          # +owner+'s +label+ (a local's name where +owner+ is nil) is kept with `||=` as +made+ on
+          # the line game code is at. Ruby keeps what the line that runs first makes, which may be
+          # another line than the one the build met first, so two lines that make different things
+          # are refused.
+          def refuse_kept_as_another!(owner, label, made)
+            sites = @kept_sites[owner] ||= {}
+            first = sites[label] ||= KeptSite.new(made: made, at: Messages::AuthorSource.at_author_line)
+            return if first.made == made
+
+            raise Refused, "`#{label}` keeps `#{first.made}` on one line#{first.at}, and `#{made}` on this line. " \
+                           "In Ruby, `#{label}` keeps what the line that runs first makes as the game plays, and " \
+                           "VBlank cannot know which line that is. To fix this, keep each one in a name of its " \
+                           "own, or make `#{label}` above the game loop.#{Messages::AuthorSource.at_author_line}"
+          end
 
           # The variable name for +owner+'s +label+, from +name+ (InstanceVariables.free_name_for):
           # for one followed only because its code may change it, +name+ for the first object of

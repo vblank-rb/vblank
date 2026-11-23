@@ -1504,13 +1504,32 @@ module VBlank
     def making_part # :nodoc:
       return yield unless recording_game_code?
 
-      (@part_starts ||= []).push(PartStart.new(depth: @container_stack.length, made: Set.new, kept: keeping_parts?))
+      (@part_starts ||= []).push(PartStart.new(depth: @container_stack.length, made: Set.new, kept: keeping_parts?,
+                                               keeper: @keeper_made_every_pass))
+      keeper = @keeper_made_every_pass
+      @keeper_made_every_pass = nil # what this part's `initialize` makes is kept, if at all, by this part
       begin
         yield
       ensure
+        @keeper_made_every_pass = keeper
         close_part_start(@part_starts.pop)
       end
     end
+
+    # Runs the block, a line of game code keeping a part with `||=` (#keeping_part) in a part of
+    # the class named +keeper+, which is itself made again on every pass: in Ruby the part kept is
+    # new on every pass too, so it is made every pass (#made_every_pass?), and the refusal of a
+    # changing one names +keeper+ (#keeper_made_every_pass).
+    def keeping_in_part_made_every_pass(keeper) # :nodoc:
+      outer = @keeper_made_every_pass
+      @keeper_made_every_pass = keeper
+      yield
+    ensure
+      @keeper_made_every_pass = outer
+    end
+
+    # The class name of the part made every pass whose `||=` is making a part now, if one is.
+    attr_reader :keeper_made_every_pass # :nodoc:
 
     # Runs the block, a line of game code that keeps the part it makes (`@part ||= Part.new`), so
     # that part and the parts its `initialize` makes are made one time (#made_every_pass?).
@@ -1547,7 +1566,7 @@ module VBlank
 
     # A part being made in game code (#making_part): where its `initialize` records, the Arrays it
     # made there, its hidden number, whether a #once_for_part is open, and the last test one made.
-    PartStart = Struct.new(:depth, :made, :started, :once_open, :branch, :kept, keyword_init: true)
+    PartStart = Struct.new(:depth, :made, :started, :once_open, :branch, :kept, :keeper, keyword_init: true)
 
     # The Array +name+ (a list, or the pool an Array of Structs is) is made while a part is being
     # made, so what that part's `initialize` puts into it goes in once (#once_for_part). Every part
@@ -1560,17 +1579,25 @@ module VBlank
       (@part_starts || []).each do |start|
         next unless part_start_code?(start)
 
-        refuse_array_of_part_made_every_pass!(name) unless start.kept
+        refuse_array_of_part_made_every_pass!(name, start.keeper) unless start.kept
         start.made << name
       end
     end
 
-    def refuse_array_of_part_made_every_pass!(name)
+    def refuse_array_of_part_made_every_pass!(name, keeper)
+      if keeper
+        raise DSL::PlainRuby::Refused,
+              "This line makes a new object and keeps it in a `#{keeper}`, and its `initialize` makes the Array " \
+              "`#{name}`. But the `#{keeper}` is made in code that runs every frame, so in Ruby a new `#{keeper}` " \
+              "is made on every pass, and it makes and fills a new Array. To fix this, make the `#{keeper}` " \
+              "above the game loop, or keep it in an instance variable too, like `@part ||= #{keeper}.new(...)`." \
+              "#{Messages::AuthorSource.at_author_line}"
+      end
       raise DSL::PlainRuby::Refused,
-            "This line makes a new object on every pass, since it is in code that runs every frame, and its " \
-            "`initialize` makes the Array `#{name}`. In Ruby each new object makes and fills its Array again. " \
-            "To fix this, make the object above the game loop, or keep it in an instance variable, like " \
-            "`@part ||= Part.new(...)`, so it is made one time.#{Messages::AuthorSource.at_author_line}"
+            "This line makes a new object in code that runs every frame, and its `initialize` makes the Array " \
+            "`#{name}`. In Ruby each new object makes and fills its Array again. To fix this, make the object " \
+            "above the game loop, or keep it in an instance variable, like `@part ||= Part.new(...)`, so it is " \
+            "made one time.#{Messages::AuthorSource.at_author_line}"
     end
     private :refuse_array_of_part_made_every_pass!
 
