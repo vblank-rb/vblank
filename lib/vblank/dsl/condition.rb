@@ -42,6 +42,10 @@ module VBlank
       # The IR value node for the test (a comparison binop).
       attr_reader :node # :nodoc:
 
+      # The number question this test answers where Ruby's hands back a number, not true or
+      # false (`:nonzero?`), so that a line using it as a number can be refused. Nil otherwise.
+      attr_accessor :number_question # :nodoc:
+
       # Where the author built this Condition ("file.rb:line"), or nil if it can't be
       # pinned down — used to point the orphaned-Condition diagnostic at their code.
       attr_reader :source # :nodoc:

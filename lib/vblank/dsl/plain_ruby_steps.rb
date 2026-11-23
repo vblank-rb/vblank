@@ -109,7 +109,20 @@ module VBlank
           return keep_side_answer(unless_left, if_node, right, otherwise: 1, used: used, into: into) if if_node
           return condition | as_condition(right) if game_test?(right)
 
+          refuse_number_question_as_number!(left) if right
           right ? condition.discard! || right : condition
+        end
+
+        # `lives.nonzero? || 1` or `shown = lives.nonzero?`: Ruby's `nonzero?` hands back the
+        # number or nil, and a game's number is never nil, so here it is only a test
+        # (Value#nonzero?). Used as a number, it would be a yes or no.
+        def refuse_number_question_as_number!(value)
+          return unless value.is_a?(Condition) && value.number_question
+
+          question = value.number_question
+          refuse_game_code!("This line uses `#{question}` as a number. In Ruby, `#{question}` " \
+                            "gives the number or nil. A number the game keeps is never nil, so here `#{question}` " \
+                            "is only a test. To fix this, write the test in full: `lives != 0 ? lives : 1`.")
         end
 
         # The subject of a `case ... in` whose patterns Ruby matches while building. See

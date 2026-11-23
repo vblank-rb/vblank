@@ -412,35 +412,35 @@ game_loop do
 end
 ```
 
-`even?`, `odd?`, `nonzero?` and `between?` on a game number are refused: write the comparison.
+`even?`, `odd?`, `zero?`, `nonzero?`, `positive?`, `negative?` and `between?` are tests on a game number, as in Ruby. `nonzero?` is only a test: Ruby's gives the number or nil, and a game number is never nil, so a line that uses it as a number is refused.
 
 Refused:
 
 ```ruby
 screen :bitmap
-turn = 0
-lit = 0
+lives = 3
+shown = 0
 game_loop do
-  turn += 1
-  lit = 1 if turn.even?
+  lives -= 1 if pressed(:b)
+  shown = lives.nonzero? || 1
 end
 ```
 
 VBlank says:
 
 ```
-A game's number does not answer `even?`.
+This line uses `nonzero?` as a number.
 ```
 
 Write instead:
 
 ```ruby
 screen :bitmap
-turn = 0
-lit = 0
+lives = 3
+shown = 0
 game_loop do
-  turn += 1
-  lit = 1 if turn % 2 == 0
+  lives -= 1 if pressed(:b)
+  shown = lives != 0 ? lives : 1
 end
 ```
 

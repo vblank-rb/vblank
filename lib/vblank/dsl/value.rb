@@ -662,27 +662,43 @@ module VBlank
       # A test that holds while this number is less than 0. It costs what `n < 0` costs.
       def negative? = compare(:<, 0)
 
+      # A test that holds while this number is not 0: `if lives.nonzero?`. It costs what
+      # `lives != 0` costs. Ruby's hands back the number or nil, and a game's number is never nil,
+      # so it is a test here and nothing else.
+      def nonzero? = compare(:!=, 0).tap { |test| test.number_question = :nonzero? }
+
+      # A test that holds while this whole number is even, as Ruby asks it: `if frame.even?`. It
+      # tests the lowest bit, `(frame & 1) == 0`, which is cheaper than `% 2` and right for a
+      # number below 0 too. A fraction is refused, as Ruby's Float has no `even?`.
+      def even? = bitwise(:&, 1) == 0
+
+      # A test that holds while this whole number is odd: `(n & 1) != 0`. See #even?.
+      def odd? = bitwise(:&, 1) != 0
+
+      # A test that holds while this number is from +min+ to +max+, both ends counted, as Ruby's
+      # `between?` is: `n >= min && n <= max`.
+      def between?(min, max) = (self >= min) & (self <= max)
+
       # The number questions Ruby has that a game's numbers do not answer here. Asking one is
-      # refused in plain words with the comparison to write, rather than with Ruby's own
-      # "undefined method", which names a class of the library's and nothing a game wrote.
-      NUMBER_QUESTIONS_INSTEAD = { # :nodoc:
-        nonzero?: "!= 0", even?: "% 2 == 0", odd?: "% 2 != 0", finite?: nil, infinite?: nil,
-        integer?: nil
-      }.freeze
+      # refused in plain words, rather than with Ruby's own "undefined method", which names a
+      # class of the library's and nothing a game wrote.
+      UNANSWERED_NUMBER_QUESTIONS = %i[finite? infinite? integer?].freeze # :nodoc:
 
       def method_missing(name, *args, &) # :nodoc:
-        return super unless NUMBER_QUESTIONS_INSTEAD.key?(name) || (name.end_with?("?") && 0.respond_to?(name))
+        return super unless unanswered_number_question?(name)
 
-        instead = NUMBER_QUESTIONS_INSTEAD[name]
-        written = @name ? name_as_written : "the number"
-        fix = instead ? " Write the comparison instead: `#{written} #{instead}`." : ""
         raise ArgumentError,
-              "A game's number does not answer `#{name}`. It answers `zero?`, `positive?` and " \
-              "`negative?`, and the comparisons `==`, `!=`, `<`, `<=`, `>` and `>=`.#{fix}#{at_dsl_line}"
+              "A game's number does not answer `#{name}`. It answers `zero?`, `nonzero?`, `positive?`, " \
+              "`negative?`, `even?`, `odd?` and `between?`, and the comparisons `==`, `!=`, `<`, `<=`, `>` " \
+              "and `>=`.#{at_dsl_line}"
+      end
+
+      def unanswered_number_question?(name) # :nodoc:
+        UNANSWERED_NUMBER_QUESTIONS.include?(name) || (name.end_with?("?") && 0.respond_to?(name))
       end
 
       def respond_to_missing?(name, include_private = false) # :nodoc:
-        return false if NUMBER_QUESTIONS_INSTEAD.key?(name) || (name.end_with?("?") && 0.respond_to?(name))
+        return false if unanswered_number_question?(name)
 
         super
       end

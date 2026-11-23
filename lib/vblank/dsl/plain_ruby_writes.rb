@@ -38,6 +38,7 @@ module VBlank
         # is a write in its `initialize`.
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
                   shares: false, before_plain_start: 0, owner: nil, starting: false)
+          Steps.refuse_number_question_as_number!(value)
           share_argument(value, owner, label) if shares && owner
           if owner
             InstanceVariables.refuse_nil_written_under_game_test!(owner, current, label, tests)
