@@ -111,9 +111,14 @@ end
 Such an instance variable is the game's from the first line of game code that reads or changes it, starting from the number Ruby gave it, wherever it is read: in another routine, through `attr_reader`, or in another part it was handed to. A routine that draws the lamp reads the game's number even where it comes before the routine that switches it. A change from outside the class through a writer counts too: `dial.level += 3`, or `lamp.lit = 1` in a game block. Where game code sets an instance variable outright in a method of its own (`def open! = @open = true`) and another routine reads it, VBlank cannot see the change in the source, and stops with a message: write `game_variables :open` in the class's body. A `game_loop`, a scene and a `func` run every frame, so a line there that makes a part makes a new one on every pass in Ruby. A part whose numbers or Arrays change cannot be made that way: VBlank stops with a message. Make it above the game loop, or keep it with `||=`, which makes it the first time the line runs and keeps the same part after, in Ruby and in the game:
 
 ```ruby
-scene :play do
-  diver = (@diver ||= Diver.new(self)) # made inside the scene, so what it shows is the scene's
-  diver.update
+# A ship kept with ||=: made the first time the line runs, and the same ship after
+Ship = Struct.new(:x, :y)
+screen :bitmap
+game_loop do
+  ship = (@ship ||= Ship.new(120, 80)) # made inside the loop, as a scene makes what is its own
+  ship.x += 1
+  clear_screen :black
+  draw_rect_at ship.x, ship.y, 4, 4, :white
 end
 ```
 
