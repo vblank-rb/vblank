@@ -229,6 +229,17 @@ end
   an Array for ties; any other `<=>` is refused rather than called per comparison. `min`, `max`
   and `minmax` walk once by the same key (`StructArray#precedes`, field by field), keeping the
   first thing nothing later comes before, started at the first thing; they hand back a kept thing.
+  Two things of one Array answer `<`, `>`, `<=`, `>=`, `between?` (game tests by the same key),
+  in `Thing`, ahead of Comparable's, whose own would take the sign as a Ruby answer; a thing of
+  another Array is refused. `clamp` takes one thing as both ends only (Ruby stops with an error
+  where min comes after max, unknown while building). `==` follows Ruby's lookup
+  (`StructArray#equality`): Comparable with a `<=>` of its own, level on the order's fields;
+  Comparable alone, the same thing only; otherwise every field. `eql?` is always every field.
+  A comparing block to `sort!`, `min`, `max` or `minmax` is read by the same rule as `<=>`, and
+  a block or `<=>` that records anything (a change) is refused, since it runs once while
+  building. `min(2)` is refused. The thing `min` or `max` hands back is, as a test, whether the
+  Array held any thing (`Thing#found`, read by `Steps.game_test?`), as Ruby's nil is falsy;
+  `min`/`max` in a routine a walk may call is refused, as a sort there is.
 - Ruby's other Array methods (`unshift`, `insert`, `concat`, `rotate!`, `map`, `uniq`) are refused by
   name, listing those that work. They put nothing in as far as the fraction rule goes.
 - **A named instance variable's Array** (`game_variables :counts`) is a game variable for each index

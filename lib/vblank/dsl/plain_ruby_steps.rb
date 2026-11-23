@@ -17,7 +17,14 @@ module VBlank
         # Truthiness is Ruby's. Only a test, or a yes or no the game keeps, has an answer that waits
         # for the game to play. Every other value is answered here: nil and false are falsy, and
         # everything else is truthy, a number of the game's among them, whatever it holds.
-        def game_test?(value) = value.is_a?(Condition) || (value.is_a?(Value) && (value.boolean? || !value.truth.nil?))
+        #
+        # A thing `min` or `max` handed back is one too: whether the Array held any thing, as
+        # Ruby's nil for an empty one is falsy (StructArray::Thing#found_test).
+        def game_test?(value)
+          return true if value.is_a?(StructArray::Thing) && value.found
+
+          value.is_a?(Condition) || (value.is_a?(Value) && (value.boolean? || !value.truth.nil?))
+        end
 
         # Does this name a place that keeps a number, rather than a working-out of one?
         def variable?(value) = value.is_a?(Value) && value.handle?
@@ -26,6 +33,7 @@ module VBlank
         def game_value?(value) = [Integer, Float, Symbol, TrueClass, FalseClass].any? { |kind| value.is_a?(kind) }
 
         def as_condition(value)
+          return value.found_test if value.is_a?(StructArray::Thing) && value.found
           return value unless value.is_a?(Value)
 
           value.truth ? value.truth == Value::TRUTHY_HELD : value != 0
@@ -44,7 +52,11 @@ module VBlank
         def plain_beside_game_number?(left, right) = game_value?(left) && right.is_a?(Value)
 
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
-        def nil_test(value) = value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
+        def nil_test(value)
+          return !value.found_test if value.is_a?(StructArray::Thing) && value.found
+
+          value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
+        end
 
         # A conditional's test, as an object the rewritten `if` asks which sides to run. A game
         # number alone (`if floor`, `secret ? a : b`) is truthy, as any object is in Ruby: that is a
@@ -60,6 +72,7 @@ module VBlank
 
         # The other answer to a test, for `!` and `unless`.
         def opposite(value)
+          return !value.found_test if value.is_a?(StructArray::Thing) && value.found
           return !value unless value.is_a?(Value) && game_test?(value)
 
           value.truth ? value.truth != Value::TRUTHY_HELD : value == 0

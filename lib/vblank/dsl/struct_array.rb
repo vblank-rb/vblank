@@ -200,43 +200,76 @@ module VBlank
       # ```
       #
       # The `<=>` must compare fields: one field against the other thing's same field, or an
-      # Array of those, `[y, x] <=> [other.y, other.x]`, for ties. A Struct with no `<=>` of its
-      # own is refused, naming `sort_by!`.
-      def sort!(*)
-        sort_by_key!(own_order)
+      # Array of those, `[y, x] <=> [other.y, other.x]`, for ties. A comparing block,
+      # `sort! { |a, b| b.y <=> a.y }`, sorts by itself instead, by the same rule. A Struct with no
+      # `<=>` of its own is refused, naming `sort_by!`.
+      def sort!(&block)
+        sort_by_key!(order_of(block))
       end
 
       # The thing the Struct's `<=>` puts first, as Ruby's `min` hands it back: one walk, keeping
-      # the first thing no other comes before. On an empty Array it holds no thing, as Ruby's nil:
-      # test `any?` before reading it.
+      # the first thing no other comes before. A comparing block orders by itself instead. On an
+      # empty Array it holds no thing, as Ruby's nil, and as a test it is false: `if (m = s.min)`.
       #
       # ```ruby
       # nearest = enemies.min
       # ```
-      def min(*) = best_in_order(smallest: true)
+      def min(count = nil, &block)
+        refuse_count!(:min, count) if count
+        best_in_order(order_of(block), smallest: true)
+      end
 
       # The thing the Struct's `<=>` puts last, as Ruby's `max`.
-      def max(*) = best_in_order(smallest: false)
+      def max(count = nil, &block)
+        refuse_count!(:max, count) if count
+        best_in_order(order_of(block), smallest: false)
+      end
 
       # `[min, max]`, as Ruby's `minmax`: two walks.
-      def minmax = [min, max]
+      def minmax(&block) = [min(&block), max(&block)]
 
-      # The order the Struct's `<=>` says, as a SortOrder::Key, read once while building by
-      # comparing two stand-in things, the first in slot 0 and the second in slot 1: each pair of
-      # numbers the answer compared is a field read from both, and which side each is on says
-      # which way it sorts (SortOrder.key_from_comparison).
+      # The order the Struct's `<=>` says, as a SortOrder::Key, read once while building
+      # (#order_of).
       def own_order # :nodoc:
         @own_order ||= begin
           refuse_no_order! unless SortOrder.own_order?(@kind)
-          first, second = [0, 1].map { |slot| walked(Pool::Instance.new(@pool, Value.new(@builder, IR::Build.int(slot)))) }
-          SortOrder.key_from_comparison(first <=> second, kind_name) do |left, right|
-            field = field_sorted_by(left)
-            next nil unless field && field == field_sorted_by(right)
-
-            slots = [left, right].map { |node| node.index.kind == :int ? node.index.value : nil }
-            SortOrder::Field.new(name: field, descending: slots == [1, 0]) if [[0, 1], [1, 0]].include?(slots)
-          end
+          order_of(->(one, other) { one <=> other })
         end
+      end
+
+      # The order a comparing +block+ says, or with none the Struct's own: the block is handed two
+      # stand-in things, the first in slot 0 and the second in slot 1, and each pair of numbers its
+      # answer compared must be one field read from both, whose sides say which way it sorts
+      # (SortOrder.key_from_comparison). It runs once, while building, so a block that records
+      # anything the game would do (a change, a sound) is refused: Ruby would do that on every
+      # comparison.
+      private def order_of(block)
+        return own_order unless block
+
+        first, second = [0, 1].map { |slot| walked(Pool::Instance.new(@pool, Value.new(@builder, IR::Build.int(slot)))) }
+        mark = @builder.statement_mark
+        answer = block.call(first, second)
+        refuse_order_doing_something! if @builder.recorded_since?(mark)
+        SortOrder.key_from_comparison(answer, kind_name) do |left, right|
+          field = field_sorted_by(left)
+          next nil unless field && field == field_sorted_by(right)
+
+          slots = [left, right].map { |node| node.index.kind == :int ? node.index.value : nil }
+          SortOrder::Field.new(name: field, descending: slots == [1, 0]) if [[0, 1], [1, 0]].include?(slots)
+        end
+      end
+
+      private def refuse_order_doing_something!
+        PlainRuby::Steps.refuse_game_code!("The `<=>` of #{kind_name}, or the block that compares its things, does more " \
+                                           "than compare: it changes something. The game reads the order once, while " \
+                                           "it builds, so the change would not happen on each comparison as in Ruby. " \
+                                           "To fix this, compare fields only, and make the change outside.")
+      end
+
+      private def refuse_count!(verb, count)
+        PlainRuby::Steps.refuse_game_code!("`#{verb}(#{count})` gives an Array of things, and the game keeps no room " \
+                                           "for a new Array. To fix this, sort `#{@local}` with `sort!` and walk the " \
+                                           "first #{count} with `each_with_index`.")
       end
 
       # Does +one+ come before +other+ in +key+'s order (the other way round with +smallest+
@@ -252,25 +285,76 @@ module VBlank
         first | ((a == b) & precedes(one, other, SortOrder::Key.new(fields: rest), smallest: smallest))
       end
 
+      # How `==` on these things compares, as Ruby's lookup finds it: :order where Comparable's
+      # stands in front of Struct#== and the Struct has a `<=>` of its own (level on the order's
+      # fields), :same_thing where Comparable has only Object's `<=>` to ask (which is 0 for the
+      # same object alone), or :fields, Struct's own.
+      def equality # :nodoc:
+        return :fields unless @kind.instance_method(:==).owner == Comparable
+
+        SortOrder.own_order?(@kind) ? :order : :same_thing
+      end
+
+      # Thing#clamp. Ruby's stops with an error where +min+ comes after +max+, which the game
+      # cannot know while building, so only one thing as both is taken: the answer is then that
+      # thing where +thing+ comes before or after it, and +thing+ where they are level.
+      def clamped(thing, min, max) # :nodoc:
+        refuse_other_array!(min)
+        refuse_other_array!(max)
+        unless min.equal?(max)
+          PlainRuby::Steps.refuse_game_code!("`clamp` on two different things stops Ruby with an error when the first " \
+                                             "comes after the second, and the game cannot know that while it builds. " \
+                                             "To fix this, test the order yourself with `<` and `>`, and pick the " \
+                                             "thing in each case.")
+        end
+        slot = @builder.hidden_variable(:clamped)
+        slot.store!(thing.index)
+        (thing < min).record_branch { slot.store!(min.index) }
+        (thing > max).record_branch { slot.store!(max.index) }
+        walked(Pool::Instance.new(@pool, slot)).tap { |kept| kept.kept = true }
+      end
+
+      # A thing of another Array, or anything that is not a thing, cannot be compared with one of
+      # these: the order reads both from this Array's slots.
+      def refuse_other_array!(other) # :nodoc:
+        return if other.is_a?(Thing) && other.array.equal?(self)
+
+        PlainRuby::Steps.refuse_game_code!("This line compares a thing of `#{@local}` with #{other.is_a?(Thing) ? 'a thing of another Array' : 'something that is not one of its things'}. " \
+                                           "The game compares things of one Array only. To fix this, compare their " \
+                                           "fields: `a.y < b.y`.")
+      end
+
       # One walk keeping the slot of the first thing that no later thing comes before, started at
-      # the first thing, so no slot read is out of the Array.
-      private def best_in_order(smallest:)
+      # the first thing, so no slot read is out of the Array. The thing it hands back is, as a
+      # test, whether the Array held any thing: Ruby's answer for an empty Array is nil.
+      private def best_in_order(key, smallest:)
         refuse_order_question_in_walk!
-        key = own_order
+        found = @builder.hidden_variable(:found)
+        any = size > 0
+        @builder.consume_condition(any)
+        found.store!(Value.new(@builder, any.node))
         best = @builder.hidden_variable(:best)
         best.store!(Value.new(@builder, IR::Build.var_ref(@pool.head_var)))
         leader = walked(Pool::Instance.new(@pool, best))
         each do |thing|
           precedes(thing, leader, key, smallest: smallest).record_branch { best.store!(thing.index) }
         end
-        leader.tap { |kept| kept.kept = true }
+        leader.tap do |kept|
+          kept.kept = true
+          kept.found = found
+        end
       end
 
       private def refuse_order_question_in_walk!
-        return unless @walks_open.positive?
+        if @walks_open.positive?
+          PlainRuby::Steps.refuse_game_code!("This line asks `#{@local}` for its smallest or biggest thing while a " \
+                                             "walk of it is under way. To fix this, ask after the walk ends.")
+        end
+        return unless @builder.building_callable_routine?
 
-        PlainRuby::Steps.refuse_game_code!("This line asks `#{@local}` for its smallest or biggest thing while a walk " \
-                                           "of it is under way. To fix this, ask after the walk ends.")
+        PlainRuby::Steps.refuse_game_code!("This line asks `#{@local}` for its smallest or biggest thing in a routine. " \
+                                           "A walk of `#{@local}` can call the routine, and then the walk would lose " \
+                                           "its place. To fix this, ask outside the routine, after the walk ends.")
       end
 
       private def refuse_no_order!
@@ -300,14 +384,17 @@ module VBlank
       # handed it over moves on, as a Ruby name stays on its object. A name that holds such a
       # thing of this Array already keeps it, and takes the new slot.
       def kept(thing, current) # :nodoc:
-        if current.is_a?(Thing) && current.kept? && current.array.equal?(self)
+        if current.is_a?(Thing) && current.kept? && current.array.equal?(self) && current.found.equal?(thing.found)
           current.index.store!(thing.index)
           return current
         end
 
         slot = @builder.hidden_variable(:kept)
         slot.store!(thing.index)
-        walked(Pool::Instance.new(@pool, slot)).tap { |own| own.kept = true }
+        walked(Pool::Instance.new(@pool, slot)).tap do |own|
+          own.kept = true
+          own.found = thing.found # what `min` or `max` found, as a test (Thing#found)
+        end
       end
 
       def inspect = "an Array of #{kind_name} kept as pool :#{@pool.name}" # :nodoc:
@@ -521,15 +608,68 @@ module VBlank
 
         def kept? = @kept || false # :nodoc:
 
+        # For a thing `min` or `max` handed back: the hidden yes or no of whether the Array held
+        # any thing then. As a test the thing is that, as Ruby's nil answer for an empty Array is
+        # false (PlainRuby::Steps.game_test?). nil for any other thing, which is always there.
+        attr_accessor :found # :nodoc:
+
+        # Whether this thing is there, as a test the game makes (#found); nil where it always is.
+        def found_test = (found != 0 if found) # :nodoc:
+
         # A test that holds while every field of this thing equals the same field of +other+, as
         # Struct#== compares two Structs. Anything that is not a Struct with these fields is never
         # equal.
+        #
+        # A Struct that includes Comparable compares as Ruby's Comparable#== does instead: level
+        # on every field of its order (`<=>` answering 0), whatever its other fields hold, or, with
+        # no `<=>` of its own, the same thing only (StructArray#equality).
         def ==(other)
+          return false unless other.is_a?(Struct) && other.members == members
+
+          case array.equality
+          when :order then level_in_order(other)
+          when :same_thing then equal?(other)
+          else eql?(other)
+          end
+        end
+
+        # A test that holds while every field of this thing equals the same field of +other+, as
+        # Struct#eql? does, whatever `==` compares.
+        def eql?(other)
           return false unless other.is_a?(Struct) && other.members == members
 
           members.map { |member| self[member] == other[member] }.reduce(:&)
         end
-        alias eql? ==
+
+        # Ruby's Comparable, answered by the Struct's own order (StructArray#own_order) as tests
+        # the game makes: whether this thing comes before +other+, after it, and so on.
+        def <(other)
+          array.refuse_other_array!(other)
+          array.precedes(self, other, array.own_order)
+        end
+
+        # Does this thing come after +other+?
+        def >(other)
+          array.refuse_other_array!(other)
+          array.precedes(self, other, array.own_order, smallest: false)
+        end
+
+        # Does this thing come before +other+, or level with it?
+        def <=(other) = !(self > other)
+
+        # Does this thing come after +other+, or level with it?
+        def >=(other) = !(self < other)
+
+        # Is this thing from +min+ to +max+ in the order, both included?
+        def between?(min, max) = (self >= min) & (self <= max)
+
+        # +min+ where this thing comes before it, +max+ where it comes after it, or this thing, as
+        # Ruby's `clamp`: a thing kept as a name keeps one.
+        def clamp(min, max) = array.clamped(self, min, max)
+
+        private def level_in_order(other)
+          array.own_order.fields.map { |field| self[field.name] == other[field.name] }.reduce(:&)
+        end
 
         # A test that holds while +other+ is this very thing: the same slot of the same Array.
         def equal?(other)
