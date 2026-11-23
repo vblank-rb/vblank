@@ -361,7 +361,7 @@ module VBlank
           when Prism::InstanceVariableWriteNode then instance_variable_write_text(node)
           when Prism::InstanceVariableOperatorWriteNode then change_text(node)
           when Prism::IndexOperatorWriteNode then place_change_text(node, index_text(node))
-          when Prism::CallOperatorWriteNode then place_change_text(node, "#{rewritten_text(node.receiver)}.#{node.read_name}")
+          when Prism::CallOperatorWriteNode then attribute_change_text(node)
           when Prism::ReturnNode, Prism::BreakNode, Prism::NextNode then jump_text(node)
           when *OWN_SCOPES then own_scope_text(node)
           when Prism::ParenthesesNode, Prism::BeginNode then grouped_text(node)
@@ -933,10 +933,19 @@ module VBlank
         def index_text(node) = "#{rewritten_text(node.receiver)}[#{node.arguments ? rewritten_text(node.arguments) : ''}]"
 
         # `+=` on a place. The block is what Ruby would do, for a place that holds no variable.
-        def place_change_text(node, place)
+        # +field+ is the text naming the object and the attribute of `point.x += 1`, for Writes.change.
+        def place_change_text(node, place, field: nil)
           label = between(node.location.start_offset, node.binary_operator_loc.start_offset).strip
+          field_option = field ? ", field: #{field}" : ""
           "#{WRITES}.change(#{place}, :#{node.binary_operator}, #{argument(node.value)}, #{open_tests_text}, " \
-            "#{label.to_sym.inspect}) { |#{NEW_VALUE}| #{place} = #{NEW_VALUE} }"
+            "#{label.to_sym.inspect}#{field_option}) { |#{NEW_VALUE}| #{place} = #{NEW_VALUE} }"
+        end
+
+        # `point.x += 1`: the receiver is held, so what it is worked out from runs once.
+        def attribute_change_text(node)
+          holder = fresh_name
+          "(#{holder} = #{rewritten_text(node.receiver)}; " \
+            "#{place_change_text(node, "#{holder}.#{node.read_name}", field: "[#{holder}, :#{node.read_name}]")})"
         end
 
         # A plain number changed from inside a block no one can place: `each` may be Ruby's, which

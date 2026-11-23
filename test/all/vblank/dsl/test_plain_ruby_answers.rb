@@ -328,9 +328,7 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   def test_a_struct_field_game_code_changes
-    known_gap("point.x += 1 on a Struct kept in a local",
-              gap: "A Struct's field that game code changes stays Ruby's unless game_variables names it",
-              reads: %i[n], passes: 3) do
+    agrees("point.x += 1 on a Struct kept in a local", reads: %i[n], passes: 3) do
       point = AnswerPoint.new(1, 2, 0)
       n = 0
       game_loop do
@@ -341,14 +339,94 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   def test_a_struct_field_read_before_game_code_changes_it
-    known_gap("n = point.x, then point.x += 1",
-              gap: "A Struct's field that game code changes stays Ruby's unless game_variables names it",
-              reads: %i[n], passes: 3) do
+    agrees("n = point.x, then point.x += 1", reads: %i[n], passes: 3) do
       point = AnswerPoint.new(1, 2, 0)
       n = 0
       game_loop do
         n = point.x
         point.x += 1
+      end
+    end
+  end
+
+  def test_a_struct_field_set_outright_in_an_instance_variable
+    agrees("@point.y = @point.y + 2", reads: %i[n m], passes: 3) do
+      @point = AnswerPoint.new(1, 2, 0)
+      n = m = 0
+      game_loop do
+        @point.y = @point.y + 2
+        n = @point.y
+        m = @point.x
+      end
+    end
+  end
+
+  def test_a_struct_kept_with_or_equals_in_the_game_loop
+    agrees("@point ||= AnswerPoint.new in game_loop, @point.x += 1", reads: %i[n], passes: 3) do
+      n = 0
+      game_loop do
+        @point ||= AnswerPoint.new(1, 2, 0)
+        @point.x += 1
+        n = @point.x
+      end
+    end
+  end
+
+  # Ruby makes it on the first pass alone and keeps changing that one.
+  def test_a_struct_made_under_a_test_and_used_after_it_is_refused
+    refused("@point = AnswerPoint.new on the first pass, @point.x += 1", /under an `if`.*above the game loop/m) do
+      n = started = 0
+      game_loop do
+        if started == 0
+          @point = AnswerPoint.new(1, 2, 0)
+          started = 1
+        end
+        @point.x += 1
+        n = @point.x
+      end
+    end
+  end
+
+  def test_a_struct_made_in_the_game_loop_and_used_in_a_routine_is_refused
+    refused("@point = AnswerPoint.new on the first pass, @point.x read in a func", /another.*`func`/m) do
+      n = started = 0
+      func(:answer_reads_point) { n = @point.x }
+      game_loop do
+        if started == 0
+          @point = AnswerPoint.new(1, 2, 0)
+          started = 1
+        end
+        call :answer_reads_point
+      end
+    end
+  end
+
+  # Made and used under one test, it is the one Ruby makes on that pass.
+  def test_a_struct_made_and_used_under_one_test
+    agrees("AnswerPoint made and read under one if", reads: %i[n], passes: 3) do
+      n = passes = 0
+      game_loop do
+        passes += 1
+        if passes > 1
+          point = AnswerPoint.new(passes, 0, 0)
+          point.x += 10
+          n = point.x
+        end
+      end
+    end
+  end
+
+  # A Struct made in the loop is new on every pass, in Ruby too, beside one that lives on.
+  def test_a_struct_made_in_the_game_loop_beside_one_kept
+    agrees("fresh AnswerPoint in game_loop beside a kept one", reads: %i[n m], passes: 3) do
+      kept = AnswerPoint.new(1, 2, 0)
+      n = m = 0
+      game_loop do
+        n = kept.x
+        fresh = AnswerPoint.new(5, 0, 0)
+        fresh.x += 1
+        m = fresh.x
+        kept.x += fresh.x
       end
     end
   end

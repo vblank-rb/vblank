@@ -583,7 +583,9 @@ module VBlank
         def keeping_part(owner, &)
           builder = Builder.in_use
           return yield unless builder
-          return builder.keeping_part(&) unless builder.instance_variable_uses.made_every_pass?(owner)
+
+          uses = builder.instance_variable_uses
+          return uses.note_kept(builder.keeping_part(&)) unless uses.made_every_pass?(owner)
 
           builder.keeping_in_part_made_every_pass(owner.class.name || "this class", &)
         end
@@ -742,18 +744,57 @@ module VBlank
           holder.is_a?(Struct) && names_in_module(holder.class).include?(:"@#{field}")
         end
 
+        # Is +field+ of +holder+, a Struct, the game's: one its class names, or one game code changes
+        # through its writer (`point.x += 1`, Uses#changing?) on a Struct made while setting up,
+        # which lives across every pass. A Struct made by game code is most often a working-out
+        # Ruby finishes as the build reaches it (a plan counted in a method `initialize` calls), so
+        # its fields stay Ruby's (Uses#made_in_game_code?).
+        def followed_field?(holder, field)
+          return true if named_field?(holder, field)
+
+          uses = Builder.in_use&.instance_variable_uses
+          return false unless uses && holder.is_a?(Struct) && !uses.made_in_game_code?(holder)
+
+          uses.changing?(holder, :"@#{field}")
+        end
+
+        # Is +field+ of +holder+ a Struct's field that stays Ruby's (#followed_field?)? A Struct with
+        # no builder in use is Ruby's too, as is everything a game runs outside a build.
+        def ruby_field?(holder, field) = holder.is_a?(Struct) && !followed_field?(holder, field)
+
         def read_field(holder, field)
-          return holder[field] unless named_field?(holder, field)
+          refuse_field_outside_making!(holder, field)
+          return holder[field] unless followed_field?(holder, field)
 
           read_value(holder, holder[field], :"@#{field}") { |variable| holder[field] = variable }
         end
 
         def write_field(holder, field, given)
-          return holder[field] = given unless named_field?(holder, field)
+          refuse_field_outside_making!(holder, field)
+          return holder[field] = given unless followed_field?(holder, field)
 
           label = :"@#{field}"
           current = field_before_write(holder, field)
           holder[field] = Writes.write(current, given, [], label, moves: true, owner: holder) { |value| value }
+        end
+
+        # A Struct made by game code that runs again keeps Ruby's numbers, which are right only on
+        # the passes that make it: a field read or written there, under the same test or in the same
+        # routine, is the one Ruby has. Read anywhere else (after the `if` that made it, in another
+        # routine), Ruby has the one an earlier pass made, which the game cannot follow.
+        def refuse_field_outside_making!(holder, field)
+          builder = Builder.in_use
+          return unless builder&.recording_game_code? && holder.is_a?(Struct)
+
+          made_in = builder.instance_variable_uses.struct_made_in(holder)
+          return if made_in.nil? || builder.recording_inside?(made_in)
+
+          name = holder.class.name || "Struct"
+          raise Refused, "This line uses `#{field}` of a `#{name}` that game code made, but the code that made it " \
+                         "does not run on every pass that runs this line: it is under an `if`, or in another " \
+                         "`func` or scene. In Ruby the `#{name}` can come from an earlier pass, and VBlank cannot " \
+                         "follow it. To fix this, make the `#{name}` above the game loop, or keep it in an instance " \
+                         "variable, like `@point ||= #{name}.new(...)`.#{Messages::AuthorSource.at_author_line}"
         end
 
         # What Writes.attribute finds in a named field about to be written: as #value_before_write.
@@ -763,6 +804,10 @@ module VBlank
 
         # Each named field of +holder+, just made, given its game variable (#first_variable).
         def start_named_fields(holder)
+          builder = Builder.in_use
+          if builder&.recording_game_code?
+            builder.instance_variable_uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil)
+          end
           holder.members.each do |field|
             next unless named_field?(holder, field)
 
@@ -905,6 +950,7 @@ module VBlank
             @made_order = {}.compare_by_identity
             @made_count = Hash.new(0)
             @made_every_pass = {}.compare_by_identity
+            @made_in_game_code = {}.compare_by_identity
             @kept_sites = {}.compare_by_identity
             @unsaved_by_class = {}
             @chosen_by_class = {}
@@ -1101,6 +1147,23 @@ module VBlank
           def note_made_every_pass(owner) = @made_every_pass[owner] = true
 
           def made_every_pass?(owner) = @made_every_pass.key?(owner)
+
+          # +holder+, a Struct, is made while game code records (InstanceVariables.followed_field?).
+          # +container+ is what it was recorded into where the line making it runs again on every
+          # pass that reaches it (Builder#made_every_pass?), nil where it is made one time.
+          def note_made_in_game_code(holder, container) = @made_in_game_code[holder] = container
+
+          # Where +holder+, a Struct made by game code that runs again, was made (#note_made_in_game_code).
+          def struct_made_in(holder) = @made_in_game_code[holder]
+
+          # +made+ is what a line of game code keeps with `||=` (InstanceVariables.keeping_part): a
+          # Struct kept so lives across passes, as one made while setting up does. Returns +made+.
+          def note_kept(made)
+            @made_in_game_code.delete(made)
+            made
+          end
+
+          def made_in_game_code?(holder) = @made_in_game_code.key?(holder)
 
           # One line of game code that keeps a part with `||=`: what it makes, as written, and where.
           KeptSite = Data.define(:made, :at)

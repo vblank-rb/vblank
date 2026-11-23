@@ -1490,6 +1490,15 @@ module VBlank
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
 
+    # The test, loop or routine body game code is being recorded into now: what runs on the same
+    # passes as the line being recorded. DSL::PlainRuby::InstanceVariables notes where a Struct
+    # is made with it.
+    def recording_container = @container_stack.last # :nodoc:
+
+    # Is +container+ (a #recording_container) open around what is recorded now, so a line recorded
+    # now runs only on passes where +container+'s lines run too?
+    def recording_inside?(container) = @container_stack.any? { |open| open.equal?(container) } # :nodoc:
+
     # Is what is recorded now game code under a test the game makes, inside the routine or loop
     # being recorded? Only some passes run it. DSL::PlainRuby::InstanceVariables::Uses asks, since a
     # number a method sets there is one Ruby cannot know after it.

@@ -688,7 +688,7 @@ end
 
 - `/` on a negative game number rounds toward zero (`-7 / 2` is -3), where Ruby while building gives -4.
 - `puts` and other harmless Ruby in a game block run once, while building.
-- A Struct kept in a name, not in an Array, whose field game code changes (`point.x += 1`) keeps the number Ruby gave it. Write `game_variables :x` in the Struct's block.
+- A Struct made in a `game_loop`, a scene or a `func` under an `if`, and used after that `if` or in another routine, stops with a message, since Ruby can keep the one an earlier pass made. Make it above the game loop, or keep it with `@point ||= Point.new(...)`.
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 
 ## When plain Ruby is not enough

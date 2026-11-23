@@ -111,7 +111,13 @@ module VBlank
         #
         # +owner+ is #write's.
         def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil,
-                   starting: false)
+                   starting: false, field: nil)
+          # A field of a Struct that stays Ruby's holds a number of its own in Ruby, even where the
+          # game variable it was made from is in it (`Point.new(score, 0)`): the change gives it
+          # one, and leaves that variable alone. Such a Struct is made by game code where this line
+          # runs (InstanceVariables.refuse_field_outside_making!), so a test around it is its own.
+          return yield(current.public_send(operator, amount)) if field && InstanceVariables.ruby_field?(*field)
+
           current = InstanceVariables.change_target(owner, current, label, starting: starting) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return current.public_send(operator, amount) if second_name && !game
@@ -152,8 +158,12 @@ module VBlank
         # What an attribute holds. The library's own objects keep what they keep behind their setters,
         # so unless the attribute is a game variable the setter is left to do its work.
         def attribute(receiver, name)
-          # A named field of a Struct made in game code, read without counting as a read the game makes.
-          return InstanceVariables.field_before_write(receiver, name) if InstanceVariables.named_field?(receiver, name)
+          # A field of a Struct the game follows, read without counting as a read the game makes.
+          return InstanceVariables.field_before_write(receiver, name) if InstanceVariables.followed_field?(receiver, name)
+          # Any other field of a Struct is Ruby's, and a game variable in it was handed in
+          # (`Point.new(score, 0)`): the write gives the field a number of its own, as Ruby does,
+          # and leaves that variable alone.
+          return if receiver.is_a?(Struct)
 
           current = receiver.public_send(name) if receiver.respond_to?(name)
           Steps.variable?(current) || !receiver.class.name.to_s.start_with?("VBlank::") ? current : nil

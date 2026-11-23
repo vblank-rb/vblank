@@ -197,7 +197,13 @@ instance variables.
   the game works out is still refused: a Hash has no list to be.
 - **A Struct's fields are named the same way**, in the block of `Struct.new` (`Box = Struct.new(:count,
   :step) { game_variables :count }`) or in the body of a class made from one. Then `box.count += 1` in
-  game code changes a game variable, `box_count` in a profile. A field nobody names is plain Ruby.
+  game code changes a game variable, `box_count` in a profile. A field game code changes through
+  its writer (`point.x += 1`) is the game's too with no name, on a Struct made while setting up or
+  kept with `@point ||= Point.new` (`InstanceVariables.followed_field?`). A Struct made by game code
+  that runs again keeps its fields Ruby's, since Ruby makes it new on those passes; a field of one
+  read or written outside the test or routine that made it is refused
+  (`refuse_field_outside_making!`), and a change to such a field never changes the game variable it
+  was made from (`Writes.change` with `field:`). Any other field is plain Ruby.
 - **Any other instance variable is plain Ruby.** One game code only reads, or one set only by a
   method that is not marked (`@count = count + 1` in `lay_out`, used as `repeat(@count)` or
   `@count.times`), stays Ruby's. So does one that a routine gives a number outright before that
