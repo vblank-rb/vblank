@@ -1260,7 +1260,7 @@ module VBlank
           def emit_store_object_picked_attr2(obj)
             if obj.recolor_banks
               emit_pick_from_table(obj.recolor, obj.recolor_banks)
-              emit_borrow_group_if_lent if obj.recolor_banks.lends
+              emit_borrow_group_if_lent(obj) if obj.recolor_banks.lends
             end
             if obj.layer_depths
               store_var(ACC, OBJ_PICKED_ATTR2) if obj.recolor_banks
@@ -1423,12 +1423,63 @@ module VBlank
           # r0 = the bank the list just picked out of a sprite's table is drawn from, for a word
           # that names a list borrowing its group rather than a bank (see
           # ScreenLayout::LENT_MARK). A bank goes straight through.
-          def emit_borrow_group_if_lent
+          #
+          # A sprite wholly off the screen borrows nothing, so a thing off the screen never holds
+          # a group a thing on it needs. A sprite's third word names the bank of sixteen colours
+          # it is drawn from, and its first two its row (eight bits) and column (nine bits), with
+          # its shape and size giving the box it covers (GBATEK, "LCD OBJ - OAM Attributes"). A
+          # box none of which is on the 240 by 160 screen draws nothing, so the bank it names
+          # is never seen. Such a sprite is still written into the table, just off the edge,
+          # and named the first group lent out. Nothing is stamped on that group, so a group it
+          # held while it was on the screen goes back after a frame, as one does when the thing
+          # wearing it is hidden.
+          def emit_borrow_group_if_lent(obj)
             bank = gensym
+            off_screen = gensym
             emit(ASM.cmp_imm(ACC, ScreenLayout::LENT_MARK))
             emit_branch(:bcond, bank, cond: :lo)
+            store_var(ACC, OBJ_PICKED_ATTR2)
+            emit_branch_if_off_screen(obj.y, *object_reach(obj, :y), SCREEN_HEIGHT, off_screen)
+            emit_branch_if_off_screen(obj.x, *object_reach(obj, :x), SCREEN_WIDTH, off_screen)
+            load_var(ACC, OBJ_PICKED_ATTR2)
             emit_call_cold_routine(LEND_COLORS)
+            emit_branch(:b, bank)
+            place_label(off_screen)
+            emit_number(ACC, @layout.screen.lending.banks.first << OBJ_BANK_SHIFT)
             place_label(bank)
+          end
+
+          # How far before and how far past a sprite's place, across (+axis+ :x) or down (:y),
+          # its picture can be drawn. An upright one is drawn from its place on, over its whole
+          # canvas: a pose trimmed smaller sits inside the canvas, and the pieces of a big
+          # picture stand side by side across it. One that turns or resizes is drawn in a box
+          # twice its size, which stands half the picture before its place (see
+          # #emit_draw_object_transformed).
+          def object_reach(obj, axis)
+            size = axis == :x ? obj.width : obj.height
+            return [0, size] unless obj.transformed
+
+            [size / 2, (size * 2) - (size / 2)]
+          end
+
+          # Branch to +off_screen+ when a picture drawn from +place+, reaching +before+ pixels
+          # before it and +past+ pixels past it, has none of itself on a screen +edge+ pixels
+          # long. It is on the screen while the place is more than +past+ before nought and less
+          # than +before+ past the edge. One unsigned compare tests both ends, as
+          # #emit_move_far_place_off_screen does: a place too far before reads as a very large
+          # number once +past+ less one is added. Every place in that range is one the table
+          # keeps as put, so the test agrees with what the console draws.
+          def emit_branch_if_off_screen(place, before, past, edge, off_screen)
+            span = edge + before + past - 1
+            @lowering.value(place)
+            emit_add_const(ACC, ACC, past - 1, TMP)
+            if ASM.encode_rotated_immediate(span)
+              emit(ASM.cmp_imm(ACC, span))
+            else
+              emit_number(TMP, span)
+              emit(ASM.cmp_reg(ACC, TMP))
+            end
+            emit_branch(:bcond, off_screen, cond: :hs)
           end
 
           LEND_COLORS = :__lend_sprite_colors
