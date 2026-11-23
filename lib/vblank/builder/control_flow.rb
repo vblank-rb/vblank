@@ -229,16 +229,6 @@ module VBlank
         end
       end
 
-      # A hidden variable for a loop to count in, declared and named: a `repeat`'s, and the one a
-      # step that stands for a loop is handed (IR save_load_list, save_store_list, list_pack).
-      private def declare_loop_counter
-        @repeat_seq += 1
-        :"__repeat_#{@repeat_seq}".tap do |index|
-          ensure_var(index)
-          @unique_names << index
-        end
-      end
-
       # The console refreshes the screen ~59.73 times a second; like every game, we
       # count that as a round 60 frames per second. It's what lets a timer be given
       # in seconds — the unit a person actually thinks in — and turned into frames.

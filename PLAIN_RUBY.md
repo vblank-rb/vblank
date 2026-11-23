@@ -356,7 +356,13 @@ game_loop do
 end
 ```
 
-Ruby's counting loops go round as often as Ruby says: `n.times { |i| }`, `a.upto(b) { |i| }`, `a.downto(b) { |i| }`, `a.step(b, 2) { |i| }`, `(a...b).each { |i| }` and `for i in a...b`. When a count or an end is a number the game keeps, the loop is a loop in the game, and it goes round as many times as the number holds when the loop starts. When every number is written in the source or known while building, the body is written out once for each time round. That is fast, but a large count makes the cartridge bigger; `rom.profile` shows the size.
+Ruby's counting loops go round as often as Ruby says: `n.times { |i| }`, `a.upto(b) { |i| }`, `a.downto(b) { |i| }`, `a.step(b, 2) { |i| }`, `(a...b).each { |i| }` and `for i in a...b`. When a count or an end is a number the game keeps, the loop is a loop in the game, and it goes round as many times as the number holds when the loop starts. When every number is written in the source or known while building, the build chooses, and the same game always builds the same way:
+
+- Small rounds are written out once for each time round, which is the fastest. Rounds are small while together they have a size of at most 64. One `draw_rect_at` line is a size of 5, so 4 rounds of two such lines are written out.
+- Larger rounds are one loop the game runs, which costs the room of one round. The round number `i` is then a number the game counts. Each round then costs time that a round written out does not: the loop counts and goes back, and works out each number that counts up with `i`.
+- Rounds that differ in more than a number that counts up are written out, however large: a colour or a picture picked by `i` while building, a value read from a Ruby Array at `i`, or a test on `i`. Only a round written out knows its `i` while building.
+
+`rom.profile` lists each such loop with its line, its size and what the build chose.
 
 ```ruby
 screen :bitmap

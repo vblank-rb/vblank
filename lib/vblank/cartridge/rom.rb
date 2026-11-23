@@ -48,6 +48,12 @@ module VBlank
 
       def hidden_variables = @hidden_variables || []
 
+      # The counted loops of game code and what the build made of each (see
+      # Diagnostics::CountedLoops). The builder's to know too.
+      attr_writer :counted_loops
+
+      def counted_loops = @counted_loops || []
+
       # The things the record holds, read straight off it. Each is nil without a record,
       # and each is documented on {BuildRecord}: the IR program this cartridge was built from,
       # which routines it keeps in the console's quick memory, where its variables landed,
@@ -197,6 +203,7 @@ module VBlank
           out.puts(JSON.generate(result.to_h
                                        .merge(Diagnostics::BuildReport.as_json(self))
                                        .merge(Diagnostics::HiddenVariables.as_json(self))
+                                       .merge(Diagnostics::CountedLoops.as_json(self))
                                        .merge(findings: findings_json)))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end

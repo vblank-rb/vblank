@@ -159,9 +159,10 @@ module Snake
 
     # Pick a random empty cell for the food (it doesn't paint — the caller decides
     # when, since a fresh round clears the screen right after). It tries a handful
-    # of random cells and keeps the first that isn't under the snake; the attempts
-    # are unrolled here at build time, so each is just one draw from the random
-    # stream plus one scan of the body — no loop inside a loop at run time.
+    # of random cells and keeps the first that isn't under the snake: each try is one
+    # draw from the random stream plus one scan of the body. The tries are too large to
+    # write out once each, so the build makes them a loop the game runs, around the
+    # scan's own loop; `rom.profile` lists the line and what the build chose.
     func :spawn_food do
       placed = false
       FOOD_TRIES.times do

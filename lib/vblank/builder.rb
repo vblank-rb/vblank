@@ -228,6 +228,7 @@ module VBlank
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
+      @counted_loop_notes = []
       @step_variables = {}.compare_by_identity # routine body → why → its shared hidden variable (#step_variable)
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @value_statements = {}.compare_by_identity # value node → the statements it needs (#register_statements_for_value)
@@ -1451,6 +1452,38 @@ module VBlank
     def forget_hidden_variable(name)
       @variables.delete(name) if @hidden_variable_notes.reject! { |note| note.name == name }
     end
+
+    # A hidden variable for a loop to count in, declared and named: a `repeat`'s, the one a step
+    # that stands for a loop is handed (IR save_load_list, save_store_list, list_pack), and the one
+    # a counted Ruby loop made a loop counts in (PlainRuby::Counts::KnownRounds).
+    def declare_loop_counter
+      @repeat_seq += 1
+      :"__repeat_#{@repeat_seq}".tap do |index|
+        ensure_var(index)
+        @unique_names << index
+      end
+    end
+
+    # A loop counter whose loop was dropped, which then takes no memory: the rounds after the first
+    # of a counted Ruby loop the build made a loop (PlainRuby::Counts::KnownRounds).
+    def forget_loop_counter(name) = @variables.delete(name)
+
+    # One counted Ruby loop of game code whose count was known while building, and what the build
+    # made of it (PlainRuby::Counts::KnownRounds): +rounds+ times round, +written_size+ the IR nodes
+    # its rounds hold written out, +choice+ :written_out, :loop or :rounds_differ, and +worked_out+
+    # how many numbers a loop works out from its count in each round.
+    CountedLoopNote = Data.define(:source, :rounds, :written_size, :choice, :worked_out) do
+      def initialize(source:, rounds:, written_size:, choice:, worked_out: 0) = super
+    end
+
+    # The counted loops of game code, for `rom.profile` (Diagnostics::CountedLoops).
+    attr_reader :counted_loop_notes
+
+    def record_counted_loop(note) = @counted_loop_notes << note
+
+    # The notes of counted loops recorded after the first +count+, which were inside rounds of
+    # a counted loop that the build dropped, making the first round a loop.
+    def drop_counted_loops_after(count) = @counted_loop_notes.slice!(count..)
 
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1

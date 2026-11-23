@@ -89,6 +89,9 @@ module VBlank
       # The variables normal Ruby needed that nobody declared (see Diagnostics::HiddenVariables).
       def hidden_variable_notes = @builder.hidden_variable_notes
 
+      # The counted loops of game code and what the build made of each (see Diagnostics::CountedLoops).
+      def counted_loop_notes = @builder.counted_loop_notes
+
       def variables_with_no_var_line = @builder.variables_with_no_var_line
 
       # The software sprites, in the order they were declared — which on a bitmap screen is

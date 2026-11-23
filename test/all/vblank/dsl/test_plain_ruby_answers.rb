@@ -99,6 +99,77 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A known count whose rounds are large: the build makes them one loop.
+  def test_a_large_known_count_made_a_loop
+    agrees("16.times, 2.upto(17), (0...16).each and for with large bodies", reads: %i[m n o p], passes: 3) do
+      a = 1
+      m = n = o = p = 0
+      game_loop do
+        a += 1 if pressed(:a)
+        m = n = o = p = 0
+        16.times do |i|
+          m += (i * 3) + a
+          m -= i - 2
+          m += 1
+        end
+        2.upto(17) do |i|
+          n += (i * a) - 4
+          n -= i
+          n += 7
+        end
+        (0...16).each do |i|
+          o -= i * 2
+          o += a
+          o += i
+        end
+        for i in 0..15
+          p += (i * i) + a
+          p -= 1
+          p += 1
+        end
+      end
+    end
+  end
+
+  # A known count whose rounds are small, and one whose rounds differ beyond a number counted up:
+  # each is written out.
+  def test_known_counts_written_out
+    agrees("4.times small, and 16.times reading a table while building", reads: %i[m n]) do
+      table = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8, 9, 7, 9, 3]
+      a = 1
+      m = n = 0
+      game_loop do
+        a += 1 if pressed(:a)
+        m = n = 0
+        4.times { |i| m += i + a }
+        16.times do |i|
+          n += table[i] + a
+          n -= 1
+          n += 1
+        end
+      end
+    end
+  end
+
+  # A known count inside a known count, each large enough to be a loop.
+  def test_a_known_count_inside_a_known_count
+    agrees("8.times around 16.times", reads: %i[m]) do
+      a = 1
+      m = 0
+      game_loop do
+        a += 1 if pressed(:a)
+        m = 0
+        8.times do |row|
+          16.times do |column|
+            m += (row * 100) + column
+            m -= a
+            m += a
+          end
+        end
+      end
+    end
+  end
+
   def test_swap
     agrees("a, b = b, a", reads: %i[a b], passes: 3) do
       a = 3

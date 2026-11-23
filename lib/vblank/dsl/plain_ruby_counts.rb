@@ -22,11 +22,31 @@ module VBlank
         # through a Start; anything else is left to answer for itself.
         def start(value, jumps = nil) = value.is_a?(Integer) || value.is_a?(Value) ? Start.new(value, jumps) : value
 
-        # The range of `(a...b).each { }` or `for x in a...b`: Ruby's own on plain numbers.
+        # The range of `(a...b).each { }` or `for x in a...b`: Ruby's own on plain numbers, its
+        # rounds written out or made a loop (KnownRange).
         def range(from, upto, exclusive, jumps = nil)
-          return Range.new(from, upto, exclusive) unless [from, upto].any?(Value)
+          return GameRange.new(from, upto, exclusive, jumps) if [from, upto].any?(Value)
+          return Range.new(from, upto, exclusive) if jumps
 
-          GameRange.new(from, upto, exclusive, jumps)
+          KnownRange.new(from, upto, exclusive)
+        end
+
+        # Ruby's own loop, which the block runs given the round's block, on numbers known while
+        # building: in game code with no `break` or `next`, its rounds are written out or made a
+        # loop (KnownRounds); anywhere else it is only Ruby's.
+        def known_rounds(jumps, body, &ruby_loop)
+          builder = VBlank::Builder.in_use
+          return ruby_loop.call(body) if jumps || builder.nil? || body.nil?
+
+          KnownRounds.run(builder, body, &ruby_loop)
+        end
+
+        # A Ruby range of plain numbers whose `each` and `step` with a block are counted loops
+        # (Counts.known_rounds). Everything else is Range's own.
+        class KnownRange < Range
+          def each(&body) = body ? Counts.known_rounds(nil, body) { |round| super(&round) } : super
+
+          def step(*given, &body) = body ? Counts.known_rounds(nil, body) { |round| super(*given, &round) } : super
         end
 
         # `loop do ... end` with a `break` in it. It is Ruby's, its rounds run while building,
@@ -147,34 +167,36 @@ module VBlank
             @jumps = jumps
           end
 
-          def times(&)
-            return @start.times(&) unless Counts.game?(@start)
+          def times(&body)
+            return Counts.known_rounds(@jumps, body) { |round| @start.times(&round) } unless Counts.game?(@start)
 
-            Counts.game_loop(0, @start, 1, @jumps, &)
+            Counts.game_loop(0, @start, 1, @jumps, &body)
             @start
           end
 
-          def upto(last, &)
-            return @start.upto(last, &) unless Counts.game?(@start, last)
+          def upto(last, &body)
+            return Counts.known_rounds(@jumps, body) { |round| @start.upto(last, &round) } unless Counts.game?(@start, last)
 
             first = Counts.held(@start)
-            Counts.game_loop(first, last - first + 1, 1, @jumps, &)
+            Counts.game_loop(first, last - first + 1, 1, @jumps, &body)
             @start
           end
 
-          def downto(last, &)
-            return @start.downto(last, &) unless Counts.game?(@start, last)
+          def downto(last, &body)
+            return Counts.known_rounds(@jumps, body) { |round| @start.downto(last, &round) } unless Counts.game?(@start, last)
 
             first = Counts.held(@start)
-            Counts.game_loop(first, first - last + 1, -1, @jumps, &)
+            Counts.game_loop(first, first - last + 1, -1, @jumps, &body)
             @start
           end
 
           # `a.step(limit, by)` or `a.step(by:, to:)`. Ruby's rounds are every number from the
           # start to the limit, +by+ apart. Adding +by+ before dividing counts the start itself,
           # and gives no rounds for a limit behind the start, whichever way the divide rounds.
-          def step(*given, **options, &)
-            return @start.step(*given, **options, &) unless Counts.game?(@start, *given, *options.values)
+          def step(*given, **options, &body)
+            unless Counts.game?(@start, *given, *options.values)
+              return Counts.known_rounds(@jumps, body) { |round| @start.step(*given, **options, &round) }
+            end
 
             limit = options.fetch(:to, given[0])
             by = options.fetch(:by, given[1] || 1)
@@ -182,7 +204,7 @@ module VBlank
             Counts.refuse_endless!("step") if limit.nil?
             first = Counts.held(@start)
             rounds = by.positive? ? (limit - first + by) / by : (first - limit - by) / -by
-            Counts.game_loop(first, rounds, by, @jumps, &)
+            Counts.game_loop(first, rounds, by, @jumps, &body)
             @start
           end
         end

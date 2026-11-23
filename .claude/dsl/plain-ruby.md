@@ -382,8 +382,15 @@ end
   `a.upto(b)`, `a.downto(b)`, `a.step(b, by)`, `(a...b).each`, `(a..b).step(by)` and `for i in a...b`.
   With a count or an end that is a game number, the loop is one the game runs (`repeat` underneath),
   reading its start and count once as it begins, as Ruby does. With every number known while
-  building, the body is written out once for each time round: `3.times { x += 1 }` adds 3 on every
-  pass. That is fast, and a large count makes the cartridge bigger, which `rom.profile` shows. A step
+  building, Ruby runs the rounds while building and the build chooses by size
+  (`PlainRuby::Counts::KnownRounds`): rounds whose IR nodes total at most 64 (`WRITTEN_OUT_MOST`)
+  are written out, `3.times { x += 1 }` adding 3 on every pass; larger rounds that differ only in
+  whole numbers stepping evenly from round to round are one loop the game runs, those numbers
+  worked out from its count with a multiply and an add each round (a running number in memory
+  measured dearer on the Advance, whose loop count is in a register); rounds that differ in anything else (a colour or picture picked by
+  `i`, a Ruby Array read at `i`, a test on `i`) are written out however large. A loop with a
+  `break` or `next` is written out. `rom.profile` lists each such line with its size and choice
+  (`Diagnostics::CountedLoops`). A step
   the game works out is refused (write it as a number), and so is any method but `each` and `step` on
   a range that ends at a game number (`(0...n).map`).
 - `.each`, `.map` and the rest on something written in the source (a literal, a constant, a range of

@@ -61,6 +61,12 @@ module VBlank
 
       def hidden_variables = @hidden_variables || []
 
+      # The counted loops of game code and what the build made of each (see
+      # Diagnostics::CountedLoops).
+      attr_writer :counted_loops
+
+      def counted_loops = @counted_loops || []
+
       # +banks+ is the linked cartridge, bank 0 first, each 16K. +rumble+ marks that it carries a motor.
       def initialize(banks, title:, save_bytes: 0, clock: false, rumble: false, built: nil)
         @built = built
@@ -128,8 +134,11 @@ module VBlank
         case format
         when :human
           Diagnostics::HiddenVariables.render(self, IR::Printer.for(out))
+          Diagnostics::CountedLoops.render(self, IR::Printer.for(out))
           Diagnostics::GBCProfiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h.merge(Diagnostics::HiddenVariables.as_json(self))))
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::HiddenVariables.as_json(self))
+                                            .merge(Diagnostics::CountedLoops.as_json(self))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result
