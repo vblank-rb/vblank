@@ -1022,9 +1022,16 @@ module VBlank
 
         # `@x ||= var :x, 0`, the same as `@x = var :x, 0` the first time.
         def instance_variable_or_text(node)
+          return kept_part_text(node) if @follows_instance_variables && node.value.is_a?(Prism::CallNode) && node.value.name == :new
           return instance_variable_logic_text(node, "join_either") unless LocalNames.makes_variable?(node.value)
 
           "#{node.name} ||= #{WRITES}.keep_as_own((#{value_text(node.value)}), self, :#{node.name})"
+        end
+
+        # `@counter ||= Counter.new`: made the first time the line runs and kept after, as Ruby does,
+        # so a part with changing numbers may be made so in game code (InstanceVariables.keeping_part).
+        def kept_part_text(node)
+          "#{node.name} ||= #{INSTANCE_VARIABLES}.keeping_part { #{rewritten_text(node.value)} }"
         end
 
         # `@x ||= value` and `@x &&= value`. On an instance variable the game names, in game code,

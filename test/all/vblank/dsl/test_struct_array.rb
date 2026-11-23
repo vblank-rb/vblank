@@ -127,21 +127,35 @@ class TestStructArray < Minitest::Test
     assert_equal [[0, 3], [10, 6], [20, 9]], birds.reject { |x, _| x.nil? }.sort
   end
 
-  # A part made in a game block is made once, as its numbers start once: the things its
-  # initialize puts in go in on the first pass alone, not again on every pass the block plays.
-  def test_a_part_made_in_the_game_loop_fills_its_array_once
-    builder = Builder.new
-    builder.game_loop do
-      FlockPart.new(builder)
-      builder.call(:flock_tick)
+  # A part kept in a game block with `||=` is made on the first pass and is the same part after, as
+  # in Ruby: the things its initialize puts in go in on the first pass alone, not again on every
+  # pass the block plays.
+  def test_a_part_kept_in_the_game_loop_fills_its_array_once
+    player = played(frames: 10) do
+      game_loop do
+        @flock ||= FlockPart.new(self)
+        call :flock_tick
+      end
     end
-    builder.finalize_program
-    player = game_player
-    player.run(builder.program, frames: 10)
 
     birds = player.pool(:flock_part_birds, :x).zip(player.pool(:flock_part_birds, :y))
 
     assert_equal [[0, 10], [10, 20], [20, 30]], birds.reject { |x, _| x.nil? }.sort
+  end
+
+  # Made with no `||=`, Ruby makes a new part and a new Array on every pass, so it is refused.
+  def test_a_part_filling_its_array_made_on_every_pass_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        game_loop do
+          FlockPart.new(self)
+          call :flock_tick
+        end
+      end
+    end
+
+    assert_match(/above the game loop/, error.message)
+    assert_match(/@part \|\|= Part\.new/, error.message)
   end
 
   # Only an Array the part makes in its initialize is filled once. A push there into an Array
@@ -172,7 +186,7 @@ class TestStructArray < Minitest::Test
         files = save_data(:file) { keep part: :play }
         files[0].load
         scene :play do
-          hatchery = HatcheryPart.new(self)
+          hatchery = (@hatchery ||= HatcheryPart.new(self))
           if pressed(:a)
             hatchery.lay
             files[0].save
@@ -195,12 +209,10 @@ class TestStructArray < Minitest::Test
 
   # Only the part's own making is once: a push in another of its methods, called on every pass,
   # puts a thing in on every pass.
-  def test_a_part_made_in_the_game_loop_pushes_from_its_other_methods_every_pass
-    builder = Builder.new
-    builder.game_loop { HatcheryPart.new(builder).lay }
-    builder.finalize_program
-    player = game_player
-    player.run(builder.program, frames: 3)
+  def test_a_part_kept_in_the_game_loop_pushes_from_its_other_methods_every_pass
+    player = played(frames: 3) do
+      game_loop { (@hatchery ||= HatcheryPart.new(self)).lay }
+    end
 
     assert_equal [0, 1, 9, 9, 9], player.pool(:hatchery_part_eggs, :x).compact.sort
   end

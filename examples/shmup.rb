@@ -62,15 +62,16 @@ module Shmup
     leaving  = false # true while the field dims on the way to the game-over screen
 
     # The playing scene owns the whole field — declaring the parts here makes their
-    # sprites and HUD belong to this scene, so they vanish on the game-over screen.
+    # sprites and HUD belong to this scene, so they vanish on the game-over screen. A scene runs
+    # every frame, so each part is kept with `||=`: made the first time, the same one after.
     scene :playing do
-      enemies = layer(:enemies) { Enemies.new(self) }
-      player  = layer(:ship)    { Player.new(self) }
-      hud     = layer(:ui)      { Hud.new(self) }
+      enemies = layer(:enemies) { @enemies ||= Enemies.new(self) }
+      player  = layer(:ship)    { @player ||= Player.new(self) }
+      hud     = layer(:ui)      { @hud ||= Hud.new(self) }
       # The boss goes in the same layer as the enemies, so the ship flies in front of it.
       # It takes the ship and the HUD up front because it shoots at one and scores on the
       # other, and its behaviour is `func`s declared once rather than a per-frame block.
-      boss = layer(:enemies) { Boss.new(self, player, hud) }
+      boss = layer(:enemies) { @boss ||= Boss.new(self, player, hud) }
 
       # After a start over the pool is empty, so the opening flock is spawned again.
       if new_flock

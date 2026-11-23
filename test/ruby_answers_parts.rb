@@ -198,6 +198,36 @@ class AnswerLives
   attr_reader :lives
 end
 
+# A counter made inside game code: Ruby makes a new one each time that line runs.
+class AnswerCounter
+  def initialize
+    @n = 0
+  end
+
+  def bump = @n += 1
+
+  attr_reader :n
+end
+
+# An object whose `initialize` makes an Array of points of its own and fills it.
+class AnswerFilled
+  def initialize
+    @points = Array.new(capacity: 4)
+    2.times { |i| @points << AnswerPoint.new(i, 0, 0) }
+  end
+
+  def count = @points.size
+end
+
+# A spot whose number never changes after it is made.
+class AnswerSpot
+  def initialize(x)
+    @x = x
+  end
+
+  def left = @x - 1
+end
+
 # A fraction counted up, and asked for its whole part with a verb a game's number does not answer.
 class AnswerFraction
   def initialize

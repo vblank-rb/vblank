@@ -102,14 +102,26 @@ instance variables.
   through `attr_reader`, or in a part it was handed to as that part was made (`Ball.new(selection:
   menu.selection)` hands the variable). `if @busy == 1` above the line that changes it asks the
   number the pass before left, and `(@seed << 5) + @seed` reads the game's seed.
-- **A part made inside a scene or a routine starts once.** A line of its `initialize` gives the
-  start, as `var` does: `screen = FadedScreen.new(...)` in `scene :copyright do`, with `@phase =
+- **A part with changing numbers made by code that runs every frame is refused**
+  (`InstanceVariables.making_part`, `refuse_part_made_every_pass!`): a `game_loop`, a scene's body, a
+  `func`. Ruby makes a new one there on every pass, starting again from `initialize`, where the game
+  would keep one. Changing means its class names some (`game_variables`), has some marked
+  (`mark_changing`), has a writer game code changes by name (`Uses#changing_part?`), or its
+  `initialize` makes an Array that is a list or pool (`Builder#note_made_in_part`). A part whose
+  numbers never change is allowed anywhere, and so is anything VBlank's own library makes (a pool's
+  things). The fix the message names: make it above the game loop, or keep it with `||=`.
+- **`@part ||= Part.new(...)` keeps a part made in game code** (`Rewriter#kept_part_text`,
+  `InstanceVariables.keeping_part`, `Builder#keeping_part`): made the first time the line runs, in
+  Ruby and in the game, and the same part after, its scene's re-entries included, which is how
+  `examples/dive.rb` and `examples/shmup.rb` make their scene's parts so what they show belongs to
+  the scene. Every part its `initialize` makes is kept with it. A line of its `initialize` gives the
+  start, as `var` does: `@screen ||= FadedScreen.new(...)` in `scene :copyright do`, with `@phase =
   WAITING` in `initialize`, starts the phase at WAITING and does not set it back on every pass. A
   first number given anywhere else in game code, a method `initialize` calls included, is set there
   on every pass, as Ruby would. What `initialize` puts into an Array it makes there, itself or
   through a method it calls (`hatch`), goes in on the part's first pass alone, behind a hidden
   number `rom.profile` names and a save keeping the Array keeps (`Builder#making_part`,
-  `#once_for_part`). The part is made once for the whole game, not again when its scene comes back.
+  `#once_for_part`).
   A push into an Array it was handed, a push from a method called on every pass (`update`), what a
   routine, loop or timer `initialize` opens, and its drawing and pictures all run every time.
 - Setting-up code that works with a game one works with the game variable, so `@busy.times` while
@@ -468,6 +480,7 @@ Each is a friendly error naming the line.
 | a misspelt key of a Hash of game variables | one of the keys it has |
 | an instance variable that game code changes and reads back, where the source does not show the change (`@busy = 1` in a method a routine calls) | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable not marked, set outright by a method under a test the game makes (`r.reset if k == 2`), or worked out from a number another routine gave it, then read | `game_variables :n` in the class's body |
+| a part whose numbers or Arrays change, made in a `game_loop`, a scene or a `func` (`c = Counter.new` there) | make it above the game loop, or keep it: `@counter ||= Counter.new` |
 | `@lives -= 1` in game code while `@lives` holds nil (a routine recorded later gives it its number) | a number where it is first set, `@lives = 0` in `initialize` |
 | a line that changes an instance variable's game number after Ruby used that number while building (`Array.new(part.size)`, then `@size += 1` in game code) | keep the number Ruby uses in another instance variable |
 | `floor`, `ceil`, `round`, `truncate`, `succ`, `pred`, `divmod`, `**`, `pow` or `fdiv` on a game number | `to_i` for the whole part of a fraction (it rounds down) |

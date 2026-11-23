@@ -554,12 +554,37 @@ module VBlank
         #
         # +owner+ is the object being made, counted in the order its class's objects are made
         # (Uses#note_object_made), which names its game variables.
+        #
+        # A part made by code that runs every frame (a `game_loop`, a scene, a `func`) is a new
+        # object on every pass in Ruby, starting again from its `initialize`, where the game would
+        # keep the one the build made. That is the same only for a part whose numbers never change,
+        # so one whose numbers or Arrays change is refused (Uses#changing_part?, and
+        # Builder#note_made_in_part for its Arrays), unless the line keeps it as Ruby would: `@counter
+        # ||= Counter.new` makes it the first time it runs (#keeping_part).
         def making_part(owner, &)
           builder = Builder.in_use
           return yield unless builder
 
-          builder.instance_variable_uses.note_object_made(owner)
+          uses = builder.instance_variable_uses
+          uses.note_object_made(owner)
+          refuse_part_made_every_pass!(owner) if builder.made_every_pass? && uses.changing_part?(owner)
           builder.making_part(&)
+        end
+
+        # `@counter ||= Counter.new` (Rewriter#kept_part_text): the part made in the block, and
+        # every part its `initialize` makes, is kept after its first pass (Builder#keeping_part).
+        def keeping_part(&)
+          builder = Builder.in_use
+          builder ? builder.keeping_part(&) : yield
+        end
+
+        def refuse_part_made_every_pass!(owner)
+          name = owner.class.name || "this class"
+          raise Refused, "This line makes a new `#{name}` on every pass, since it is in code that runs every " \
+                         "frame. Its numbers change as the game plays, and in Ruby each new one starts again " \
+                         "from `initialize`. To fix this, make it above the game loop, or keep it in an instance " \
+                         "variable, like `@part ||= #{name}.new(...)`, so it is made one time." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # A Hash or an Array of numbers (`@tilt_counters = { left: 0, right: 0 }`), or one already
@@ -1020,6 +1045,19 @@ module VBlank
           def mark_changing_on_builder(labels, attributes)
             @changing_on_builder.merge(labels)
             @changing_attributes.merge(attributes)
+          end
+
+          # Can game code change +owner+'s numbers: does its class name some (`game_variables`), mark
+          # some changing, or have a writer game code changes by name (#changing?)?
+          def changing_part?(owner)
+            holder = owner.class
+            # VBlank's own objects (a pool's thing) keep the build's workings, never the game's numbers.
+            return false if holder.name&.start_with?("VBlank::")
+            return true unless InstanceVariables.names_in_module(holder).empty?
+            return true unless InstanceVariables.names_in_module(holder, constant: CHANGING_CONSTANT).empty?
+
+            attributes = @changing_attributes | InstanceVariables.changing_attributes_in_files
+            attributes.any? { |attribute| owner.respond_to?(:"#{attribute}=") }
           end
 
           # +owner+'s `initialize` runs: it is the next object of its class, counted from 1.

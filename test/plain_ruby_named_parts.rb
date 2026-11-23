@@ -302,8 +302,9 @@ end
 class ScreenInPlayPart
   def initialize(builder, screen_class, prefix, made_in_play:)
     screen = screen_class.new(builder, prefix) unless made_in_play
+    # Made in play, it is kept from the first pass that makes it, as Ruby's `||=` keeps it.
     builder.func(:"#{prefix}_tick") do
-      (made_in_play ? screen_class.new(builder, prefix) : screen).step
+      (made_in_play ? (@made ||= screen_class.new(builder, prefix)) : screen).step
     end
   end
 end
@@ -734,6 +735,6 @@ end
 
 class PlanInPlayPart
   def initialize(builder, prefix)
-    builder.func(:"#{prefix}_tick") { PlannedLoadsPart.new(builder, prefix) }
+    builder.func(:"#{prefix}_tick") { @loads ||= PlannedLoadsPart.new(builder, prefix) }
   end
 end

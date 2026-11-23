@@ -116,17 +116,20 @@ module Dive
     # different arrangements of the console's layers: the title turns one, so it gets two
     # that scroll beside it, and the dive turns nothing, so it gets four. Nothing below
     # says a word about either.
+    #
+    # A scene runs every frame, so each part is kept with `||=`: made the first time the scene
+    # runs, inside it (so what it shows is the scene's), and the same part on every frame after.
     scene :title do
-      title = Title.new(self)
+      title = (@title ||= Title.new(self))
       title.update
       state = PLAY if pressed(:start)
     end
 
     scene :play do
-      sea = Sea.new(self)
-      diver = Diver.new(self)
-      fish = Fish.new(self)
-      gauge = Gauge.new(self)
+      sea = (@sea ||= Sea.new(self))
+      diver = (@diver ||= Diver.new(self))
+      fish = (@fish ||= Fish.new(self))
+      gauge = (@gauge ||= Gauge.new(self))
       down = var :down, 0    # where you are: below nought is the sea, above it is the air
       depth = var :depth, 0  # how much sea is above you, which is what the scenery follows
       sank = var :sank, 0    # ...and how much of it went past you this frame

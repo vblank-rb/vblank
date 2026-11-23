@@ -465,6 +465,78 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # --- objects made in code that runs every frame ---
+
+  # Ruby makes a fresh counter on every pass; the game would keep one.
+  def test_a_changing_object_made_in_the_game_loop_is_refused
+    refused("c = AnswerCounter.new in game_loop", /above the game loop/) do
+      m = 0
+      game_loop do
+        c = AnswerCounter.new
+        c.bump
+        m = c.n
+      end
+    end
+  end
+
+  def test_a_changing_object_made_in_a_routine_is_refused
+    refused("c = AnswerCounter.new in a func", /above the game loop/) do
+      m = 0
+      func(:answer_fresh_counter) do
+        c = AnswerCounter.new
+        c.bump
+        m = c.n
+      end
+      game_loop { call :answer_fresh_counter }
+    end
+  end
+
+  def test_a_changing_object_made_in_a_scene_is_refused
+    refused("c = AnswerCounter.new in a scene", /above the game loop/) do
+      m = 0
+      scene(:answer_counting) do
+        c = AnswerCounter.new
+        c.bump
+        m = c.n
+      end
+      game_loop { call :answer_counting }
+    end
+  end
+
+  # An object made in a routine whose `initialize` makes an Array is made, and its Array filled,
+  # again on every pass in Ruby.
+  def test_an_object_filling_its_own_array_made_in_the_game_loop_is_refused
+    refused("AnswerFilled.new in game_loop", /above the game loop/) do
+      m = 0
+      game_loop do
+        filled = AnswerFilled.new
+        m = filled.count
+      end
+    end
+  end
+
+  # `@counter ||= ...` makes it the first time the line runs and keeps it after, in Ruby too.
+  def test_a_changing_object_kept_with_or_equals_in_the_game_loop
+    agrees("@counter ||= AnswerCounter.new", reads: %i[m], passes: 3) do
+      m = 0
+      game_loop do
+        @counter ||= AnswerCounter.new
+        @counter.bump
+        m = @counter.n
+      end
+    end
+  end
+
+  def test_an_object_that_never_changes_made_in_the_game_loop
+    agrees("AnswerSpot.new(8).left in game_loop", reads: %i[m], passes: 2) do
+      m = 0
+      game_loop do
+        spot = AnswerSpot.new(8)
+        m = spot.left
+      end
+    end
+  end
+
   def test_a_fraction_asked_a_verb_a_game_number_does_not_answer_is_refused
     refused("@x.floor after @x += 0.5", /does not answer `floor`/) do
       fraction = AnswerFraction.new
