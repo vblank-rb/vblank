@@ -1,0 +1,333 @@
+# frozen_string_literal: true
+
+require "test_helper"
+
+# A Ruby Array that game code changes is a game's own list (DSL::List), and one used only while
+# building stays Ruby's. Each test plays a tiny game and reads what it leaves, on every lowering.
+class TestPlainRubyArrays < Minitest::Test
+  # Plays the block, rewritten, for +frames+ frames and hands back the player.
+  private def played(frames: 3, &block)
+    builder = Builder.new
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: frames)
+    player
+  end
+
+  private def program_of(rewritten: true, &block)
+    builder = Builder.new
+    builder.instance_eval(&(rewritten ? VBlank::DSL::PlainRuby.rewrite(block) : block))
+    builder.finalize_program
+    builder.program
+  end
+
+  # The rewrite alone: an Array the game changes builds the program the same game written with
+  # `list` builds, so every test of `list` holds for it.
+  def test_an_array_builds_the_program_list_builds
+    arrays = program_of do
+      trail = Array.new(capacity: 4)
+      ripple = Array.new(8, 0.0)
+      game_loop do
+        trail << 1
+        ripple[2] = 0.5
+      end
+    end
+    lists = program_of(rewritten: false) do
+      trail = list :trail, capacity: 4
+      ripple = list :ripple, capacity: 8, full_of: 0.0
+      game_loop do
+        trail << 1
+        ripple[2] = 0.5
+      end
+    end
+
+    assert_equal lists.walk.map(&:inspect), arrays.walk.map(&:inspect)
+  end
+
+  # The hero walks right 10 pixels a pass. The trail keeps its last four places, oldest first,
+  # and each is drawn as a red dot on row 50.
+  def test_a_trail_of_the_last_four_places_is_kept_and_drawn
+    player = played(frames: 6) do
+      screen :bitmap
+      hero_x = 0
+      trail = Array.new(capacity: 4)
+      game_loop do
+        clear_screen :black
+        hero_x += 10
+        trail.shift if trail.size == 4
+        trail << hero_x
+        trail.each { |place| draw_rect_at place, 50, 1, 1, :red }
+      end
+    end
+
+    assert_equal [30, 40, 50, 60], player.list(:trail)
+    [30, 40, 50, 60].each { |x| assert_equal Color.resolve(:red), player.screen.pixel(x, 50) }
+    assert_equal Color.resolve(:black), player.screen.pixel(20, 50)
+  end
+
+  # Whether an Array holds fractions is read from what the game puts in it: here a fraction
+  # variable, pushed after the line that reads the Array.
+  def test_an_array_given_a_fraction_holds_fractions
+    player = played(frames: 2) do
+      speeds = Array.new(capacity: 8)
+      vx = 0.5
+      total = 0.0
+      game_loop do
+        total = speeds.first unless speeds.empty?
+        vx += 0.25
+        speeds << vx
+      end
+    end
+
+    assert_equal [0.75, 1.0], player.list(:speeds)
+    assert_in_delta 0.75, player[:total]
+  end
+
+  def test_an_array_given_a_worked_out_whole_number_and_a_fraction_is_refused_naming_both_lines
+    error = assert_raises(ArgumentError) do
+      played do
+        speeds = Array.new(capacity: 8)
+        vx = 0.5
+        count = 0
+        game_loop do
+          vx += 0.25
+          count += 1
+          speeds << vx
+          speeds << count
+        end
+      end
+    end
+
+    assert_match(/holds numbers with a fraction/, error.message)
+    assert_equal 2, error.message.scan(/test_plain_ruby_arrays\.rb:\d+/).uniq.length, error.message
+  end
+
+  # Ruby's `Array.new(size, start)`: every item there from the start, a Float making them fractions.
+  def test_an_array_made_full_holds_its_size_and_can_be_changed_at_any_item
+    player = played(frames: 2) do
+      ripple = Array.new(4, 0.0)
+      at = 0
+      game_loop do
+        ripple[at] += 1.5
+        at += 1
+      end
+    end
+
+    assert_equal [1.5, 1.5, 0.0, 0.0], player.list(:ripple)
+  end
+
+  def test_an_array_written_out_and_changed_in_game_code_is_a_list
+    player = played(frames: 2) do
+      marks = [3, 1, 4]
+      game_loop { marks[1] += 1 }
+    end
+
+    assert_equal [3, 3, 4], player.list(:marks)
+  end
+
+  # `shift` and `pop` hand back the item they drop, as Ruby's do; `first`, `last` and `empty?`
+  # ask what is left.
+  def test_shift_and_pop_hand_back_the_item_they_drop
+    player = played(frames: 1) do
+      queue = Array.new(capacity: 8)
+      front = 0
+      back = 0
+      left = 0
+      ends = 0
+      game_loop do
+        queue << 5
+        queue.push 6
+        queue << 7
+        front = queue.shift
+        back = queue.pop
+        ends = queue.first + queue.last
+        left = 1 unless queue.empty?
+      end
+    end
+
+    assert_equal [5, 7, 12, 1, [6]], [player[:front], player[:back], player[:ends], player[:left], player.list(:queue)]
+  end
+
+  # An Array the game only reads, or one changed while building, is Ruby's own: no list is made.
+  def test_an_array_used_only_while_building_stays_a_ruby_array
+    player = played(frames: 1) do
+      steps = [1, 2]
+      steps << 3
+      total = 0
+      game_loop { total = steps[2] + steps.sum }
+    end
+
+    assert_equal 9, player[:total]
+    assert_raises(StandardError) { player.list(:steps) }
+  end
+
+  # A Ruby loop in game code runs while building, so the pushes it makes with numbers known
+  # then fill a Ruby Array: three rectangles laid out, on every pass.
+  def test_an_array_filled_by_a_ruby_loop_in_game_code_stays_a_ruby_array
+    player = played(frames: 1) do
+      screen :bitmap
+      game_loop do
+        xs = []
+        3.times { |n| xs << (n * 8) }
+        xs.each { |x| draw_rect_at x, 10, 2, 2, :red }
+      end
+    end
+
+    [0, 8, 16].each { |x| assert_equal Color.resolve(:red), player.screen.pixel(x, 10) }
+  end
+
+  # The item `shift` drops comes back where a branch's last line is the answer.
+  def test_shift_hands_back_its_item_as_the_answer_of_a_branch
+    player = played(frames: 1) do
+      queue = [5, 6, 7]
+      taken = 0
+      second = 0
+      game_loop do
+        taken = queue.empty? ? 0 : queue.shift
+        second = if queue.empty?
+                   0
+                 else
+                   queue.pop
+                 end
+      end
+    end
+
+    assert_equal [5, 7, [6]], [player[:taken], player[:second], player.list(:queue)]
+  end
+
+  def test_a_list_named_as_an_array_is_refused_naming_both_lines
+    error = assert_raises(ArgumentError) do
+      played do
+        trail = Array.new(capacity: 4)
+        list :trail, capacity: 2
+        game_loop { trail << 1 }
+      end
+    end
+
+    assert_match(/`trail`/, error.message)
+    assert_equal 2, error.message.scan(/test_plain_ruby_arrays\.rb:\d+/).uniq.length, error.message
+  end
+
+  def test_an_array_named_as_a_list_is_refused_naming_both_lines
+    error = assert_raises(ArgumentError) do
+      played do
+        list :trail, capacity: 2
+        trail = Array.new(capacity: 4)
+        game_loop { trail << 1 }
+      end
+    end
+
+    assert_equal 2, error.message.scan(/test_plain_ruby_arrays\.rb:\d+/).uniq.length, error.message
+  end
+
+  # An Array whose items are game variables keeps them: a write to an item changes that variable.
+  def test_an_array_of_game_variables_stays_an_array_of_variables
+    player = played(frames: 1) do
+      shown = Array.new(2) { |n| var :"shown#{n}", 0 }
+      pair = [var(:first, 1), var(:second, 1)]
+      game_loop do
+        shown[1] = 4
+        pair[0] += 2
+      end
+    end
+
+    assert_equal [0, 4, 3], [player[:shown0], player[:shown1], player[:first]]
+  end
+
+  def test_an_array_the_game_pushes_to_with_no_capacity_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        trail = []
+        game_loop { trail << 1 }
+      end
+    end
+
+    assert_match(/capacity:/, error.message)
+    assert_match(/test_plain_ruby_arrays\.rb:\d+/, error.message)
+  end
+
+  def test_a_full_array_the_game_pushes_to_with_no_capacity_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        trail = Array.new(4, 0)
+        game_loop { trail.push 1 }
+      end
+    end
+
+    assert_match(/capacity:/, error.message)
+  end
+
+  def test_a_capacity_the_game_works_out_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        room = 4
+        game_loop do
+          room += 1
+          trail = Array.new(capacity: room)
+          trail << 1
+        end
+      end
+    end
+
+    assert_match(/the build\s+must know the capacity/, error.message)
+  end
+
+  def test_an_array_made_with_a_size_and_no_start_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        slots = Array.new(8)
+        game_loop { slots[0] = 1 }
+      end
+    end
+
+    assert_match(/give the number each item starts as/, error.message)
+  end
+
+  def test_an_array_of_arrays_the_game_changes_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        rows = [[0, 0], [0, 0]]
+        game_loop { rows[0] = 1 }
+      end
+    end
+
+    assert_match(/holds numbers only/, error.message)
+  end
+
+  def test_a_setting_a_list_does_not_take_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        trail = Array.new(capacity: 4, of: 0)
+        game_loop { trail << 1 }
+      end
+    end
+
+    assert_match(/does not take `of:`/, error.message)
+  end
+
+  def test_an_array_method_a_list_does_not_have_is_refused_by_name
+    error = assert_raises(NoMethodError) do
+      played do
+        marks = [3, 1, 4]
+        game_loop { marks.sort! }
+      end
+    end
+
+    assert_match(/`sort!` is a method of a Ruby Array/, error.message)
+    assert_match(/`shift`/, error.message)
+  end
+
+  # `unshift` adds an item, but at the front, which a list cannot do: it is refused by name, not
+  # taken for a push that needs room.
+  def test_unshift_is_refused_by_name
+    error = assert_raises(NoMethodError) do
+      played do
+        marks = Array.new(capacity: 4)
+        game_loop { marks.unshift 1.5 }
+      end
+    end
+
+    assert_match(/`unshift` is a method of a Ruby Array/, error.message)
+  end
+end

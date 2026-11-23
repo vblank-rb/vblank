@@ -115,7 +115,8 @@ instance variables.
   the key, so `game_variables states: :cave_light_state` with keys 0 to 3 (a Hash's or an Array's)
   reads `cave_light_state_0` to `cave_light_state_3`. The key must be known while
   building; a key the game works out (`@counts[which]`, `which` a game number) is refused: keep
-  those numbers in a game's own list (`lists.md`).
+  those numbers in a local Array the game changes, which is a list (`counts = Array.new(4, 0)`,
+  "Arrays" above).
 - **A Struct's fields are named the same way**, in the block of `Struct.new` (`Box = Struct.new(:count,
   :step) { game_variables :count }`) or in the body of a class made from one. Then `box.count += 1` in
   game code changes a game variable, `box_count` in a profile. A field nobody names is plain Ruby.
@@ -137,6 +138,64 @@ instance variables.
   setting `@planned = true` and declaring routines; `return if @laid_out` above `@laid_out = true`;
   `raise "..." if @written`), and a switch a routine sets and puts back (`@white = true`, `yield`, then
   `@white = false` in an `ensure`), which is the same on every pass.
+
+## Arrays
+
+An Array that game code changes is a list the game keeps (`lists.md`), named after its local. Ruby's
+own Array verbs work on it as Ruby says: `<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `+=` on
+an item, `size`, `length`, `empty?`, `first`, `last`, `each`, `each_with_index`, `sum`, `min`, `max`
+and `include?`. `sum`, `min`, `max` and `include?` walk the items as the game plays and keep the
+answer in a hidden variable; `min` and `max` of an empty list are 0, as Ruby's nil reads.
+
+```ruby
+trail = Array.new(capacity: 4)   # empty, with room for 4
+ripple = Array.new(8, 0.0)       # 8 items, each 0.0: a Float makes them fractions
+marks = [3, 1, 4]                # 3 items, and room for no more
+game_loop do
+  trail.shift if trail.size == 4
+  trail << hero_x
+  trail.each { |x| draw_rect_at x, 50, 1, 1, :red }
+end
+```
+
+- **VBlank adds `capacity:` to `Array.new`, and two settings you can leave out.** A console sets a
+  list's memory aside before the game starts, so a list cannot grow as a Ruby Array does: an Array
+  that game code adds to needs `capacity:`, the most items it can hold. `Array.new(4, 0,
+  capacity: 8)` starts with 4 items and has room for 8. The two settings are `list`'s own, and
+  each is told in full in `lists.md`:
+  - `width: :byte` or `width: :half` keeps each item in less memory. A number too big for the slot
+    keeps its low bits, with no error: 200 in a `:byte` reads back as -56.
+  - `fast: true` or `fast: false` sets which memory the list is kept in, the quick one or the roomy
+    one. It changes only how long a read takes; the build picks well without it.
+- **Whether it holds fractions is read from what goes in.** The build looks at the start and at every
+  value game code puts into the Array (`<<`, `push`, `[]=`, `+=` on an item and the like). A Float
+  (`0.5`), a name given one, `.to_f` or a sum with one of those makes it an Array of fractions; a
+  whole number written out (`0`, `3`) fits either kind and decides nothing. An Array nothing puts a
+  fraction into holds whole numbers. A whole number the game works out put into an Array of
+  fractions is refused, naming the line that put the fraction in and the line of the whole number:
+  use `.to_f` on the whole number. A fraction from somewhere the build cannot see (a method's answer)
+  put into an Array of whole numbers is refused too: write `.to_f` after it.
+- **Which Arrays these are:** an Array written out (`[...]` or `Array.new(...)`) and given to a local,
+  on every line that gives that local a value, where game code changes it with an Array verb. An
+  Array only game code reads, or one changed only while setting up, stays Ruby's and costs nothing:
+  `steps = [1, 2]; steps << 3` above the game loop is a Ruby Array of three. A change a Ruby loop
+  makes in game code with numbers known while building is setting up too: `xs = []`, then
+  `3.times { |n| xs << n * 8 }` in the game loop, is a Ruby Array laid out on every pass. So is an Array of game
+  variables, sprites or anything but numbers (`pair = [var(:a, 1), var(:b, 1)]`), whose items are
+  changed where they stand.
+- `item = queue.shift` and `item = queue.pop` hand back the item dropped, as Ruby's do, and so does
+  one that is the answer of a branch (`queue.empty? ? 0 : queue.shift`) or a method. That keeps the
+  item in a hidden variable, a word of memory (`rom.profile` lists the line); `queue.shift` alone keeps
+  nothing.
+- **The list's name** is its local's (`trail`, `trail_2` for a second local of that name in one block
+  or file), and in a file loaded with `VBlank.require_game_file`, the file's name first
+  (`walker_trail` in `walker.rb`). A profile, a save and a test read it by that name. A `list` line
+  and an Array that would have one name are refused, naming both lines, whichever runs first.
+- A list holds numbers, so `[[0, 0], [0, 0]]`, an Array of Hashes and an item of nil are refused.
+- Ruby's other Array methods (`unshift`, `insert`, `concat`, `sort!`, `map`, `uniq`) are refused by
+  name, listing those that work. They put nothing in as far as the fraction rule goes.
+- **A named instance variable's Array** (`game_variables :counts`) is still a game variable for each
+  key (next section), not a list.
 
 ## Changing a variable
 
@@ -262,7 +321,14 @@ Each is a friendly error naming the line.
 | `game_variables saved: false` with no names | the names on the same line, `game_variables :busy, saved: false` |
 | `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
 | `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
-| a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |
+| a named Hash or Array of numbers at a key the game works out | a key known while building, or a local Array: `counts = Array.new(4, 0)` |
+| an Array game code pushes to with no `capacity:` (`trail = []`, `Array.new(4, 0)` then `trail << x`) | `Array.new(capacity: 8)`, or `Array.new(4, 0, capacity: 8)` |
+| `Array.new(capacity: n)` or `Array.new(n, 0)` with `n` a number the game works out | a number or a constant known while building |
+| `Array.new(8)` with no start, on an Array the game changes | `Array.new(8, 0)`, or `Array.new(capacity: 8)` for an empty one |
+| an Array the game changes holding Arrays or Hashes (`[[0, 0], [0, 0]]`) | an Array for each row, or a `pool` |
+| `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
+| an Array method a list has no meaning for (`sort!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
+| a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
 | `nil`, `true`, `false` or a test's answer put into a list (`answers[i] = pass == 1`) | a number: `answers[i] = pass == 1 ? 1 : 0` |

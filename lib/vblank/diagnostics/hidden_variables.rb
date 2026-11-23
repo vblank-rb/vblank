@@ -25,6 +25,9 @@ module VBlank
         number_started: ["keeps whether draw_number drew a digit. Every such line of the routine uses this one.", nil],
         join: ["keeps the answer of `&&` or `||`.", "Unneeded in an `if` with no `else`."],
         promoted: ["makes this name a variable, as a test the game makes changes it.", nil],
+        list_answer: ["keeps the answer of sum, min, max or include? on a list as it walks the items.", nil],
+        taken: ["keeps the item that shift or pop drops, as Ruby hands it back.",
+                "Unneeded where the line does not use the item."],
         truth: ["keeps a second hidden variable for nil, or for false beside a number.",
                 "Unneeded if it starts with false, or a number such as -1."]
       })

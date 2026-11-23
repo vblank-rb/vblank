@@ -216,6 +216,7 @@ module VBlank
         STEPS = "::VBlank::DSL::PlainRuby::Steps"
         WRITES = "::VBlank::DSL::PlainRuby::Writes"
         INSTANCE_VARIABLES = "::VBlank::DSL::PlainRuby::InstanceVariables"
+        ARRAYS = "::VBlank::DSL::PlainRuby::Arrays"
         NEW_VALUE = "__plain_ruby_new"
         JUMPS = [Prism::ReturnNode, Prism::BreakNode, Prism::NextNode].freeze
 
@@ -463,6 +464,7 @@ module VBlank
         def call_text(node)
           note_tail_of_answering_block(node)
           return "#{STEPS}.opposite(#{argument(node.receiver)})" if node.name == :! && node.receiver
+          return "#{ARRAYS}.taken(#{argument(node.receiver)}, :#{node.name})" if game_array_item_taken?(node)
           return index_write_text(node) if node.name == :[]= && node.receiver
           return attribute_write_text(node) if node.attribute_write? && node.receiver
           return "#{STEPS}.nil_test(#{argument(node.receiver)})" if node.name == :nil? && node.receiver
@@ -479,6 +481,15 @@ module VBlank
           return listed_attribute_methods_text(node) if listed_attribute_call?(node)
 
           copied_text(node)
+        end
+
+        # `item = trail.shift` on a game's own list, where something reads the item it drops: a
+        # line it is part of, or a branch or method whose answer it is. Standing alone, the drop
+        # needs nothing kept.
+        def game_array_item_taken?(node)
+          %i[shift pop].include?(node.name) && node.arguments.nil? && node.block.nil? &&
+            node.receiver.is_a?(Prism::LocalVariableReadNode) && @names.game_array?(node.receiver) &&
+            !value_unused?(node)
         end
 
         # `game_variables :busy`, which no object answers: InstanceVariables keeps the names.
@@ -806,6 +817,7 @@ module VBlank
 
         def write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
+          return "#{prefix}#{game_array_text(node)}" if @names.game_array?(node)
           # A name kept for a read past its `if` can stay a plain name under a test further out, so
           # it keeps its answer the way any plain name does.
           return "#{prefix}#{second_name_write(node.name, "(#{kept_value_text(node.value, node)})", node)}" if promoted?(node)
@@ -821,6 +833,46 @@ module VBlank
           when :assign then "#{prefix}#{assign_text(node.name, "(#{value_text(node.value)})")}"
           else "#{prefix}#{noted_if_handed(node, local_value_text(node))}"
           end
+        end
+
+        # An Array the game keeps as a list of its own (PlainRuby::Arrays), made by the list in
+        # place of the Array. `Array.new`'s arguments and block are handed over as written.
+        def game_array_text(node)
+          made = node.value
+          opening = "#{ARRAYS}.list_from_#{made.is_a?(Prism::ArrayNode) ? 'literal' : 'new'}(self, " \
+                    "#{game_array_declaration_text(node)}"
+          return "#{opening}, #{rewritten_text(made)})" if made.is_a?(Prism::ArrayNode)
+
+          given = made.arguments ? ", #{rewritten_text(made.arguments)}" : ""
+          text = "#{opening}#{given})#{" #{rewritten_text(made.block)}" if made.block}"
+          # What follows keeps its line number, wherever the arguments started.
+          missing = line_ends_between(made.location.start_offset, made.location.end_offset).length - text.count("\n")
+          text + ("\n" * [missing, 0].max)
+        end
+
+        # What the whole block says about the Array +node+ makes (Arrays::Declaration).
+        def game_array_declaration_text(node)
+          fraction_put = @names.game_array_fraction_put(node)
+          "#{ARRAYS}::Declaration.new(name: #{game_array_list_name(node).inspect}, local: :#{node.name}, " \
+            "grows: #{@names.game_array_grown?(node)}, source: #{@source_label.inspect}, " \
+            "declared_at: #{place_text(node).inspect}, fraction_at: #{(fraction_put && place_text(fraction_put)).inspect})"
+        end
+
+        # The list's name: its local's, unique in this block or file (`trail`, then `trail_2` for a
+        # second local of that name), and in a file of game code (VBlank.require_game_file) after
+        # the file's name, `walker_trail`. So the name never hangs on which line runs first, and a
+        # local of one name in two files is two lists.
+        def game_array_list_name(node)
+          name = @names.variable_name_of(node)
+          return name if @source_label.nil? || @source_label.match?(/:\d+\z/)
+
+          :"#{File.basename(@source_label, '.rb')}_#{name}"
+        end
+
+        # Where +node+ is, as a message names a place: `game.rb:12`.
+        def place_text(node)
+          file = @source_label.to_s.sub(/:\d+\z/, "")
+          "#{File.basename(file)}:#{node.location.start_line}"
         end
 
         # A local a `var` line makes keeps the variable as its own (Writes.keep_as_local).

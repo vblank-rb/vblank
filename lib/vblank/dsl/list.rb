@@ -72,6 +72,7 @@ module VBlank
         self
       end
       alias << push
+      alias append push
 
       # Drops the oldest item, the one at the front of the list.
       #
@@ -165,6 +166,65 @@ module VBlank
       def length
         whole_value(Build.list_len(@name))
       end
+      alias size length
+
+      # Whether the list holds no items, as a test made as the game plays.
+      #
+      # ```ruby
+      # trail.shift unless trail.empty?
+      # ```
+      def empty?
+        length == 0 # rubocop:disable Style/NumericPredicate -- a Value answers `==` with a test the game makes
+      end
+
+      # Runs the block once for each item, front to back, giving it the item and its place, as
+      # Ruby's `each_with_index` does.
+      #
+      # ```ruby
+      # marks.each_with_index { |mark, at| draw_number mark, 10, at * 10, :white }
+      # ```
+      def each_with_index(&block)
+        list = self
+        # Called as written, not with `yield`: see #each.
+        @builder.repeat(length) { |index| block.call(list[index], index) } # rubocop:disable Performance/RedundantBlockCall
+      end
+
+      # The items added up, as a number worked out as the game plays. A list of fractions adds up
+      # to a fraction. An empty list adds up to 0.
+      def sum
+        answer_by_walking(Build.int(0)) { |total, item| Build.set(total, Build.binop(:+, Build.var_ref(total), item)) }
+      end
+
+      # The smallest item, as a number worked out as the game plays. Ruby's `min` of an empty
+      # Array is nil, which a game number reads as 0, so an empty list answers 0.
+      def min = extreme(:<)
+
+      # The largest item, the same way as #min.
+      def max = extreme(:>)
+
+      # Whether any item is +value+, as a test made as the game plays.
+      #
+      # ```ruby
+      # call :open_door if keys.include?(RED)
+      # ```
+      def include?(value)
+        wanted = item_node(value, "compare with")
+        found = answer_by_walking(Build.int(0)) do |kept, item|
+          Build.if_(Build.binop(:==, item, wanted), Build.set(kept, Build.int(1)))
+        end
+        found == 1
+      end
+
+      # Drops the item at +from+ (:front or :back) and hands it back as a number, as Ruby's
+      # `shift` and `pop` do. The item is kept in a hidden variable before the drop, so it costs a
+      # word of memory: PlainRuby::Arrays calls this only where the line uses the item.
+      def drop_returning_item(from) # :nodoc:
+        item = from == :front ? first : last
+        kept = @builder.hidden_variable(:taken, like: item)
+        kept.store!(item)
+        from == :front ? shift : pop
+        kept
+      end
 
       # The first item, the oldest, as a number.
       def first
@@ -189,10 +249,65 @@ module VBlank
       #++
       def each(&block)
         list = self # `repeat` runs its block in the builder's context; keep our ref
-        @builder.repeat(length) { |index| block.call(list[index]) }
+        # The block given `repeat` is read again from this file and run through `eval`
+        # (PlainRuby.game_block), where `yield` would find no block to hand the item to.
+        @builder.repeat(length) { |index| block.call(list[index]) } # rubocop:disable Performance/RedundantBlockCall
       end
 
+      # Explains a number of the wrong kind put into the list with these in place of the list's
+      # own words, which name `list :name` and `holds:`. A Ruby Array the game keeps names neither
+      # (PlainRuby::Arrays#kind_advice). +declaring+ and +mixing+ are as Scale takes them.
+      def explain_kinds_with(declaring:, mixing:) # :nodoc:
+        @fraction_declaration_advice = declaring
+        @mixed_kinds_advice = mixing
+        @item_scale = nil
+        self
+      end
+
+      # What a list does, said when a Ruby Array method it has no meaning for is called on it.
+      WORKING_METHODS = "`<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `size`, `length`, `empty?`, `first`, " \
+                        "`last`, `each`, `each_with_index`, `sum`, `min`, `max`, `include?`, `fill` and `copy_from`"
+
+      # A Ruby Array method the list does not have, `sort!` or `map`, called on it: a list the game
+      # keeps can only do what the console does with it as the game plays.
+      def method_missing(name, ...)
+        return super unless Array.method_defined?(name) && !name.start_with?("to_")
+
+        raise NoMethodError.new("`#{name}` is a method of a Ruby Array, and a list the game keeps does not have it. " \
+                                "A list has #{WORKING_METHODS}.#{Messages::AuthorSource.at_author_line}", name)
+      end
+
+      def respond_to_missing?(name, include_private = false) = super
+
       private
+
+      # A hidden number that starts at +start+ (a node) and is changed once for each item, front to
+      # back: the block is handed the hidden number's name and the item's node, and gives back the
+      # statement that changes it. The answer carries the list's fraction, as an item does.
+      #
+      # +from_first+ starts it at the first item instead, where the list holds one.
+      def answer_by_walking(start, from_first: false)
+        kept = @builder.hidden_variable(:list_answer, like: @fraction_bits ? 0.0 : nil)
+        name = kept.name
+        list_name = @name
+        record(Build.set(name, start))
+        if from_first
+          record(Build.if_(Build.binop(:>, Build.list_len(list_name), Build.int(0)),
+                           Build.set(name, Build.list_get(list_name, Build.int(0)))))
+        end
+        builder = @builder
+        builder.repeat(length) do |index|
+          builder.record_statement(yield(name, Build.list_get(list_name, Value.node_for(index))))
+        end
+        kept
+      end
+
+      # The smallest (+compare+ `:<`) or largest (`:>`) item, 0 for an empty list.
+      def extreme(compare)
+        answer_by_walking(Build.int(0), from_first: true) do |kept, item|
+          Build.if_(Build.binop(compare, item, Build.var_ref(kept)), Build.set(kept, item.copy))
+        end
+      end
 
       # Attach a list statement (push/drop/set) at the current build point.
       def record(node)

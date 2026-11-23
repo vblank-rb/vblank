@@ -203,6 +203,7 @@ module VBlank
       @name_vars = {}          # name → the NameSet, for variables that hold one of a set of names
       @var_declarations = {}   # name → what its first `var` started it at, and where (see Variables#var)
       @plain_locals = {}       # [source, local's name] → its PlainLocal (see #plain_local_variable)
+      @list_owners = {}        # list name → the ListOwner that declared it (see #claim_list_name!)
       @name_dispatches = []    # [dispatch node, NameSet] — filled in at finalize, once every name is known
       @scene_name_sets = []    # the NameSet of each `call` that picks a scene, checked once every name is known
       @functions = {}          # name → deferred body block (evaluated at emit time)
@@ -424,6 +425,39 @@ module VBlank
     # value is worked out as the game runs. `rom.profile` says where everything went.
     #++
     def list(name, capacity:, holds: nil, width: :word, fast: nil, full_of: nil)
+      claim_list_name!(name, ListOwner.new(owner: :verb, at: Messages::AuthorSource.author_file_and_line))
+      declare_list(name, capacity: capacity, holds: holds, width: width, fast: fast, full_of: full_of)
+    end
+
+    # Who declared a list's name, and where, as a message names a place (`game.rb:12`): the
+    # `list` verb, or a plain Ruby Array (DSL::PlainRuby::Arrays) by what it belongs to.
+    ListOwner = Data.define(:owner, :at)
+
+    # Gives +name+ to +owner+, refusing a name another owner has: one list for each name, so a
+    # `list :trail` and an Array `trail` would be one list, whichever line ran first.
+    def claim_list_name!(name, owner)
+      held = (@list_owners[name] ||= owner)
+      return if held.owner == owner.owner
+
+      raise ArgumentError, "The list name `#{name}` is used two times: at #{held.at} and at #{owner.at}. A game keeps " \
+                           "one list for each name, so the two would be one list. To fix this, give one of them " \
+                           "another name.#{Messages::AuthorSource.at_author_line}"
+    end
+
+    # The name of the list a plain Ruby Array is (DSL::PlainRuby::Arrays), given +name+ and
+    # +owner+: +name+ itself for an Array a line of game code makes, which a line reached again
+    # makes again, and the first free one of `name`, `name_2` ... for one an object holds, as an
+    # object's variables are named.
+    def plain_array_list_name(name, owner)
+      return name.tap { claim_list_name!(name, owner) } unless owner.owner.first == :object
+
+      free = [name, *(2..).lazy.map { |number| :"#{name}_#{number}" }.first(@list_owners.size + 1)]
+                 .find { |each_name| [nil, owner.owner].include?(@list_owners[each_name]&.owner) }
+      free.tap { claim_list_name!(free, owner) }
+    end
+
+    # The list itself, for `list` and for what declares one in its place (a plain Ruby Array).
+    def declare_list(name, capacity:, holds: nil, width: :word, fast: nil, full_of: nil) # :nodoc:
       width = kept_unsigned_halves({ name => width }) { name }.fetch(name)
       # A fraction given as what the list starts full of marks it as holding fractions, as `holds:` would.
       example = holds

@@ -97,6 +97,19 @@ module VBlank
           end
 
           attr_accessor :asked_nil
+
+          # Game code changes what the name holds with an Array verb (Arrays::CHANGING_VERBS), and
+          # adds to it with one of Arrays::GROWING_VERBS.
+          attr_accessor :changed_as_array, :grown_as_array
+
+          # What game code puts into what the name holds, as an Array: the nodes of each value
+          # given `<<`, `push`, `[]=` and the like (Arrays.put_values).
+          def array_puts = (@array_puts ||= [])
+
+          # Is this name a game's own list (LocalNames#game_array?)?
+          def game_array?
+            changed_as_array && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && Arrays.makes_array?(write.node.value) }
+          end
         end
 
         # Is +node+ a call on something other than nothing or `self`?
@@ -235,6 +248,50 @@ module VBlank
 
         # The local +node+ writes or reads, nil for any other node.
         def local_of(node) = @locals_by_node[node]
+
+        # Does +node+, a write or a read of a local, name an Array the game keeps as a list of its
+        # own? That is an Array written out on every line that gives the local a value, which game
+        # code changes with an Array verb (PlainRuby::Arrays). The one place that question is answered.
+        def game_array?(node) = @locals_by_node[node]&.game_array? || false
+
+        # ...and does game code add items to it?
+        def game_array_grown?(node) = @locals_by_node[node]&.grown_as_array || false
+
+        # The first value game code puts into the game Array +node+ names that shows it is a
+        # fraction (#fraction_written?), or nil: what makes it an Array of fractions.
+        def game_array_fraction_put(node)
+          puts = @locals_by_node[node]&.array_puts || []
+          puts.sort_by { |put| put.location.start_offset }.find { |put| fraction_written?(put) }
+        end
+
+        # Does +node+ show, in the source, that it is a number with a fraction? A Float written
+        # out, `.to_f`, `var(:x, 0.5)`, a sum with one of those in it, or a local given one on any
+        # of its lines. Anything else (a method's answer, an instance variable) shows nothing.
+        def fraction_written?(node, seen = {}.compare_by_identity)
+          return false if seen.key?(node)
+
+          seen[node] = true
+          case node
+          when Prism::FloatNode then true
+          when Prism::ParenthesesNode then !node.body.nil? && fraction_written?(node.body, seen)
+          when Prism::StatementsNode then !node.body.empty? && fraction_written?(node.body.last, seen)
+          when Prism::IfNode then [node.statements, node.subsequent].compact.any? { |side| fraction_written?(side, seen) }
+          when Prism::ElseNode then !node.statements.nil? && fraction_written?(node.statements, seen)
+          when Prism::LocalVariableReadNode
+            local = @locals_by_node[node]
+            !local.nil? && local.writes.any? { |write| write.node.respond_to?(:value) && fraction_written?(write.node.value, seen) }
+          when Prism::CallNode then fraction_call?(node, seen)
+          else false
+          end
+        end
+
+        def fraction_call?(node, seen)
+          return true if node.name == :to_f
+          return fraction_written?(node.arguments.arguments[1], seen) if %i[var save_var].include?(node.name) && node.arguments&.arguments&.length.to_i >= 2
+          return false unless ARITHMETIC.include?(node.name)
+
+          [node.receiver, *node.arguments&.arguments].compact.any? { |part| fraction_written?(part, seen) }
+        end
 
         # Is this write in game code, a Ruby loop's in game code among it?
         def written_in_game_code?(write) = @writes_in_game_code.key?(write)
@@ -521,6 +578,7 @@ module VBlank
           when Prism::IndexOperatorWriteNode, Prism::CallOperatorWriteNode
             read_children(node, scopes, in_game_code)
             read_place_change(node)
+            note_array_change(node, in_game_code) if node.is_a?(Prism::IndexOperatorWriteNode)
           when Prism::LocalVariableReadNode then
             local = scopes[-1 - node.depth]&.[](node.name)
             local&.reads&.push(node)
@@ -674,6 +732,7 @@ module VBlank
             read_names(child, scopes, in_game_code || game_block)
           end
           read_place_change(node) if node.name == :[]= || node.attribute_write?
+          note_array_change(node, in_game_code)
           record_bang_call_change(node)
           note_func_block(node) if node.name == :func
           record_game_call(node) if game_call?(node)
@@ -681,7 +740,21 @@ module VBlank
           @locals_by_node[LocalNames.side_not_nil(node)]&.asked_nil = true if LocalNames.nil_comparison?(node)
         end
 
-        def ruby_iteration?(call) = RUBY_ITERATORS.include?(call.name) && written_out?(call.receiver)
+        # A local changed by game code with an Array verb, `trail << x` or `trail[0] += 1`
+        # (Local#game_array?).
+        def note_array_change(node, in_game_code)
+          verb = node.is_a?(Prism::IndexOperatorWriteNode) ? :[]= : node.name
+          return unless (in_game_code || @iterating_in_game_code) && Arrays::CHANGING_VERBS.include?(verb)
+
+          local = node.receiver.is_a?(Prism::LocalVariableReadNode) && @locals_by_node[node.receiver]
+          return unless local
+
+          local.changed_as_array = true
+          local.grown_as_array = true if Arrays::GROWING_VERBS.include?(verb)
+          local.array_puts.concat(Arrays.put_values(node))
+        end
+
+        def ruby_iteration?(call) =RUBY_ITERATORS.include?(call.name) && written_out?(call.receiver)
 
         # Is this a constant, a number, a list or a range in the source, or a call on one?
         def written_out?(node)
