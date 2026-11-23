@@ -121,6 +121,8 @@ module VBlank
           oracle, console, ran = backend_pictures(program, frames: frame, name: name,
                                                            console_frames: console_frames, keys: keys)
           bad = mismatched_pixels(oracle, console)
+          # Each frame compared is one assertion, so a test whose pictures agree reports them.
+          self.assertions += 1
           next if bad.empty?
 
           flunk mismatch_message(bad, ran, console_frames || console_frames_for(program, frame), picture: oracle)
