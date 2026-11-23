@@ -97,6 +97,36 @@ class TestSortOrder < Minitest::Test
     assert_equal ruby_order(Tied), bar_lengths(screen, 5)
   end
 
+  # `min`, `max` and `minmax` hand back the things the Struct's order puts first and last; with
+  # ties by y, Tied's x decides.
+  def test_min_max_and_minmax_follow_the_structs_own_order
+    starts = STARTS
+    player = game_player
+    player.run(built_program do
+      spots = Array.new(capacity: 5)
+      started = 0
+      low_x = 0
+      high_x = 0
+      pair_low_x = 0
+      pair_high_x = 0
+      game_loop do
+        if started == 0
+          starts.each { |x, y| spots << Tied.new(x, y) }
+          started = 1
+        end
+        low_x = spots.min.x
+        high_x = spots.max.x
+        low, high = spots.minmax
+        pair_low_x = low.x
+        pair_high_x = high.x
+      end
+    end, frames: 2)
+
+    sorted = STARTS.map { |x, y| Tied.new(x, y) }.sort.map(&:x)
+    assert_equal [sorted.first, sorted.last, sorted.first, sorted.last],
+                 %i[low_x high_x pair_low_x pair_high_x].map { |name| player[name] }
+  end
+
   def test_a_struct_order_that_is_not_fields_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       screen_after do
@@ -111,12 +141,14 @@ class TestSortOrder < Minitest::Test
     assert_match(/`<=>`/, error.message)
   end
 
-  private def screen_after(frames: 2, &block)
+  private def built_program(&block)
     builder = Builder.new
     builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, checked: false))
     builder.finalize_program
-    game_player.run(builder.program, frames: frames).screen
+    builder.program
   end
+
+  private def screen_after(frames: 2, &block) = game_player.run(built_program(&block), frames: frames).screen
 
   # The length of the bar in each of +rows+ rows, 10 pixels apart from y = 10.
   private def bar_lengths(screen, rows)

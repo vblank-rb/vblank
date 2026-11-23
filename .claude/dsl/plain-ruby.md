@@ -226,7 +226,9 @@ end
   two stand-in things into a `SortOrder::Key` (`StructArray#own_order`, from the pairs
   `Value#sign_against` keeps), and `things.sort!` sorts by it at `sort_by!`'s cost. Each pair must
   be one field against the other thing's same field (reversed for the biggest first), alone or in
-  an Array for ties; any other `<=>` is refused rather than called per comparison.
+  an Array for ties; any other `<=>` is refused rather than called per comparison. `min`, `max`
+  and `minmax` walk once by the same key (`StructArray#precedes`, field by field), keeping the
+  first thing nothing later comes before, started at the first thing; they hand back a kept thing.
 - Ruby's other Array methods (`unshift`, `insert`, `concat`, `rotate!`, `map`, `uniq`) are refused by
   name, listing those that work. They put nothing in as far as the fraction rule goes.
 - **A named instance variable's Array** (`game_variables :counts`) is a game variable for each index

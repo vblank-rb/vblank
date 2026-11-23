@@ -33,8 +33,8 @@ module VBlank
     # adds nothing on `<<`; to make room for a new one, `shift` the oldest first.
     class StructArray
       # The Array methods an Array of Structs answers.
-      VERBS = %i[<< push append shift clear each reverse_each each_with_index delete_if reject! sort_by! reverse!
-                 size length count empty? any?].freeze
+      VERBS = %i[<< push append shift clear each reverse_each each_with_index delete_if reject! sort! sort_by! reverse!
+                 min max minmax size length count empty? any?].freeze
 
       # The settings `Array.new` takes for one: how many, and where it is kept.
       SETTINGS = %i[fast].freeze
@@ -206,6 +206,21 @@ module VBlank
         sort_by_key!(own_order)
       end
 
+      # The thing the Struct's `<=>` puts first, as Ruby's `min` hands it back: one walk, keeping
+      # the first thing no other comes before. On an empty Array it holds no thing, as Ruby's nil:
+      # test `any?` before reading it.
+      #
+      # ```ruby
+      # nearest = enemies.min
+      # ```
+      def min(*) = best_in_order(smallest: true)
+
+      # The thing the Struct's `<=>` puts last, as Ruby's `max`.
+      def max(*) = best_in_order(smallest: false)
+
+      # `[min, max]`, as Ruby's `minmax`: two walks.
+      def minmax = [min, max]
+
       # The order the Struct's `<=>` says, as a SortOrder::Key, read once while building by
       # comparing two stand-in things, the first in slot 0 and the second in slot 1: each pair of
       # numbers the answer compared is a field read from both, and which side each is on says
@@ -222,6 +237,40 @@ module VBlank
             SortOrder::Field.new(name: field, descending: slots == [1, 0]) if [[0, 1], [1, 0]].include?(slots)
           end
         end
+      end
+
+      # Does +one+ come before +other+ in +key+'s order (the other way round with +smallest+
+      # false)? A test the game makes, field by field: a field decides unless the two are level
+      # on it, and the next field is asked then.
+      def precedes(one, other, key, smallest: true) # :nodoc:
+        field, *rest = key.fields
+        a = one[field.name]
+        b = other[field.name]
+        first = field.descending == smallest ? a > b : a < b
+        return first if rest.empty?
+
+        first | ((a == b) & precedes(one, other, SortOrder::Key.new(fields: rest), smallest: smallest))
+      end
+
+      # One walk keeping the slot of the first thing that no later thing comes before, started at
+      # the first thing, so no slot read is out of the Array.
+      private def best_in_order(smallest:)
+        refuse_order_question_in_walk!
+        key = own_order
+        best = @builder.hidden_variable(:best)
+        best.store!(Value.new(@builder, IR::Build.var_ref(@pool.head_var)))
+        leader = walked(Pool::Instance.new(@pool, best))
+        each do |thing|
+          precedes(thing, leader, key, smallest: smallest).record_branch { best.store!(thing.index) }
+        end
+        leader.tap { |kept| kept.kept = true }
+      end
+
+      private def refuse_order_question_in_walk!
+        return unless @walks_open.positive?
+
+        PlainRuby::Steps.refuse_game_code!("This line asks `#{@local}` for its smallest or biggest thing while a walk " \
+                                           "of it is under way. To fix this, ask after the walk ends.")
       end
 
       private def refuse_no_order!
