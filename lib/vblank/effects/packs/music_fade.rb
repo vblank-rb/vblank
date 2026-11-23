@@ -9,6 +9,40 @@ module VBlank
       # `fade_music_in` brings it back up for the next one. They are the pair to the screen fades,
       # and are called the same way. The song goes on playing, silently, while it is faded out.
       #
+      # ```ruby sound=play frames=420
+      # VBlank.game "FADING", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   enable_sound
+      #   song :theme do
+      #     tempo 120
+      #     voice :lead do
+      #       %i[E4 G4 C5 G4 A4 G4 E4 G4
+      #          F4 A4 G4 E4 D4 E4 C4 D4]
+      #         .each do |pitch|
+      #           note pitch, :eighth
+      #         end
+      #     end
+      #     voice :bass, plays: :triangle do
+      #       %i[C3 G3 C3 G3 F3 A3 G3 B3]
+      #         .each do |pitch|
+      #           note pitch, :quarter
+      #         end
+      #     end
+      #   end
+      #   play_song :theme
+      #   frame = 0
+      #   game_loop do
+      #     frame = (frame + 1) % 480
+      #     # three seconds in, down over three
+      #     # seconds; back up for the next round
+      #     if frame == 180
+      #       fade_music_out frames: 180
+      #     end
+      #     fade_music_in frames: 1 if frame == 0
+      #   end
+      # end
+      # ```
+      #
       # ```ruby
       # fade_out
       # fade_music_out

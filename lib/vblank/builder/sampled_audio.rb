@@ -8,6 +8,29 @@ module VBlank
     # handle to play and stop it. `instrument` makes a recording playable as notes, so that one
     # recording covers a whole keyboard and a song can use it.
     #
+    # ```ruby sound=play frames=120
+    # VBlank.game "SAMPLE", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   # a zap, worked out in Ruby as the game
+    #   # builds: a square wave that falls in
+    #   # pitch and fades, for 3000 samples
+    #   samples = (0...3000).map do |i|
+    #     half = i * (2400 - i / 3) / 8000
+    #     loud = 100 - i / 40
+    #     half.even? ? loud : -loud
+    #   end
+    #   zap = sample :zap, pcm: samples,
+    #                      rate: 8192
+    #   frame = 0
+    #   game_loop do
+    #     frame += 1
+    #     # three zaps, two thirds of a second
+    #     # apart
+    #     zap.play if frame % 40 == 1
+    #   end
+    # end
+    # ```
+    #
     # ```ruby
     # zap = sample :zap, from: "zap.wav"
     # zap.play

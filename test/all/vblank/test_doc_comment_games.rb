@@ -20,7 +20,9 @@ require "tmpdir"
 # frames, played once) or `picture=loop` (a video played round and round), with `frames=N` for how
 # many frames, 120 when left out and 360 at most. A block with no marker gets no picture. Each
 # marker is held to its promise here: a still is not one colour, a video changes as it plays, and
-# a loop's last frame leads back into its first.
+# a loop's last frame leads back into its first. A fence may also say `sound=play` (beside a
+# picture= or alone), which asks the docs to play the game with no buttons for `frames=N` frames,
+# 900 at most, and record what it plays: that recording is held to not being silence.
 class TestDocCommentGames < Minitest::Test
   # Each example is loaded as a file of its own, which declares its modules and constants in the
   # whole process, as a game file does; a test in a Ractor cannot declare them.
@@ -35,6 +37,9 @@ class TestDocCommentGames < Minitest::Test
 
   # What a fence's marker asks the docs for: the kind of picture and how many frames.
   Picture = Data.define(:kind, :frames)
+
+  # A fence's `sound=play`: the docs play the game for this many frames and record what it plays.
+  Sound = Data.define(:frames)
 
   # A line of a comment, with the `#` and the one space after it taken off.
   COMMENT_LINE = /\A\s*#(?: |$)(.*)\z/m
@@ -51,6 +56,13 @@ class TestDocCommentGames < Minitest::Test
   # The kinds of picture a marker can ask for, and the most frames it can ask for.
   PICTURE_KINDS = %w[still once loop].freeze
   MOST_FRAMES = 360
+
+  # The settings a marker can carry, and the most frames a recording can ask for.
+  MARKER_SETTINGS = %w[picture sound frames].freeze
+  MOST_SOUND_FRAMES = 900
+
+  # The runtime the docs record an example's sound on (Diagnostics::SoundRecording.of).
+  SOUND_RUNTIME = :js
 
   # The widest line of a file's first whole game: the docs show its picture at the console's own
   # width beside it, which leaves the code about this many characters.
@@ -99,26 +111,51 @@ class TestDocCommentGames < Minitest::Test
   # The picture +example+'s fence asks for, nil where it asks for none. Raises ArgumentError,
   # saying what is wrong, for a marker the docs cannot read.
   private def picture_of(example)
-    return nil if example.fence.empty?
-
-    settings = example.fence.split.to_h do |word|
-      key, value = word.split("=", 2)
-      raise ArgumentError, "`#{word}` is not a setting the docs read (picture=, frames=)" unless value
-
-      [key, value]
-    end
-    unknown = settings.keys - %w[picture frames]
-    raise ArgumentError, "`#{unknown.first}=` is not a setting the docs read (picture=, frames=)" if unknown.any?
+    settings = marker_settings(example)
+    return nil unless settings.key?("picture")
 
     kind = settings["picture"]
     raise ArgumentError, "picture=#{kind} is not one of #{PICTURE_KINDS.join(', ')}" unless PICTURE_KINDS.include?(kind)
 
-    frames = Integer(settings.fetch("frames", FRAMES_PLAYED.to_s), exception: false)
-    unless frames&.between?(1, MOST_FRAMES)
-      raise ArgumentError, "frames=#{settings['frames']} is not a number of frames from 1 to #{MOST_FRAMES}"
+    Picture.new(kind: kind, frames: marker_frames(settings, MOST_FRAMES))
+  end
+
+  # The recording +example+'s fence asks for, nil where it asks for none. Raises ArgumentError,
+  # saying what is wrong, for a marker the docs cannot read.
+  private def sound_of(example)
+    settings = marker_settings(example)
+    return nil unless settings.key?("sound")
+    raise ArgumentError, "sound=#{settings['sound']} is not sound=play" unless settings["sound"] == "play"
+
+    Sound.new(frames: marker_frames(settings, MOST_SOUND_FRAMES))
+  end
+
+  # The settings on +example+'s fence, by name. Raises ArgumentError for a word that is not a
+  # setting, or a marker that asks for neither a picture nor a sound.
+  private def marker_settings(example)
+    settings = example.fence.split.to_h do |word|
+      key, value = word.split("=", 2)
+      raise ArgumentError, "`#{word}` is not a setting the docs read (#{settings_named})" unless value
+
+      [key, value]
+    end
+    unknown = settings.keys - MARKER_SETTINGS
+    raise ArgumentError, "`#{unknown.first}=` is not a setting the docs read (#{settings_named})" if unknown.any?
+    if settings.any? && !settings.key?("picture") && !settings.key?("sound")
+      raise ArgumentError, "the marker asks for no picture= and no sound="
     end
 
-    Picture.new(kind: kind, frames: frames)
+    settings
+  end
+
+  private def settings_named = MARKER_SETTINGS.map { |name| "#{name}=" }.join(", ")
+
+  # The marker's frames=, FRAMES_PLAYED where it gives none, from 1 to +most+.
+  private def marker_frames(settings, most)
+    frames = Integer(settings.fetch("frames", FRAMES_PLAYED.to_s), exception: false)
+    return frames if frames&.between?(1, most)
+
+    raise ArgumentError, "frames=#{settings['frames']} is not a number of frames from 1 to #{most}"
   end
 
   # The game +example+ declares, loaded from a file of its own inside a module of its own, as a
@@ -269,8 +306,10 @@ class TestDocCommentGames < Minitest::Test
 
   def test_picture_markers_are_read_by_the_docs
     problems = all_examples.filter_map do |example|
-      picture = picture_of(example)
-      next unless picture
+      next if example.fence.empty?
+
+      picture_of(example)
+      sound_of(example)
       next "#{example.file}:#{example.line} has a marker on a block the docs do not picture (not the file's first)" unless example.first
       next "#{example.file}:#{example.line} has a marker on a block that is not a whole game" unless whole_game?(example)
 
@@ -280,11 +319,16 @@ class TestDocCommentGames < Minitest::Test
     end
 
     assert_empty problems, problems.join("\n")
-    assert_operator all_examples.count { |example| !example.fence.empty? }, :>=, 23
+    assert_operator all_examples.count { |example| !example.fence.empty? }, :>=, 27
+  end
+
+  # The first whole games of each file whose fence carries a marker.
+  private def marked_examples
+    all_examples.select { |example| example.first && whole_game?(example) && !example.fence.empty? }
   end
 
   def test_every_marked_picture_shows_what_its_marker_promises
-    marked = all_examples.select { |example| example.first && whole_game?(example) && !example.fence.empty? }
+    marked = marked_examples.select { |example| picture_of(example) }
     problems = Dir.mktmpdir do |folder|
       marked.each_with_index.filter_map do |example, index|
         problem = picture_problem(example, picture_of(example), folder, index)
@@ -294,5 +338,34 @@ class TestDocCommentGames < Minitest::Test
     VBlank.forget_registered_games!
 
     assert_empty problems, problems.join("\n")
+  end
+
+  # What is wrong with the recording +example+'s marker promises, or nil: recorded as the docs
+  # record it, it is not silence from start to end.
+  private def sound_problem(example, sound, folder, index)
+    game = declared_game(example, folder, index, module_name: "Heard")
+    return nil unless game.consoles.include?(game_console)
+
+    program = game.program(console: game_console, for_computer: true)
+    heard = VBlank::Diagnostics::SoundRecording.of(program, on: SOUND_RUNTIME, frames: sound.frames)
+    return nil unless heard.samples.all?(&:zero?)
+
+    "is silent over its #{sound.frames} frames, so its recording plays nothing"
+  rescue StandardError, SyntaxError => e
+    "does not play: #{e.class}: #{e.message}"
+  end
+
+  def test_every_marked_sound_is_heard
+    marked = marked_examples.select { |example| sound_of(example) }
+    problems = Dir.mktmpdir do |folder|
+      marked.each_with_index.filter_map do |example, index|
+        problem = sound_problem(example, sound_of(example), folder, index)
+        "#{example.file}:#{example.line} #{problem}" if problem
+      end
+    end
+    VBlank.forget_registered_games!
+
+    assert_empty problems, problems.join("\n")
+    assert_operator marked.length, :>=, 4
   end
 end

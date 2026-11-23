@@ -8,6 +8,36 @@ module VBlank
     # `stop_music` silences it. Music plays on its own, a frame at a time, so a game that is too
     # busy for one frame still hears it at the right speed. Sound effects play over it.
     #
+    # ```ruby sound=play frames=480
+    # VBlank.game "MUSIC", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   enable_sound
+    #   # four bars at 120 beats a minute: eight
+    #   # seconds, and then round again
+    #   song :theme do
+    #     tempo 120
+    #     voice :lead do
+    #       %i[E4 G4 C5 G4 A4 G4 E4 G4
+    #          F4 A4 G4 E4 D4 E4 C4 D4
+    #          E4 G4 C5 G4 A4 C5 D5 C5
+    #          B4 G4 A4 B4 C5 G4 E4 C4]
+    #         .each do |pitch|
+    #           note pitch, :eighth
+    #         end
+    #     end
+    #     voice :bass, plays: :triangle do
+    #       %i[C3 G3 C3 G3 F3 A3 G3 B3
+    #          C3 G3 A3 E3 F3 G3 C3 C3]
+    #         .each do |pitch|
+    #           note pitch, :quarter
+    #         end
+    #     end
+    #   end
+    #   play_song :theme
+    #   game_loop {}
+    # end
+    # ```
+    #
     # ```ruby
     # enable_sound
     # song :gameplay do

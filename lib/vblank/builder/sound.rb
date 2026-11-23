@@ -9,6 +9,32 @@ module VBlank
     # crash, made from hiss instead of a pitched tone. A `wave` is a held tone with a richer
     # sound. `define_sound` names a beep you want to use again.
     #
+    # ```ruby sound=play frames=240
+    # VBlank.game "SOUND", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   enable_sound
+    #   define_sound :coin, frequency: 988,
+    #                       duty: :quarter
+    #   frame = 0
+    #   game_loop do
+    #     frame += 1
+    #     # a plain beep
+    #     beep 440, decay: :slow if frame == 10
+    #     # a jump: a low note, then a high one
+    #     beep 330 if frame == 70
+    #     beep 660 if frame == 75
+    #     # a coin: two bright notes
+    #     beep :coin if frame == 130
+    #     if frame == 135
+    #       beep 1319, duty: :quarter,
+    #                  decay: :slow
+    #     end
+    #     # a hit, made from hiss
+    #     noise :hit if frame == 190
+    #   end
+    # end
+    # ```
+    #
     # ```ruby
     # enable_sound
     # define_sound :paddle_hit, frequency: 880, duty: :quarter, decay: :fast
