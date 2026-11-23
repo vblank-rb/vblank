@@ -190,17 +190,15 @@ game_loop do
 end
 ```
 
-An Array used only while the game is built stays Ruby's, and so does an Array of game numbers, sprites or anything but numbers. A Ruby loop in a game block runs while building too, so an Array it fills with numbers known then is Ruby's, laid out again on every pass.
+An Array used only while the game is built stays Ruby's, and so does an Array of sprites or anything but numbers. A Ruby loop in a game block runs while building too, so an Array it fills with numbers known then is Ruby's, laid out again on every pass.
 
 ```ruby
 screen :bitmap
 steps = [1, 2]
 steps << 3                       # changed while building: a Ruby Array of three
-pair = [var(:a, 1), var(:b, 1)]  # two game numbers, each changed where it stands
 total = 0
 game_loop do
   total = steps.sum
-  pair[0] += 1
   xs = []
   3.times { |n| xs << (n * 8) }  # a Ruby loop: a Ruby Array of 0, 8 and 16
   xs.each { |x| draw_rect_at x, 10, 4, 4, :red }
