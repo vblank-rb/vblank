@@ -72,7 +72,7 @@ module VBlank
         return fill_tiles(col, row, across, down, cells.tile) if cells.tile
 
         picks = cells.picks.map { |key| key && @tile_index.fetch(key) }
-        kept = cells.picked_by.hidden_copy(:cell_block)
+        kept = cells.picked_by.hidden_copy(:cell_block_pick)
         record_tile_block(col, row, across, down, picked_by: kept, tiles: picks, from: cells.from) do |c, r|
           record(IR::Build.set_tile_picked(@name, Value.node_for(c), Value.node_for(r), Value.node_for(kept), picks, from: cells.from))
         end
