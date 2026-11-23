@@ -64,7 +64,7 @@ module VBlank
         name = builder.plain_array_list_name(*name_and_owner(owner, declaration))
         widths = PlainRuby::StructSettings.widths_of(kind)
         @pool = builder.pool(name, capacity: capacity, widths: widths, **drawing, **settings, **fields)
-        @walked = Class.new(kind) { include Thing }
+        @walked = walked_class(kind)
       end
 
       # The pool this Array is kept as.
@@ -179,6 +179,20 @@ module VBlank
         label = :"@#{declaration.local}"
         [PlainRuby::InstanceVariables.variable_name(owner, label),
          Builder::ListOwner.new(owner: [:object, owner.object_id, label], at: at)]
+      end
+
+      # The class of what a walk hands its block: the game's Struct, with a thing's verbs, and
+      # each field's writer storing into the pool's field. Game code writes into the field it
+      # holds without calling the writer (PlainRuby::Writes), and a method in a file that is not
+      # game code (`self.y += 2` in a Struct brought in with `require_relative`) calls it, so the
+      # field changes either way.
+      def walked_class(kind)
+        Class.new(kind) do
+          include Thing
+          kind.members.each do |member|
+            define_method(:"#{member}=") { |value| self[member].store!(value) }
+          end
+        end
       end
 
       # +setting+ with each picture named turned (`VBlank.mirror(:fish_right)`) turned by the build,

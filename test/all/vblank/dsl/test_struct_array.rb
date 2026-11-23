@@ -3,6 +3,7 @@
 require "test_helper"
 
 VBlank.require_game_file "../../../struct_array_parts"
+require "struct_array_plain_parts"
 
 # An Array of Structs that game code changes is a pool (DSL::StructArray), and plays as the same
 # game written with `pool`. Each test plays a tiny game and reads what it leaves, on every lowering.
@@ -120,6 +121,24 @@ class TestStructArray < Minitest::Test
     birds = player.pool(:flock_part_birds, :x).zip(player.pool(:flock_part_birds, :y))
 
     assert_equal [[0, 3], [10, 6], [20, 9]], birds.reject { |x, _| x.nil? }.sort
+  end
+
+  # The Struct's file is not read as game code, so its `self.y += 2` is Ruby's own setter, which
+  # the walk's object answers by changing the field.
+  def test_a_structs_method_from_a_plain_file_changes_its_field
+    player = played(frames: 3) do
+      drops = Array.new(capacity: 2)
+      started = 0
+      game_loop do
+        if started == 0
+          drops << PlainDrop.new(5, 0)
+          started = 1
+        end
+        drops.each(&:fall)
+      end
+    end
+
+    assert_equal [6], player.pool(:drops, :y).compact
   end
 
   def test_an_array_of_structs_with_no_capacity_is_refused
