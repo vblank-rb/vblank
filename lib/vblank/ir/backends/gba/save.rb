@@ -136,7 +136,13 @@ module VBlank
           # Append the save-type marker so a flashcart / emulator maps the save chip, and before
           # it the chip's own routines. The marker is plain data placed after all the code,
           # never executed; word-aligned so the scanner (which steps a word at a time) can find it.
+          #
+          # The routines come after the data region, whose last blob can end off a word (a table of
+          # one byte or one half), and an ARM instruction must start on a word: the processor
+          # ignores an address's low two bits when it fetches one, so a routine placed off a word
+          # runs from the word before it. They are put on a word first.
           def emit_save_signature
+            @emitter.emit("\x00".b * ((-@emitter.pos) % 4))
             @chip.emit_routines
             @emitter.emit("\x00".b * ((-@emitter.pos) % 4))
             @emitter.emit(@chip.signature)

@@ -231,6 +231,23 @@ class TestSaveChip < Minitest::Test
     assert_equal store.written, chip.written, "the same bytes, and no byte only one of them wrote"
   end
 
+  # The flash chip's routines go after the cartridge's tables, and a table of one byte leaves
+  # them off a word unless they are put back on one (Save#emit_save_signature): the game then
+  # runs into the middle of an instruction and never reaches its loop.
+  def test_a_table_of_one_byte_leaves_the_flash_routines_where_they_run
+    rom = VBlank.game("ODDTABLE", consoles: %i[gba], save_memory: 64) do
+      screen :bitmap
+      odd = table :odd, [5], width: :byte
+      hearts = var :hearts, 3
+      file = save_data(:file) { keep hearts }
+      file[0].load
+      seen = 0
+      game_loop { seen = odd[0] }
+    end.build_rom(out: nil, err: nil, profile: false)
+
+    assert_equal 5, assert_emulator_loads_rom(rom, frames: PRESS, vars: rom.var_addresses).var(:seen)
+  end
+
   # A save_var on the EEPROM is kept in a record, as on flash, and comes back the same way. The
   # record is 64 words, so its save takes a few dozen passes at a block a pass.
   def test_a_save_var_on_the_eeprom_comes_back_after_the_power_goes_off
