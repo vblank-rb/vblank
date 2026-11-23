@@ -204,6 +204,11 @@ instance variables.
   read or written outside the test or routine that made it is refused
   (`refuse_field_outside_making!`), and a change to such a field never changes the game variable it
   was made from (`Writes.change` with `field:`). Any other field is plain Ruby.
+- **A game block's instance variable that a `func` or scene sets, read in game code while it holds
+  nil with a method nil does not answer called on it** (`@point.x`), is refused naming where to give
+  it a first value (`Rewriter#nil_failing_reads`, `InstanceVariables.refuse_nil_set_in_routine!`):
+  each `func` and scene is built after the game loop, so the build reads nil where Ruby has the
+  value an earlier call set. A test on such a flag is refused by the flag rules instead.
 - **Any other instance variable is plain Ruby.** One game code only reads, or one set only by a
   method that is not marked (`@count = count + 1` in `lay_out`, used as `repeat(@count)` or
   `@count.times`), stays Ruby's. So does one that a routine gives a number outright before that

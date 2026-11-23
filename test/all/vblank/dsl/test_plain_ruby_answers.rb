@@ -401,6 +401,31 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # The func's lines are built after the loop's, so the loop's read finds nothing yet.
+  def test_an_instance_variable_a_func_sets_read_in_the_game_loop_is_refused
+    refused("func sets @point, game_loop reads it", /`@point`.*above the game loop/m) do
+      n = 0
+      func(:answer_makes_point) { @point = AnswerPoint.new(1, 2, 0) }
+      game_loop do
+        call :answer_makes_point if n == 0
+        @point.x += 1
+        n = @point.x
+      end
+    end
+  end
+
+  def test_an_instance_variable_a_func_sets_given_a_value_above_the_game_loop
+    agrees("@level above, a func sets it, game_loop reads it", reads: %i[n], passes: 3) do
+      n = 0
+      @level = 1
+      func(:answer_raises_level) { @level += 2 }
+      game_loop do
+        call :answer_raises_level
+        n = @level
+      end
+    end
+  end
+
   # Made and used under one test, it is the one Ruby makes on that pass.
   def test_a_struct_made_and_used_under_one_test
     agrees("AnswerPoint made and read under one if", reads: %i[n], passes: 3) do

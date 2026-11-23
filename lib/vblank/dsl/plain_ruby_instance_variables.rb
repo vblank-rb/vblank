@@ -334,10 +334,14 @@ module VBlank
         # A line of game code reads the instance variable +label+ of +owner+, which holds +current+.
         # A named one becomes its game variable here, handed to the block to keep, and that is the
         # answer. +in_text+ is a read put into a String or a Symbol, which can only be Ruby's.
-        def read_value(owner, current, label, in_text: false)
+        # +set_in_routine+ is a game block's own instance variable that a `func` or a scene sets
+        # (#refuse_nil_set_in_routine!).
+        def read_value(owner, current, label, in_text: false, set_in_routine: false)
           current = current_or_ruby_number(current) { |number| yield number }
           uses = uses_while_recording(owner)
           return current unless uses
+
+          refuse_nil_set_in_routine!(label) if set_in_routine && current.nil?
 
           if uses.followed?(owner, label, current)
             variable = game_variable_of(owner, current, label)
@@ -349,6 +353,19 @@ module VBlank
             uses.note_flag_read(owner, label, current) if Uses::FLAGS.include?(current)
           end
           current
+        end
+
+        # A game block's instance variable +label+ is read in game code while it holds nothing, and
+        # a `func` or a scene gives it a value. VBlank builds each `func` and scene after the
+        # game loop, so their lines have not run yet while this one is built, though in Ruby a
+        # call on an earlier pass, or earlier in this one, has set it. The line calls a method nil
+        # does not answer on it (Rewriter#nil_failing_reads), so it would stop with Ruby's own
+        # error. A test on such a flag has a refusal of its own (Uses#note_flag_read).
+        def refuse_nil_set_in_routine!(label)
+          raise Refused, "This line reads `#{label}`, which a `func` or a scene gives a value. VBlank builds " \
+                         "each `func` and scene after the game loop, so `#{label}` holds nothing yet while " \
+                         "VBlank builds this line. To fix this, give `#{label}` its first value above the game " \
+                         "loop.#{Messages::AuthorSource.at_author_line}"
         end
 
         # What +owner+'s +label+ holds as a line of game code is about to write it: a named one's

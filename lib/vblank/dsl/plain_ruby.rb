@@ -282,6 +282,8 @@ module VBlank
           # the blocks of counting loops and `loop do` that are loops of their own (#counted_loop_text).
           @jump_targets = []
           @jump_target_blocks = {}.compare_by_identity
+          @set_in_routines = Set.new
+          @nil_failing_reads = {}
         end
 
         def rewritten_block = rewritten(@block_node)
@@ -294,6 +296,8 @@ module VBlank
           @promotion = @names.promotion
           @heredoc_parts = heredoc_parts_in(node).sort_by { |part| part.location.start_offset }
           @own_classes = @block_node ? own_classes_in(node) : Set.new
+          @set_in_routines = instance_variables_set_in_routines(node)
+          @nil_failing_reads = @set_in_routines.empty? ? {} : nil_failing_reads(node)
           rewritten_text(node)
         end
 
@@ -1101,7 +1105,9 @@ module VBlank
         # A read of an instance variable. InstanceVariables follows one the game names, and notes
         # any other read in game code; one in a String or a Symbol is Ruby's by nature.
         def instance_variable_read_text(node)
-          @follows_instance_variables ? instance_variable_read_call(node.name, in_text: @in_text.positive?) : copied_text(node)
+          return copied_text(node) unless @follows_instance_variables
+
+          instance_variable_read_call(node.name, in_text: @in_text.positive?, read: node)
         end
 
         # What a line writing an instance variable hands Writes as what it holds
@@ -1112,9 +1118,48 @@ module VBlank
           instance_variables_call("value_before_write", name)
         end
 
-        def instance_variable_read_call(name, in_text: false)
-          instance_variables_call("read_value", name, in_text ? ", in_text: true" : "")
+        # +read+ is the read's own node, where a call on what it holds is checked for nothing held
+        # (#nil_failing_reads).
+        def instance_variable_read_call(name, in_text: false, read: nil)
+          options = in_text ? ", in_text: true" : ""
+          options += ", set_in_routine: true" if read && @nil_failing_reads.key?(read) && @set_in_routines.include?(name)
+          instance_variables_call("read_value", name, options)
         end
+
+        # The calls that read or write through what they are called on.
+        CALLS_ON_RECEIVER = [Prism::CallNode, Prism::CallOperatorWriteNode, Prism::CallOrWriteNode,
+                             Prism::CallAndWriteNode].freeze
+
+        # The instance variable reads under +node+ that a method is called on which nil does not answer
+        # (`@point.x`, `@point.x += 1`): holding nothing, such a line stops with Ruby's own error.
+        def nil_failing_reads(node, found = {}.compare_by_identity)
+          if CALLS_ON_RECEIVER.any? { |kind| node.is_a?(kind) } && node.receiver.is_a?(Prism::InstanceVariableReadNode) &&
+             node.call_operator != "&." && !nil.respond_to?(node.is_a?(Prism::CallNode) ? node.name : node.read_name)
+            found[node.receiver] = true
+          end
+          node.compact_child_nodes.each { |child| nil_failing_reads(child, found) }
+          found
+        end
+
+        # The verbs whose block VBlank builds after the game loop, as a routine of its own.
+        LATER_BUILT_VERBS = %i[func scene].freeze
+
+        # The instance variables of a game block that a `func` or a scene written in it gives a
+        # value (InstanceVariables.refuse_nil_set_in_routine!). None in a game file's classes, whose
+        # instance variables are their objects'.
+        def instance_variables_set_in_routines(node, inside: false)
+          return Set.new unless @block_node
+          return Set.new if node.is_a?(Prism::DefNode) || node.is_a?(Prism::ClassNode) || node.is_a?(Prism::ModuleNode)
+
+          inside ||= node.is_a?(Prism::CallNode) && node.receiver.nil? && LATER_BUILT_VERBS.include?(node.name) &&
+                     node.block.is_a?(Prism::BlockNode)
+          own = inside && INSTANCE_VARIABLE_WRITES.any? { |kind| node.is_a?(kind) } ? Set[node.name] : Set.new
+          node.compact_child_nodes.reduce(own) { |names, child| names | instance_variables_set_in_routines(child, inside: inside) }
+        end
+
+        INSTANCE_VARIABLE_WRITES = [Prism::InstanceVariableWriteNode, Prism::InstanceVariableOrWriteNode,
+                                    Prism::InstanceVariableOperatorWriteNode, Prism::InstanceVariableAndWriteNode,
+                                    Prism::InstanceVariableTargetNode].freeze
 
         # A call to +step+ of InstanceVariables, with a block that keeps the game variable it makes.
         def instance_variables_call(step, name, options = "")
