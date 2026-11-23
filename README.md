@@ -29,6 +29,7 @@ Every game says which consoles it is for, and a build makes a cartridge for each
 require "vblank"
 
 Walk = VBlank.game "WALK", consoles: %i[gba gbc] do
+  # A screen you paint on, pixel by pixel
   screen :bitmap
   x = 40
   y = 40
