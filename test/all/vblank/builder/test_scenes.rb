@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "differential"
 
 # Scenes, the dispatch that picks one (a plain `case`, or `call` with a Hash), and routines declared from inside another
 # routine's body, played on every run. That each of them builds into the Advance's cartridge and
@@ -86,6 +87,59 @@ module ScenesGames
     builder.program
   end
 
+  # A title, then a game over shown for two states in turn, 1 and then 2, with a sprite of its
+  # own. +pick+ is how the game over is picked: by both numbers in one `when`
+  # (`:one_scene_by_case`), by two keys of a Hash (`:one_scene_by_hash`), or, the answer key, as
+  # two scenes of the same content, one for each number (`:two_scenes`). +kind+ is the screen's:
+  # a sprite on a painted one is painted into the picture by the game, which keeps it off while
+  # its scene is away in a way of its own.
+  private def game_over_for_two_states(pick:, kind: :tiled)
+    builder = Builder.new
+    builder.instance_eval do
+      screen kind
+      image(:block, "#" => :red) { "########\n" * 8 }
+      state = 0
+      step = 0
+      scene(:title) { state = 1 if step == 2 }
+      scene(:over) do
+        sprite :block, at: [40, 40]
+        state = 2 if step == 5
+        state = 0 if step == 8
+      end
+      case pick
+      when :one_scene_by_case
+        game_loop do
+          case state
+          when 0 then call :title
+          when 1, 2 then call :over
+          end
+          step += 1
+        end
+      when :one_scene_by_hash
+        game_loop do
+          call({ 0 => :title, 1 => :over, 2 => :over }, number: state)
+          step += 1
+        end
+      when :two_scenes
+        scene(:over_again) do
+          sprite :block, at: [40, 40]
+          state = 2 if step == 5
+          state = 0 if step == 8
+        end
+        game_loop do
+          case state
+          when 0 then call :title
+          when 1 then call :over
+          when 2 then call :over_again
+          end
+          step += 1
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # A routine declared the first time something asks for it: the outer one declares the
   # middle one inside its own body, and the middle one declares the inner one. Bodies are
   # built after the program block, so these declarations happen while other bodies are
@@ -137,6 +191,7 @@ end
 
 class TestScenes < Minitest::Test
   include ScenesGames
+  include Differential
 
   # ========================================================================
   # The scene dispatch
@@ -196,16 +251,8 @@ class TestScenes < Minitest::Test
     assert_equal [shown.call(:plain_case, 2), shown.call(:plain_case, 6)], [shown.call(:hash, 2), shown.call(:hash, 6)]
   end
 
-  def test_a_hash_that_picks_one_scene_with_two_numbers_is_a_friendly_error
-    error = assert_raises(ArgumentError) do
-      Builder.new.instance_eval do
-        state = 0
-        scene(:title) { state = 1 }
-        game_loop { call({ 0 => :title, 1 => :title }, number: state) }
-      end
-    end
-
-    assert_match(/:title with more than one number/, error.message)
+  def test_a_scene_picked_by_two_keys_of_a_hash_shows_its_sprite_for_both
+    assert_equal game_over_pictures(:two_scenes, :tiled), game_over_pictures(:one_scene_by_hash, :tiled)
   end
 
   # A scene is picked by a game variable, which everything that asks which scene is up reads.
@@ -368,22 +415,39 @@ class TestScenes < Minitest::Test
     assert_equal [1, 2], [ran[:ran_first], ran[:ran_second]]
   end
 
-  # What a scene shows is held to the one number that picks it, so a second is refused.
-  def test_a_plain_case_that_picks_one_scene_with_two_numbers_is_a_friendly_error
-    builder = Builder.new
-    error = assert_raises(ArgumentError) do
-      builder.instance_eval do
-        state = 0
-        scene(:title) { state = 1 }
-        game_loop do
-          case state
-          when 0, 1 then call :title
-          end
-        end
-      end
-    end
+  # A scene picked by two numbers is up for both, its sprite shown for each as it would be by
+  # two scenes of the same content.
+  def test_a_scene_picked_by_two_numbers_of_a_case_shows_its_sprite_for_both
+    assert_sprite_shown_for_both_numbers(:tiled)
+  end
 
-    assert_match(/:title with more than one number/, error.message)
+  def test_a_scene_picked_by_two_numbers_paints_its_sprite_for_both
+    assert_sprite_shown_for_both_numbers(:bitmap)
+  end
+
+  # The console's picture of the same game, while each number has the scene up.
+  def test_a_scene_picked_by_two_numbers_shows_its_sprite_for_both_on_the_console
+    %i[tiled bitmap].product(%i[one_scene_by_case one_scene_by_hash]).each do |kind, pick|
+      assert_backends_agree(game_over_for_two_states(pick: pick, kind: kind), frames: [5, 8], name: "TWONUMS")
+    end
+  end
+
+  private def assert_sprite_shown_for_both_numbers(kind)
+    pictures = game_over_pictures(:two_scenes, kind)
+
+    assert_equal pictures, game_over_pictures(:one_scene_by_case, kind)
+    refute_equal pictures[:title], pictures[:first_number]
+    assert_equal pictures[:first_number], pictures[:second_number]
+  end
+
+  # Where the game over's sprite stands, on the title, then while each of its two numbers has it
+  # up: a pass late enough in each for the sprite drawn a frame behind to show.
+  private def game_over_pictures(pick, kind)
+    %i[title first_number second_number].zip([2, 5, 8]).to_h do |moment, frames|
+      player = game_player
+      player.run(game_over_for_two_states(pick: pick, kind: kind), frames: frames)
+      [moment, player.screen.pixel(44, 44)]
+    end
   end
 
   # A func declared below the `case`, named as a scene it picks, would have been what `call`

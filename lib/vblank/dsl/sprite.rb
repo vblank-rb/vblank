@@ -61,8 +61,9 @@ module VBlank
       #   per-frame repaint carries so the cost report can trace that work to this sprite
       # @param painted [Symbol] the variable that is 1 while the sprite is on the picture, with
       #   what it covered remembered (see #erase_node)
-      # @param painted_while [Array<Array(Symbol, Integer)>] variables and the value each must
-      #   hold for the sprite to be painted, on top of being shown — what a scene's sprite
+      # @param painted_while [Array<Array(Symbol, Integer | Array<Integer>)>] variables and the
+      #   value each must hold (or one of the values, for a list) for the sprite to be painted,
+      #   on top of being shown — what a scene's sprite
       #   needs to stay off the picture while its scene is not the one running
       # @param scene [Symbol, nil] the scene it was declared inside, if any
       def initialize(builder, x:, y:, old_x:, old_y:, active:, buffer:, hitbox:, pixel_perfect: true,
@@ -518,10 +519,17 @@ module VBlank
         Build.binop(:==, ref(@painted), Build.int(1))
       end
 
-      # One test that every variable in +pairs+ holds its value, and +first+ too when given.
+      # One test that every variable in +pairs+ holds its value, and +first+ too when given. A
+      # value given as a list is any one of them: a scene picked by more than one number.
       def all_hold(pairs, first = nil)
-        tests = pairs.map { |name, value| Build.binop(:==, ref(name), Build.int(value)) }
+        tests = pairs.map { |name, value| any_held(name, Array(value)) }
         [first, *tests].compact.reduce { |all, test| Build.binop(:and, all, test) }
+      end
+
+      # The test that the variable +name+ holds one of +values+.
+      def any_held(name, values)
+        values.map { |value| Build.binop(:==, ref(name), Build.int(value)) }
+              .reduce { |either, other| Build.binop(:or, either, other) }
       end
 
       # What `show` does to a hidden sprite: mark it shown, and paint it now if it may be.

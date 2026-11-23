@@ -74,8 +74,8 @@ module VBlank
       #   Build it in Ruby while the cartridge is made, where some routines are only in some
       #   builds or are made in a loop. A number that is no key calls nothing. Where every name
       #   is a scene, it picks the scene as a plain `case` on the number does. The number must
-      #   then be a game variable, and each scene must be picked by one key. The scenes can be
-      #   declared above the `call` line or below it.
+      #   then be a game variable. A scene can be picked by more than one key, and is up for
+      #   each. The scenes can be declared above the `call` line or below it.
       #
       # ```ruby
       # mode = var :mode, :title        # a variable that holds one of a set of names
@@ -234,7 +234,6 @@ module VBlank
       # share runs the first, as in Ruby.
       def emit_scene_case(subject, arms)
         clauses = arms.flat_map { |values, name| values.map { |value| [value, name] } }.uniq(&:first)
-        refuse_scene_picked_twice!(clauses, ScenePicker::CASE)
         record(scene_case_node(subject.node.name, clauses, ScenePicker::CASE, Messages::AuthorSource.author_source))
         nil
       end
@@ -249,11 +248,11 @@ module VBlank
       end
 
       # What picked the scenes of a dispatch, as an author's message names it: `the` for the
-      # start of a sentence, `one_number` for what gives a scene one number.
-      ScenePicker = Data.define(:the, :one_number)
+      # start of a sentence.
+      ScenePicker = Data.define(:the)
       class ScenePicker
-        CASE = new(the: "The `case`", one_number: "one `when`")
-        HASH = new(the: "The Hash given to `call`", one_number: "one key")
+        CASE = new(the: "The `case`")
+        HASH = new(the: "The Hash given to `call`")
       end
 
       #--
@@ -273,20 +272,6 @@ module VBlank
                                "It runs the scene, because the func is declared after it. To fix this, " \
                                "rename the func or the scene."
         end
-      end
-
-      #--
-      # What a scene shows is held to the one value that picks it (Builder#scan_scene_gates), so a
-      # scene picked by a second value would run with its sprites and scenery hidden.
-      #++
-      def refuse_scene_picked_twice!(clauses, picker)
-        name, = clauses.group_by(&:last).find { |_, picked| picked.size > 1 }
-        return unless name
-
-        values = clauses.select { |_, each| each == name }.map(&:first)
-        raise ArgumentError, "#{picker.the} picks the scene :#{name} with more than one number: " \
-                             "#{values.join(', ')}. A scene can be picked by one number only. To fix this, " \
-                             "give :#{name} #{picker.one_number}, and keep the state at that number while the scene is up."
       end
 
       # Call the routine whose name +value+ holds. The routines are that value's own names, and
@@ -434,9 +419,7 @@ module VBlank
                                "fix this, give the scenes a Hash of their own."
         end
         refuse_scene_number!(dispatch, handle)
-        clauses = dispatch.routines.to_a
-        refuse_scene_picked_twice!(clauses, ScenePicker::HASH)
-        scene_case_node(handle.node.name, clauses, ScenePicker::HASH, dispatch.source)
+        scene_case_node(handle.node.name, dispatch.routines.to_a, ScenePicker::HASH, dispatch.source)
       end
 
       # The number that picks a scene is read by everything that asks which scene is up, so it

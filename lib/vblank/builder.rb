@@ -295,8 +295,8 @@ module VBlank
       @per_pass_routines = []    # func names the framework calls once a pass, after the frame boundary
       @pass_jobs = {}            # each_pass jobs by name (or their routine's, when unnamed)
       @each_frame_seq = 0        # counts once_a_frame bodies, to name each one's hidden routine
-      @scene_gates = {}        # scene func name → [state_var, value] it's dispatched on (from the scene dispatch), for gating its presentation
-      @current_scene_gate = nil # while a scene func's body is being built: the [state_var, value] its declarations belong to
+      @scene_gates = {}        # scene func name → [state_var, values] it's dispatched on (from the scene dispatch), for gating its presentation
+      @current_scene_gate = nil # while a scene func's body is being built: the [state_var, values] its declarations belong to
       @building_scene = nil    # the scene func name currently being built (lets its presentation be declared inside it)
       @layer_stack = []        # the layers the program declared, back to front (see Builder::Layers)
       @shared_levels = []      # the neighbouring layers in it that share one level, each back to front
@@ -1835,16 +1835,21 @@ module VBlank
 
     # Which scenes are shown for which state, read from the scene dispatch (case nodes):
     # a scene func named as a case target is presented only while the dispatched
-    # variable holds that clause's value. Maps a scene func name → [state_var, value],
-    # so a sprite/HUD declared inside that scene can be gated to when the scene is live.
+    # variable holds a value of a clause naming it. Maps a scene func name → [state_var,
+    # values], so a sprite/HUD declared inside that scene can be gated to when the scene is
+    # live. A scene picked by several values (`when 1, 2 then call :over`) is up for each.
     def scan_scene_gates
-      gates = {}
+      values = Hash.new { |hash, target| hash[target] = [] }
+      vars = {}
       @program.walk do |node|
         next unless node.kind == :case
 
-        node.clauses.each { |value, target| gates[target] ||= [node.var, value] }
+        node.clauses.each do |value, target|
+          vars[target] ||= node.var
+          values[target] |= [value] if vars[target] == node.var
+        end
       end
-      gates
+      vars.to_h { |target, var| [target, [var, values[target].freeze].freeze] }
     end
 
     # Gate an object's visibility to its scene: a scene-owned object is shown only when
@@ -1863,8 +1868,11 @@ module VBlank
     end
 
     # "The scene +gate+ names is the one up": the variable the game picks its scenes with holds
-    # the value that picks it. A gate is that variable and that value.
-    def scene_up((state_var, value)) = Build.binop(:==, Build.var_ref(state_var), Build.int(value))
+    # a value that picks it. A gate is that variable and those values.
+    def scene_up((state_var, values))
+      values.map { |value| Build.binop(:==, Build.var_ref(state_var), Build.int(value)) }
+            .reduce { |either, other| Build.binop(:or, either, other) }
+    end
 
     # +node+, run only while the scene +gate+ names is up — or as it is, for a nil gate: a
     # thing declared outside every scene is there in all of them.
