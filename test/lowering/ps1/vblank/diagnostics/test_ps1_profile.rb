@@ -4,10 +4,15 @@ require "test_helper"
 require "json"
 require "stringio"
 require "ps1_pass_work"
+require "power_on_profile_tests"
 
 # A PlayStation program measured as it runs (Diagnostics::PS1Profiler, `rom.profile`): how many frames
 # each pass took, which routines took the processor's time, and how long the graphics chip drew.
 class TestPS1Profile < Minitest::Test
+  include PowerOnProfileTests
+
+  private def power_on_console = :ps1
+
   # A routine of the game's that does most of the work there is, inside a frame.
   BUSY = VBlank.game("BUSY", consoles: %i[ps1]) do
     total = 0

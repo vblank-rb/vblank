@@ -3,10 +3,15 @@
 require "test_helper"
 require "json"
 require "stringio"
+require "power_on_profile_tests"
 
 # A Super Nintendo cartridge measured as it runs (Diagnostics::SNESProfiler): how many frames each
 # pass of the game loop took, read from the running cartridge.
 class TestSNESProfile < Minitest::Test
+  include PowerOnProfileTests
+
+  private def power_on_console = :snes
+
   LIGHT = VBlank.game("LIGHT", consoles: %i[snes]) do
     total = 0
     game_loop { total += 1 }

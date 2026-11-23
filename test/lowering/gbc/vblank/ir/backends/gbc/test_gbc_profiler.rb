@@ -2,10 +2,15 @@
 
 require "test_helper"
 require "stringio"
+require "power_on_profile_tests"
 
 # A Game Boy Color cartridge measured as it runs (Diagnostics::GBCProfiler): the frame rate it
 # played at, how much of the time it slept, and its frames by routine, its own by the game's names.
 class TestGBCProfiler < Minitest::Test
+  include PowerOnProfileTests
+
+  private def power_on_console = :gbc
+
   GAME = VBlank.game("BUSY", consoles: %i[gba gbc]) do
     total = 0
     func(:count_up) { repeat(40) { total += 3 } }

@@ -196,6 +196,7 @@ records first),
 `power_on_frame_games.rb` (a screen held to a reading of `frames_since_power_on`, built with and without
 a long setting up, and what each console's cartridge is held to as its emulator counts frames from
 power-on, for the Advance's, the Super Nintendo's, the Genesis's and the PlayStation's tests),
+`power_on_profile_tests.rb` (a profile with no frames settled first, and a tape's profile from its first frame, counting the passes the interpreter plays and none below nought, included by the Color's, the Super Nintendo's, the Genesis's and the PlayStation's profile tests),
 `no_frames_games.rb` (a small room played for no frames, which ends before the runtime turns the screen
 on, for the Super Nintendo's, the Genesis's and the PlayStation's tests of the picture such a run reports),
 `speakers.rb` (which speaker a cartridge's voice is heard from),

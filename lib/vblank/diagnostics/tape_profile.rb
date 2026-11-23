@@ -38,6 +38,12 @@ module VBlank
       # profile is not told (`rom.profile(tape:, frames:, routines:)`).
       ROUTINES_KEPT = 3
 
+      # Frame::PASSES and Frame::SHOWN as every runtime starts them: no pass ended, none shown. A tape
+      # is played from power-on, before the runtime has run an instruction to clear them, so what the
+      # console's memory holds there is whatever it held at power-on (all ones on the Color), and the
+      # first frame's count is taken from these instead.
+      POWER_ON_WORDS = [0, 0].freeze
+
       # What a console's meter measured of one frame: the +lines_spare+ the game waited through, the
       # +awake_share+ of the frame's time it did not (0 to 1), and its busiest routines, the game's
       # and the runtime's (TimeByRoutine::Spent), by share of the frame's time.
@@ -190,7 +196,7 @@ module VBlank
       def self.play(rom, tape:, frames:, meter:)
         held_on = buttons_by_frame(tape, frames.end)
         Emulator.with_cartridge(rom, file_name: meter.file_name) do |core|
-          before = meter.words(core)
+          before = POWER_ON_WORDS
           readings = (1..frames.end).filter_map do |number|
             buttons = held_on[number - 1] || []
             meter.hold(core, buttons)

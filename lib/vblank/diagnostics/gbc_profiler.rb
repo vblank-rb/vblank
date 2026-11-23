@@ -68,8 +68,13 @@ module VBlank
         Emulator.with_cartridge(@rom, file_name: FILE_NAME) do |core|
           core.set_keys(IR::Buttons.mask(keys))
           settle.times { core.run_frame }
-          before = passes(core)
+          # Measured from power-on, the counts start from nought. Read off the console, they would
+          # not: no instruction has run yet, so the runtime has not cleared the memory it counts in,
+          # and that memory holds whatever the console's work memory held at power-on (all ones in
+          # the emulator), which a count taken from it would wrap below nought.
+          before = settle.zero? ? 0 : passes(core)
           missed_before = lists_missed(core)
+          missed_before &&= 0 if settle.zero?
           counted = core.profile_gb(frames)
           missed = missed_before && (lists_missed(core) - missed_before)
           result_of(counted, frames, passes(core) - before, missed, (settle + 1)..(settle + frames))
