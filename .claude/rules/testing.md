@@ -191,6 +191,8 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `see_through_scenery_tests.rb` (a background layer half see-through under a fade or a tint and in a scene of its own, played by each console that mixes it with what is behind: the Advance and the PlayStation),
 `layer_over_sprites_tests.rb` (a see-through background over sprites behind it and in front of it, played by the same two),
 `pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance and the Super Nintendo),
+`ruby_answers.rb` (plain Ruby game code run as plain Ruby and as the game, its names compared, for
+`test_plain_ruby_answers.rb`) and `ruby_answers_parts.rb` (that suite's Structs and parts, a game file),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),
 `power_on_frame_games.rb` (a screen held to a reading of `frames_since_power_on`, built with and without

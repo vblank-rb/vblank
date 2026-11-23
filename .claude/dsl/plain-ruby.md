@@ -10,6 +10,14 @@ the code, updates `PLAIN_RUBY.md` in the same commit, so the two never disagree.
 `test/all/vblank/test_plain_ruby_guide.rb` builds every example in it and checks each refusal's
 quoted words.
 
+**Every plain-Ruby form is held to Ruby's own answer** by
+`test/all/vblank/dsl/test_plain_ruby_answers.rb` (runner `test/ruby_answers.rb`): each case runs as
+plain Ruby and as the game on every lowering, and fails naming the case where the two differ.
+**New plain-Ruby work adds a case there for each form it adds, and each wrong answer a review finds
+becomes one**: `agrees` (the names must read the same), `refused` (a friendly refusal, with a key
+phrase), `stops` (the game stops as it plays) or `known_gap` (wrong today, naming the open work by
+its title; it fails once the game agrees, to be turned into `agrees`).
+
 A game is written in ordinary Ruby: locals, `=` and `+=`, `if` and `case`, `&&` and `||`, methods of
 its own. The verbs on the other pages (`sprite`, `draw_text`, `pressed` …) are called from that Ruby.
 Nothing else is needed, and **nothing else should be reached for**: where plain Ruby does not do what
