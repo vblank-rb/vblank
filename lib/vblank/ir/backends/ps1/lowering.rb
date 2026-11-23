@@ -49,7 +49,7 @@ module VBlank
           # A declaration writes nothing where it is. Read by test_ps1_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
+            halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             timer_start timer_stop on_timer show_light_now rumble
           ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
@@ -70,6 +70,7 @@ module VBlank
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt(node)
+            when :stop_full then emit_stop_full(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
@@ -817,6 +818,18 @@ module VBlank
               @asm.label(other)
             end
             @asm.j("rt_halt")
+          end
+
+          # A full pool told to stop (Reference#exec_stop_full): no list, its capacity and its name's
+          # number into FAULT for the reader to word as the interpreter does (CartridgeFaults::STOP_FULL).
+          def emit_stop_full(node)
+            fault = runtime_place(Runtime::Frame::FAULT)
+            emit_store_word(:zero, fault + Runtime::Frame::FAULT_LIST)
+            @asm.li(:t0, node.capacity)
+            emit_store_word(:t0, fault + Runtime::Frame::FAULT_FIRST)
+            @asm.li(:t0, @plan.stop_full_number(node))
+            emit_store_word(:t0, fault + Runtime::Frame::FAULT_SECOND)
+            @asm.j("rt_fault") { @asm.li(:a0, Runtime::Frame::STOP_FULL) }
           end
 
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame counters

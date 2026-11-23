@@ -269,8 +269,9 @@ end
   (`@enemies = Array.new(capacity: 8)`, `@enemies << Enemy.new(...)` in the same class and file),
   named as its variable would be, `enemies_part_enemies`. Refused: no capacity, a size or a start
   on `Array.new`, a `Data` class, two kinds in one Array, a member left nil, any other Array method.
-  `shift` takes the oldest live thing, during a walk too. A full Array drops the new thing (as
-  `on_full: :drop`).
+  `shift` takes the oldest live thing, during a walk too. A push onto a full Array stops the game
+  naming it (`on_full: :stop`), in the words a full Array of numbers stops with; the Advance
+  cartridge drops it for now, as it drops a push onto a full list.
 
 ## Changing a variable
 

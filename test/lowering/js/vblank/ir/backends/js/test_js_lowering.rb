@@ -119,7 +119,7 @@ class TestJSLowering < Minitest::Test
     end
 
     error = assert_raises(VBlank::IR::ProgramError) { HeadlessRun.new.run(program, frames: 5) }
-    assert_match(/list :trail is full \(capacity 2\)/, error.message)
+    assert_match(/`trail` is full: it has room for 2/, error.message)
   end
 
   def test_halt_ends_the_run_where_it_stands

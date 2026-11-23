@@ -516,6 +516,9 @@ module ConformanceFixture
       *VBlank::IR::Clock::OFFSETS.map { |offset| B.set(offset, B.int(0)) },
       B.set_clock(year: B.int(2031), month: B.int(5), day: B.int(17), hour: B.int(8), minute: B.int(9), second: B.int(10)),
 
+      # --- a full pool's stop, behind a test the game never passes (acc is never that number) ---
+      B.if_(B.binop(:==, B.var_ref(:acc), B.int(-12_345)), B.stop_full(:never_full, 4)),
+
       # --- terminate: a loop that syncs once then halts (covers loop + halt) ---
       B.loop_(B.wait_vblank, B.halt),
     )

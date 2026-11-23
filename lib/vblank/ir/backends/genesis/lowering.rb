@@ -61,7 +61,7 @@ module VBlank
           # Read by test_genesis_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
+            halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             timer_start timer_stop on_timer show_light_now rumble show_held_tiles show_picture_group screen
           ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
             TileRuns::STATEMENT_KINDS +
@@ -83,6 +83,7 @@ module VBlank
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt(node)
+            when :stop_full then emit_stop_full(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
@@ -895,6 +896,17 @@ module VBlank
               @asm.label(other)
             end
             @asm.jmp(@asm.abs_l("rt_halt"))
+          end
+
+          # A full pool told to stop (Reference#exec_stop_full): no list, its capacity and its name's
+          # number into FAULT for the reader to word as the interpreter does (CartridgeFaults::STOP_FULL).
+          def emit_stop_full(node)
+            @asm.move(:l, @asm.imm(0), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_LIST))
+            @asm.move(:l, @asm.imm(node.capacity), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_FIRST))
+            @asm.move(:l, @asm.imm(@plan.stop_full_number(node)),
+                      runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_SECOND))
+            @asm.moveq(Runtime::Frame::STOP_FULL, @asm.d(0))
+            @asm.jmp(@asm.abs_l("rt_fault"))
           end
 
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame

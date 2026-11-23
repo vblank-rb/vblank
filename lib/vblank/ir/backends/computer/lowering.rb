@@ -43,7 +43,7 @@ module VBlank
           # declaration writes nothing where it is (#lower_nothing).
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
-            case halt wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
+            case halt stop_full wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
             list_set list_fill list_copy list_sort list_pack screen clear_screen fill_rect draw_rect_at
             pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
             save_region restore_region background affine_background scroll_background place_bar box_background
@@ -74,6 +74,7 @@ module VBlank
             when :call_one_of then lower_call_one_of(node)
             when :case then lower_case(node)
             when :halt then lower_halt(node)
+            when :stop_full then lower_stop_full(node)
             when :wait_vblank then lower_wait_vblank(node)
             when :timer_start then lower_timer_start(node)
             when :timer_stop then lower_timer_stop(node)
@@ -784,6 +785,12 @@ module VBlank
                         body: statements_of(order.pass_end, order: order))
             end
             [*ends, eval_call("rg_halt")]
+          end
+
+          # Reference#exec_stop_full: the runtime faults in the words a push onto a full list does.
+          def lower_stop_full(node)
+            [eval_call("rg_stop_full", Statements::Text.new(node.name.to_s), Statements::Int.new(node.capacity),
+                       Statements::Int.new(node.in_walk ? 1 : 0))]
           end
 
           # Reference#exec_rumble. A desktop or a web page shakes no gamepad yet, but the runtime

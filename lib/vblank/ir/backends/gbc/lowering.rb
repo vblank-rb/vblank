@@ -48,7 +48,7 @@ module VBlank
           # test_gbc_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
+            halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             save_init save_store save_write save_erase save_load_list save_store_list timer_start timer_stop
             on_timer show_light_now show_held_tiles
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS +
@@ -70,6 +70,7 @@ module VBlank
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt(node)
+            when :stop_full then emit_stop_full(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
@@ -1096,6 +1097,20 @@ module VBlank
               @asm.label(other)
             end
             @asm.call("rt_halt")
+          end
+
+          # A full pool told to stop (Reference#exec_stop_full): no list, then its capacity and its
+          # name's number, low byte first, into FAULT for the reader to word as the interpreter does
+          # (CartridgeFaults::STOP_FULL).
+          def emit_stop_full(node)
+            @asm.load(:hl, @memory[Runtime::Frame::FAULT] + 1)
+            [0, 0, *[node.capacity, @plan.stop_full_number(node)].flat_map { |number| [number].pack("V").bytes }]
+              .each do |byte|
+              @asm.load(:a, byte)
+              @asm.load([:hli], :a)
+            end
+            @asm.load(:a, Runtime::Frame::STOP_FULL)
+            @asm.jump("rt_fault")
           end
 
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame

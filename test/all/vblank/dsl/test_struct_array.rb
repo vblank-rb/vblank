@@ -395,6 +395,80 @@ class TestStructArray < Minitest::Test
     assert_equal [3, 4], live_sparks(player).map(&:first)
   end
 
+  # Ruby would grow the Array, and a console cannot, so the push stops the game, as a push onto
+  # a full Array of numbers does, in the same words.
+  def test_a_push_onto_a_full_array_of_structs_stops_the_game_naming_it
+    error = assert_raises(VBlank::IR::ProgramError) do
+      played(frames: 2) do
+        sparks = Array.new(capacity: 4)
+        game_loop { 6.times { |n| sparks << Spark.new(n, 0, 0) } }
+      end
+    end
+
+    assert_match(/`sparks` is full: it has room for 4/, error.message)
+    refute_match(/\b(list|pool)\b/, error.message)
+  end
+
+  # The push that fits does what Ruby's does, and the game goes on.
+  def test_a_push_tested_against_the_size_keeps_the_first_four
+    player = played(frames: 2) do
+      sparks = Array.new(capacity: 4)
+      game_loop { 6.times { |n| sparks << Spark.new(n, 0, 0) if sparks.size < 4 } }
+    end
+
+    assert_equal [0, 1, 2, 3], live_sparks(player).map(&:first)
+  end
+
+  # A thing taken out inside a walk keeps its place until the walk ends, so a push after it in
+  # the same walk finds no room where Ruby would. That stops the game saying so, never a push
+  # that answers differently from Ruby.
+  def test_a_push_in_a_walk_with_room_only_from_that_walk_stops_saying_so
+    error = assert_raises(VBlank::IR::ProgramError) do
+      played(frames: 1) do
+        sparks = Array.new(capacity: 4)
+        4.times { |n| sparks << Spark.new(n, 0, 0) } if sparks.empty?
+        game_loop do
+          sparks.each do |s|
+            if s.x == 0
+              sparks.shift
+              sparks << Spark.new(9, 0, 0)
+            end
+          end
+        end
+      end
+    end
+
+    assert_match(/`sparks` has no room yet/, error.message)
+    assert_match(/inside a walk/, error.message)
+    assert_match(/after the walk/, error.message)
+  end
+
+  # A push in a walk of an Array with room joins it at once, as Ruby's does: the newest, seen
+  # by every question after it, and by the walks that start after it; the walk it is in does
+  # not visit it.
+  def test_a_push_in_a_walk_with_room_is_one_of_the_things_at_once
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      visited = 0
+      nines = 0
+      newest = 0
+      2.times { |n| sparks << Spark.new(n, 0, 0) } if sparks.empty?
+      game_loop do
+        sparks.each do |s|
+          visited += 1
+          if s.x == 0
+            sparks << Spark.new(9, 0, 0)
+            nines = sparks.count { |t| t.x == 9 }
+            sparks.reverse_each { |t| newest = t.x if newest == 0 }
+          end
+        end
+      end
+    end
+
+    assert_equal [0, 1, 9], live_sparks(player).map(&:first)
+    assert_equal [2, 1, 9], [player[:visited], player[:nines], player[:newest]]
+  end
+
   def test_an_array_of_structs_with_no_capacity_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       played(frames: 1) do

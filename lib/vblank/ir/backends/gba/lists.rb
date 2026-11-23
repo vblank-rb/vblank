@@ -32,12 +32,13 @@ module VBlank
         # afterward — not because it's a list; see #register_backing/#backing_info.
         class Lists
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
-          STATEMENT_KINDS = %i[list_new list_push list_drop list_set list_fill list_sort list_pack].freeze
+          STATEMENT_KINDS = %i[list_new list_push list_drop list_set list_fill list_sort list_pack stop_full].freeze
 
           def emit_statement(node)
             case node.kind
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
+            when :stop_full then emit_stop_full(node)
             when :list_drop then emit_list_drop(node)
             when :list_set then emit_list_set(node)
             when :list_fill then emit_list_fill(node)
@@ -844,6 +845,10 @@ module VBlank
             when 1 then @emitter.emit(ASM.strb_post(from, TMP, slot.stride))
             end
           end
+
+          # stop_full: a full pool told to stop. The cartridge has no way to stop with words yet, so
+          # it writes nothing and the spawn is dropped, as a push onto a full list is (below).
+          def emit_stop_full(_node) = nil
 
           # list_push: append at the tail — slot (head + length) & mask — then grow
           # length by one. If the list is already full the push is dropped rather than

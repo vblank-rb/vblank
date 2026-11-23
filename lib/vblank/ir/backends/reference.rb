@@ -831,7 +831,7 @@ module VBlank
         STATEMENT_KINDS = (%i[
           program set add sub copy negate abs negate_abs clamp save_init save_store save_write save_erase
           save_load_list save_store_list if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy list_pack
-          list_sort blit blit_pose save_region restore_region call call_one_of case halt wait_vblank
+          list_sort blit blit_pose save_region restore_region call call_one_of case halt stop_full wait_vblank
           hide_sprites rumble screen clear_screen pixel fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
           affine_background background_colors color_list_holds show_picture_group scroll_rows shade_outside
@@ -882,6 +882,7 @@ module VBlank
           when :call_one_of then exec_call_one_of(node)
           when :case then exec_case(node)
           when :halt then exec_halt(node)
+          when :stop_full then exec_stop_full(node)
           when :wait_vblank then exec_wait_vblank(node)
           when :hide_sprites then exec_hide_sprites(node)
           when :rumble then exec_rumble(node)
@@ -1113,6 +1114,12 @@ module VBlank
           stop_motor
           @log << [:halt]
           throw :halt
+        end
+
+        # A full pool told to stop: the words a push onto a full list stops with.
+        def exec_stop_full(node)
+          words = node.in_walk ? Faults.full_in_walk(node.name, node.capacity) : Faults.list_full(node.name, node.capacity)
+          raise ProgramError, words
         end
 
         def exec_wait_vblank(node)
@@ -4106,7 +4113,7 @@ module VBlank
           at = eval_value(node.at)
           width = SAVE_WIDTHS.fetch(node.width)
           count = eval_value(node.count).clamp(0, node.most)
-          raise ProgramError, Faults.list_full(node.name, list.capacity) if count > list.capacity
+          raise ProgramError, Faults.save_list_too_long(node.name, count, list.capacity) if count > list.capacity
           items = Array.new(count) do |i|
             on_save_memory { width == 4 ? @save.word(at + (i * width)) : @save.read(at + (i * width), width) }
           end

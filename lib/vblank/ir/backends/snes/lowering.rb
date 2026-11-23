@@ -50,7 +50,7 @@ module VBlank
           # test_snes_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
+            halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             timer_start timer_stop on_timer show_light_now rumble show_held_tiles
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Saving::STATEMENT_KINDS +
             Sound::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
@@ -72,6 +72,7 @@ module VBlank
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt(node)
+            when :stop_full then emit_stop_full(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
@@ -1519,6 +1520,23 @@ module VBlank
               @asm.label(other)
             end
             @asm.jml(@asm.long("rt_halt"))
+          end
+
+          # A full pool told to stop (Reference#exec_stop_full): its capacity and its name's number
+          # into FAULT, no list, for the reader to word as the interpreter does (CartridgeFaults::STOP_FULL).
+          def emit_stop_full(node)
+            fault = @memory[Runtime::Frame::FAULT]
+            [[Runtime::Frame::FAULT_LIST, 0], [Runtime::Frame::FAULT_FIRST, node.capacity],
+             [Runtime::Frame::FAULT_SECOND, @plan.stop_full_number(node)]].each do |at, number|
+              [[number & 0xFFFF, at], [number >> 16, at + 2]].each do |half, place|
+                next @asm.stz(@asm.abs(fault + place)) if half.zero?
+
+                @asm.lda(half)
+                @asm.sta(@asm.abs(fault + place))
+              end
+            end
+            @asm.lda(Runtime::Frame::STOP_FULL)
+            @asm.jml(@asm.long("rt_fault"))
           end
 
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame

@@ -29,6 +29,7 @@ module VBlank
         CAMERA_TOO_FAR = 13 # A painted screen's camera past what the console's scrolling can show
         TILE_LOADS_FULL = 14 # More loads of sprite tiles in one pass than the queue for the blank holds
         DRAW_ORDER_NAMES_NONE = 15 # A run's draw order names none of its sprites: the place, the run's length
+        STOP_FULL = 16 # A full pool told to stop (Nodes::StopFull): its capacity, the stop's number (StopFull.numbers)
       end
     end
   end

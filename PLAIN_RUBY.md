@@ -240,7 +240,7 @@ A list is named after its local, so a test or a profile reads `trail` by that na
 Each limit, with what to write instead. Where a limit is refused, VBlank says so before the game is built, naming the line; several are shown with their messages under "What is refused, and what to write instead".
 
 - It cannot grow past its room. An Array that game code adds to needs `capacity:` (refused without it): write `Array.new(capacity: 8)`.
-- A push onto a full Array stops the game with an error naming it. Test first: `trail << x if trail.size < 8`.
+- A push onto a full Array stops the game with an error naming it, on every run that can stop with words (the Advance cartridge drops the push for now). Test first: `trail << x if trail.size < 8`.
 - `Array.new(8)` with no start is refused, since its items would be nil: write `Array.new(8, 0)`, or `Array.new(capacity: 8)` for an empty one.
 - Its size and capacity must be known while the game is built (refused otherwise): use a number or a constant, never a number the game works out.
 - A whole number the game works out and a fraction cannot go into the same Array (refused, naming both lines): write `.to_f` on the whole number.
@@ -282,7 +282,7 @@ end
 - A field holds fractions where a line puts one in: `Spark.new(x, 0.0, 1.5)`, or `s.vy = 0.5` in a walk.
 - A part keeps one in an instance variable the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class.
 - `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change, and so are Ruby's Array methods it has no meaning for (`rotate!`, `map`), by name.
-- A full Array adds nothing on `<<`: `shift` first to make room, as above.
+- A push onto a full Array stops the game, as it does for an Array of numbers: `shift` first to make room, as above, or test `size` first to skip the new thing. A thing taken out inside a walk gives its place back only when the walk ends, so a `<<` in the same walk that needs that place stops the game saying so: add the new thing after the walk. A `<<` in a walk of an Array with room joins it at once, and only the walk it is in does not visit it.
 
 ## Changing a variable
 
@@ -639,7 +639,7 @@ end
 - `/` on a negative game number rounds toward zero (`-7 / 2` is -3), where Ruby while building gives -4.
 - `puts` and other harmless Ruby in a game block run once, while building.
 - An instance variable nobody named, that game code only changes, keeps the number Ruby gave it.
-- An Array the game pushes to when it is full stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
+- An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 
 ## When plain Ruby is not enough
 

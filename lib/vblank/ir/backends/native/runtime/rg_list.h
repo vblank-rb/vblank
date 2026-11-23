@@ -86,10 +86,22 @@ static inline void rg_list_full(rg_list *list, int32_t value) {
 
 static inline int32_t rg_list_length(const rg_list *list) { return list->length; }
 
+/* The game stops: +name+, holding +capacity+, is full (IR::Faults.list_full's words), or, +in_walk+
+ * not nought, full only of items a walk took out (IR::Faults.full_in_walk's). Raised by a push onto
+ * a full list, and by a full pool told to stop (IR::Nodes::StopFull). */
+static inline void rg_stop_full(const char *name, int32_t capacity, int32_t in_walk) {
+  if (in_walk)
+    rg_fault("`%s` has no room yet: it has room for %d items, and an item taken out inside a walk of it gives "
+             "its place back only when the walk ends. To fix this, add the new item after the walk, or give it "
+             "a larger capacity.",
+             name, (int)capacity);
+  rg_fault("`%s` is full: it has room for %d items, and a console cannot make it bigger. To fix this, take "
+           "an item out or test its size before you add one, or give it a larger capacity.",
+           name, (int)capacity);
+}
+
 static inline void rg_list_push(rg_list *list, int32_t value) {
-  if (list->length >= list->capacity)
-    rg_fault("list :%s is full (capacity %d): drop an item first, or give it a larger capacity", list->name,
-             (int)list->capacity);
+  if (list->length >= list->capacity) rg_stop_full(list->name, list->capacity, 0);
   rg_list_store(list, rg_list_slot(list, list->length), value);
   list->length++;
 }
@@ -123,9 +135,7 @@ static inline void rg_list_set(rg_list *list, int32_t index, int32_t value) {
     ((type##_t *)list->items)[rg_list_slot(list, index)] = (type##_t)fit(value);                         \
   }                                                                                                      \
   static inline void rg_list_push_##type(rg_list *list, int32_t value) {                                 \
-    if (list->length >= list->capacity)                                                                  \
-      rg_fault("list :%s is full (capacity %d): drop an item first, or give it a larger capacity",       \
-               list->name, (int)list->capacity);                                                         \
+    if (list->length >= list->capacity) rg_stop_full(list->name, list->capacity, 0);                     \
     ((type##_t *)list->items)[rg_list_slot(list, list->length)] = (type##_t)fit(value);                  \
     list->length++;                                                                                      \
   }

@@ -297,6 +297,24 @@ class TestPlainRubyArrays < Minitest::Test
     assert_match(/capacity:/, error.message)
   end
 
+  # Ruby would grow the Array, and a console cannot, so the push stops the game, naming the
+  # Array as the game does, in the words an Array of Structs stops with.
+  def test_a_push_onto_a_full_array_stops_the_game_naming_it
+    error = assert_raises(VBlank::IR::ProgramError) do
+      played(frames: 6) do
+        trail = Array.new(capacity: 4)
+        x = 0
+        game_loop do
+          x += 1
+          trail << x
+        end
+      end
+    end
+
+    assert_match(/`trail` is full: it has room for 4/, error.message)
+    refute_match(/\b(list|pool)\b/, error.message)
+  end
+
   def test_a_capacity_the_game_works_out_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       played do

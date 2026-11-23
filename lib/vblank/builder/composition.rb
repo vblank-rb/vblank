@@ -24,7 +24,7 @@ module VBlank
 
       # What spawn does when the pool is full: :drop ignores it (a safe no-op),
       # :recycle_oldest reuses the longest-lived instance so a new one always appears.
-      POOL_FULL_POLICIES = %i[drop recycle_oldest].freeze  # :nodoc:
+      POOL_FULL_POLICIES = %i[drop recycle_oldest stop].freeze  # :nodoc:
 
       # The most of the quick memory one pool may take. The console has 32KB of it, and it is
       # also where the code a frame spends its time in is kept, so a pool that took most of
@@ -93,7 +93,8 @@ module VBlank
       # * `facing:` - a map from a direction to a picture, or to a list of frames.
       # * `frames:` - same-size pictures to cycle as an animation.
       # * `rate:` - how many game frames each animation step lasts. It is needed with an animation.
-      # * `on_full:` - `:drop` (the default) or `:recycle_oldest`.
+      # * `on_full:` - `:drop` (the default), `:recycle_oldest`, or `:stop`, which stops the game
+      #   naming the pool, as a push onto a full list does. An Array of Structs is a pool that stops.
       # * `widths:` - a map from a field to how much room it takes, `:byte`, `:half` or `:word`, as
       #   a list's `width:` is. `:unsigned_half` keeps a place in 256ths of a pixel.
       # * `fast:` - `false` keeps the pool out of the quick memory, and `true` insists on it.
@@ -633,7 +634,8 @@ module VBlank
         raise ArgumentError,
               "pool :#{name} got on_full: #{policy.inspect}. on_full must be one of " \
               "#{POOL_FULL_POLICIES.map(&:inspect).join(', ')}. :drop ignores a spawn when the pool is full. " \
-              ":recycle_oldest reuses the longest-lived instance, so a new one always appears."
+              ":recycle_oldest reuses the longest-lived instance, so a new one always appears. :stop stops " \
+              "the game."
       end
 
       # A pool whose instances draw themselves is a pool of hardware sprites, so it needs

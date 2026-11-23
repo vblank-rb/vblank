@@ -1149,6 +1149,33 @@ module VBlank
         category :control
       end
 
+      # The game stops, as a push onto a full list stops it, because +name+, which holds
+      # +capacity+ things, is full: what a pool told to stop on a full spawn does (Pool, on_full:
+      # :stop), which an Array of Structs is. +name+ is as the game names it, and the words are
+      # Faults.list_full. +in_walk+ is for a spawn during a walk of the pool that finds it full
+      # only of things the walk removed, whose room comes when the walk ends: Faults.full_in_walk.
+      class StopFull
+        include Node
+        kind :stop_full
+        category :control
+        operands name: :name, capacity: :int, in_walk: :flag
+
+        # The number each stop a stop_full in +program+ makes is known by, a pair of the name and
+        # whether it is in a walk, in the order the program first makes them: what a cartridge
+        # keeps for its reader to find the words by.
+        def self.numbers(program)
+          program.walk.select { |node| node.kind == :stop_full }.map { |node| key(node) }.uniq.each_with_index.to_h
+        end
+
+        def self.key(node) = [node.name, node.in_walk ? true : false]
+
+        # The words for the stop numbered +number+ in +program+, holding +capacity+.
+        def self.words(program, number, capacity)
+          name, in_walk = numbers(program).key(number)
+          in_walk ? Faults.full_in_walk(name, capacity) : Faults.list_full(name, capacity)
+        end
+      end
+
       # How many players are connected now, at least 1: a player counts from the first time one of
       # their buttons is down (IR::Buttons.masks). A console that reads one controller answers 1.
       class PlayersConnected

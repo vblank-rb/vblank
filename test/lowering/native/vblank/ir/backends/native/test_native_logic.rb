@@ -313,7 +313,7 @@ class TestNativeLogic < Minitest::Test
     # asserts one thing.
     assert_raises(VBlank::IR::ProgramError) { reference_snapshots(program, frames: 4, buttons: {}) }
     error = assert_raises(VBlank::IR::ProgramError) { lowered_snapshots(program, frames: 4, buttons: {}, mode: :checked) }
-    assert_includes error.message, "list :full is full"
+    assert_includes error.message, "`full` is full"
   end
 
   def test_random_numbers_follow_the_same_stream

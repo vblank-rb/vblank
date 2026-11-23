@@ -29,8 +29,10 @@ module VBlank
     # stands. It also answers what one thing of a pool answers (Pool::Instance): `face`,
     # `draw_with`, `move`, `overlaps?`, the edges and the screen-edge tests.
     #
-    # A console keeps a fixed number of things, so `Array.new` must say `capacity:`. A full Array
-    # adds nothing on `<<`; to make room for a new one, `shift` the oldest first.
+    # A console keeps a fixed number of things, so `Array.new` must be given `capacity:`. Ruby grows a
+    # full Array on `<<`, and a console cannot, so a full one stops the game naming it, as a full
+    # Array of numbers does (a pool with `on_full: :stop`); to make room for a new one, `shift`
+    # the oldest first.
     class StructArray
       # The Array methods an Array of Structs answers.
       VERBS = %i[<< push append shift clear each reverse_each each_with_index delete_if reject! sort! sort_by! reverse!
@@ -66,7 +68,7 @@ module VBlank
         fields = kind.members.to_h { |member| [member, fraction_field?(member, declaration) ? 0.0 : 0] }
         name = builder.plain_array_list_name(*name_and_owner(owner, declaration))
         widths = PlainRuby::StructSettings.widths_of(kind)
-        made = -> { builder.pool(name, capacity: capacity, widths: widths, **drawing, **settings, **fields) }
+        made = -> { builder.pool(name, capacity: capacity, on_full: :stop, widths: widths, **drawing, **settings, **fields) }
         @pool = layer ? builder.layer(layer) { made.call } : made.call
         @pool.explain_kinds_with { |field| kind_advice(field) }
         @walked = walked_class(kind)
@@ -76,7 +78,7 @@ module VBlank
       # The pool this Array is kept as.
       attr_reader :pool # :nodoc:
 
-      # Adds a thing, made with the Struct's `new`, after the others. A full Array adds nothing.
+      # Adds a thing, made with the Struct's `new`, after the others. A full Array stops the game.
       def <<(thing)
         refuse_other_thing!(thing)
         values = @kind.members.to_h do |member|
@@ -84,7 +86,10 @@ module VBlank
           refuse_field_with_no_value!(member) if value.nil?
           [member, value]
         end
-        @pool.spawn(**values)
+        # A push that can run during a walk of this Array may need a slot the walk took a thing
+        # out of: one written inside a walk, or in a routine that may be called from one, as for
+        # #shift.
+        @pool.spawn_with(values, during_walk: @walks_open.positive? || @builder.building_callable_routine?)
         self
       end
       alias push <<

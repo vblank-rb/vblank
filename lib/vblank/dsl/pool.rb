@@ -58,7 +58,7 @@ module VBlank
       # @param hitbox [Array(Integer,Integer,Integer,Integer), nil] the collision box
       #   [x, y, w, h] relative to an instance's top-left, from the image (nil = no size)
       # @param on_full [Symbol] what spawn does when there's no free slot — :drop (ignore
-      #   it, a safe no-op) or :recycle_oldest (reuse the longest-lived instance)
+      #   it, a safe no-op), :recycle_oldest (reuse the longest-lived instance) or :stop (stop the game)
       # @param art [Builder::Composition::PoolArt, nil] what the instances look like — the
       #   pictures they can show and how a slot picks one (nil for a pure-data pool)
       def initialize(builder, name, fields, capacity, image: nil, hitbox: nil, on_full: :drop, art: nil)
@@ -616,8 +616,13 @@ module VBlank
       # What happens when the pool is full depends on the `on_full:` given to Builder#pool. The
       # default, `:drop`, adds nothing and changes nothing; ask Pool#full? or Pool#count to know.
       # With `:recycle_oldest`, the oldest thing is taken for the new one, so a new one always
-      # appears.
-      def spawn(**values)
+      # appears. With `:stop`, the game stops, naming the pool.
+      def spawn(**values) = spawn_with(values, during_walk: true)
+
+      # Pool#spawn, where +during_walk+ false means the build knows no walk of this pool can be
+      # under way where it runs, so a :stop pool builds no taking of a slot a walk removed
+      # (#spawn_dropping). What StructArray#<< calls.
+      def spawn_with(values, during_walk:) # :nodoc:
         unknown = values.keys - @fields.keys
         unless unknown.empty?
           raise ArgumentError,
@@ -625,7 +630,7 @@ module VBlank
         end
 
         record(release_when_idle)
-        recycle_oldest? ? spawn_recycling(values) : spawn_dropping(values)
+        recycle_oldest? ? spawn_recycling(values) : spawn_dropping(values, during_walk: during_walk)
         self
       end
 
@@ -1094,10 +1099,31 @@ module VBlank
 
       # The default policy: create in a free slot, or leave a full pool untouched. Guarded
       # on a free slot existing, so a full pool is a clean no-op (nothing half-written).
-      def spawn_dropping(values)
+      #
+      # The :stop policy is the same with the game stopped where a full pool would drop it, naming
+      # the pool, as a push onto a full list stops it.
+      #
+      # +during_walk+ is for a :stop spawn that can run while a walk of the pool is under way. A
+      # thing the walk removed keeps its slot until the walk ends (see #retired_list), so the
+      # pool can be full while its count shows room, which Ruby would have. The slot cannot be
+      # given to the new thing then: it is still in the chain the walk follows, at the place of
+      # the thing removed, and a new thing is the newest. So that spawn stops the game with words
+      # of its own, saying the room comes when the walk ends (Faults.full_in_walk).
+      def spawn_dropping(values, during_walk: false)
         slot = Build.var_ref(slot_var)
         body = claim_free_slot(slot) + [Build.call(append_routine)] + assign_fields(slot, values) + pose_reset_nodes(slot)
-        record(Build.if_(free_available, *body))
+        spawn = Build.if_(free_available, *body)
+        if @on_full == :stop
+          full = Build.stop_full(@name, @capacity)
+          if during_walk
+            removed_in_walk = Build.binop(:>, Build.list_len(retired_list), Build.int(0))
+            full = Build.if_(removed_in_walk, Build.stop_full(@name, @capacity, in_walk: true)).tap do |test|
+              test.else = Build.else_(full)
+            end
+          end
+          spawn.else = Build.else_(full)
+        end
+        record(spawn)
       end
 
       # The :recycle_oldest policy: take a free slot when there is one, otherwise reuse the

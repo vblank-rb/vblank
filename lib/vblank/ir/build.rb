@@ -579,6 +579,12 @@ module VBlank
         Nodes.build(:halt)
       end
 
+      # The game stops: +name+, holding +capacity+, is full, +in_walk+ only of things a walk
+      # removed (Nodes::StopFull).
+      def stop_full(name, capacity, in_walk: false)
+        Nodes.build(:stop_full, name: name, capacity: capacity, in_walk: in_walk)
+      end
+
       def hide_sprites
         Nodes.build(:hide_sprites)
       end

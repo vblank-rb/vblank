@@ -131,7 +131,12 @@ module VBlank
           @handover = SceneHandover.of(program)
           @scenes = program.walk.select { |node| node.kind == :case }.flat_map { |node| node.clauses.map(&:last) }
                            .uniq.each_with_index.to_h
+          @stop_full_numbers = Nodes::StopFull.numbers(program)
         end
+
+        # The number a cartridge's fault keeps for the stop_full +node+ that stopped it, which its
+        # reader turns back into the words (CartridgeFaults::STOP_FULL, Nodes::StopFull.words).
+        def stop_full_number(node) = @stop_full_numbers.fetch(Nodes::StopFull.key(node))
 
         # A routine of the game's, as the author names it: a scene as one.
         def routine_said(name) = @scenes.key?(name) ? "scene #{name.inspect}" : name.to_s

@@ -142,6 +142,9 @@ module VBlank
           # jumps to the else-body, and the then-body jumps over it to the end.
           def emit_if(node)
             else_node = node.else
+            # A full pool's stop writes nothing here yet (Lists#emit_stop_full), so an else of
+            # nothing else is left out, and a stopping spawn costs what a dropping one does.
+            else_node = nil if else_node && only_stops?(else_node)
 
             if else_node
               else_label = @emitter.gensym
@@ -160,6 +163,18 @@ module VBlank
               routine = @placement.scene_loop_routine_for(node)
               routine ? @placement.emit_call_func(routine) : node.children.each { |stmt| @lowering.statement(stmt) }
               @emitter.place_label(skip)
+            end
+          end
+
+          # Whether every statement under +node+ is a full pool's stop, or a test choosing between
+          # stops: nothing this lowering writes, with a test that changes nothing.
+          def only_stops?(node)
+            node.children.all? do |child|
+              case child.kind
+              when :stop_full then true
+              when :if then only_stops?(child) && (child.else.nil? || only_stops?(child.else))
+              else false
+              end
             end
           end
 

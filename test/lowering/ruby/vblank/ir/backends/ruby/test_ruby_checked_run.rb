@@ -86,7 +86,7 @@ class TestRubyCheckedRun < Minitest::Test
     end
 
     error = assert_raises(VBlank::IR::ProgramError) { CheckedRun.new.run(program, frames: 5) }
-    assert_match(/list :trail is full/, error.message)
+    assert_match(/`trail` is full/, error.message)
   end
 
   # A routine the game calls by its number, and buttons the test holds, both reach the game.
