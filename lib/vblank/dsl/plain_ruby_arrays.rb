@@ -81,25 +81,37 @@ module VBlank
                   elsif block then Array.new(size, &block)
                   else Array.new(size, given[1])
                   end
-          return items unless items.all? { |item| list_item?(item) }
+          return items unless list_items?(items)
 
           declare(owner, declaration, items, capacity, settings)
         end
 
         # `name = [items...]`, as the list it makes, holding those items and room for no more.
         #
-        # Only items that are numbers make a list. An Array of game variables (`[var(:a, 1), hp]`),
-        # of sprites or of anything else stays Ruby's, as it always was: a write to one of its
-        # items changes what that item holds, and the Array itself never changes.
+        # Only items that are numbers make a list. A local game code changes holds a number too
+        # (`[a, b]`, with `a += 1` somewhere in game code): Ruby copies that number into the Array,
+        # so the list starts from it at this line, and a write to an item leaves the local alone.
+        #
+        # An Array made only of places with a name of their own, `var` handles and the like
+        # (`[var(:a, 1), var(:b, 1)]`, `[hero.x, hero.y]`), stays Ruby's, as an Array of sprites
+        # does: a write to an item changes that place. An Array of anything else stays Ruby's too.
         def list_from_literal(owner, declaration, items)
           refuse_nested_items!(declaration.local, items)
-          return items unless items.all? { |item| list_item?(item) }
+          return items unless list_items?(items)
 
           declare(owner, declaration, items, nil, {})
         end
 
-        # A number, or a number the game works out that is not itself a game variable.
-        def list_item?(item) = item.is_a?(Numeric) || (item.is_a?(Value) && !Steps.variable?(item))
+        # Are +items+ numbers a list holds, and not all of them named places (#list_from_literal)?
+        def list_items?(items)
+          return false unless items.all? { |item| item.is_a?(Numeric) || item.is_a?(Value) }
+
+          items.empty? || !items.all? { |item| named_place?(item) }
+        end
+
+        # A place the game named itself, which an Array keeps as it is: a game variable made by a
+        # `var` line or a handle like `hero.x`, not one made for a local of plain Ruby.
+        def named_place?(item) = Steps.variable?(item) && !item.made_with_no_var_line?
 
         # What `list.shift` or `list.pop` hands back where the line uses it: the item it drops, as
         # Ruby hands it back. A Ruby Array does its own.

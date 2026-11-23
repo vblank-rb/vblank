@@ -221,8 +221,47 @@ class TestPlainRubyArrays < Minitest::Test
     assert_equal 2, error.message.scan(/test_plain_ruby_arrays\.rb:\d+/).uniq.length, error.message
   end
 
-  # An Array whose items are game variables keeps them: a write to an item changes that variable.
-  def test_an_array_of_game_variables_stays_an_array_of_variables
+  # Ruby copies a number into an Array, so changing the item leaves the local it came from alone,
+  # though game code changes that local too. After five passes `a` is still 1 and `pair[0]` is 6:
+  # a red dot at 1 and a green one at 6.
+  def test_changing_an_item_made_from_a_local_leaves_the_local_alone
+    player = played(frames: 5) do
+      screen :bitmap
+      a = 1
+      b = 1
+      pair = [a, b]
+      game_loop do
+        pair[0] += 1
+        a += 0 if a > 100
+        clear_screen :black
+        draw_rect_at a, 10, 1, 1, :red
+        draw_rect_at pair[0], 20, 1, 1, :green
+      end
+    end
+
+    assert_equal [6, 1], player.list(:pair)
+    assert_equal Color.resolve(:red), player.screen.pixel(1, 10)
+    assert_equal Color.resolve(:green), player.screen.pixel(6, 20)
+    assert_equal Color.resolve(:black), player.screen.pixel(6, 10)
+  end
+
+  # A local beside a `var` handle is copied as well: the Array is a list of their numbers.
+  def test_an_array_of_a_local_and_a_var_handle_is_a_list_of_their_numbers
+    player = played(frames: 1) do
+      a = 1
+      pair = [a, var(:second, 2)]
+      game_loop do
+        pair[1] += 3
+        a += 0 if a > 100
+      end
+    end
+
+    assert_equal [2, [1, 5]], [player[:second], player.list(:pair)]
+  end
+
+  # An Array made only of `var` handles is an Array of places, as one of sprites is: a write to
+  # an item changes that variable.
+  def test_an_array_of_var_handles_stays_an_array_of_variables
     player = played(frames: 1) do
       shown = Array.new(2) { |n| var :"shown#{n}", 0 }
       pair = [var(:first, 1), var(:second, 1)]

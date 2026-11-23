@@ -193,9 +193,12 @@ end
   Array only game code reads, or one changed only while setting up, stays Ruby's and costs nothing:
   `steps = [1, 2]; steps << 3` above the game loop is a Ruby Array of three. A change a Ruby loop
   makes in game code with numbers known while building is setting up too: `xs = []`, then
-  `3.times { |n| xs << n * 8 }` in the game loop, is a Ruby Array laid out on every pass. So is an Array of game
-  variables, sprites or anything but numbers (`pair = [var(:a, 1), var(:b, 1)]`), whose items are
-  changed where they stand.
+  `3.times { |n| xs << n * 8 }` in the game loop, is a Ruby Array laid out on every pass. So is an Array
+  made only of `var` handles, sprites or anything but numbers (`pair = [var(:a, 1), var(:b, 1)]`),
+  whose items are changed where they stand.
+- **An item is a copy of the local it came from**, as in Ruby: `a = 1; pair = [a, b]`, then
+  `pair[0] += 1` in game code changes `pair[0]` and leaves `a` alone, though game code changes `a`
+  too. The list starts from the numbers the locals hold at the line that makes it.
 - `item = queue.shift` and `item = queue.pop` hand back the item dropped, as Ruby's do, and so does
   one that is the answer of a branch (`queue.empty? ? 0 : queue.shift`) or a method. That keeps the
   item in a hidden variable, a word of memory (`rom.profile` lists the line); `queue.shift` alone keeps
