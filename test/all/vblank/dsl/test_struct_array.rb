@@ -261,6 +261,19 @@ class TestStructArray < Minitest::Test
     assert_equal [20], player.pool(:fallen, :x).compact
   end
 
+  # A thing made and changed in one line with `tap` before it goes in is still a thing.
+  def test_a_thing_changed_with_tap_as_it_goes_in_makes_an_array_of_structs
+    player = played(frames: 1) do
+      sparks = Array.new(capacity: 4)
+      game_loop do
+        sparks.clear
+        sparks << Spark.new(1, 0, 0).tap { |s| s.x = 9 }
+      end
+    end
+
+    assert_equal [[9, 0, 0]], live_sparks(player)
+  end
+
   # A fraction given to a field in a walk makes that field hold fractions, as a fraction put into
   # an Array of numbers does.
   def test_a_fraction_given_to_a_field_in_a_walk_makes_it_hold_fractions

@@ -339,6 +339,8 @@ module VBlank
         # of another Array a walk hands over (`sparks.each { |s| fallen << s }`).
         def things_made_by(put, seen = Set.new.compare_by_identity)
           return [put] if LocalNames.thing_made?(put)
+          # `Spark.new(...).tap { |s| ... }` gives back the thing it was called on.
+          return things_made_by(put.receiver, seen) if put.is_a?(Prism::CallNode) && put.name == :tap && put.receiver
           return [] unless put.is_a?(Prism::LocalVariableReadNode)
 
           local = @locals_by_node[put]
