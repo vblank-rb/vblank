@@ -370,6 +370,21 @@ class TestPlainRubyArrays < Minitest::Test
     assert_match(/`unshift` is a method of a Ruby Array/, error.message)
   end
 
+  # `marks[0] += 10 if ...` under a test the game makes changes the item on the passes the test
+  # holds, as Ruby does.
+  def test_an_item_changed_under_a_game_test
+    player = played(frames: 3) do
+      marks = [3, 1, 4]
+      passes = 0
+      game_loop do
+        passes += 1
+        marks[0] += 10 if passes == 2
+      end
+    end
+
+    assert_equal [13, 1, 4], player.list(:marks)
+  end
+
   # Ruby's questions about an Array written out of game numbers, which stays Ruby's, each asked
   # with the items both ways round: the game works out Ruby's answer as it plays.
   def test_questions_about_an_array_of_game_numbers_give_rubys_answers

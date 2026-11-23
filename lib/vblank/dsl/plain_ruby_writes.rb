@@ -121,9 +121,13 @@ module VBlank
           end
           return change_variable(current, operator, amount) if Steps.variable?(current)
 
-          refuse_object_under_test!(label, current) if game
+          refuse_object_under_test!(label, current) if game && !list_item?(current)
           yield current.public_send(operator, amount)
         end
+
+        # An item read from a game's list (`scores[0]`), whose change the line writes back with
+        # the list's own `[]=`: recorded where the line runs, under a game test too.
+        def list_item?(value) = value.is_a?(Value) && value.node.kind == :list_get
 
         def change_variable(target, operator, amount)
           return write(target, Steps.bits(target, operator, amount), [], target.name) { |given| given } if joins_tests?(target, operator)
