@@ -144,7 +144,7 @@ class TestSNESPicture < Minitest::Test
     assert_empty run.black_frames
   end
 
-  # Each changed cell is a word written on its own, and 200 of them take longer than a blank.
+  # Two hundred changed cells, sent in the blank in several pieces with the screen on.
   def test_many_cells_changed_in_one_pass_show_no_black_frame
     program = program_of do
       screen :tiled
@@ -170,9 +170,9 @@ class TestSNESPicture < Minitest::Test
     assert_empty run.black_frames
   end
 
-  # Cells go before their colours. Two hundred cells take more than a blank, so they arrive over two
-  # frames, and a fade of the same pass must wait for the last of them: a frame showing the new
-  # colours over a cell still to change is a picture no pass made.
+  # Cells go before their colours, and a fade of the same pass waits for the last of them: a frame
+  # showing the new colours over a cell still to change is a picture no pass made. Two hundred cells
+  # go in several pieces, each after a look at the line, any of which can find the blank too short.
   def test_cells_changed_with_a_fade_show_no_new_colours_over_old_cells
     program = program_of do
       screen :tiled
@@ -203,6 +203,52 @@ class TestSNESPicture < Minitest::Test
 
     assert(pictures.any? { |shown, _| shown != wall && shown.positive? }, "the fade shows")
     assert_empty pictures.select { |shown, last_cell| shown != wall && shown.positive? && last_cell == shown }
+  end
+
+  # A full queue of cells behind a map handed over in the same pass, which goes first and leaves the
+  # blank nearly spent, so the cells' pieces find it too short and wait for the next. The map is a
+  # few rows shorter or longer in each game, so in some of them the blank ends part way through the
+  # cells. The last 64 cells write walls back over gems the first ones wrote, so a piece sent twice,
+  # or out of its order, shows a gem where the interpreter has a wall; a piece lost, or written after
+  # its blank ended, shows a wall where it has a gem.
+  def test_a_full_queue_of_cells_behind_a_map_lands_once_in_order
+    (33..38).each do |rows|
+      program = cells_behind_map(rows)
+      press = ->(frame) { frame == 3 ? [:a] : [] }
+      SNES::CheckedRun.new.input_each_frame(&press).run(program, frames: 8)
+      run = SNES::HeadlessRun.new(watch_picture: true).input_each_frame(&press).run(program, frames: 8)
+
+      assert_empty run.black_frames, "a map of #{rows} rows"
+    end
+  end
+
+  # The game: on A, a map 64 cells across and +rows+ down onto the background behind, then a full
+  # queue of cells on the one in front.
+  private def cells_behind_map(rows)
+    program_of do
+      screen :tiled
+      image(:wall, "#" => :gray) { "########\n" * 8 }
+      image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+      tiles :set, "#" => :wall, "g" => :gem
+      far = background :far, tiles: :set, map: { walls: "#{'#' * 64}\n" * rows, gems: "#{'g#' * 32}\n" * rows }
+      room = background :room, tiles: :set, map: "#{'#' * 32}\n" * 32
+      i = 0
+      game_loop do
+        if pressed(:a)
+          far.show_map 1
+          i = 0
+          repeat(VBlank::IR::Backends::SNES::Runtime::Picture::MOST_CELLS - 64) do
+            room.set_tile i % 24, i / 24, "g"
+            i += 1
+          end
+          i = 0
+          repeat(64) do
+            room.set_tile i % 24, i / 24, "#"
+            i += 1
+          end
+        end
+      end
+    end
   end
 
   # A status bar shows from its top row to the bottom of the screen, over a field that scrolls under

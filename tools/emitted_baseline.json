@@ -78,7 +78,7 @@
       "data": 880
     },
     "everywhere@snes": {
-      "code": 6276,
+      "code": 6317,
       "data": 2574
     },
     "floating_digits": {
@@ -98,7 +98,7 @@
       "data": 4736
     },
     "flowers@snes": {
-      "code": 5529,
+      "code": 5570,
       "data": 2832
     },
     "font_styles": {
@@ -138,7 +138,7 @@
       "data": 0
     },
     "hero@snes": {
-      "code": 55172,
+      "code": 55213,
       "data": 13824
     },
     "jukebox": {
@@ -150,7 +150,7 @@
       "data": 0
     },
     "lake@snes": {
-      "code": 6129,
+      "code": 6170,
       "data": 5636
     },
     "level": {
@@ -162,7 +162,7 @@
       "data": 2404
     },
     "level@snes": {
-      "code": 7931,
+      "code": 7972,
       "data": 3977
     },
     "lit_corridor": {
@@ -182,7 +182,7 @@
       "data": 2108
     },
     "maze@snes": {
-      "code": 6418,
+      "code": 6459,
       "data": 3322
     },
     "meadow": {
@@ -202,7 +202,7 @@
       "data": 15360
     },
     "pacman@snes": {
-      "code": 15423,
+      "code": 15464,
       "data": 7330
     },
     "panorama": {
@@ -218,7 +218,7 @@
       "data": 4448
     },
     "parallax@snes": {
-      "code": 4596,
+      "code": 4637,
       "data": 4829
     },
     "piano": {
@@ -270,7 +270,7 @@
       "data": 7600
     },
     "scoreboard@snes": {
-      "code": 5396,
+      "code": 5437,
       "data": 4908
     },
     "scroll": {
@@ -282,7 +282,7 @@
       "data": 8472
     },
     "scroll@snes": {
-      "code": 4565,
+      "code": 4606,
       "data": 8851
     },
     "sheet": {
@@ -290,7 +290,7 @@
       "data": 0
     },
     "sheet@snes": {
-      "code": 7931,
+      "code": 7972,
       "data": 3977
     },
     "shmup": {
@@ -338,7 +338,7 @@
       "data": 2776
     },
     "tiles@snes": {
-      "code": 4705,
+      "code": 4746,
       "data": 6855
     },
     "tower": {
@@ -354,7 +354,7 @@
       "data": 3740
     },
     "tower@snes": {
-      "code": 11618,
+      "code": 11659,
       "data": 8091
     },
     "two_rooms": {
@@ -382,7 +382,7 @@
       "data": 9664
     },
     "wanderers@snes": {
-      "code": 10363,
+      "code": 10404,
       "data": 3297
     }
   }

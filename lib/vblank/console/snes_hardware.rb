@@ -169,11 +169,13 @@ module VBlank
       DASH = 0x6
 
       # DMAP's ways of copying: to one port each byte, to two ports by turns (VMDATAL and VMDATAH),
-      # to one port written twice in a row (CGDATA, OAMDATA); and the source left where it is
-      # (a fill from one byte) rather than moving on.
+      # to one port written twice in a row (CGDATA, OAMDATA), to four ports one after another
+      # (VMADDL, VMADDH, VMDATAL, VMDATAH: an address and its word); and the source left where it
+      # is (a fill from one byte) rather than moving on.
       DMA_TO_ONE_PORT = 0x00
       DMA_TO_TWO_PORTS = 0x01
       DMA_TO_ONE_PORT_TWICE = 0x02
+      DMA_TO_FOUR_PORTS = 0x04
       DMA_FIXED_SOURCE = 0x08
 
       # --- flags ---

@@ -118,10 +118,15 @@ module VBlank
             LAYER_SCROLL_Y = 14
             LAYER_STATE_BYTES = 16
             # Cells changed since the last blank: how many, then each its video RAM address and word
-            # (a table, so right after the count unless the build put the tables far).
+            # (a table, so right after the count unless the build put the tables far). Must stay in
+            # that order, address then word: the blank copies the entries straight to VMADD and
+            # VMDATA (#emit_cells_upload).
             CELLS = "rt cells"
             CELL_ENTRIES = "rt cell entries"
             MOST_CELLS = 256
+            # The most of the queue sent on one look at the line: 64 cells, two lines of the copying
+            # engine's time with its setting up, inside the lines Blank::LINES_FOR_CELLS keeps.
+            CELL_PIECE_BYTES = 256
             # The most of a map copied at once: a quarter of a 64×64 map, half of what a blank holds.
             MAP_PIECE = 2048
             # A status bar's top row, its layer, whether either changed since the last blank, and the
@@ -1585,12 +1590,73 @@ module VBlank
               end
             end
 
+            # The cells changed, sent by the copying engine. Each entry of the queue is a cell's
+            # address in video memory and then its word, four bytes laid out as the four ports
+            # VMADDL, VMADDH, VMDATAL and VMDATAH are, so the engine told to write four ports one
+            # after another (DMAP's transfer mode 4, DMA_TO_FOUR_PORTS) sets the address and writes
+            # the word for every cell of the queue in one copy (fullsnes, "SNES DMA and HDMA",
+            # transfer modes, and "SNES PPU Video Memory"). A cell costs the engine four bytes at
+            # eight clocks each, and the processor's work is the setting up of each piece's copy,
+            # the same however many cells the piece holds.
+            #
+            # Behind a map put up first, the cells can find the blank too short and wait for the
+            # next, so they go before the colours: a frame between shows some of the cells in the old
+            # colours, which is the pass's change arriving, and never the new colours over an old
+            # cell. They go CELL_PIECE_BYTES at a time, each when
+            # the blank has the lines left for it (Blank's rt_blank_time_for_cells). +work+'s first
+            # word holds the bytes still to send, its second this piece's.
+            def emit_cells_upload(asm, memory, work)
+              h = Console::SNESHardware
+              left = asm.direct(work)
+              piece = asm.direct(work + 2)
+              asm.lda(asm.abs(memory[CELLS]))
+              asm.beq("rt_upload_cells_done")
+              asm.asl # four bytes a cell
+              asm.asl
+              asm.sta(left)
+              asm.ldx(0)
+              asm.label("rt_upload_cell_piece")
+              asm.jsr(asm.abs("rt_blank_time_for_cells"))
+              asm.lda(left)
+              asm.cmp(CELL_PIECE_BYTES)
+              asm.bcc("rt_upload_cell_piece_bytes")
+              asm.lda(CELL_PIECE_BYTES)
+              asm.label("rt_upload_cell_piece_bytes")
+              asm.sta(piece)
+              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              asm.txa
+              asm.clc
+              asm.adc(memory[CELL_ENTRIES] & 0xFFFF) # the table is whole in one bank, so this never carries
+              asm.sta(asm.abs(h::DMA_BASE + h::A1TL))
+              asm.sep(0x20)
+              asm.lda(memory[CELL_ENTRIES] >> 16)
+              asm.sta(asm.abs(h::DMA_BASE + h::A1B))
+              asm.lda(h::DMA_TO_FOUR_PORTS)
+              asm.sta(asm.abs(h::DMA_BASE + h::DMAP))
+              asm.lda(h::VMADDL & 0xFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::BBAD))
+              asm.lda(1)
+              asm.sta(asm.abs(h::MDMAEN))
+              asm.rep(0x20)
+              asm.txa
+              asm.clc
+              asm.adc(piece)
+              asm.tax
+              asm.lda(left)
+              asm.sec
+              asm.sbc(piece)
+              asm.sta(left)
+              asm.bne("rt_upload_cell_piece")
+              asm.stz(asm.abs(memory[CELLS]))
+              asm.label("rt_upload_cells_done")
+            end
+
             # The copy in the blank, with the screen on (Blank says how). A map put up goes first, a
             # piece of MAP_PIECE bytes at a time as the blanks have room, with the old picture still
-            # up; then, together in one blank, the sprite table, the colours, each layer's map
-            # register and its scroll; then the cells changed, each when the blank has a line left
-            # for it. A painted screen's copy is Paint's rt_paint_upload. With the screen still off,
-            # before the first pass is shown, everything goes at once.
+            # up; then the cells changed (#emit_cells_upload); then, together in one blank, the sprite
+            # table, the colours, each layer's map register and its scroll. A painted screen's copy
+            # is Paint's rt_paint_upload. With the screen still off, before the first pass is shown,
+            # everything goes at once.
             def emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns = false, scene_bars = false, held_runs = {},
                             third_layer = false, held_hides_sprites = false)
               h = Console::SNESHardware
@@ -1663,32 +1729,7 @@ module VBlank
               emit_scene_tiles_upload(asm, memory, work) if memory.reserved?(SCENE_TILES)
               emit_tile_run_upload(asm, memory, work, tile_runs, held_runs)
 
-              # The cells changed, each a word at its address. Many take more than a blank, so they
-              # go before the colours: a frame between shows some of the cells in the old colours,
-              # which is the pass's change arriving, and never the new colours over an old cell.
-              #
-              # Asking the line takes as long as writing the cell, so it is asked once for each
-              # eight cells, which is what a blast of twenty cells does not have time to pay for.
-              asm.ldx(0)
-              asm.label("rt_upload_cell")
-              asm.lda(asm.abs(memory[CELLS]))
-              asm.beq("rt_upload_cells_done")
-              asm.txa
-              asm.and_a((Blank::CELLS_A_LOOK - 1) * 4)
-              asm.bne("rt_upload_cell_in_time")
-              asm.jsr(asm.abs("rt_blank_time_for_cells"))
-              asm.label("rt_upload_cell_in_time")
-              asm.dec(asm.abs(memory[CELLS]))
-              asm.lda(memory.indexed(asm, CELL_ENTRIES))
-              asm.sta(asm.abs(h::VMADDL))
-              asm.lda(memory.indexed(asm, CELL_ENTRIES, 2))
-              asm.sta(asm.abs(h::VMDATAL))
-              asm.inx
-              asm.inx
-              asm.inx
-              asm.inx
-              asm.bra("rt_upload_cell")
-              asm.label("rt_upload_cells_done")
+              emit_cells_upload(asm, memory, work)
 
               # Together: the sprite table whole, the colours if a fade or a tint moved them, and
               # each layer's map register, for a map just put up, and scroll.
