@@ -482,11 +482,13 @@ class TestRowBend < Minitest::Test
       tiles :stripes, "#" => :bar
       top_saw = var :top_saw, -1
       next_saw = var :next_saw, -1
-      sea_rows = []
+      # The sea's row, kept while building. An Array of a slot that is never a number stays
+      # Ruby's; one game code pushes onto would be a list the game keeps.
+      sea_rows = [nil]
       scene(:sea) do
         sea = background :sea, tiles: :stripes, map: Array.new(20) { "#" * 30 }
         sea.scroll_each_row do |row|
-          sea_rows << row
+          sea_rows[0] = row
           0
         end
       end
