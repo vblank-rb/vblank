@@ -85,22 +85,20 @@ module PackStandInSizeTests
   # needs that is the same for all of its pixels (its record, its tile of places, its table in the
   # set of colours drawn now) is worked out once, and a pixel is then a read of its place and a read
   # of its colour. A room scrolling every pass is drawn again every pass; every row of the screen
-  # crosses at most TILES_A_SCREEN_ROW tiles. Counted by the runtime (drawn-tiles-set-up), exact
-  # where a time is not.
+  # crosses at most the tiles of its width and one cut at each edge, on the screen of the console
+  # the run plays as. Counted by the runtime (drawn-tiles-set-up), exact where a time is not.
   def test_a_tile_as_drawn_is_set_up_once_for_each_row_of_it_drawn
     run = Dir.mktmpdir do |folder|
       program, file = Rooms.new.scrolling_room_and_file(folder, 40, 30)
       headless_run.hand_file(file).run(program_played(program), frames: 12)
     end
+    screen = VBlank::Console.described(game_console)
+    tiles_a_row = (screen.screen_width / 8) + 2
 
     assert_operator run.drawn_tiles_set_up, :>, 0, "tiles as drawn set up"
-    assert_operator run.drawn_tiles_set_up, :<=, run.repaints_painted * SCREEN_ROWS * TILES_A_SCREEN_ROW,
-                    "tiles as drawn set up over #{run.repaints_painted} repaints"
+    assert_operator run.drawn_tiles_set_up, :<=, run.repaints_painted * screen.screen_height * tiles_a_row,
+                    "tiles as drawn set up over #{run.repaints_painted} repaints of #{screen.screen_width}x#{screen.screen_height}"
   end
-
-  # The rows of the screen, and the most tiles one crosses: thirty whole ones and one cut at each edge.
-  SCREEN_ROWS = 160
-  TILES_A_SCREEN_ROW = (240 / 8) + 2
 
   # A map naming more different tiles as drawn than a cell can number stops the game as it starts, in
   # plain words saying to build all-in-one. Which tiles a map names is in the player's file, which the
