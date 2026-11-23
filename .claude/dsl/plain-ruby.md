@@ -4,6 +4,12 @@ How a game's code is written. The map of every page is `.claude/rules/dsl-refere
 Worked examples: `test/all/vblank/dsl/test_plain_ruby.rb` (what works) and
 `test/all/vblank/dsl/test_plain_ruby_refusals.rb` (what is refused, and what to write instead).
 
+**`PLAIN_RUBY.md` at the repository's root is the published account of this page**, for game
+authors, shown on the docs site. Any change to how plain Ruby works in a game, in this page or in
+the code, updates `PLAIN_RUBY.md` in the same commit, so the two never disagree.
+`test/all/vblank/test_plain_ruby_guide.rb` builds every example in it and checks each refusal's
+quoted words.
+
 A game is written in ordinary Ruby: locals, `=` and `+=`, `if` and `case`, `&&` and `||`, methods of
 its own. The verbs on the other pages (`sprite`, `draw_text`, `pressed` …) are called from that Ruby.
 Nothing else is needed, and **nothing else should be reached for**: where plain Ruby does not do what

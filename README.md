@@ -6,7 +6,7 @@
 
 > Six of the [examples](examples/), each a real Game Boy Advance cartridge running in an emulator.
 
-You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. It draws with tiles, sprites, layers and a painted screen, and shows places in 3D.
+You write Ruby: locals, `if`, loops, Arrays and classes of your own, as [Plain Ruby in a game](PLAIN_RUBY.md) tells. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. It draws with tiles, sprites, layers and a painted screen, and shows places in 3D.
 
 It is made for somebody who knows Ruby and has never touched an old console. You name colours, not palettes; you say `sprite` and `blit`, not OAM and DMA. A verb is plain to call, and takes settings that make it cheaper when a game on a small machine needs them.
 

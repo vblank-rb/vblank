@@ -25,7 +25,7 @@ number the game keeps works too.
 
 **Writing a game**
 
-- `plain-ruby.md` — game code: variables, tests, loops, what is refused, what builds and means something else.
+- `plain-ruby.md` — game code: variables, tests, loops, Arrays, what is refused, what builds and means something else. Its published account for game authors is PLAIN_RUBY.md at the root: a change to plain Ruby, in that page or the code, updates PLAIN_RUBY.md in the same commit.
 - `variables.md` — numbers and fractions, arithmetic and bits, saves (`save_var`, `save_data`), `part` and `start_over`.
 - `control-flow.md` — `game_loop`, `repeat`, `every`/`after`, `once_a_frame`, `each_pass`, timers.
 - `scenes.md` — `func` and `call`, `scene`, game states.
