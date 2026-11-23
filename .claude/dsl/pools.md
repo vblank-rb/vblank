@@ -13,7 +13,11 @@ verb here; the entries after it tell each one in full.
   `sparks = Array.new(capacity: 32)`, then `sparks << Spark.new(x, 0, 1.5)`, `sparks.each { |s| s.y += s.vy }`,
   `sparks.delete_if { |s| s.y > 160 }` and `sparks.shift if sparks.size == 32` for a full one.
   `drawn_as :spark, layer: :swimmers` puts each in a layer, and `drawn_as facing: { right: :fish }`
-  faces left as that picture mirrored. That
+  faces left as that picture mirrored. `sparks.sort_by! { |s| -s.y }` puts the walk order (and so
+  the drawing order) in order of a field: the live slots are gathered, sorted by the field's list
+  (the `list_sort` step draw order uses) and the order linked again, one routine per line, named
+  in `rom.profile`. A key of several fields (`{ |s| [s.y, -s.x] }`, a `SortOrder::Key`) is one
+  `list_sort` for each field, the last first, since `list_sort` keeps level slots in order. That
   builds the `pool` below, and everything here holds for it; `plain-ruby.md` ("Arrays") names each
   Array verb and what it is in pool terms. The `pool` verb stays, as what the Array is built as.
 

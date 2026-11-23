@@ -147,7 +147,7 @@ class TestStructArray < Minitest::Test
   def test_a_struct_the_game_block_makes_is_its_own_on_every_build
     original = $stderr
     $stderr = StringIO.new
-    falls = 2.times.map do
+    falls = Array.new(2) do
       player = game_player
       player.run(OwnStructGames::FALLING.program(console: VBlank::Testing.console), frames: 3)
       player.pool(:sparks, :y).compact
@@ -434,12 +434,109 @@ class TestStructArray < Minitest::Test
         sparks = Array.new(capacity: 4)
         game_loop do
           sparks << Spark.new(1, 2, 3)
-          sparks.sort_by!(&:x)
+          sparks.rotate!
         end
       end
     end
 
-    assert_match(/does not answer `sort_by!`/, error.message)
+    assert_match(/does not answer `rotate!`/, error.message)
+  end
+
+  # Four sparks put in out of order, sorted each pass by y: the smallest first, the biggest first
+  # by minus the field, and the biggest first with `reverse!`. The walk after the sort reads them
+  # in that order. Two have the same y, and keep the order they were put in.
+  def test_sort_by_puts_the_things_in_order_of_a_field_as_ruby_does
+    player = played(frames: 2) do
+      up = Array.new(capacity: 4)
+      down = Array.new(capacity: 4)
+      turned = Array.new(capacity: 4)
+      first_up = 0
+      first_down = 0
+      first_turned = 0
+      second_up = 0
+      started = 0
+      game_loop do
+        if started == 0
+          [[1, 30], [2, 10], [3, 40], [4, 10]].each do |x, y|
+            up << Spark.new(x, y, 0)
+            down << Spark.new(x, y, 0)
+            turned << Spark.new(x, y, 0)
+          end
+          started = 1
+        end
+        up.sort_by! { |s| s.y }
+        down.sort_by! { |s| -s.y }
+        turned.sort_by!(&:y).reverse!
+        first_up = 0
+        second_up = 0
+        up.each_with_index do |s, at|
+          first_up = s.x if at == 0
+          second_up = s.x if at == 1
+        end
+        first_down = 0
+        down.each { |s| first_down = s.x if first_down == 0 }
+        first_turned = 0
+        turned.each { |s| first_turned = s.x if first_turned == 0 }
+      end
+    end
+
+    assert_equal [2, 4, 3, 3], %i[first_up second_up first_down first_turned].map { |name| player[name] }
+  end
+
+  def test_sort_by_on_an_empty_array_leaves_it_empty
+    player = played(frames: 2) do
+      sparks = Array.new(capacity: 4)
+      many = -1
+      game_loop do
+        sparks << Spark.new(1, 2, 3) if many > 5 # never: the Array stays empty
+        sparks.sort_by! { |s| s.y }
+        many = sparks.size
+      end
+    end
+
+    assert_equal 0, player[:many]
+  end
+
+  def test_sort_by_in_a_walk_of_the_same_array_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        sparks = Array.new(capacity: 4)
+        game_loop do
+          sparks << Spark.new(1, 2, 3)
+          sparks.each { |_s| sparks.sort_by!(&:y) }
+        end
+      end
+    end
+
+    assert_match(/after the walk ends/, error.message)
+  end
+
+  def test_sort_by_a_block_that_is_not_one_field_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        sparks = Array.new(capacity: 4)
+        game_loop do
+          sparks << Spark.new(1, 2, 3)
+          sparks.sort_by! { |s| s.x + s.y }
+        end
+      end
+    end
+
+    assert_match(/sorts by one number/, error.message)
+  end
+
+  def test_sort_with_no_field_is_refused_naming_sort_by
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        sparks = Array.new(capacity: 4)
+        game_loop do
+          sparks << Spark.new(1, 2, 3)
+          sparks.sort!
+        end
+      end
+    end
+
+    assert_match(/`sort_by!`/, error.message)
   end
 
   def test_drawn_as_on_a_struct_with_no_place_is_refused

@@ -33,8 +33,8 @@ module VBlank
     # adds nothing on `<<`; to make room for a new one, `shift` the oldest first.
     class StructArray
       # The Array methods an Array of Structs answers.
-      VERBS = %i[<< push append shift clear each reverse_each each_with_index delete_if reject! size length
-                 count empty? any?].freeze
+      VERBS = %i[<< push append shift clear each reverse_each each_with_index delete_if reject! sort_by! reverse!
+                 size length count empty? any?].freeze
 
       # The settings `Array.new` takes for one: how many, and where it is kept.
       SETTINGS = %i[fast].freeze
@@ -154,6 +154,52 @@ module VBlank
         counted
       end
 
+      # Puts the things in order by one of their fields, the smallest first, `{ |s| s.y }`, or
+      # the biggest first, `{ |s| -s.y }`, as Ruby's `sort_by!` does. An Array of fields sorts by
+      # the first, and each field after it breaks the ties of those before: `{ |s| [s.y, -s.x] }`.
+      # What changes is the order they are walked in, and so the order they are drawn in: the
+      # one walked first is drawn in front. Things that are level keep the order they had.
+      #
+      # ```ruby
+      # sparks.sort_by! { |s| -s.y }
+      # ```
+      #--
+      # One routine for each line that sorts (Pool#declare_sort), so `rom.profile` names the line
+      # and what it costs.
+      #++
+      def sort_by!(&block)
+        refuse_sort_in_walk!
+        probe = walked(Pool::Instance.new(@pool, Value.new(@builder, IR::Build.int(0))))
+        sort_by_key!(SortOrder.key_from(probe, block) { |node| field_sorted_by(node) })
+      end
+
+      # Puts the things in the order +key+ (SortOrder::Key) gives, with the routine for +line+:
+      # what `sort_by!` does with the key its block gives, and what a Struct's own order does.
+      def sort_by_key!(key, line: SortOrder.author_line) # :nodoc:
+        refuse_sort_in_walk!
+        sort_routines.call(key, line)
+        self
+      end
+
+      # Turns the things round. Written right after `sort_by!`, it makes that sort put the
+      # biggest first, at no cost of its own.
+      def reverse!
+        sort_routines.reverse_last!(@local)
+        self
+      end
+
+      # A Struct has no order of its own: refused, naming `sort_by!`.
+      def sort!(*)
+        PlainRuby::Steps.refuse_game_code!("`#{@local}` holds #{kind_name} things, which have no order of their own. " \
+                                           "To fix this, sort by one of their fields with `sort_by!`: " \
+                                           "`#{@local}.sort_by! { |s| s.y }`.")
+      end
+
+      # `sort` and `sort_by` make a new Array, which a console has no room for: refused, naming the
+      # `!` method.
+      def sort(*) = SortOrder.refuse_new_array!(@local, :sort)
+      def sort_by(*) = SortOrder.refuse_new_array!(@local, :sort_by) # :nodoc:
+
       # A test that holds while there are none.
       def empty? = size == 0
 
@@ -192,6 +238,33 @@ module VBlank
       def respond_to_missing?(name, include_private = false) = ![].respond_to?(name) && super
 
       private
+
+      # The routines that sort this Array, each relinking its walk order (Pool#declare_sort).
+      def sort_routines
+        @sort_routines ||= SortOrder::Routines.new(@builder, @pool.name) { |name, key| @pool.declare_sort(name, key) }
+      end
+
+      # The field whose list +node+ reads, or nil: what `sort_by!`'s block gave.
+      def field_sorted_by(node)
+        return nil unless node.kind == :list_get
+
+        @kind.members.find { |member| @pool.field_list(member) == node.name }
+      end
+
+      # A sort in a walk of this Array, or in a routine a walk may call (as #shift asks), would
+      # relink the chain the walk is following, and slots the walk took out but has not freed.
+      def refuse_sort_in_walk!
+        if @walks_open.positive?
+          PlainRuby::Steps.refuse_game_code!("This line sorts `#{@local}` while a walk of it is under way, and the " \
+                                             "walk would lose its place. To fix this, sort `#{@local}` after the " \
+                                             "walk ends.")
+        end
+        return unless @builder.building_callable_routine?
+
+        PlainRuby::Steps.refuse_game_code!("This line sorts `#{@local}` in a routine. A walk of `#{@local}` can call " \
+                                           "the routine, and then the walk would lose its place. To fix this, sort " \
+                                           "`#{@local}` outside the routine, after the walk ends.")
+      end
 
       # The pool's walk, counted while its block is built, so a `shift` written in it is known to
       # run during a walk (#shift).

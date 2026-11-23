@@ -779,6 +779,39 @@ module VBlank
 
       public
 
+      # The routine +name+, made from the statements the block gives the first time it is asked
+      # for, and left as it is after. Pool#declare_sort makes one for each line that sorts.
+      #
+      # The statements are made when the routine's body is built, at the end of the build, so a
+      # routine taken back before then (#forget_routine) never makes them.
+      def declare_routine_once(name, &statements) # :nodoc:
+        return if @functions.key?(name)
+
+        builder = self
+        func(name) { statements.call.each { |node| builder.record_statement(node) } } # rubocop:disable Performance/RedundantBlockCall
+      end
+
+      # Takes back the routine +name+, declared by #declare_routine_once and called by nothing now.
+      def forget_routine(name) # :nodoc:
+        @functions.delete(name)
+        @routine_screens&.delete(name)
+      end
+
+      # The list Pool#declare_sort gathers +pool+'s live slots into, and the two variables it works
+      # in, made the first time any line sorts the pool. A slot is below the capacity, so the list
+      # is as narrow as that allows.
+      def declare_pool_sort_storage(pool) # :nodoc:
+        return unless (@pools_with_sort_storage ||= Set.new).add?(pool.name)
+
+        capacity = pool.capacity
+        width = if capacity <= 128 then :byte
+                elsif capacity <= 32_768 then :half
+                else :word
+                end
+        at_boot(Build.list_new(pool.sort_list, capacity, width: width, fast: pool.fast))
+        [pool.sort_slot_var, pool.sort_index_var].each { |var| ensure_var(var) }
+      end
+
       # The pool as power-on leaves it, as statements run where they are recorded: every list
       # of it emptied and filled again the way #setup_pool_storage fills it, and its counters
       # back at nought. A save_data record's `reset` runs this for a pool it keeps, since

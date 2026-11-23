@@ -115,6 +115,10 @@ module VBlank
           # given `<<`, `push`, `[]=` and the like (Arrays.put_values).
           def array_puts = (@array_puts ||= [])
 
+          # Every value put into it with `<<`, `push` or `append`, while building or in game code:
+          # what the things of an Array of Structs are read from (LocalNames#game_array_things_made).
+          def building_puts = (@building_puts ||= [])
+
           # A parameter of a Ruby loop over something written out (`SIDES.each do |side|`), which
           # holds a value known while building.
           attr_accessor :iteration_parameter
@@ -295,7 +299,8 @@ module VBlank
         # The things game code puts into the game Array +node+ names that are made from a class
         # written out, `Spark.new(...)` or `Spark[...]`: what makes it an Array of Structs.
         def game_array_things_made(node)
-          puts = @locals_by_node[node]&.array_puts || []
+          local = @locals_by_node[node]
+          puts = local ? (local.array_puts + local.building_puts) : []
           puts.flat_map { |put| things_made_by(put) }.uniq.sort_by { |put| put.location.start_offset }
         end
 
@@ -349,7 +354,9 @@ module VBlank
           seen << local
           if local.walked_from
             walked = @locals_by_node[local.walked_from]
-            return walked ? walked.array_puts.flat_map { |each_put| things_made_by(each_put, seen) } : []
+            return [] unless walked
+
+            return (walked.array_puts + walked.building_puts).flat_map { |each_put| things_made_by(each_put, seen) }
           end
           local.writes.flat_map { |write| write.node.respond_to?(:value) ? things_made_by(write.node.value, seen) : [] }
         end
@@ -914,9 +921,10 @@ module VBlank
         # building, so it is the game's only where it puts in a value the build cannot know then.
         def note_array_change(node, in_game_code)
           verb = node.is_a?(Prism::IndexOperatorWriteNode) ? :[]= : node.name
-          return unless (in_game_code || @iterating_in_game_code) && Arrays::CHANGING_VERBS.include?(verb)
-
           local = node.receiver.is_a?(Prism::LocalVariableReadNode) && @locals_by_node[node.receiver]
+          # What is put in while building tells what the Array holds as well as a put in game code.
+          local.building_puts.concat(Arrays.put_values(node)) if local && Arrays::GROWING_VERBS.include?(verb)
+          return unless (in_game_code || @iterating_in_game_code) && Arrays::CHANGING_VERBS.include?(verb)
           return unless local
 
           puts = Arrays.put_values(node)

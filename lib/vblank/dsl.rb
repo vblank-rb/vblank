@@ -32,6 +32,7 @@ require_relative "dsl/plain_ruby_struct_methods"  # A Struct's methods, read as 
 VBlank.require_game_file "dsl/bounds"
 VBlank.require_game_file "dsl/pixel_bounds"
 require_relative "dsl/box"
+require_relative "dsl/sort_order"   # Which way a game's sort! or sort_by! puts an Array
 require_relative "dsl/list"
 require_relative "dsl/save_data"
 require_relative "dsl/random_numbers"      # The random-number stream, for a save_data record to keep

@@ -201,6 +201,16 @@ module VBlank
                              words: lambda do |parts|
                                "putting the sprites of draw_in_order ##{parts[:number]} in order" if parts[:part] == "sort"
                              end),
+        # The routine one `sort!` or `sort_by!` line of a game sorts its Array by, named for the
+        # Array and the line, so a profile lists each line with its cost.
+        # +order+ spells the whole key, each field and its way (`y_up_x_down`, or `item_down` for
+        # an Array of numbers), so two sorts on one line by different keys are two routines.
+        array_sort: Kind.new(spelling: "__sort_%{array}__line_%{line}__by_%{order}",
+                             parts: { array: POOL, line: "\\d+", order: "(?:_?[^_])+_(?:up|down)" },
+                             words: lambda do |parts|
+                               "sorting `#{parts[:array]}` at line #{parts[:line].to_i} (sort when it changes, or put a " \
+                                 "new item in its place, if sorting it each frame costs too much)"
+                             end),
         see_through_amounts: Kind.new(spelling: "__see_through_%{layer}", parts: { layer: ANY },
                                       words: ->(parts) { "telling the display how see-through layer :#{parts[:layer]} is" }),
         # A place's tables and lists, the variables its drawing works in, and the routine that

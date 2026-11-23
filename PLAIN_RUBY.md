@@ -158,6 +158,20 @@ Using the dropped item keeps it in a hidden number: one word of quick memory, an
 
 `sum`, `min`, `max` and `include?` look at every item each time they run, so they cost more the more items the list holds. `min` and `max` of an empty list are 0, which is how Ruby's nil reads as a game number.
 
+`sort!` puts the items in order, the smallest first, as Ruby's does. `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` put the biggest first. Items that are level keep their order. A sort moves items back one at a time, so it costs little for a list that is nearly in order and more the more items move. `rom.profile` lists each line that sorts and what it costs. For the smallest item alone, `min` costs less. For a list that rarely changes, sort it when it changes, not on every pass. `sort` and `sort_by`, which make a new Array, are refused: write `sort!`.
+
+```ruby
+screen :bitmap
+scores = Array.new(5, 0)
+t = 0
+game_loop do
+  t += 1
+  scores[t % 5] = (t * 37) % 100
+  scores.sort! { |a, b| b <=> a }
+  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
+end
+```
+
 ```ruby
 screen :bitmap
 scores = Array.new(capacity: 8)
@@ -231,7 +245,7 @@ Each limit, with what to write instead. Where a limit is refused, VBlank says so
 - Its size and capacity must be known while the game is built (refused otherwise): use a number or a constant, never a number the game works out.
 - A whole number the game works out and a fraction cannot go into the same Array (refused, naming both lines): write `.to_f` on the whole number.
 - It cannot hold Arrays or Hashes (refused): keep one Array for each row, or use a `pool`.
-- `unshift`, `insert`, `concat`, `sort!`, `map` and the other Ruby methods a list does not have are refused by name: use the verbs above, or a `while` loop over the items.
+- `unshift`, `insert`, `concat`, `rotate!`, `map` and the other Ruby methods a list does not have are refused by name: use the verbs above, or a `while` loop over the items.
 - `Array.new` takes only `capacity:`, `width:` and `fast:` besides Ruby's size and start (refused otherwise).
 - A named instance variable's Array read at an index the game works out is a list only when the read is written `@counts[which]`, in the class, in the class reopened, or in a class made from it. The file does not matter. A read through another object (`part.counts[which]`) is refused: read it in a method of that class, and call the method.
 
@@ -262,11 +276,12 @@ end
 - `<<`, `push` and `append` put a thing in; `shift` takes out the oldest and `clear` all of them; `delete_if` and `reject!` take out those the block's test holds for.
 - `each` walks them oldest first, `reverse_each` newest first, and `each_with_index` hands the place in the walk too. `size`, `length`, `count`, `empty?` and `any?` count them.
 - On a tiled screen, `drawn_as :spark` in the Struct's block shows each thing as a sprite at its `x` and `y`, and `drawn_as facing: {...}, frames: [...], rate: 8` takes what a sprite takes. Name only the picture facing right, and facing left is that picture mirrored. `layer: :swimmers` stands each thing in that layer. A thing in a walk answers `face`, `draw_with`, `move`, `overlaps?`, its edges and the screen-edge tests, as a sprite does.
+- `sort_by! { |s| s.y }` puts them in order by one field, the smallest first, and `sort_by! { |s| -s.y }` or `sort_by!(&:y).reverse!` the biggest first. `sort_by! { |s| [s.y, -s.x] }` sorts by `y`, and where two have the same `y`, by `x` the biggest first. It changes the order they are walked in, and so drawn in. A sort inside a walk of the same Array is refused: sort after the walk. `sort!` is refused, since a Struct has no order of its own.
 - Two things compare as Structs do: `a == b` when every field is equal, `a.equal?(b)` when they are the same thing. A thing kept in a name after its walk (`pick = s if s.x == 10`) is still that thing.
 - `narrow :x, :y` in the Struct's block keeps each of those fields in half a word, and `narrow kind: :byte` in a byte, for a big Array.
 - A field holds fractions where a line puts one in: `Spark.new(x, 0.0, 1.5)`, or `s.vy = 0.5` in a walk.
 - A part keeps one in an instance variable the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class.
-- `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change, and so are Ruby's Array methods a pool has no meaning for (`sort_by!`, `map`), by name.
+- `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change, and so are Ruby's Array methods it has no meaning for (`rotate!`, `map`), by name.
 - A full Array adds nothing on `<<`: `shift` first to make room, as above.
 
 ## Changing a variable
@@ -574,7 +589,7 @@ game_loop do
 end
 ```
 
-A Ruby Array method a list has no meaning for, such as `sort!` or `map`, is refused by name, with the list of those that work.
+A Ruby Array method a list has no meaning for, such as `rotate!` or `map`, is refused by name, with the list of those that work.
 
 Refused:
 
@@ -582,14 +597,14 @@ Refused:
 screen :bitmap
 marks = [3, 1, 4]
 game_loop do
-  marks.sort!
+  marks.rotate!
 end
 ```
 
 VBlank says:
 
 ```
-`sort!` is a method of a Ruby Array, and a list the game keeps does not have it.
+`rotate!` is a method of a Ruby Array, and a list the game keeps does not have it.
 ```
 
 Write instead:
@@ -598,7 +613,10 @@ Write instead:
 screen :bitmap
 marks = [3, 1, 4]
 game_loop do
-  marks[0] = marks[1] if marks[1] < marks[0]
+  front = marks[0]
+  marks[0] = marks[1]
+  marks[1] = marks[2]
+  marks[2] = front
 end
 ```
 

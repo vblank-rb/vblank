@@ -254,6 +254,54 @@ module VBlank
         @builder.repeat(length) { |index| block.call(list[index]) } # rubocop:disable Performance/RedundantBlockCall
       end
 
+      # Puts the items in order, the smallest first, as Ruby's `sort!` does. With a block
+      # comparing the two the other way round, `{ |a, b| b <=> a }`, the biggest first. Items
+      # that are level keep the order they were in.
+      #
+      # ```ruby
+      # scores.sort! { |a, b| b <=> a }
+      # ```
+      #--
+      # An insertion sort, done in place: each item in turn is moved back past the bigger ones
+      # before it. On the few dozen items a game sorts it does the fewest moves of the simple
+      # sorts, needs no room of its own, and does almost nothing for a list already nearly in
+      # order, which is what a list sorted every frame usually is. Each line that sorts has a
+      # routine of its own (Messages::MadeNames `array_sort`), so `rom.profile` names the line
+      # and what it costs.
+      #++
+      def sort!(&block)
+        sort_routines.call(SortOrder.item_key(block ? SortOrder.descending_by_comparison?(block) : false),
+                           SortOrder.author_line)
+        self
+      end
+
+      # Puts the items in order by what the block gives for each: the item itself, `{ |n| n }`, is
+      # the smallest first, and minus the item, `{ |n| -n }`, the biggest first.
+      def sort_by!(&block)
+        probe = Value.new(@builder, Build.var_ref(SORT_KEY_PROBE))
+        key = SortOrder.key_from(probe, block) { |node| :item if node.kind == :var_ref && node.name == SORT_KEY_PROBE }
+        SortOrder.refuse_unknown_key! unless key.fields.size == 1
+        sort_routines.call(key, SortOrder.author_line)
+        self
+      end
+
+      # What `sort_by!`'s block is handed while building, to read which way it sorts. Never
+      # recorded, so no variable of this name is made.
+      SORT_KEY_PROBE = :__sort_key_probe # :nodoc:
+
+      # `sort` makes a new Array, which a console has no room for: refused, naming `sort!`.
+      def sort(*) = SortOrder.refuse_new_array!(@name, :sort)
+
+      # `sort_by` the same way, naming `sort_by!`.
+      def sort_by(*) = SortOrder.refuse_new_array!(@name, :sort_by)
+
+      # Turns the items round, back to front. Written right after `sort!` or `sort_by!`, as
+      # `scores.sort!.reverse!`, it makes that sort put the biggest first, at no cost of its own.
+      def reverse!
+        sort_routines.reverse_last!(@name)
+        self
+      end
+
       # Explains a number of the wrong kind put into the list with these in place of the list's
       # own words, which name `list :name` and `holds:`. A Ruby Array the game keeps names neither
       # (PlainRuby::Arrays#kind_advice). +declaring+ and +mixing+ are as Scale takes them.
@@ -266,7 +314,8 @@ module VBlank
 
       # What a list does, said when a Ruby Array method it has no meaning for is called on it.
       WORKING_METHODS = "`<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `size`, `length`, `empty?`, `first`, " \
-                        "`last`, `each`, `each_with_index`, `sum`, `min`, `max`, `include?`, `fill` and `copy_from`"
+                        "`last`, `each`, `each_with_index`, `sum`, `min`, `max`, `include?`, `sort!`, `sort_by!`, " \
+                        "`fill` and `copy_from`"
 
       # A Ruby Array method the list does not have, `sort!` or `map`, called on it: a list the game
       # keeps can only do what the console does with it as the game plays.
@@ -280,6 +329,38 @@ module VBlank
       def respond_to_missing?(name, include_private = false) = super
 
       private
+
+      # The routines that sort this list, each an insertion sort by the items (#insertion_sort_nodes),
+      # whose statements are made when the routine's body is built, so one taken back costs nothing.
+      def sort_routines
+        @sort_routines ||= SortOrder::Routines.new(@builder, @name) do |name, key|
+          @builder.declare_routine_once(name) { insertion_sort_nodes(key.fields.first.descending) }
+        end
+      end
+
+      # An insertion sort of this list, as statements. Each item from the second on is held, and
+      # the items before it that go after it each move up one, until one does not or the front is
+      # reached; the held item goes in the gap. Only an item strictly after it moves, so level
+      # items keep their order.
+      def insertion_sort_nodes(descending)
+        held, from, at, settled, turns = %i[sort_held sort_from sort_at sort_settled sort_turns]
+                                         .map { |why| @builder.hidden_variable(why).name }
+        var = ->(name) { Build.var_ref(name) }
+        item_at = ->(name) { Build.list_get(@name, var.call(name)) }
+        goes_after = Build.binop(descending ? :< : :>, item_at.call(at), var.call(held))
+        step = Build.if_(goes_after, Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), item_at.call(at)),
+                         Build.sub(at, Build.int(1)))
+        step.else = Build.else_(Build.set(settled, Build.int(1)))
+        moving = Build.repeat(Build.binop(:+, var.call(from), Build.int(1)), turns, step,
+                              stop_when: Build.binop(:==, var.call(settled), Build.int(1)))
+        each_item = Build.repeat(Build.binop(:-, Build.list_len(@name), Build.int(1)), from,
+                                 Build.set(held, Build.list_get(@name, Build.binop(:+, var.call(from), Build.int(1)))),
+                                 Build.set(at, var.call(from)),
+                                 Build.set(settled, Build.int(0)),
+                                 moving,
+                                 Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), var.call(held)))
+        [Build.if_(Build.binop(:>, Build.list_len(@name), Build.int(1)), each_item)]
+      end
 
       # A hidden number that starts at +start+ (a node) and is changed once for each item, front to
       # back: the block is handed the hidden number's name and the item's node, and gives back the

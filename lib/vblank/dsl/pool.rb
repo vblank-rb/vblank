@@ -677,7 +677,7 @@ module VBlank
             # one.
             if active[slot] == 1
               record_current_slot(slot)
-              block.call(Instance.new(pool, slot))
+              yield(Instance.new(pool, slot))
             end
           end
           mark_walk(@builder.last_recorded_statement, at, ahead, last, links)
@@ -902,6 +902,57 @@ module VBlank
         end
         self
       end
+
+      # Declares the routine +name+ that puts the live things in the order +key+ gives (a
+      # DSL::SortOrder::Key: fields, each the smallest or the biggest first, each after the first
+      # breaking the ties of those before): what `sort_by!` does to an Array of Structs. What
+      # changes is the order they are walked in, and so drawn in; no field moves. Level things keep
+      # the order they had. +name+ is Messages::MadeNames `array_sort`, one for each line that sorts.
+      #
+      # The live slots are gathered from the chain into a list of their own, put in order by the
+      # fields' lists (IR list_sort, which every console's build writes, as draw order uses it),
+      # and the chain is linked again in that order. list_sort keeps level slots in the order
+      # they had, so a key of several fields is one sort for each, the last field first: each
+      # sort after it keeps the order the one before made among the slots it finds level.
+      #
+      # The routine relinks the chain, so it must not run while a walk follows it. StructArray
+      # refuses a sort written in a walk of the Array and one written in a routine a walk may
+      # call (StructArray#refuse_sort_in_walk!); a scene's body or the game loop outside a walk
+      # is where one runs, and the chain holds only live things there.
+      def declare_sort(name, key) # :nodoc:
+        @builder.declare_routine_once(name) { sort_nodes(key) }
+        self
+      end
+
+      # The list a sort gathers the live slots into, and the variables it works in.
+      def sort_list = part_name(:sorted) # :nodoc:
+      def sort_slot_var = part_name(:sort_slot) # :nodoc:
+      def sort_index_var = part_name(:sort_at) # :nodoc:
+
+      def sort_nodes(key)
+        @builder.declare_pool_sort_storage(self)
+        slot = -> { Build.var_ref(sort_slot_var) }
+        at = -> { Build.var_ref(sort_index_var) }
+        sorted_at = ->(offset) { Build.list_get(sort_list, Build.binop(:+, at.call, Build.int(offset))) }
+        count = Build.list_len(sort_list)
+        last = Build.list_get(sort_list, Build.binop(:-, Build.list_len(sort_list), Build.int(1)))
+        [Build.repeat(Build.list_len(sort_list), sort_index_var, Build.list_drop(sort_list, from: :back)),
+         Build.set(sort_slot_var, Build.var_ref(head_var)),
+         Build.repeat(@capacity, sort_index_var,
+                      Build.list_push(sort_list, slot.call),
+                      Build.set(sort_slot_var, Build.list_get(next_list, slot.call)),
+                      stop_when: Build.binop(:==, Build.var_ref(sort_slot_var), Build.int(NONE))),
+         *key.fields.reverse.map { |field| Build.list_sort(sort_list, by: field_list(field.name), descending: field.descending) },
+         Build.if_(Build.binop(:>, count, Build.int(0)),
+                   Build.set(head_var, Build.list_get(sort_list, Build.int(0))),
+                   Build.list_set(prev_list, Build.var_ref(head_var), Build.int(NONE)),
+                   Build.repeat(Build.binop(:-, count.copy, Build.int(1)), sort_index_var,
+                                Build.list_set(next_list, sorted_at.call(0), sorted_at.call(1)),
+                                Build.list_set(prev_list, sorted_at.call(1), sorted_at.call(0))),
+                   Build.set(tail_var, last),
+                   Build.list_set(next_list, Build.var_ref(tail_var), Build.int(NONE)))]
+      end
+      private :sort_nodes
 
       # The chain is kept by four routines of the pool's, each declared the first time it is
       # needed and called from every place that needs it: removing a thing, putting a spawn at

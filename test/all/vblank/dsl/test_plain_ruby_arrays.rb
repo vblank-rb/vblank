@@ -349,11 +349,11 @@ class TestPlainRubyArrays < Minitest::Test
     error = assert_raises(NoMethodError) do
       played do
         marks = [3, 1, 4]
-        game_loop { marks.sort! }
+        game_loop { marks.rotate! }
       end
     end
 
-    assert_match(/`sort!` is a method of a Ruby Array/, error.message)
+    assert_match(/`rotate!` is a method of a Ruby Array/, error.message)
     assert_match(/`shift`/, error.message)
   end
 
@@ -526,5 +526,70 @@ class TestPlainRubyArrays < Minitest::Test
     end
 
     assert_equal 7, player[:kept]
+  end
+
+  # A high-score table, sorted each pass as Ruby sorts it: the smallest first, the biggest first
+  # by a comparison or a key, and with `reverse!` after the sort. A new score goes in each pass,
+  # so the sort has work every time.
+  def test_sort_puts_an_array_in_order_as_ruby_does
+    player = played(frames: 2) do
+      up = [7, 3, 9, 3, 1]
+      down = [7, 3, 9, 3, 1]
+      by_key = [7, 3, 9, 3, 1]
+      turned = [7, 3, 9, 3, 1]
+      game_loop do
+        up.sort!
+        down.sort! { |a, b| b <=> a }
+        by_key.sort_by! { |n| -n }
+        turned.sort!.reverse!
+      end
+    end
+
+    assert_equal [1, 3, 3, 7, 9], player.list(:up)
+    assert_equal [9, 7, 3, 3, 1], player.list(:down)
+    assert_equal [9, 7, 3, 3, 1], player.list(:by_key)
+    assert_equal [9, 7, 3, 3, 1], player.list(:turned)
+  end
+
+  # Items the game works out as it plays, shifted round a ring first, sorted with fractions.
+  def test_sort_orders_fractions_in_a_ring
+    player = played(frames: 5) do
+      speeds = Array.new(capacity: 4)
+      t = 0
+      game_loop do
+        t += 1
+        speeds.shift if speeds.size == 4
+        speeds << (((t * 3) % 5).to_f + 0.5)
+        speeds.sort!
+      end
+    end
+
+    # 3.5, 1.5, 4.5 and 2.5 in, sorted; then the smallest, 1.5, shifted out for 0.5.
+    assert_equal [0.5, 2.5, 3.5, 4.5], player.list(:speeds)
+  end
+
+  def test_sort_with_a_block_comparing_another_way_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        marks = [3, 1, 4]
+        game_loop { marks.sort! { |a, b| (a <=> b) * 2 } }
+      end
+    end
+
+    assert_match(/sorts by a number/, error.message)
+  end
+
+  def test_sort_making_a_new_array_is_refused_naming_sort_with_a_bang
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        marks = [3, 1, 4]
+        game_loop do
+          marks[0] = 2
+          marks.sort
+        end
+      end
+    end
+
+    assert_match(/`sort!`/, error.message)
   end
 end

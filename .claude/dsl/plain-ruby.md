@@ -216,7 +216,10 @@ end
   (`walker_trail` in `walker.rb`). A profile, a save and a test read it by that name. A `list` line
   and an Array that would have one name are refused, naming both lines, whichever runs first.
 - A list holds numbers, so `[[0, 0], [0, 0]]`, an Array of Hashes and an item of nil are refused.
-- Ruby's other Array methods (`unshift`, `insert`, `concat`, `sort!`, `map`, `uniq`) are refused by
+- `sort!`, `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` sort an Array the
+  game changes in place (`lists.md`); an Array of Structs takes `sort_by!` by one field or minus it, or an Array of those for ties (`[s.y, -s.x]`),
+  which changes its walk order (refused inside a walk of it). `sort` and `sort_by` are refused.
+- Ruby's other Array methods (`unshift`, `insert`, `concat`, `rotate!`, `map`, `uniq`) are refused by
   name, listing those that work. They put nothing in as far as the fraction rule goes.
 - **A named instance variable's Array** (`game_variables :counts`) is a game variable for each index
   where every index is known while building, and a list where the game may work one out
@@ -396,7 +399,7 @@ Each is a friendly error naming the line.
 | `Array.new(8)` with no start, on an Array the game changes | `Array.new(8, 0)`, or `Array.new(capacity: 8)` for an empty one |
 | an Array the game changes holding Arrays or Hashes (`[[0, 0], [0, 0]]`) | an Array for each row, or a `pool` |
 | `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
-| an Array method a list has no meaning for (`sort!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
+| an Array method a list has no meaning for (`rotate!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
 | a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |

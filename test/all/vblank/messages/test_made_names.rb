@@ -58,6 +58,7 @@ class TestMadeNames < Minitest::Test
     tile_pictures_part: { group: :water, part: :shown },
     sprite_tiles_source: { picture: :great_ball },
     draw_order: { number: 1, part: :sort },
+    array_sort: { array: :scores, line: "12", order: "y_up_x_down" },
     start_over: { part: :play },
     held_tiles: {},
     held_tiles_drop: {},
