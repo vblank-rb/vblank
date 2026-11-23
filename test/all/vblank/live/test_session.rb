@@ -339,7 +339,7 @@ class TestSession < Minitest::Test
     end
 
     error = assert_raises(VBlank::IR::ProgramError) { Session.new(program).play(Headless.new(frames: 9)) }
-    assert_match(/list :trail is full/, error.message)
+    assert_match(/`trail` is full/, error.message)
   end
 
   # The play says which passes ran late: the game's own work over a pass, from the buttons handed
