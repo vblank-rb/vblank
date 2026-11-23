@@ -526,7 +526,9 @@ module VBlank
               "game runs. This usually happens on the right of `<<` or `>>`, so " \
               "`1 << bit` and `0x8000 >> bit` do not work. Put the value on the left " \
               "instead — `(row >> bit) & 1` reads one bit, and `bit` can still be " \
-              "worked out as the game runs.#{at_dsl_line}"
+              "worked out as the game runs. It also happens at an index into an Array " \
+              "that the game does not keep, such as a copy that a method gives. Read the " \
+              "Array that the game keeps, like `@counts[at]` in its class.#{at_dsl_line}"
       end
 
       # This number as text, which `draw_text` draws as `draw_number` would: `draw_text hp.to_s, 8,

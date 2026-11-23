@@ -146,7 +146,7 @@ class Tilt
 end
 ```
 
-Such an Array read at an index the game works out, in the file whose class holds it, is a list the game keeps, as the next section tells. Such a Hash at a key the game works out is refused.
+Such an Array read at an index the game works out is a list the game keeps, as the next section tells: in its own class (`@counts[at] += 1`), or in another part or the game block through its reader (`tally.counts[at] += 1`, with `attr_reader :counts`). Such a Hash at a key the game works out is refused. One Array handed to two parts that both keep it stops the build with a message: the game keeps an Array for each part, where Ruby shares one.
 
 A Struct's fields work the same way: `point.x += 1` in game code makes `x` of a Struct made above the game loop a number the game keeps, read any way Ruby reads a Struct (`point.x`, `point[:x]`, `to_a`, `each`, `dig`, a pattern). `point.x, point.y = point.y, point.x` swaps them. A field keeps its own copy of a number, as in Ruby: `Point.new(score, 0)` or `point.x = score` holds the number `score` had on that line, and a later change to `score` leaves the field alone. A `Data` object made from a number keeps it the same way.
 

@@ -94,6 +94,18 @@ module VBlank
           nil
         end
 
+        # The constant a class keeps in the instance variables it hands out through a plain reader
+        # of the same name (#mark_plain_readers), as `:@counts`.
+        PLAIN_READERS_CONSTANT = :VBLANK_PLAIN_READERS
+
+        # +labels+ are instance variables +owner+, a class or module, hands out through a reader of
+        # the same name that answers just what it holds (Rewriter#plain_reader_labels). A slot
+        # changed through a reader is matched to these alone (Uses#reader_marked?).
+        def mark_plain_readers(owner, labels)
+          name_in_module(owner, labels, constant: PLAIN_READERS_CONSTANT) if owner.is_a?(Module)
+          nil
+        end
+
         # The constant a class keeps the instance variables its code may change as the game plays
         # in (#mark_changing), as `:@ticks`.
         CHANGING_CONSTANT = :VBLANK_CHANGING_INSTANCE_VARIABLES
@@ -109,9 +121,17 @@ module VBlank
         # +attributes+ are the game block's: the attributes it may change on any object through a
         # writer (LocalNames#changing_attributes). A game file's are kept for every build
         # (#record_changing_attributes).
-        def mark_changing(owner, labels, attributes: [])
+        #
+        # +list_readers+ and +changed_readers+ are the game block's too: the readers whose answer it
+        # reads at an index it may work out, and whose slots it changes
+        # (LocalNames#readers_at_worked_out_keys, #readers_with_changed_slots). A game file's are
+        # kept for every build (#record_readers).
+        def mark_changing(owner, labels, attributes: [], list_readers: [], changed_readers: [])
           case owner
-          when Builder then owner.instance_variable_uses.mark_changing_on_builder(labels, attributes)
+          when Builder
+            uses = owner.instance_variable_uses
+            uses.mark_changing_on_builder(labels, attributes)
+            uses.mark_readers_on_builder(list_readers, changed_readers)
           when Module
             name_in_module(owner, labels, constant: CHANGING_CONSTANT)
             Builder.in_use&.instance_variable_uses&.clear_class_name_cache
@@ -128,6 +148,20 @@ module VBlank
           return if names.empty? || Ractor.current != Ractor.main
 
           @changing_attributes_in_files = Ractor.make_shareable(changing_attributes_in_files | names)
+        end
+
+        # The readers game files read at an index they may work out (LocalNames#readers_at_worked_out_keys),
+        # and those whose slots they change (LocalNames#readers_with_changed_slots), as `:counts`,
+        # kept as #changing_attributes_in_files is.
+        def self.list_readers_in_files = @list_readers_in_files || Set.new.freeze
+
+        def self.changed_readers_in_files = @changed_readers_in_files || Set.new.freeze
+
+        def self.record_readers(list_readers:, changed_readers:)
+          return if Ractor.current != Ractor.main
+
+          @list_readers_in_files = Ractor.make_shareable(list_readers_in_files | list_readers) unless list_readers.empty?
+          @changed_readers_in_files = Ractor.make_shareable(changed_readers_in_files | changed_readers) unless changed_readers.empty?
         end
 
         def refuse_unsaved_naming_nothing!
@@ -302,6 +336,7 @@ module VBlank
             if %i[attr_reader attr_accessor].include?(kind)
               owner.class_eval("def #{name} = ::VBlank::DSL::PlainRuby::InstanceVariables.read_value(self, #{ivar}, " \
                                ":#{ivar}) { |given| #{ivar} = given }", __FILE__, __LINE__ - 1)
+              mark_plain_readers(owner, [ivar.to_sym])
               made << name.to_sym
             end
             if %i[attr_writer attr_accessor].include?(kind)
@@ -657,6 +692,7 @@ module VBlank
         # named as its variable would be (`counts_by_number_part_counts`).
         def list_of(owner, label, held)
           builder = Builder.in_use
+          builder.instance_variable_uses.refuse_array_kept_twice!(held, owner, label)
           # Each object keeps its own: a second one of the class takes the next free list name.
           held_by = Builder::ListOwner.new(owner: [:object, owner.object_id, label],
                                            at: Messages::AuthorSource.author_file_and_line)
@@ -706,13 +742,7 @@ module VBlank
         # Ruby holds while building.
         module KeyedVariables
           def [](*keys)
-            if keys.any?(Value)
-              Steps.refuse_game_code!("This Hash or Array holds game variables, and this line takes one at a key " \
-                                      "that is worked out as the game plays. Ruby finds a slot while it builds the " \
-                                      "game, so it cannot find this one. To fix this, use a key known while " \
-                                      "building, like a symbol from a Ruby loop (`SIDES.each do |side|`), or keep " \
-                                      "the numbers in an Array: the game can read an Array at an index it works out.")
-            end
+            Steps.refuse_game_code!(worked_out_key_message) if keys.any?(Value)
 
             super
           end
@@ -720,10 +750,27 @@ module VBlank
 
         class KeyedHash < Hash
           include KeyedVariables
+
+          def worked_out_key_message
+            "This Hash holds game variables, and this line takes one at a key that is worked out as the game " \
+              "plays. Ruby finds a slot while it builds the game, so it cannot find this one. To fix this, use a " \
+              "key known while building, like a symbol from a Ruby loop (`SIDES.each do |side|`), or keep the " \
+              "numbers in an Array: the game can read an Array at an index it works out."
+          end
         end
 
+        # An Array read at an index the game works out becomes a list where the source shows that
+        # index: `@counts[at]`, or `part.counts[at]` through a reader. Reached any other way (the
+        # Array put in a local first), it was made a variable for each index already.
         class KeyedArray < Array
           include KeyedVariables
+
+          def worked_out_key_message
+            "This Array holds game variables, and this line takes one at an index that is worked out as the " \
+              "game plays. VBlank did not see an index like this where the Array is read, so it made a variable " \
+              "for each index, and it cannot find this one. To fix this, read the Array at the index on one " \
+              "line, like `@counts[at]` in its class or `part.counts[at]`, not through a local name."
+          end
         end
 
         # `Struct.new(:count, :step)` in game code: the class it makes, its readers and writers
@@ -1170,6 +1217,9 @@ module VBlank
             @lists_on_builder = Set.new
             @changing_on_builder = Set.new
             @changing_attributes = Set.new
+            @list_readers = Set.new
+            @changed_readers = Set.new
+            @arrays_kept = {}.compare_by_identity
             @chosen_on_builder = {}
             @names_by_class = {}
             @changing_by_class = {}
@@ -1296,10 +1346,58 @@ module VBlank
 
           # Is an Array of numbers +owner+'s +label+ is given a list the game keeps
           # (InstanceVariables.keep_arrays_as_lists)?
+          #
+          # So is one whose reader game code reads at an index it may work out (`keeper.counts[at]`,
+          # #reader_marked?), since the index needs a list as much as `@counts[at]` does.
           def kept_as_list?(owner, label)
             return @lists_on_builder.include?(label) if owner.is_a?(Builder)
+            return true if InstanceVariables.names_in_module(owner.class, constant: LISTS_CONSTANT).include?(label)
 
-            InstanceVariables.names_in_module(owner.class, constant: LISTS_CONSTANT).include?(label)
+            reader_marked?(owner, label, @list_readers | InstanceVariables.list_readers_in_files)
+          end
+
+          # Where one Ruby Array was made a list the game keeps (InstanceVariables.list_of): whose
+          # instance variable held it, and the line.
+          ArrayKept = Data.define(:owner, :label, :at)
+
+          # +held+, a Ruby Array, is about to be made a list for +owner+'s +label+. Each list is
+          # its own, so an Array that two instance variables share in Ruby (one Array handed to two
+          # parts) would become two lists, and a change through one would not show through the
+          # other. The second is refused.
+          def refuse_array_kept_twice!(held, owner, label)
+            at = Messages::AuthorSource.at_author_line
+            first = @arrays_kept[held] ||= ArrayKept.new(owner: owner, label: label, at: at)
+            return if first.owner.equal?(owner) && first.label == label
+
+            words = kept_array_words(owner, label)
+            raise Refused, "#{words} holds the same Array as #{kept_array_words(first.owner, first.label)}" \
+                           "#{first.at}. In Ruby, the two share one Array, so a change through one shows " \
+                           "through the other. The game keeps an Array for each, so they cannot share. To fix " \
+                           "this, keep the Array in one part, and read it through that part in the other. Or, " \
+                           "if each part must have its own numbers, give each part a copy made with `dup`.#{at}"
+          end
+
+          def kept_array_words(owner, label)
+            "`#{label}` of #{owner.is_a?(Builder) ? 'the game block' : "a `#{owner.class.name || 'part'}`"}"
+          end
+
+          def mark_readers_on_builder(list_readers, changed_readers)
+            @list_readers.merge(list_readers)
+            @changed_readers.merge(changed_readers)
+          end
+
+          # Is +owner+'s +label+ behind a reader named in +readers+? Code that calls a reader cannot
+          # tell the object's class, so the name is matched to every object with a reader of that
+          # name (`counts` for `@counts`), as a writer is in #changing?. Only a plain reader of
+          # +label+ counts (InstanceVariables.mark_plain_readers): a method of that name that
+          # answers a copy, or anything else, leaves the Array as it is.
+          def reader_marked?(owner, label, readers)
+            reader = label.to_s.delete_prefix("@").to_sym
+            return false unless readers.include?(reader) && owner.class.public_method_defined?(reader)
+
+            defined_in = owner.class.instance_method(reader).owner
+            defined_in.const_defined?(PLAIN_READERS_CONSTANT, false) &&
+              defined_in.const_get(PLAIN_READERS_CONSTANT, false).include?(label)
           end
 
           # Did a line naming +owner+'s +label+ (in its class or an ancestor) set `saved: false`?
@@ -1442,11 +1540,13 @@ module VBlank
           #
           # An attribute game code changes through a writer counts for every object whose class has
           # that writer (`dial.level += 3` marks `@level` of anything with a `level=`), since the
-          # rewrite cannot tell the object's class.
+          # rewrite cannot tell the object's class. A slot changed through a reader counts the same
+          # way (`keeper.counts[at] += 1` marks `@counts` of anything with a `counts`).
           def changing?(owner, label)
             return @changing_on_builder.include?(label) if owner.is_a?(Builder)
             return true if (@changing_by_class[owner.class] ||=
                               InstanceVariables.names_in_module(owner.class, constant: CHANGING_CONSTANT)).include?(label)
+            return true if reader_marked?(owner, label, @changed_readers | InstanceVariables.changed_readers_in_files)
 
             attribute = label.to_s.delete_prefix("@").to_sym
             (@changing_attributes.include?(attribute) || InstanceVariables.changing_attributes_in_files.include?(attribute)) &&

@@ -79,6 +79,17 @@ module VBlank
         # game is built, so the name is all that is kept (Uses#changing?).
         attr_reader :changing_attributes
 
+        # The readers whose answer is read or written at an index that may be worked out as the
+        # game plays, on any object, as `:counts` (#note_reader_index): `keeper.counts[at] += 1`,
+        # `counts[at]` inside the class. As with #changing_attributes, only the name is kept, and an
+        # object whose class has that reader keeps the Array behind it as a list (Uses#kept_as_list?).
+        attr_reader :readers_at_worked_out_keys
+
+        # The readers whose answer has a slot changed, at any index, as `:counts`: `keeper.counts[0]
+        # += 1` anywhere, or any `keeper.counts[at] = ...` in a game verb's block. The instance
+        # variable behind the reader may change as the game plays (Uses#changing?).
+        attr_reader :readers_with_changed_slots
+
         # Every method, lambda and game block: code that runs when it is called, or as the game
         # plays, after the lines around it.
         attr_reader :bodies_run_later
@@ -274,6 +285,8 @@ module VBlank
           @changing_instance_variables = Set.new
           @changing_instance_variables_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
           @changing_attributes = Set.new
+          @readers_at_worked_out_keys = Set.new
+          @readers_with_changed_slots = Set.new
           @open_modules = []
           # Things made from a class written out (`Enemy.new`) put into an instance variable, by
           # the class or module around the line (nil outside one), then by the instance variable.
@@ -742,6 +755,7 @@ module VBlank
             if node.is_a?(Prism::IndexOperatorWriteNode)
               note_array_change(node, in_game_code)
               note_instance_variable_index(node)
+              note_reader_index(node, in_game_code)
               note_changing_instance_variable(node.receiver.name) if node.receiver.is_a?(Prism::InstanceVariableReadNode)
             else
               @changing_attributes << node.read_name
@@ -902,6 +916,7 @@ module VBlank
           read_place_change(node) if node.name == :[]= || node.attribute_write?
           note_array_change(node, in_game_code)
           note_instance_variable_index(node)
+          note_reader_index(node, in_game_code)
           note_changing_slot(node, in_game_code)
           note_changing_attribute(node, in_game_code)
           note_instance_variable_thing_put(node)
@@ -917,18 +932,44 @@ module VBlank
         def note_instance_variable_index(node)
           return unless node.receiver.is_a?(Prism::InstanceVariableReadNode)
 
-          keys = case node
-                 when Prism::IndexOperatorWriteNode then node.arguments&.arguments.to_a
-                 else
-                   return unless %i[[] []=].include?(node.name)
-
-                   given = node.arguments&.arguments.to_a
-                   node.name == :[]= ? given[0...-1] : given
-                 end
-          return if keys.all? { |key| key_known_while_building?(key) }
+          keys = index_keys(node)
+          return if keys.nil? || keys.all? { |key| key_known_while_building?(key) }
 
           noted = @open_modules.empty? ? @instance_variables_at_worked_out_keys : @instance_variables_at_worked_out_keys_by_module[@open_modules.last]
           noted << node.receiver.name
+        end
+
+        # The same through a reader, `keeper.counts[at]` or `counts[at]` (#readers_at_worked_out_keys),
+        # and a slot changed through one (#readers_with_changed_slots).
+        def note_reader_index(node, in_game_code)
+          return unless reader_call?(node.receiver)
+
+          keys = index_keys(node)
+          return if keys.nil?
+
+          name = node.receiver.name
+          @readers_at_worked_out_keys << name unless keys.all? { |key| key_known_while_building?(key) }
+          changed = node.is_a?(Prism::IndexOperatorWriteNode) || (node.name == :[]= && in_game_code)
+          @readers_with_changed_slots << name if changed
+        end
+
+        # The keys an index read or write takes (`@counts[at]`, `@counts[at] = 1`, `@counts[at] +=
+        # 1`), or nil where +node+ is none of those.
+        def index_keys(node)
+          return node.arguments&.arguments.to_a if node.is_a?(Prism::IndexOperatorWriteNode)
+          return unless node.is_a?(Prism::CallNode) && %i[[] []=].include?(node.name)
+
+          given = node.arguments&.arguments.to_a
+          node.name == :[]= ? given[0...-1] : given
+        end
+
+        # Is +node+ a call that may be a reader: a plain name and nothing given, on an object
+        # (`keeper.counts`) or on self (`counts`, which Ruby could not tell from a local).
+        def reader_call?(node)
+          return false unless node.is_a?(Prism::CallNode) && node.arguments.nil? && node.block.nil?
+          return node.variable_call? if node.receiver.nil?
+
+          node.name.match?(/\A[a-z_][a-zA-Z0-9_]*\z/)
         end
 
         # `@counts[at] = @counts[at] * 2`, or any `@counts[at] = ...` in a game verb's block

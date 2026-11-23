@@ -191,7 +191,18 @@ instance variables.
   `@counts = [0, 0]` in `initialize`, then `@counts[which] += 1` in game code, with any other index
   than those above, written in the class, in the class reopened or in a class made from it, in any
   file (`VBlank.require_game_file`): the class that reads it marks it, and the Array becomes the
-  game's at the first line of game code that reads it, after every file has run. It holds
+  game's at the first line of game code that reads it, after every file has run. Read through a
+  reader (`keeper.counts[which] += 1` in another part or the game block, `counts[which]` in the
+  class) it is a list too: the source keeps only the reader's name
+  (`LocalNames#readers_at_worked_out_keys`), so the Array of any object whose class has a plain
+  reader of that name (`attr_reader`, `attr_accessor`, or `def counts = @counts`:
+  `InstanceVariables.mark_plain_readers`) becomes one, and a slot changed through such a reader marks
+  the Array as changing, named or not (`LocalNames#readers_with_changed_slots`). A method of that
+  name answering anything else (a copy, `@counts.dup`) is left alone, and an index the game works
+  out into a copy stops with words saying the game does not keep that Array. An Array reached at a
+  worked-out index another way (put in a local first) is refused, naming the one-line form. One
+  Ruby Array two instance variables hold (handed to two parts) is refused where the second is made
+  a list (`Uses#refuse_array_kept_twice!`): each list is its own, where Ruby shares. It holds
   its items and room for no more, holds fractions where a start is a Float, and a profile reads it
   by the name its variables would have had, `counts_by_number_part_counts`. A named Hash at a key
   the game works out is still refused: a Hash has no list to be.

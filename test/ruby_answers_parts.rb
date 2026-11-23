@@ -128,6 +128,77 @@ class AnswerSlots
   def first = @counts[0]
 end
 
+# An Array of numbers the class names and hands out through its reader, which another part
+# changes at an index the game works out.
+class AnswerNamedTallies
+  game_variables :counts
+  attr_reader :counts
+
+  def initialize
+    @counts = [0, 0, 0]
+  end
+end
+
+# The same, with no `game_variables` line.
+class AnswerTallies
+  attr_reader :counts
+
+  def initialize
+    @counts = [0, 0, 0]
+  end
+end
+
+# A part changing another part's Array through its reader.
+class AnswerTallyKeeper
+  def initialize(tallies)
+    @tallies = tallies
+  end
+
+  def bump(at) = @tallies.counts[at] += 1
+  def first = @tallies.counts[0]
+end
+
+# A method named as a reader that hands out a copy: a change to the copy leaves the Array alone.
+class AnswerCopiedTallies
+  def initialize(start)
+    @counts = [start, start, start]
+  end
+
+  def counts = @counts.dup
+  def first = @counts[0]
+end
+
+# An Array handed in, which two parts can share.
+class AnswerSharedTallies
+  attr_reader :counts
+
+  def initialize(given)
+    @counts = given
+  end
+
+  def bump(at) = @counts[at] += 1
+  def at(index) = @counts[index]
+end
+
+# An Array of numbers read through its reader only at indexes known while building.
+class AnswerMarks
+  game_variables :marks
+  attr_reader :marks
+
+  def initialize
+    @marks = [0, 0]
+  end
+end
+
+# An Array of numbers with no `game_variables` line, changed through its reader at known indexes.
+class AnswerScores
+  attr_reader :scores
+
+  def initialize
+    @scores = [5, 0]
+  end
+end
+
 # A number changed from outside, through its writer.
 class AnswerDial
   attr_accessor :level

@@ -133,7 +133,10 @@ module VBlank
           return change_variable(current, operator, amount) if Steps.variable?(current)
 
           refuse_object_under_test!(label, current) if game && !list_item?(current)
-          yield current.public_send(operator, amount)
+          changed = yield current.public_send(operator, amount)
+          # Ruby answers the slot's new number. The working-out written back reads the slot, so
+          # read after the write it would count the change twice; the slot read again is the answer.
+          list_item?(current) ? current : changed
         end
 
         # An item read from a game's list (`scores[0]`), whose change the line writes back with

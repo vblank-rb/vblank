@@ -114,10 +114,14 @@ module VBlank
         code = "#{block.lambda? ? 'lambda' : 'proc'} #{rewriter.rewritten_block}"
         changing = rewriter.changing_instance_variables
         attributes = rewriter.changing_attributes
-        return code if (changing.empty? && attributes.empty?) || block.lambda?
+        list_readers = rewriter.readers_at_worked_out_keys
+        changed_readers = rewriter.readers_with_changed_slots
+        marks = [changing, attributes, list_readers, changed_readers]
+        return code if marks.all?(&:empty?) || block.lambda?
 
         "proc { |*__plain_ruby_given| #{Rewriter::INSTANCE_VARIABLES}.mark_changing(self, #{changing.inspect}, " \
-          "attributes: #{attributes.inspect}); (#{code}).call(*__plain_ruby_given) }"
+          "attributes: #{attributes.inspect}, list_readers: #{list_readers.inspect}, changed_readers: " \
+          "#{changed_readers.inspect}); (#{code}).call(*__plain_ruby_given) }"
       end
 
       def checked_source(rewriter, code, file, allow)
@@ -216,6 +220,8 @@ module VBlank
         return rewritten if library
 
         InstanceVariables.record_changing_attributes(rewriter.changing_attributes)
+        InstanceVariables.record_readers(list_readers: rewriter.readers_at_worked_out_keys,
+                                         changed_readers: rewriter.readers_with_changed_slots)
 
         checks = BlockChecks.new(root, file: path, allow: [])
         checks.refuse_outside_calls_in_file!
@@ -463,13 +469,41 @@ module VBlank
 
           lists = @names.instance_variables_at_worked_out_keys_by_module.fetch(node, nil)
           changing = @names.changing_instance_variables_by_module.fetch(node, nil)
+          readers = plain_reader_labels(node)
           marks = []
           marks << "#{INSTANCE_VARIABLES}.keep_arrays_as_lists(self, #{lists.to_a.inspect}); " if lists
           marks << "#{INSTANCE_VARIABLES}.mark_changing(self, #{changing.to_a.inspect}); " if changing
+          marks << "#{INSTANCE_VARIABLES}.mark_plain_readers(self, #{readers.inspect}); " unless readers.empty?
           return text if marks.empty?
 
           # Whatever stands before `end` ends the last line with a line break or a `;` already.
           "#{text.delete_suffix('end')}#{marks.join}end"
+        end
+
+        # The instance variables the body of +node+ hands out through a reader of the same name
+        # that answers just what it holds, as `:@counts`: `attr_reader :counts`, `attr_accessor`, or
+        # `def counts = @counts`. Code that changes a slot through a reader is matched to those
+        # alone (Uses#reader_marked?), never to a method that answers a copy or anything else.
+        def plain_reader_labels(node)
+          return [] unless node.body.is_a?(Prism::StatementsNode)
+
+          node.body.body.flat_map do |statement|
+            if statement.is_a?(Prism::CallNode) && %i[attr_reader attr_accessor].include?(statement.name) &&
+               statement.receiver.nil? && statement.arguments
+              statement.arguments.arguments.grep(Prism::SymbolNode).map { |name| :"@#{name.unescaped}" }
+            elsif plain_reader_def?(statement)
+              [:"@#{statement.name}"]
+            else []
+            end
+          end
+        end
+
+        def plain_reader_def?(statement)
+          return false unless statement.is_a?(Prism::DefNode) && statement.receiver.nil? && statement.parameters.nil?
+
+          body = statement.body
+          body = body.body.first if body.is_a?(Prism::StatementsNode) && body.body.one?
+          body.is_a?(Prism::InstanceVariableReadNode) && body.name == :"@#{statement.name}"
         end
 
         public
@@ -478,8 +512,14 @@ module VBlank
         # (LocalNames#changing_instance_variables), as `:@score`. Asked once the block is rewritten.
         def changing_instance_variables = @names.changing_instance_variables.to_a
 
-        # ...and the attributes it may change through a writer (LocalNames#changing_attributes).
+        # ...the attributes it may change through a writer (LocalNames#changing_attributes),
         def changing_attributes = @names.changing_attributes.to_a
+
+        # ...the readers it reads at an index the game may work out (LocalNames#readers_at_worked_out_keys),
+        def readers_at_worked_out_keys = @names.readers_at_worked_out_keys.to_a
+
+        # ...and the readers whose slots it changes (LocalNames#readers_with_changed_slots).
+        def readers_with_changed_slots = @names.readers_with_changed_slots.to_a
 
         private
 

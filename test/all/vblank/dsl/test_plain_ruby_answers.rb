@@ -327,6 +327,155 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  def test_a_named_array_changed_through_its_reader_by_another_part
+    agrees("@tallies.counts[at] += 1, counts named", reads: %i[n m], passes: 4) do
+      keeper = AnswerTallyKeeper.new(AnswerNamedTallies.new)
+      at = 2
+      n = m = 0
+      game_loop do
+        at = (at + 1) % 3
+        keeper.bump(at)
+        n = keeper.first
+        m = keeper.bump(1)
+      end
+    end
+  end
+
+  def test_an_array_changed_through_its_reader_by_another_part
+    agrees("@tallies.counts[at] += 1", reads: %i[n m], passes: 4) do
+      keeper = AnswerTallyKeeper.new(AnswerTallies.new)
+      at = 2
+      n = m = 0
+      game_loop do
+        at = (at + 1) % 3
+        keeper.bump(at)
+        n = keeper.first
+        m = keeper.bump(1)
+      end
+    end
+  end
+
+  def test_an_array_changed_through_its_reader_in_the_game_block
+    agrees("tallies.counts[at] += 1", reads: %i[n m], passes: 4) do
+      tallies = AnswerTallies.new
+      at = 2
+      n = m = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+        n = tallies.counts[0]
+        m = tallies.counts[at]
+      end
+    end
+  end
+
+  def test_an_array_read_through_its_reader_at_known_indexes
+    agrees("marks.marks[0] += 1", reads: %i[n m], passes: 3) do
+      marks = AnswerMarks.new
+      n = m = 0
+      game_loop do
+        marks.marks[0] += 1
+        marks.marks[1] += 2
+        n = marks.marks[0]
+        m = marks.marks[1]
+      end
+    end
+  end
+
+  def test_an_array_from_a_reader_put_in_a_local_then_read_at_a_worked_out_index_is_refused
+    refused("marks = m.marks; marks[at]", /`part\.counts\[at\]`/) do
+      holder = AnswerMarks.new
+      at = 0
+      n = 0
+      game_loop do
+        at = 1 - at
+        marks = holder.marks
+        n = marks[at]
+      end
+    end
+  end
+
+  def test_a_copy_from_a_method_named_as_a_reader_changed_at_a_worked_out_index_is_refused
+    refused("c.counts[at] += 1, counts a copy", /does not keep/) do
+      copied = AnswerCopiedTallies.new(0)
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        copied.counts[at] += 1
+        n = copied.first
+      end
+    end
+  end
+
+  def test_a_copy_of_fractions_from_a_method_named_as_a_reader_is_refused
+    refused("c.counts[at] += 1, counts a copy of fractions", /does not keep/) do
+      copied = AnswerCopiedTallies.new(0.5)
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        copied.counts[at] += 1
+        n = (copied.first * 2).to_i
+      end
+    end
+  end
+
+  def test_one_array_shared_by_two_parts_through_a_reader_is_refused
+    refused("p1.counts[at] += 1, p2.counts[at], one Array", /same Array/) do
+      shared = [0, 0, 0]
+      one = AnswerSharedTallies.new(shared)
+      other = AnswerSharedTallies.new(shared)
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        one.counts[at] += 1
+        n = other.counts[at]
+      end
+    end
+  end
+
+  def test_one_array_shared_by_two_parts_of_one_class_is_refused
+    refused("p1.bump(at), p2.at(at), one Array", /same Array/) do
+      shared = [0, 0, 0]
+      one = AnswerSharedTallies.new(shared)
+      other = AnswerSharedTallies.new(shared)
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        one.bump(at)
+        n = other.at(at)
+      end
+    end
+  end
+
+  def test_the_answer_of_a_changed_item
+    agrees("m = (counts[at] += 1)", reads: %i[m], passes: 3) do
+      counts = [0, 4, 0]
+      at = 0
+      m = 0
+      game_loop do
+        at = (at + 1) % 3
+        m = (counts[at] += 1)
+      end
+    end
+  end
+
+  def test_an_array_changed_through_its_reader_at_known_indexes
+    agrees("board.scores[1] += 2", reads: %i[n m], passes: 3) do
+      board = AnswerScores.new
+      n = m = 0
+      game_loop do
+        board.scores[1] += 2
+        board.scores[0] -= 1
+        n = board.scores[0]
+        m = board.scores[1]
+      end
+    end
+  end
+
   def test_a_struct_field_game_code_changes
     agrees("point.x += 1 on a Struct kept in a local", reads: %i[n], passes: 3) do
       point = AnswerPoint.new(1, 2, 0)
