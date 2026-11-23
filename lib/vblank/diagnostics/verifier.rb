@@ -1180,7 +1180,13 @@ module VBlank
         # screen into Ruby on every frame, several times what playing the frame costs.
         @pixels = nil
         read_picture_size
+        warn_of_losses
       end
+
+      # Say, in the library's log, what the frames just played lost that the picture alone does
+      # not show. A console whose cartridges keep such a count says it in its own reading
+      # (AdvanceReading#warn_of_losses); the rest lose nothing they count.
+      def warn_of_losses = nil
 
       # The picture is the size the console draws, which the emulator knows: from the cartridge on the
       # Advance and the Color, and from the mode the program set its graphics chip to on the

@@ -222,8 +222,9 @@ module VBlank
           # holds which group is worked out as the game runs (see
           # SpriteDrawing#emit_lend_colors_routine). +families+ is the blob holding each lent
           # list's family, a word a list in the same order, or nil for a game with none (see
-          # ScreenLayout#lent_families).
-          LentColors = Data.define(:blob, :banks, :families) do
+          # ScreenLayout#lent_families). +wearers+ is each lent list's number -> the names of the
+          # sprite objects drawn with it, so a list that found no group can be told by them.
+          LentColors = Data.define(:blob, :banks, :families, :wearers) do
             # Where the colours of the group lent out as number +k+ are written.
             def group_at(k) = OBJ_PALETTE + (banks[k] * PaletteBanks::BANK_SIZE * 2)
 
@@ -2638,7 +2639,8 @@ module VBlank
               @blobs[families] = @lent_lists.each_value.map { |number| family.fetch(number, 0) }.pack("V*")
               keep_unpacked!(families) # read by the list's number
             end
-            @lending = LentColors.new(blob: blob, banks: spare, families: families)
+            wearers = @lent_lists.to_h { |list, number| [number, nodes.select { |node| node.recolors.include?(list) }.map(&:name)] }
+            @lending = LentColors.new(blob: blob, banks: spare, families: families, wearers: wearers)
           end
 
           # Lent lists one sprite wears by turns, and no other sprite ever does — the lists of its

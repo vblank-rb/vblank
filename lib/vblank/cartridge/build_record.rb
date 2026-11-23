@@ -113,10 +113,11 @@ module VBlank
     # name (DataAsset): where it starts in the file, how many bytes it takes there, how it is packed
     # (:lz77, :rle, or :none) and how many bytes it is unpacked. It is what a port of the cartridge
     # reads its facts from, since the bytes alone do not show where one asset stops and the next starts.
-    # +colors_short_at+ is where the console counts each time a sprite drawn with a list of
+    # +colors_short+ is where the console counts each time a sprite drawn with a list of
     # colours that borrows a group found none free, and was drawn in another list's colours
-    # (see IR::Backends::GBA::ScreenLayout::LentColors) — a hidden variable, like the dropped
-    # sounds' count. nil for a game whose lists all have a group of their own.
+    # (see IR::Backends::GBA::ScreenLayout::LentColors) — hidden variables, like the dropped
+    # sounds' count — and whose those lists are (ColorsShort). nil for a game whose lists all
+    # have a group of their own.
     # +routine_statements+ is, for every routine, the line of the game that wrote each of its
     # statements and the bytes that statement's code takes, counted from the routine's first
     # instruction (see IR::Backends::GBA#routine_statements). It is what lets a profile say which
@@ -128,13 +129,13 @@ module VBlank
                                     :roomy_memory, :timer_handlers, :voices, :sound_drops,
                                     :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
-                                    :missed_routine_parts, :colors_short_at, :sprite_turns, :held_sprites,
+                                    :missed_routine_parts, :colors_short, :sprite_turns, :held_sprites,
                                     :runtime, :data_assets, :gap_ends, :routine_statements)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
                      sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
                      video_copies: [], late_pages: [], gap_ends: [], lists: {}, sprite_runs: [], scene_sets: nil,
-                     missed_routine_parts: {}, routine_statements: {}, colors_short_at: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
+                     missed_routine_parts: {}, routine_statements: {}, colors_short: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
                      data_assets: [], **rest)
         super
       end
@@ -143,6 +144,14 @@ module VBlank
       # file, +size+ how many bytes it takes there (packed, when it is), +codec+ is :lz77, :rle or
       # :none, and +unpacked_size+ how many bytes it is once unpacked.
       DataAsset = Data.define(:name, :at, :size, :codec, :unpacked_size)
+
+      # Where a game that lends groups of sprite colours counts the sprites that found none
+      # (+count_at+) and keeps the number of the last list that found none (+list_at+), and which
+      # sprites and pools wear each list, by its number (+wearers+).
+      ColorsShort = Data.define(:count_at, :list_at, :wearers) do
+        # The names of the sprites and pools that wear the list numbered +number+.
+        def wearers_of(number) = wearers.fetch(number, [])
+      end
 
       # Where a game keeping more rows than the console's table notes which of them each of the
       # console's rows holds, and where it counts the rows left out (see +held_sprites+).

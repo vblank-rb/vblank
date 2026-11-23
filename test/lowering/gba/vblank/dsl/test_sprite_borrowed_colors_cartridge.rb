@@ -37,15 +37,71 @@ class TestSpriteBorrowedColorsCartridge < Minitest::Test
   # More lists worn at once than there are groups to lend: the console draws the extra
   # things from a group another list holds, as the console's own games do, and counts it.
   def test_more_lists_worn_at_once_than_groups_are_counted
-    crowded = built do
+    rom = assemble_rom(kinds_on_the_screen(KINDS), name: "CROWDED")
+    logged_while do
+      v = assert_emulator_loads_rom(rom, frames: 6, vars: rom.var_addresses)
+
+      assert_operator v.borrowed_colors_missed, :>, 0
+    end
+  end
+
+  # The wrong colours are a silent wrong picture, and only the running cartridge knows it
+  # happened, so whatever plays the cartridge says so once, naming what was drawn wrong. The
+  # same game with no more lists on the screen than groups to lend says nothing.
+  def test_a_sprite_drawn_in_colors_not_its_own_is_told
+    told = words_logged_playing(kinds_on_the_screen(GROUPS_LENT + 1))
+
+    assert_match(/colors that are not its own/, told)
+    assert_includes told, "pool :thing"
+    assert_equal 1, told.scan("colors that are not its own").size, "said once for the list, not every frame"
+    assert_empty words_logged_playing(kinds_on_the_screen(GROUPS_LENT))
+  end
+
+  # A sprite of its own is named by its own name, and each list that finds no group is named
+  # once, a later one too: a pool short of one group from the start, and a ship wearing one
+  # more list that shows only after the first frames have been read.
+  def test_each_list_drawn_in_colors_not_its_own_is_named_once
+    told = words_logged_playing(built do
       things = pool :thing, x: 0, y: 0, kind: 0, capacity: KINDS, image: :ship
-      KINDS.times { |n| things.spawn x: ((n % 10) * 20) + 10, y: ((n / 10) * 20) + 40, kind: n }
+      (GROUPS_LENT + 1).times { |n| things.spawn x: ((n % 10) * 20) + 10, y: ((n / 10) * 20) + 40, kind: n }
+      colors :hero_colors, [:transparent, VBlank::Graphics::Color.rgb(1, 2, 30), VBlank::Graphics::Color.rgb(30, 2, 1)]
+      hero = sprite(:hero, image: :ship, at: [120, 120], shown: false)
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        hero.show if tick == 8
+        things.each { |thing| thing.draw_with KIND_LISTS, showing: thing.kind }
+        hero.draw_with :hero_colors
+      end
+    end)
+
+    assert_equal 1, told.scan("A sprite of pool :thing was drawn").size, "said once for the list, not every frame"
+    assert_equal 1, told.scan("Sprite :hero was drawn in colors that are not its own").size
+  end
+
+  # +count+ things standing still, each wearing a list of its own.
+  private def kinds_on_the_screen(count)
+    built do
+      things = pool :thing, x: 0, y: 0, kind: 0, capacity: KINDS, image: :ship
+      count.times { |n| things.spawn x: ((n % 10) * 20) + 10, y: ((n / 10) * 20) + 40, kind: n }
       game_loop { things.each { |thing| thing.draw_with KIND_LISTS, showing: thing.kind } }
     end
-    rom = assemble_rom(crowded, name: "CROWDED")
-    v = assert_emulator_loads_rom(rom, frames: 6, vars: rom.var_addresses)
+  end
 
-    assert_operator v.borrowed_colors_missed, :>, 0
+  # What the library logs while the cartridge plays a few frames and plays on.
+  private def words_logged_playing(program)
+    rom = assemble_rom(program, name: "TOLD")
+    logged_while { assert_emulator_loads_rom(rom, frames: 6).step(6) }
+  end
+
+  # What the library logs while the block runs, kept out of the test run's own output.
+  private def logged_while
+    was = VBlank.logger
+    VBlank.logger = VBlank::Logger.new(io = StringIO.new)
+    yield
+    io.string
+  ensure
+    VBlank.logger = was
   end
 
   # Where the things wholly off the screen stand: past each edge, and far enough right that the

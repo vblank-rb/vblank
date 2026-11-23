@@ -1485,9 +1485,12 @@ module VBlank
           LEND_COLORS = :__lend_sprite_colors
 
           # The frame number the groups lent out are stamped with, counted once a frame as the
-          # sprites are written; and how many times a list found no group to borrow.
+          # sprites are written; how many times a list found no group to borrow; and the number of
+          # the last list that found none, so whatever reads the running cartridge can name the
+          # sprites that wear it (Diagnostics::AdvanceReading#colors_short_message).
           LENT_COLORS_FRAME = :__lent_colors_frame
           LENT_COLORS_MISSED = :__lent_colors_missed
+          LENT_COLORS_MISSED_LIST = :__lent_colors_missed_list
 
           # Count one more frame of sprites being written, for the groups lent to lists.
           def emit_count_lending_frame
@@ -1504,7 +1507,7 @@ module VBlank
             return unless lending
 
             emit_number(ACC, 0)
-            [LENT_COLORS_FRAME, LENT_COLORS_MISSED].each { |name| store_var(ACC, name) }
+            [LENT_COLORS_FRAME, LENT_COLORS_MISSED, LENT_COLORS_MISSED_LIST].each { |name| store_var(ACC, name) }
             lending.banks.each_index do |k|
               store_var(ACC, lending.last_drawn_var(k))
               store_var(ACC, lending.source_var(k))
@@ -1526,6 +1529,19 @@ module VBlank
           # first reads them reach the screen together. A list that finds every group in use
           # is drawn from the first one, in whatever colours that holds, and counted, which is
           # what the console's own games do when they run out.
+          #
+          # ### Why running out cannot be refused when the game is built
+          #
+          # The console has sixteen groups of sixteen sprite colours, and a sprite's row names
+          # one of them in the top four bits of its third halfword (GBATEK, "LCD OBJ - OAM
+          # Attributes", attribute 2 bits 12-15, and "LCD Color Palettes", the sprite colours
+          # at 0x05000200). A sprite has no other way to name colours, so the console's own
+          # games share the groups out among what is on the screen, and when every group is
+          # taken they draw the newcomer from a group that holds other colours or leave it out.
+          # How many lists are on the screen at once is known only as the game runs, so the
+          # build cannot refuse it. The routine counts each miss and keeps the list it was for,
+          # and whatever reads the running cartridge says so in plain words, naming the sprites
+          # (Diagnostics::AdvanceReading#colors_short_message).
           #
           # Where it falls short of them. Their groups go back the moment the last thing
           # wearing one is removed. Here a group goes back once a whole frame has passed
@@ -1578,6 +1594,7 @@ module VBlank
             load_var(3, LENT_COLORS_MISSED)
             emit(ASM.add_imm(3, 3, 1))
             store_var(3, LENT_COLORS_MISSED)
+            store_var(1, LENT_COLORS_MISSED_LIST) # only when out of groups, so the usual call pays nothing
             emit_number(ACC, lending.banks.first << OBJ_BANK_SHIFT)
             emit_branch(:b, lent)
             groups.each do |k|

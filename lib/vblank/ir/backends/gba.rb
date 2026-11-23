@@ -375,6 +375,25 @@ module VBlank
         def voice_table = @mixer.voice_table
         def drop_table = @mixer.drop_table
 
+        # Where the cartridge counts the sprites that found no lent group of colours, and whose
+        # the lists are (Cartridge::BuildRecord::ColorsShort); nil for a game that lends none.
+        # Each wearer is named as the game reads it: a sprite by the name it was declared with
+        # (Program#sprite_readings, matched by where it keeps its place), a pool's thing by the
+        # name the build made for it, which says its pool.
+        def colors_short_record(program)
+          lending = @screen.lending or return nil
+
+          declared = (program.sprite_readings || []).grep(IR::SpriteReading).to_h { |reading| [reading.x, reading.name] }
+          objects = @screen.picture.objects.to_h { |node| [node.name, node] }
+          wearers = lending.wearers.transform_values do |names|
+            names.map { |name| declared.fetch(objects[name]&.x&.then { |x| x.kind == :var_ref && x.name }, name) }.uniq
+          end
+          VBlank::Cartridge::BuildRecord::ColorsShort.new(
+            count_at: var_addresses[SpriteDrawing::LENT_COLORS_MISSED],
+            list_at: var_addresses[SpriteDrawing::LENT_COLORS_MISSED_LIST], wearers: wearers,
+          )
+        end
+
         # +fast_cartridge+ picks the cartridge timing this ROM asks for at boot. True
         # (the default) is the quick timing every real cartridge handles; false leaves
         # the console's cautious power-on timing alone, which is the escape hatch for a
@@ -612,7 +631,7 @@ module VBlank
                                    lists: @lists.list_places,
                                    voices: voice_table,
                                    sound_drops: drop_table,
-                                   colors_short_at: @screen.lending && var_addresses[SpriteDrawing::LENT_COLORS_MISSED],
+                                   colors_short: colors_short_record(program),
                                    video_memory: @screen.video_memory_report,
                                    roomy_memory: roomy_memory_report,
                                    sprite_slots: @screen.sprite_slots,

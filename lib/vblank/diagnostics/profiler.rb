@@ -222,7 +222,7 @@ module VBlank
         holding = scene_state(rom, scene) + Array(holding) if scene
         reached = how_reached(scene, from)
 
-        losses = Losses.new(sounds: rom.built.sound_drops, colors_short_at: rom.built.colors_short_at,
+        losses = Losses.new(sounds: rom.built.sound_drops, colors_short_at: rom.built.colors_short&.count_at,
                             sprites_left_out_at: rom.built.held_sprites&.left_out_at)
         gap_ends = gap_end_addresses(rom)
         profile, tearing, flicker, lost, counted = in_temp_rom(rom) do |path|
@@ -437,7 +437,7 @@ module VBlank
       end
 
       # A count the console keeps in one word at +address+ — a sprite drawn in another list's
-      # colours because no group was left to lend its list (see Cartridge::BuildRecord#colors_short_at),
+      # colours because no group was left to lend its list (see Cartridge::BuildRecord#colors_short),
       # or a row left out of a full sprite table (#held_sprites) — or nil for a game that keeps
       # no such count.
       def self.count_in(probe, address)

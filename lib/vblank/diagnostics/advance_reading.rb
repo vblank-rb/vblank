@@ -282,8 +282,53 @@ module VBlank
       # instead. 0 for a game that draws no sprite with another list, which borrows none.
       def borrowed_colors_missed
         refuse_missing_build_record!("where it counts the colours it went without")
-        address = @rom.built.colors_short_at
-        address ? IR::Int32.wrap(mem32(address)) : 0
+        short = @rom.built.colors_short
+        short ? IR::Int32.wrap(mem32(short.count_at)) : 0
+      end
+
+      # The words for a sprite drawn in colours not its own (see #borrowed_colors_missed), naming
+      # the sprites and pools that wear the last list that found no group; nil while none has.
+      # Whatever plays the cartridge logs them once for each list (#warn_of_losses), since this is
+      # a wrong picture with no other sign, and only the running game can know it happened: the
+      # build cannot tell how many lists will be on the screen at once.
+      def colors_short_message
+        short = @rom.built&.colors_short or return nil
+        ensure_rendered!
+        missed = IR::Int32.wrap(mem32(short.count_at))
+        return nil unless missed.positive?
+
+        names = short.wearers_of(mem32(short.list_at)).map { |name| wearer_words(name) }.uniq
+        wearer = names.empty? ? "A sprite" : names.join(" or ").then { |words| words[0].upcase + words[1..] }
+        "#{wearer} was drawn in colors that are not its own. All the spare groups of sprite colors were " \
+          "in use by other lists of colors on the screen. Until now, sprites found no free group " \
+          "#{missed} #{missed == 1 ? 'time' : 'times'}. To fix this, show fewer sprites with different " \
+          "lists of colors at the same time."
+      end
+
+      # A sprite by the name the game gave it: a thing of a pool by its pool's, since the build
+      # makes each of a pool's places a sprite of its own name (Messages::MadeNames, :pool_part).
+      private def wearer_words(name)
+        kind, parts = Messages::MadeNames.read(name)
+        kind == :pool_part ? "a sprite of pool :#{parts[:pool]}" : "sprite :#{name}"
+      end
+
+      # Log #colors_short_message once for each list that found no group, as this reader sees it.
+      # Called by the Verifier after each run of frames it plays (Verifier#warn_of_losses): one
+      # read of the cartridge's memory for a game that lends groups, a second only when the count
+      # has grown, and none for a game that lends none. The cartridge keeps only the last list
+      # that missed, so of several lists missing within one run of frames the last is named, and
+      # the others are named when they are last in a later run.
+      private def warn_of_losses
+        short = @rom.built&.colors_short or return
+        missed = IR::Int32.wrap(mem32(short.count_at))
+        return if missed <= (@colors_short_count ||= 0)
+
+        @colors_short_count = missed
+        list = mem32(short.list_at)
+        return if (@colors_short_lists ||= []).include?(list)
+
+        @colors_short_lists << list
+        VBlank.logger.warn("sprites") { colors_short_message }
       end
 
       # --- the processor ---
