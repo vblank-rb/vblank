@@ -19,7 +19,9 @@ module VBlank
     #
     # VBlank.game "DUNGEON", consoles: %i[gba] do
     #   uses Dungeon::Torch
+    #   screen :tiled, backdrop: :blue
     #   light_torch at: [40, 40]
+    #   game_loop {}
     # end
     # ```
     #
