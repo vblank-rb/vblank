@@ -7,6 +7,110 @@ require "test_helper"
 class TestSortOrder < Minitest::Test
   Spot = Struct.new(:x, :y)
 
+  # Spots that say their own order the Ruby way: by y, by y the biggest first, by y and then x.
+  Low = Struct.new(:x, :y) do
+    include Comparable
+
+    def <=>(other) = y <=> other.y
+  end
+
+  High = Struct.new(:x, :y) do
+    include Comparable
+
+    def <=>(other) = other.y <=> y
+  end
+
+  Tied = Struct.new(:x, :y) do
+    include Comparable
+
+    def <=>(other) = [y, x] <=> [other.y, other.x]
+  end
+
+  # An order that is not one field after another: the build cannot sort by it.
+  Summed = Struct.new(:x, :y) do
+    include Comparable
+
+    def <=>(other) = (x + y) <=> (other.x + other.y)
+  end
+
+  STARTS = [[30, 2], [10, 1], [50, 2], [20, 1], [40, 0]].freeze
+
+  private def ruby_order(kind) = STARTS.map { |x, y| kind.new(x, y) }.sort.map(&:x)
+
+  # The things are made from STARTS on the first pass, sorted with `sort!` each pass and drawn
+  # as bars of their x. A Struct is named in each game block, which is how the build tells an
+  # Array of Structs.
+  def test_a_struct_ordered_by_one_field_sorts_as_ruby_does
+    starts = STARTS
+    screen = screen_after do
+      spots = Array.new(capacity: 5)
+      started = 0
+      game_loop do
+        if started == 0
+          starts.each { |x, y| spots << Low.new(x, y) }
+          started = 1
+        end
+        spots.sort!
+        clear_screen :black
+        spots.each_with_index { |s, at| draw_rect_at 0, 10 + (at * 10), s.x, 4, :yellow }
+      end
+    end
+
+    assert_equal ruby_order(Low), bar_lengths(screen, 5)
+  end
+
+  def test_a_struct_ordered_by_one_field_the_biggest_first_sorts_as_ruby_does
+    starts = STARTS
+    screen = screen_after do
+      spots = Array.new(capacity: 5)
+      started = 0
+      game_loop do
+        if started == 0
+          starts.each { |x, y| spots << High.new(x, y) }
+          started = 1
+        end
+        spots.sort!
+        clear_screen :black
+        spots.each_with_index { |s, at| draw_rect_at 0, 10 + (at * 10), s.x, 4, :yellow }
+      end
+    end
+
+    assert_equal ruby_order(High), bar_lengths(screen, 5)
+  end
+
+  def test_a_struct_ordered_by_two_fields_sorts_as_ruby_does
+    starts = STARTS
+    screen = screen_after do
+      spots = Array.new(capacity: 5)
+      started = 0
+      game_loop do
+        if started == 0
+          starts.each { |x, y| spots << Tied.new(x, y) }
+          started = 1
+        end
+        spots.sort!
+        clear_screen :black
+        spots.each_with_index { |s, at| draw_rect_at 0, 10 + (at * 10), s.x, 4, :yellow }
+      end
+    end
+
+    assert_equal ruby_order(Tied), bar_lengths(screen, 5)
+  end
+
+  def test_a_struct_order_that_is_not_fields_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      screen_after do
+        spots = Array.new(capacity: 5)
+        game_loop do
+          spots << Summed.new(1, 2) if spots.empty?
+          spots.sort!
+        end
+      end
+    end
+
+    assert_match(/`<=>`/, error.message)
+  end
+
   private def screen_after(frames: 2, &block)
     builder = Builder.new
     builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, checked: false))

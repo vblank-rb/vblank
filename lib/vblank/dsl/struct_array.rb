@@ -188,11 +188,47 @@ module VBlank
         self
       end
 
-      # A Struct has no order of its own: refused, naming `sort_by!`.
+      # Puts the things in the order their Struct says with `<=>`, as Ruby's `sort!` does, at the
+      # cost of `sort_by!` by the same fields.
+      #
+      # ```ruby
+      # Enemy = Struct.new(:x, :y) do
+      #   include Comparable
+      #   def <=>(other) = y <=> other.y          # by y; `other.y <=> y` for the biggest first
+      # end
+      # enemies.sort!
+      # ```
+      #
+      # The `<=>` must compare fields: one field against the other thing's same field, or an
+      # Array of those, `[y, x] <=> [other.y, other.x]`, for ties. A Struct with no `<=>` of its
+      # own is refused, naming `sort_by!`.
       def sort!(*)
+        sort_by_key!(own_order)
+      end
+
+      # The order the Struct's `<=>` says, as a SortOrder::Key, read once while building by
+      # comparing two stand-in things, the first in slot 0 and the second in slot 1: each pair of
+      # numbers the answer compared is a field read from both, and which side each is on says
+      # which way it sorts (SortOrder.key_from_comparison).
+      def own_order # :nodoc:
+        @own_order ||= begin
+          refuse_no_order! unless SortOrder.own_order?(@kind)
+          first, second = [0, 1].map { |slot| walked(Pool::Instance.new(@pool, Value.new(@builder, IR::Build.int(slot)))) }
+          SortOrder.key_from_comparison(first <=> second, kind_name) do |left, right|
+            field = field_sorted_by(left)
+            next nil unless field && field == field_sorted_by(right)
+
+            slots = [left, right].map { |node| node.index.kind == :int ? node.index.value : nil }
+            SortOrder::Field.new(name: field, descending: slots == [1, 0]) if [[0, 1], [1, 0]].include?(slots)
+          end
+        end
+      end
+
+      private def refuse_no_order!
         PlainRuby::Steps.refuse_game_code!("`#{@local}` holds #{kind_name} things, which have no order of their own. " \
                                            "To fix this, sort by one of their fields with `sort_by!`: " \
-                                           "`#{@local}.sort_by! { |s| s.y }`.")
+                                           "`#{@local}.sort_by! { |s| s.y }`, or give #{kind_name} a `<=>` that " \
+                                           "compares its fields.")
       end
 
       # `sort` and `sort_by` make a new Array, which a console has no room for: refused, naming the

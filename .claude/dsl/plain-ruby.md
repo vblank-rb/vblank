@@ -220,7 +220,13 @@ end
 - A list holds numbers, so `[[0, 0], [0, 0]]`, an Array of Hashes and an item of nil are refused.
 - `sort!`, `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` sort an Array the
   game changes in place (`lists.md`); an Array of Structs takes `sort_by!` by one field or minus it, or an Array of those for ties (`[s.y, -s.x]`),
-  which changes its walk order (refused inside a walk of it). `sort` and `sort_by` are refused.
+  which changes its walk order (refused inside a walk of it, or in a routine a walk may call).
+  `sort` and `sort_by` are refused. **A Struct that defines `<=>`** (`include Comparable`,
+  `def <=>(other) = y <=> other.y`) says its own order: its `<=>` is read once while building on
+  two stand-in things into a `SortOrder::Key` (`StructArray#own_order`, from the pairs
+  `Value#sign_against` keeps), and `things.sort!` sorts by it at `sort_by!`'s cost. Each pair must
+  be one field against the other thing's same field (reversed for the biggest first), alone or in
+  an Array for ties; any other `<=>` is refused rather than called per comparison.
 - Ruby's other Array methods (`unshift`, `insert`, `concat`, `rotate!`, `map`, `uniq`) are refused by
   name, listing those that work. They put nothing in as far as the fraction rule goes.
 - **A named instance variable's Array** (`game_variables :counts`) is a game variable for each index

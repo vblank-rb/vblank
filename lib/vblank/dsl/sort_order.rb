@@ -95,6 +95,29 @@ module VBlank
         Messages::MadeNames.make(:array_sort, array: array, line: line.to_s, order: key.spelling)
       end
 
+      # Does the Struct +kind+ say its own order, with a `<=>` the game wrote (not Object's)?
+      def own_order?(kind) = !(Object <= kind.instance_method(:<=>).owner)
+
+      # The Key a Struct's `<=>` says: +answer+ is what it gave for two stand-in things, a number
+      # the game works out (Value#sign_against) carrying the pairs it compared. The block is handed
+      # each pair's two nodes and gives back the Field they read, or nil. A `<=>` that compares
+      # anything else is refused, naming +kind_name+.
+      def key_from_comparison(answer, kind_name)
+        pairs = answer.is_a?(Value) ? answer.compared_pairs.to_a : []
+        fields = pairs.map { |left, right| yield(left, right) }
+        refuse_unknown_order!(kind_name) if fields.empty? || fields.any?(&:nil?)
+
+        Key.new(fields: fields)
+      end
+
+      def refuse_unknown_order!(kind_name)
+        PlainRuby::Steps.refuse_game_code!("The `<=>` of #{kind_name} does not compare its fields one by one, so the " \
+                                           "game cannot sort by it. To fix this, compare one field with the other " \
+                                           "thing's same field, `y <=> other.y`, or `other.y <=> y` for the biggest " \
+                                           "first. For ties, compare Arrays of fields: " \
+                                           "`[y, x] <=> [other.y, other.x]`.")
+      end
+
       # The Key of an Array of numbers sorted by the items themselves.
       def item_key(descending) = Key.new(fields: [Field.new(name: :item, descending: descending)])
 
