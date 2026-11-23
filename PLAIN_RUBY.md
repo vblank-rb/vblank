@@ -147,11 +147,36 @@ game_loop do
 end
 ```
 
-The verbs a list has are `<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `+=` on an item, `size`, `length`, `empty?`, `first`, `last`, `each`, `each_with_index`, `sum`, `min`, `max` and `include?`. `item = trail.shift` hands back the item it drops, as Ruby's does, and so does a `shift` that is the answer of a branch.
+What an Array the game keeps can do:
 
-Using the dropped item keeps it in a hidden number: one word of quick memory, and a copy each time the line runs. `trail.shift` on its own keeps nothing. To skip the cost, read the item first: `item = trail.first`, then `trail.shift`. `rom.profile` lists every line that makes a hidden number.
+| Method | What it does |
+|---|---|
+| `<<`, `push`, `append` | Adds to the end; stops the game if it is full |
+| `shift` | Drops the first item and hands it back |
+| `pop` | Drops the last item and hands it back |
+| `[]`, `[]=`, `+=` on an item | Reads or changes one item |
+| `first`, `last` | Reads the first or the last item |
+| `size`, `length`, `empty?` | Tells how many items it holds |
+| `fill` | Sets every item to one number |
+| `each`, `each_with_index` | A loop over the items, run as the game plays |
+| `sum`, `min`, `max`, `include?` | Looks at every item; `min` and `max` of none are 0 |
+| `sort!`, `sort_by!`, `reverse!` | Puts the items in order (see below) |
 
-`sum`, `min`, `max` and `include?` look at every item each time they run, so they cost more the more items the list holds. `min` and `max` of an empty list are 0, which is how Ruby's nil reads as a game number.
+What it refuses, and what to write instead:
+
+| Method | Write instead |
+|---|---|
+| `unshift`, `insert` | `<<` at the end |
+| `concat`, `rotate!` | `<<` each item |
+| `sort`, `sort_by` | `sort!`, `sort_by!` |
+| `map`, `select`, `reject` | `each`, writing into a second Array |
+| `Array.new(8)` | `Array.new(8, 0)`, or `Array.new(capacity: 8)` |
+
+What these cost:
+
+- `item = trail.shift` keeps the dropped item in a hidden number: one word of quick memory, and a copy each time the line runs. `trail.shift` on its own keeps nothing. To skip the cost, read `trail.first`, then `trail.shift`.
+- `sum`, `min`, `max` and `include?` cost more the more items the Array holds.
+- `rom.profile` lists every line that makes a hidden number.
 
 `sort!` puts the items in order, the smallest first, as Ruby's does. `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` put the biggest first. Items that are level keep their order. A sort moves items back one at a time, so it costs little for a list that is nearly in order and more the more items move. `rom.profile` lists each line that sorts and what it costs. For the smallest item alone, `min` costs less. For a list that rarely changes, sort it when it changes, not on every pass. `sort` and `sort_by`, which make a new Array, are refused: write `sort!`.
 
@@ -232,17 +257,19 @@ A list is named after its local, so a test or a profile reads `trail` by that na
 
 ### What an Array cannot do
 
-Each limit, with what to write instead. Where a limit is refused, VBlank says so before the game is built, naming the line; several are shown with their messages under "What is refused, and what to write instead".
+| Limit | Write instead |
+|---|---|
+| It cannot grow past its room; game code adding to it needs `capacity:` | `Array.new(capacity: 8)` |
+| A push onto a full Array stops the game (the Advance cartridge drops it for now) | `trail << x if trail.size < 8` |
+| `Array.new(8)` with no start: its items would be nil | `Array.new(8, 0)`, or `Array.new(capacity: 8)` |
+| Its size or capacity worked out as the game plays | A number or a constant |
+| A whole number the game works out and a fraction in one Array | `.to_f` on the whole number |
+| An Array of Arrays or of Hashes | One Array for each row, or an Array of Structs |
+| A Ruby method an Array the game keeps does not have | The methods in the table above, or a `while` loop |
+| A setting on `Array.new` other than `capacity:`, `width:`, `fast:` | One of those three |
+| An instance variable's Array read through another object, `part.counts[which]` | Read it in a method of that class, and call the method |
 
-- It cannot grow past its room. An Array that game code adds to needs `capacity:` (refused without it): write `Array.new(capacity: 8)`.
-- A push onto a full Array stops the game with an error naming it, on every run that can stop with words (the Advance cartridge drops the push for now). Test first: `trail << x if trail.size < 8`.
-- `Array.new(8)` with no start is refused, since its items would be nil: write `Array.new(8, 0)`, or `Array.new(capacity: 8)` for an empty one.
-- Its size and capacity must be known while the game is built (refused otherwise): use a number or a constant, never a number the game works out.
-- A whole number the game works out and a fraction cannot go into the same Array (refused, naming both lines): write `.to_f` on the whole number.
-- It cannot hold Arrays or Hashes (refused): keep one Array for each row, or use a `pool`.
-- `unshift`, `insert`, `concat`, `rotate!`, `map` and the other Ruby methods a list does not have are refused by name: use the verbs above, or a `while` loop over the items.
-- `Array.new` takes only `capacity:`, `width:` and `fast:` besides Ruby's size and start (refused otherwise).
-- An instance variable's Array read at an index the game works out is a list only when the read is written `@counts[which]`, in the class, in the class reopened, or in a class made from it. The file does not matter. A read through another object (`part.counts[which]`) is refused: read it in a method of that class, and call the method.
+Each refused limit is refused before the game is built, naming the line. Several are shown with their messages under "What is refused, and what to write instead".
 
 ### An Array of Structs
 
