@@ -28,6 +28,15 @@ module VBlank
         list_answer: ["keeps the answer of sum, min, max or include? on a list as it walks the items.", nil],
         taken: ["keeps the item that shift or pop drops, as Ruby hands it back.",
                 "Unneeded where the line does not use the item."],
+        count_start: ["keeps the number the loop starts from, as Ruby does when the body changes it.",
+                      "Unneeded if nothing in the loop changes that number."],
+        counted: ["keeps how many things the test holds for, as it counts them.", nil],
+        jump: ["keeps whether `break` or `next` ran in this round of the loop.", nil],
+        position: ["keeps the place in the walk that each_with_index hands the block.", nil],
+        clamped: ["keeps the thing that clamp hands back.", nil],
+        found: ["keeps whether the Array held a thing for min or max to hand back.", nil],
+        best: ["keeps the thing that min or max has found so far.", nil],
+        kept: ["keeps which thing this name holds after the walk that handed it over.", nil],
         truth: ["keeps a second hidden variable for nil, or for false beside a number.",
                 "Unneeded if it starts with false, or a number such as -1."]
       })
