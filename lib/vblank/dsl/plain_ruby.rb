@@ -1039,20 +1039,47 @@ module VBlank
           end
 
           tests = promoted_in_block?(node) ? @block_tests : []
-          "(#{variable_while_recording_text(node)}; #{under_open_tests(tests) { variable_write_text(node) }})"
+          options = walk_unread?(node) ? ", walk_unread: true" : ""
+          written = under_open_tests(tests) { variable_write_text(node, options) }
+          "(#{variable_while_recording_text(node)}; #{written})"
         end
 
         # What the blocks that change the name +node+ starts are called on, read where it starts
         # (Writes.start_variable_while_recording's +walked+): in a part's method, which runs on no
-        # builder, a walk over an Array the game keeps is what makes the name the game's. Given only
-        # where each is an instance variable or a constant, which can be read before the block runs.
+        # builder, a walk over an Array the game keeps is what makes the name the game's. Each is
+        # read before the block runs where that has no other effect (#receiver_read_ahead_text).
         def walked_option_text(node)
-          receivers = @names.unplaced_receivers(node)
-          readable = [Prism::InstanceVariableReadNode, Prism::ConstantReadNode, Prism::ConstantPathNode]
-          return "" if receivers.empty? || !receivers.all? { |receiver| readable.any? { |kind| receiver.is_a?(kind) } }
+          read = @names.unplaced_receivers(node).filter_map { |receiver| receiver_read_ahead_text(receiver) }.uniq
+          return "" if read.empty?
 
-          ", walked: -> { [#{receivers.map(&:slice).uniq.join(', ')}] }"
+          ", walked: -> { [#{read.join(', ')}] }"
         end
+
+        # The Ruby that reads +receiver+, what a block is called on, before the block runs, or nil
+        # where it cannot be read ahead (#walk_unread?). An instance variable, a constant or a
+        # literal reads as itself. A local reads where it is set by then, and nil where it is not
+        # yet. A bare name with no arguments is the part's reader where its class hands the instance
+        # variable of that name out as it is (InstanceVariables.plain_reader?), read straight from
+        # it, so the reader is not called twice.
+        def receiver_read_ahead_text(receiver)
+          case receiver
+          when Prism::InstanceVariableReadNode, Prism::ConstantReadNode, Prism::ConstantPathNode,
+               Prism::IntegerNode, Prism::RangeNode, Prism::ArrayNode
+            receiver.slice
+          when Prism::LocalVariableReadNode
+            "(defined?(#{receiver.name}) == \"local-variable\" ? #{receiver.name} : nil)"
+          when Prism::CallNode
+            return nil unless receiver.receiver.nil? && receiver.arguments.nil? && receiver.block.nil? &&
+                              receiver.name.match?(/\A[a-z_]\w*\z/)
+
+            "(#{INSTANCE_VARIABLES}.plain_reader?(self, :#{receiver.name}) ? @#{receiver.name} : nil)"
+          end
+        end
+
+        # Is a block that changes the name +node+ writes called on something #receiver_read_ahead_text
+        # cannot read: a lambda handed with `&`, a helper that yields, a reader with arguments? Its
+        # change by a game number is then refused (Writes.refuse_unfollowed_walk!).
+        def walk_unread?(node) = @names.unplaced_receivers(node).any? { |receiver| receiver_read_ahead_text(receiver).nil? }
 
         # The name made the game variable it is to be, if game code is being recorded as this runs.
         def variable_while_recording_text(node)
@@ -1072,9 +1099,9 @@ module VBlank
         def write_or_change_text(node) = node.is_a?(Prism::LocalVariableOperatorWriteNode) ? change_text(node) : write_text(node)
 
         # The write of a name that may hold a game variable by now: Writes changes the variable if
-        # it does, and leaves the write to Ruby if not.
-        def variable_write_text(node)
-          return "#{node.name} = #{change_call(node)}" if node.is_a?(Prism::LocalVariableOperatorWriteNode)
+        # it does, and leaves the write to Ruby if not. +options+ go to a change (Writes.change).
+        def variable_write_text(node, options = "")
+          return "#{node.name} = #{change_call(node, options)}" if node.is_a?(Prism::LocalVariableOperatorWriteNode)
 
           "#{node.name} = #{assign_text(node.name, "(#{value_text(node.value)})")}"
         end

@@ -307,6 +307,38 @@ class AnswerFilled
     @points.each { |point| sum += point.x }
     sum
   end
+
+  attr_reader :points
+
+  # The same sum, walking what the build cannot read before the walk: the Array through its
+  # reader, through a local, by a lambda handed with `&`, and through a helper that yields.
+  def total_x_by_reader
+    sum = 0
+    points.each { |point| sum += point.x }
+    sum
+  end
+
+  def total_x_by_local
+    walked = @points
+    sum = 0
+    walked.each { |point| sum += point.x }
+    sum
+  end
+
+  def total_x_by_lambda
+    sum = 0
+    add = ->(point) { sum += point.x }
+    @points.each(&add)
+    sum
+  end
+
+  def total_x_by_helper
+    sum = 0
+    each_point { |point| sum += point.x }
+    sum
+  end
+
+  def each_point(&) = @points.each(&)
 end
 
 # A spot whose number never changes after it is made.

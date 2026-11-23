@@ -110,6 +110,14 @@ instance variables.
   Once that game's build has ended too (`Session#game_ended?` asks the game's session), a later
   separate build takes it for Ruby's number, as it does a part kept outside the game's block
   (`ruby_number_of_stale`).
+- **A part's local summed over a walk** (`sum = 0`, then `@points.each { |p| sum += p.x }`, in a
+  method game code calls) is the game's where its first line reads what the block walks and finds
+  a list, a pool or an Array of Structs (`Rewriter#walked_option_text`): an instance variable, a
+  constant, a literal, a local set by then, or the part's own plain reader (read as its instance
+  variable, `InstanceVariables.plain_reader?`). Recording alone does not decide: Ruby planning in
+  a part's method runs while game code is recorded too. A block the line cannot read ahead (a
+  lambda handed with `&`, a helper that yields) changing the local by a game number is refused
+  (`Writes.refuse_unfollowed_walk!`), as a game walk there would keep one item's number.
 - **A game instance variable is a game variable from its first number on**, as if `var` had made
   it: `@busy = 0` in `initialize` makes it, starting at 0 at power-on. Every read and change after
   that is the game's, wherever it is: in another routine, in a block another part calls later,

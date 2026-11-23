@@ -110,9 +110,11 @@ module VBlank
         # is applied the way Ruby applies it, by public_send: that is Ruby itself, on purpose, and the
         # same goes for the verbs, attributes and setters below.
         #
-        # +owner+ is #write's.
+        # +owner+ is #write's. +walk_unread+ is true for a local changed from a block only running
+        # can place, where some block that changes it is called on something its first line could
+        # not read ahead (Rewriter#walk_unread?): see #refuse_unfollowed_walk!.
         def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil,
-                   starting: false, field: nil)
+                   starting: false, field: nil, walk_unread: false)
           # A field of a Struct that stays Ruby's holds a plain number, which the change works out
           # as Ruby does, or a variable of its own (InstanceVariables.copy_field_number!), which it changes.
           # A test opened since the Struct was made has given the field its variable
@@ -133,6 +135,7 @@ module VBlank
           return change_variable(current, operator, amount) if Steps.variable?(current)
 
           refuse_object_under_test!(label, current) if game && !list_item?(current)
+          refuse_unfollowed_walk!(label) if walk_unread && amount.is_a?(Value) && Builder::Session.recording?
           changed = yield current.public_send(operator, amount)
           # Ruby answers the slot's new number. The working-out written back reads the slot, so
           # read after the write it would count the change twice; the slot read again is the answer.
@@ -440,6 +443,20 @@ module VBlank
         def refuse_new_place_under_test!(label)
           Steps.refuse_game_code!("`#{label}` has no number yet, and this line gives it one under a test the game " \
                                   "makes as it plays. To fix this, give it a number before the test.")
+        end
+
+        # A local of a part's method, changed by a game number from a block while game code is
+        # recorded, which its first line did not make a game variable, where that line could not
+        # read ahead what some block changing it walks (Rewriter#walk_unread?): a lambda handed with
+        # `&`, a helper that yields. Were it a game walk, Ruby's local would keep only one round's
+        # working-out, so the build refuses rather than guess. A change by a Ruby number is Ruby's
+        # planning, and stays Ruby's. So is a walk the line can read: an instance variable, a
+        # constant, a local, or the part's own plain reader.
+        def refuse_unfollowed_walk!(name)
+          Steps.refuse_game_code!("This line changes `#{name}` in a block, by a number the game works out as it " \
+                                  "plays. VBlank cannot tell what the block walks before it runs, so `#{name}` " \
+                                  "cannot be a game number. The game would keep only the last change. To fix this, " \
+                                  "walk the Array by its instance variable in this method, like `@things.each`.")
         end
 
         def refuse_object_under_test!(name, held)

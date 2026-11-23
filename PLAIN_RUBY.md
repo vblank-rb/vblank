@@ -695,7 +695,7 @@ game_loop do
 end
 ```
 
-Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable a method sets outright in game code and another routine reads, which the source does not show (write `game_variables`); `floor`, `round`, `succ`, `divmod`, `**` and the like on a game number (use `to_i` for the whole part of a fraction); a constant from outside the game, `system`, `eval` and the like.
+Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable a method sets outright in game code and another routine reads, which the source does not show (write `game_variables`); `floor`, `round`, `succ`, `divmod`, `**` and the like on a game number (use `to_i` for the whole part of a fraction); in a part's method, a local changed by a game number in a lambda handed with `&` or a block a helper yields to (walk the Array by its instance variable, `@things.each`); a constant from outside the game, `system`, `eval` and the like.
 
 ## What builds and means something else
 

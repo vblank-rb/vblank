@@ -1025,6 +1025,43 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # The same sum over a walk through the part's own reader, or a local holding the Array: the
+  # build reads either before the walk runs, so the sum agrees.
+  def test_a_local_summed_over_a_walk_through_a_reader
+    agrees("points.each { sum += ... }, in a method", reads: %i[m], passes: 2) do
+      filled = AnswerFilled.new
+      m = 0
+      game_loop { m = filled.total_x_by_reader }
+    end
+  end
+
+  def test_a_local_summed_over_a_walk_through_a_local
+    agrees("walked = @points; walked.each { sum += ... }, in a method", reads: %i[m], passes: 2) do
+      filled = AnswerFilled.new
+      m = 0
+      game_loop { m = filled.total_x_by_local }
+    end
+  end
+
+  # Through a lambda handed with `&`, or a helper that yields, the build cannot tell what is
+  # walked before it runs. A game walk would leave one item's number, so it is refused.
+
+  def test_a_local_summed_by_a_lambda_over_a_walk_is_refused
+    refused("@points.each(&add), add changing sum, in a method", /walk the Array by its instance variable/) do
+      filled = AnswerFilled.new
+      m = 0
+      game_loop { m = filled.total_x_by_lambda }
+    end
+  end
+
+  def test_a_local_summed_through_a_helper_that_yields_is_refused
+    refused("each_point { sum += ... }, in a method", /walk the Array by its instance variable/) do
+      filled = AnswerFilled.new
+      m = 0
+      game_loop { m = filled.total_x_by_helper }
+    end
+  end
+
   # `@counter ||= ...` makes it the first time the line runs and keeps it after, in Ruby too.
   def test_a_changing_object_kept_with_or_equals_in_the_game_loop
     agrees("@counter ||= AnswerCounter.new", reads: %i[m], passes: 3) do

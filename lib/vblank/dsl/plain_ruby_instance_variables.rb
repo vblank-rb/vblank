@@ -106,6 +106,17 @@ module VBlank
           nil
         end
 
+        # Does +owner+'s `+name+` answer its instance variable of that name as it is
+        # (#mark_plain_readers)? Then a rewritten line may read the instance variable in its place
+        # (Rewriter#receiver_read_ahead_text), with the same answer and without calling the reader.
+        def plain_reader?(owner, name)
+          return false unless owner.class.public_method_defined?(name)
+
+          defined_in = owner.class.instance_method(name).owner
+          defined_in.const_defined?(PLAIN_READERS_CONSTANT, false) &&
+            defined_in.const_get(PLAIN_READERS_CONSTANT, false).include?(:"@#{name}")
+        end
+
         # The constant a class keeps the instance variables its code may change as the game plays
         # in (#mark_changing), as `:@ticks`.
         CHANGING_CONSTANT = :VBLANK_CHANGING_INSTANCE_VARIABLES
