@@ -65,14 +65,18 @@ module VBlank
         # game code adds items to it, +source+ the block or file the line is in, +declared_at+ the
         # line itself, and +fraction_at+ the first line that puts a fraction into it
         # (LocalNames#game_array_fraction_put), or nil. Each place is as a message names one,
-        # `game.rb:12`.
-        Declaration = Data.define(:name, :local, :grows, :source, :declared_at, :fraction_at)
+        # `game.rb:12`. +things+ is a lambda giving the classes of the things game code puts in it
+        # (`Spark.new(...)`), or nil, and +thing_fractions+ the fields a put shows a fraction for,
+        # by position or keyword (DSL::StructArray).
+        Declaration = Data.define(:name, :local, :grows, :source, :declared_at, :fraction_at, :things, :thing_fractions)
 
         # `name = Array.new(given..., capacity:, settings...)`, as the list it makes. The arguments
         # are Ruby's: a size and the start of each item, or a size and a block that works each item
         # out while building. Items that are not all numbers stay a Ruby Array, as
         # #list_from_literal says: `Array.new(3) { |n| var :"shown#{n}", 0 }` is three variables.
         def list_from_new(owner, declaration, *given, capacity: nil, **settings, &block)
+          return StructArray.declare(owner, declaration, given, capacity, settings, block) if declaration.things
+
           refuse_unknown_settings!(settings)
           size = given.first
           refuse_unknown_size!(declaration.local, size) unless given.empty?

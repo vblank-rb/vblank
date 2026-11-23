@@ -785,7 +785,7 @@ module VBlank
         # A part of a game keeps its variables in these, so one holding a game variable is changed.
         def instance_variable_write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
-          value = value_text(node.value)
+          value = things_array_text(node) || value_text(node.value)
           return "#{prefix}#{WRITES}.keep_as_own((#{value}), self, :#{node.name})" if LocalNames.makes_variable?(node.value)
 
           copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
@@ -888,12 +888,40 @@ module VBlank
           text + ("\n" * [missing, 0].max)
         end
 
+        # `@enemies = Array.new(capacity: 4)`, where the class around it puts things made from a
+        # Struct into `@enemies` (LocalNames#instance_variable_things_made): the Array of Structs
+        # it makes (DSL::StructArray), named when it is made after the object and the instance
+        # variable. Nil for any other write.
+        def things_array_text(node)
+          made = @names.instance_variable_things_made(node)
+          value = node.value
+          return nil if made.empty? || !Arrays.makes_array?(value) || !value.is_a?(Prism::CallNode)
+
+          declaration = "#{ARRAYS}::Declaration.new(name: nil, local: :#{node.name.to_s.delete_prefix('@')}, " \
+                        "grows: true, source: #{@source_label.inspect}, declared_at: #{place_text(node).inspect}, " \
+                        "fraction_at: nil, #{things_text(made)})"
+          given = value.arguments ? ", #{rewritten_text(value.arguments)}" : ""
+          "#{ARRAYS}.list_from_new(self, #{declaration}#{given})"
+        end
+
         # What the whole block says about the Array +node+ makes (Arrays::Declaration).
         def game_array_declaration_text(node)
           fraction_put = @names.game_array_fraction_put(node)
           "#{ARRAYS}::Declaration.new(name: #{game_array_list_name(node).inspect}, local: :#{node.name}, " \
             "grows: #{@names.game_array_grown?(node)}, source: #{@source_label.inspect}, " \
-            "declared_at: #{place_text(node).inspect}, fraction_at: #{(fraction_put && place_text(fraction_put)).inspect})"
+            "declared_at: #{place_text(node).inspect}, fraction_at: #{(fraction_put && place_text(fraction_put)).inspect}, " \
+            "#{things_text(@names.game_array_things_made(node))})"
+        end
+
+        # What an Array of things made from a class holds (Arrays::Declaration#things): each class
+        # written out, read when the line runs, so one defined further down the file is there, and
+        # the fields a put shows a fraction for.
+        def things_text(made)
+          return "things: nil, thing_fractions: []" if made.empty?
+
+          classes = made.map { |put| put.receiver.slice }.uniq.join(", ")
+          fractions = made.flat_map { |put| @names.fraction_fields_of(put) }.uniq
+          "things: -> { [#{classes}] }, thing_fractions: #{fractions.inspect}"
         end
 
         # The list's name: its local's, unique in this block or file (`trail`, then `trail_2` for a

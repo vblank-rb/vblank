@@ -15,7 +15,7 @@ module VBlank
       # yet, so what they need goes into the rewritten block as plain data (see #constant_check).
       class BlockChecks
         # Ruby's values and the modules that work on them, which reach nothing outside the game.
-        RUBY_VALUES = %i[Array Comparable Float Hash Integer Math Range Rational String Symbol].freeze
+        RUBY_VALUES = %i[Array Comparable Data Float Hash Integer Math Range Rational String Struct Symbol].freeze
         # Ruby's own errors, which reach nothing outside the game either: a game raises one to stop
         # its build with words of its own (`raise ArgumentError, "A speed is from 1 to 8."`).
         RUBY_ERRORS = %i[ArgumentError FrozenError IndexError KeyError NameError NoMethodError
@@ -217,11 +217,23 @@ module VBlank
                          "`VBlank.require_game_file \"#{name}\"`. (at #{File.basename(from)}:#{line})"
         end
 
+        # The constants the block reads, but not one it gives a value itself (`Spark = Struct.new(...)`),
+        # which is the game's own.
         def constants_named(node = @block_node)
+          own = constants_written(@block_node)
+          constants_read(node).reject { |name, _| own.include?(name) }
+        end
+
+        def constants_written(node)
+          own = node.is_a?(Prism::ConstantWriteNode) ? [node.name] : []
+          own + node.compact_child_nodes.flat_map { |child| constants_written(child) }
+        end
+
+        def constants_read(node)
           case node
           when Prism::ConstantReadNode then [[node.name, node.location.start_line]]
           when Prism::ConstantPathNode then constants_named_by_path(node)
-          else node.compact_child_nodes.flat_map { |child| constants_named(child) }
+          else node.compact_child_nodes.flat_map { |child| constants_read(child) }
           end
         end
 
@@ -234,7 +246,7 @@ module VBlank
           case path.parent
           when nil then [[path.name, path.location.start_line]]
           when Prism::ConstantReadNode then [[path.parent.name, path.location.start_line]]
-          else constants_named(path.parent)
+          else constants_read(path.parent)
           end
         end
 

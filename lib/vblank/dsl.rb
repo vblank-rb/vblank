@@ -21,6 +21,7 @@ require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
 require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is
+require_relative "dsl/plain_ruby_struct_settings" # What a Struct's block says about an Array of it
 # A handle that does its work in game words is written in normal Ruby, as a game is, so it comes in
 # the way a part of a game does. Everything above this line is what that needs.
 VBlank.require_game_file "dsl/bounds"
@@ -32,6 +33,7 @@ require_relative "dsl/random_numbers"      # The random-number stream, for a sav
 require_relative "dsl/table"
 require_relative "dsl/field_ref"
 VBlank.require_game_file "dsl/pool"
+VBlank.require_game_file "dsl/struct_array"  # An Array of Structs game code changes, kept as a pool
 require_relative "dsl/direction"
 require_relative "dsl/grid"
 VBlank.require_game_file "dsl/sprite"

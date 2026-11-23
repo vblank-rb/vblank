@@ -213,6 +213,22 @@ end
 - **A named instance variable's Array** (`game_variables :counts`) is a game variable for each index
   where every index is known while building, and a list where the game may work one out
   ("Instance variables" above).
+- **An Array of Structs is a pool** (`pools.md`, DSL::StructArray): where game code puts
+  `Spark.new(...)` (or `Spark[...]`) into an Array it changes, the Array is a pool named as a list
+  would be, its fields the Struct's members, each starting at 0, or 0.0 where a put shows a
+  fraction (`Spark.new(x, 0.0, 1.5)`). `<<`/`push`/`append` spawn, `shift` takes out the oldest,
+  `clear` all, `delete_if`/`reject!` those the block holds for; `each` (oldest first),
+  `reverse_each`, `each_with_index` (the place in the walk); `size`/`length`/`count` (with a block,
+  how many it holds for), `empty?`, `any?`. A walk hands an object of the game's own Struct, so its
+  methods run, and each field holds the pool's number for that thing: `s.y += s.vy` changes it. It
+  answers `face`, `draw_with`, `move`, `can_move?`, `clamp_to_screen`, `overlaps?`, the edges and
+  the screen-edge tests, and `index`. `Array.new` takes `capacity:` (needed) and `fast:`. In the
+  Struct's block, `drawn_as :spark` (or `facing:`/`frames:`/`rate:`) draws each as a sprite (refused
+  without `x` and `y`) and `narrow :x, y: :byte` sets widths. A part's instance variable works the
+  same (`@enemies = Array.new(capacity: 8)`, `@enemies << Enemy.new(...)` in the same class and
+  file), named as its variable would be, `enemies_part_enemies`. Refused: no capacity, a size or a
+  start on `Array.new`, a `Data` class, two kinds in one Array, a member left nil, any other Array
+  method. A full Array drops the new thing (as `on_full: :drop`).
 
 ## Changing a variable
 

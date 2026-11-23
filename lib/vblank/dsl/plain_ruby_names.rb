@@ -247,6 +247,11 @@ module VBlank
           @instance_variables_at_worked_out_keys = Set.new
           @instance_variables_at_worked_out_keys_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
           @open_modules = []
+          # Things made from a class written out (`Enemy.new`) put into an instance variable, by
+          # the class or module around the line (nil outside one), then by the instance variable.
+          @instance_variable_things = Hash.new { |all, node| all[node] = Hash.new { |names, name| names[name] = [] } }
+                                          .compare_by_identity
+          @module_of_instance_variable_write = {}.compare_by_identity
           @next_block_iterates = false
           read_names(block_node, [], false)
         end
@@ -279,6 +284,51 @@ module VBlank
         def game_array_fraction_put(node)
           puts = @locals_by_node[node]&.array_puts || []
           puts.sort_by { |put| put.location.start_offset }.find { |put| fraction_written?(put) }
+        end
+
+        # The things game code puts into the game Array +node+ names that are made from a class
+        # written out, `Spark.new(...)` or `Spark[...]`: what makes it an Array of Structs.
+        def game_array_things_made(node)
+          puts = @locals_by_node[node]&.array_puts || []
+          puts.select { |put| LocalNames.thing_made?(put) }.sort_by { |put| put.location.start_offset }
+        end
+
+        # The things made from a class written out that the code put into the instance variable
+        # +write+ gives a value, `@enemies << Enemy.new(...)`, anywhere in the class or module
+        # around +write+ in this file: what makes `@enemies = Array.new(capacity: 4)` an Array of
+        # Structs.
+        def instance_variable_things_made(write)
+          return [] unless @module_of_instance_variable_write.key?(write)
+
+          @instance_variable_things[@module_of_instance_variable_write[write]][write.name]
+            .sort_by { |put| put.location.start_offset }
+        end
+
+        # `@enemies << Enemy.new(...)` (#instance_variable_things_made).
+        def note_instance_variable_thing_put(node)
+          return unless node.receiver.is_a?(Prism::InstanceVariableReadNode) && Arrays::GROWING_VERBS.include?(node.name)
+
+          things = Arrays.put_values(node).select { |put| LocalNames.thing_made?(put) }
+          @instance_variable_things[@open_modules.last][node.receiver.name].concat(things)
+        end
+
+        # Is +node+ `Const.new(...)` or `Const[...]`?
+        def self.thing_made?(node)
+          node.is_a?(Prism::CallNode) && %i[new []].include?(node.name) &&
+            [Prism::ConstantReadNode, Prism::ConstantPathNode].any? { |kind| node.receiver.is_a?(kind) }
+        end
+
+        # The fields a thing made with +made+ (#game_array_things_made) shows a fraction for: the
+        # position of each such argument, or its keyword.
+        def fraction_fields_of(made)
+          made.arguments&.arguments.to_a.each_with_index.flat_map do |argument, position|
+            if argument.is_a?(Prism::KeywordHashNode)
+              argument.elements.grep(Prism::AssocNode).select { |pair| pair.key.is_a?(Prism::SymbolNode) && fraction_written?(pair.value) }
+                      .map { |pair| pair.key.unescaped.to_sym }
+            else
+              fraction_written?(argument) ? [position] : []
+            end
+          end
         end
 
         # Does +node+ show, in the source, that it is a number with a fraction? A Float written
@@ -593,6 +643,7 @@ module VBlank
             read_children(node, scopes, in_game_code)
             note_unpacked_variables(node)
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
+            @module_of_instance_variable_write[node] = @open_modules.last
             record_change(node.name, node)
             @names_moved_in_game_code[node.name] = true if in_game_code && name_given?(node)
             read_children(node, scopes, in_game_code)
@@ -758,6 +809,7 @@ module VBlank
           read_place_change(node) if node.name == :[]= || node.attribute_write?
           note_array_change(node, in_game_code)
           note_instance_variable_index(node)
+          note_instance_variable_thing_put(node)
           record_bang_call_change(node)
           note_func_block(node) if node.name == :func
           record_game_call(node) if game_call?(node)

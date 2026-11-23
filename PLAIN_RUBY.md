@@ -221,6 +221,39 @@ Each limit, with what to write instead. Where a limit is refused, VBlank says so
 - `Array.new` takes only `capacity:`, `width:` and `fast:` besides Ruby's size and start (refused otherwise).
 - A named instance variable's Array read at an index the game works out is a list only when the read is written `@counts[which]`, in the class, in the class reopened, or in a class made from it. The file does not matter. A read through another object (`part.counts[which]`) is refused: read it in a method of that class, and call the method.
 
+### An Array of Structs
+
+Many things of one kind, each with fields (bullets, enemies, sparks), are an Array of Structs. Where game code puts `Spark.new(...)` into an Array and changes it, the game keeps it as a pool, and each thing a walk hands the block is a `Spark` whose fields change where they stand.
+
+```ruby
+Spark = Struct.new(:x, :y, :vy) do
+  def fall
+    self.y += vy
+  end
+end
+screen :bitmap
+sparks = Array.new(capacity: 32)
+frame = 0
+game_loop do
+  frame += 1
+  sparks.shift if sparks.size == 32        # full: take out the oldest
+  sparks << Spark.new(frame % 240, 0.0, 1.5)
+  sparks.each(&:fall)
+  sparks.delete_if { |s| s.y > 150 }
+  clear_screen :black
+  sparks.each { |s| draw_rect_at s.x, s.y, 2, 2, :yellow }
+end
+```
+
+- `<<`, `push` and `append` put a thing in; `shift` takes out the oldest and `clear` all of them; `delete_if` and `reject!` take out those the block's test holds for.
+- `each` walks them oldest first, `reverse_each` newest first, and `each_with_index` hands the place in the walk too. `size`, `length`, `count`, `empty?` and `any?` count them.
+- On a tiled screen, `drawn_as :spark` in the Struct's block shows each thing as a sprite at its `x` and `y`, and `drawn_as facing: {...}, frames: [...], rate: 8` takes what a sprite takes. A thing in a walk answers `face`, `draw_with`, `move`, `overlaps?`, its edges and the screen-edge tests, as a sprite does.
+- `narrow :x, :y` in the Struct's block keeps each of those fields in half a word, and `narrow kind: :byte` in a byte, for a big Array.
+- A field holds fractions where a line puts one in: `Spark.new(x, 0.0, 1.5)`.
+- A part keeps one in an instance variable the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class.
+- `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change, and so are Ruby's Array methods a pool has no meaning for (`sort_by!`, `map`), by name.
+- A full Array adds nothing on `<<`: `shift` first to make room, as above.
+
 ## Changing a variable
 
 `=`, `+=`, `-=`, `*=`, `|=` and `&=` change a number the game keeps, and a name holds a value, as in Ruby.
