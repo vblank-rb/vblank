@@ -577,13 +577,17 @@ class TestProfiler < Minitest::Test
   # The build says a game can tear, which is a fact about the screen it chose. Whether one
   # that can does is a race between the display's row and the game's, and only running it
   # settles that — so it is measured here rather than priced.
+  #
+  # The game paints the screen a column at a time, each too narrow for a row to be filled at
+  # once, so it is slow by construction, and every row the display shows while it paints has a
+  # seam in it. Rows filled whole stay ahead of the display down the screen and need not tear.
   def test_a_game_that_draws_more_than_fits_is_seen_to_tear
     heavy = VBlank.build("PTER", console: :gba, code: "PTER", maker: "01", out: nil, err: nil) do
       screen :bitmap
       x = 0
       game_loop do
         clear_screen :black
-        6.times { |i| fill_rect 0, i * 24, 240, 24, :red }
+        80.times { |i| fill_rect i * 3, 0, 3, 160, :red }
         x += 1
       end
     end
