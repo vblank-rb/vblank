@@ -258,6 +258,51 @@ class TestJSShell < Minitest::Test
     end
   end
 
+  # A browser that keeps nothing for the page (an app's built-in browser showing it in a frame) gets
+  # a plain message and a button that copies the page's address, and never the menu: the menu and
+  # the unpacking both write to storage, and such a browser leaves them waiting for ever.
+  # +wait+ is real time for the page's own check to give up on storage that never answers.
+  private def open_without_storage(folder, flag, wait: 0)
+    played_page(["settle", ("wait #{wait}" if wait.positive?), "settle", "play 3", "counts", "text said", "text copy-link",
+                 *CHOOSE_LOAD_ROM, "picker", "click copy-link", "settle", "clipboard"].compact,
+                html: shell_page_html(folder), browser: ["idb:#{File.join(folder, 'idb.json')}", flag])
+  end
+
+  private def assert_storage_refused(out)
+    assert_match(/pictures=0\b/, out.grep(/\Acounts /).first, "the menu was drawn")
+    said = out.grep(/\Atext said /).first
+    refute_match(/hidden/, said)
+    assert_match(/cannot keep/, said)
+    assert_match(/Chrome, Safari or Firefox/, said)
+    refute_match(/hidden|\(none\)/, out.grep(/\Atext copy-link /).first)
+    assert_includes out, "picker 0"
+    assert_match(%r{\Aclipboard file://.*/page\.html\z}, out.grep(/\Aclipboard /).first)
+  end
+
+  def test_a_browser_whose_local_storage_throws_says_to_open_the_page_elsewhere
+    Dir.mktmpdir { |folder| assert_storage_refused open_without_storage(folder, "no-local-storage") }
+  end
+
+  def test_a_browser_whose_indexed_db_fails_says_to_open_the_page_elsewhere
+    Dir.mktmpdir { |folder| assert_storage_refused open_without_storage(folder, "idb-error") }
+  end
+
+  def test_a_browser_whose_indexed_db_never_answers_says_to_open_the_page_elsewhere
+    Dir.mktmpdir { |folder| assert_storage_refused open_without_storage(folder, "idb-silent", wait: 2500) }
+  end
+
+  # With storage that works the page says nothing of it, hides the button, and keeps no trace of its check.
+  def test_a_browser_that_keeps_data_shows_the_menu_and_no_storage_message
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "counts", "text said", "text copy-link"])
+
+      refute_match(/pictures=0\b/, out.grep(/\Acounts /).first)
+      assert_match(/\Atext said hidden/, out.grep(/\Atext said /).first)
+      assert_match(/\Atext copy-link hidden/, out.grep(/\Atext copy-link /).first)
+      assert_nil kept_pack(folder)
+    end
+  end
+
   def test_the_page_holds_none_of_the_originals_bytes
     Dir.mktmpdir do |folder|
       assert_holds_none_of original_pieces, shell_page_html(folder), "the web page"

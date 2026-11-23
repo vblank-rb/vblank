@@ -31,7 +31,9 @@ module VBlank
         #   touchpad    the console's buttons on the screen, for a phone or a tablet, shown only
         #               while a finger is the screen's main pointer; with it on the page, the full
         #               screen button fills the screen with the whole page, so the pad comes too
-        #   message     where a game that stops, or a page waiting for a click, says so
+        #   message     where a game that stops, or a page waiting for a click, says so, and a button,
+        #               hidden, that copies the page's address where the browser cannot keep a
+        #               shell's data (runtime/rg_mount.js)
         #   extras      touchpad, keys, controller, fullscreen, pause and message together, in
         #               that order
         #
@@ -156,7 +158,7 @@ module VBlank
             fullscreen = '<button id="fullscreen" type="button">Full screen</button>'
             pause = '<label><input type="checkbox" id="pause" checked> Pause when another window is in front</label>'
             touchpad = touchpad(buttons: buttons)
-            message = '<p id="said" hidden></p>'
+            message = %(<p id="said" hidden></p>\n<button id="copy-link" type="button" hidden>Copy the link</button>)
             { title: CGI.escapeHTML(title.to_s), style: style(scale * pixel_size, screen), game: game(script, screen), keys: keys,
               controls: controls(screen: screen, pixel_size: pixel_size, buttons: buttons, players: players),
               controller: controller, fullscreen: fullscreen, pause: pause, touchpad: touchpad, message: message,

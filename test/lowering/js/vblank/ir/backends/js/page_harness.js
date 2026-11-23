@@ -68,13 +68,17 @@
  *                       page that is busy the whole time asks for one or two
  *   text ID             prints "text ID", then "hidden" if it is, then the words in the page's
  *                       element of that id now, or "text ID (none)" for a page without one
+ *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
+ *   clipboard           prints "clipboard" and what the page last copied
  *   state               prints "state" and what the browser holds now: the sound device
  *                       (none, running or suspended), what fills the screen (none or an id),
  *                       and how many key presses the page kept from the browser
  *
  * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
  * is read from FILE when the page opens and written to it as the page puts something in, so a
- * second run of the page finds what the first kept.
+ * second run of the page finds what the first kept. "idb-error" and "idb-silent" make it fail or
+ * never answer, and "no-local-storage" makes asking for localStorage throw: a browser that keeps
+ * nothing for the page.
  *
  * Started with "unfocused" after the page, the window starts without the keyboard, as a page in
  * a frame on another site does. With "touchscreen" the screen's main pointer is a finger, as a
@@ -129,6 +133,7 @@ const posted = []; /* every message the page sent its speaker */
 const heard = [[], []]; /* what the speaker has put out, each channel */
 let next_frame_id = 1;
 const stored = new Map();
+let clipboard = null; /* what the page last copied */
 let now = 0;
 const shown = {};
 let kept = 0;
@@ -142,12 +147,17 @@ const finger_too = finger_first || flags.includes("touch-and-mouse");
  * a finger can be on. Asked for the parts whose id starts a certain way, it finds them all. */
 const BOX = 100;
 const elements = {};
+/* Whether the page's own tag for +id+ has the hidden attribute. */
+function hidden_in_html(id) {
+  return new RegExp(`<[a-z]+[^>]*\\bid="${id}"[^>]*\\bhidden\\b|<[a-z]+[^>]*\\bhidden\\b[^>]*\\bid="${id}"`).test(html);
+}
+
 function element(id) {
   if (elements[id]) return elements[id];
   const checked = new RegExp(`<input[^>]*\\bid="${id}"[^>]*\\bchecked\\b|<input[^>]*\\bchecked\\b[^>]*\\bid="${id}"`).test(html);
   const left = Object.keys(elements).length * BOX * 2;
   elements[id] = {
-    id, textContent: "", hidden: id === "said", checked, ...listening(),
+    id, textContent: "", hidden: id === "said" || hidden_in_html(id), checked, ...listening(),
     getContext: () => ({
       createImageData: (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
       putImageData: (image) => { asked.pictures += 1; shown[id] = Uint8ClampedArray.from(image.data); },
@@ -238,6 +248,9 @@ const idb_flag = flags.find((flag) => flag.startsWith("idb:"));
 const idb_path = idb_flag ? idb_flag.slice(4) : null;
 const idb_kept = new Map(idb_path && fs.existsSync(idb_path)
   ? Object.entries(JSON.parse(fs.readFileSync(idb_path, "utf8"))).map(([key, text]) => [key, Buffer.from(text, "base64")]) : []);
+function idb_write() {
+  if (idb_path) fs.writeFileSync(idb_path, JSON.stringify(Object.fromEntries([...idb_kept].map(([k, v]) => [k, v.toString("base64")]))));
+}
 function idb_request(answer) {
   const request = {};
   setImmediate(() => {
@@ -246,9 +259,19 @@ function idb_request(answer) {
   });
   return request;
 }
+/* Started with "idb-error", opening a database fails, as a browser that keeps nothing for the page
+ * answers; with "idb-silent" it never answers at all, as some apps' built-in browsers do. */
 const indexedDB_stand_in = {
   open(name) {
     const request = {};
+    if (flags.includes("idb-silent")) return request;
+    if (flags.includes("idb-error")) {
+      setImmediate(() => {
+        request.error = new Error("the browser keeps nothing for this page");
+        if (request.onerror) request.onerror();
+      });
+      return request;
+    }
     setImmediate(() => {
       const database = {
         createObjectStore() {},
@@ -260,8 +283,13 @@ const indexedDB_stand_in = {
             }),
             put: (value, key) => idb_request(() => {
               idb_kept.set(`${name}/${key}`, Buffer.from(value));
-              if (idb_path) fs.writeFileSync(idb_path, JSON.stringify(Object.fromEntries([...idb_kept].map(([k, v]) => [k, v.toString("base64")]))));
+              idb_write();
               return key;
+            }),
+            delete: (key) => idb_request(() => {
+              idb_kept.delete(`${name}/${key}`);
+              idb_write();
+              return undefined;
             }),
           }),
         }),
@@ -410,7 +438,8 @@ const browser = {
   Blob,
   /* Started with "refuse-worker", the browser refuses to start one, as a content security policy can. */
   Worker: flags.includes("refuse-worker") ? class { constructor() { throw new Error("the page's content security policy refuses it"); } } : Worker,
-  navigator: { getGamepads: () => pads.slice() },
+  navigator: { getGamepads: () => pads.slice(), clipboard: { writeText: async (words) => { clipboard = words; } } },
+  location: { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "" },
   performance: { now: () => now },
   requestAnimationFrame: (callback) => {
     asked.frames += 1;
@@ -431,10 +460,18 @@ const browser = {
     return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
   },
   indexedDB: indexedDB_stand_in,
-  localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+  localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value),
+                  removeItem: (key) => stored.delete(key) },
 };
 for (const [name, value] of Object.entries(browser)) {
   Object.defineProperty(page, name, { value, writable: true, configurable: true, enumerable: true });
+}
+/* Started with "no-local-storage", asking for localStorage throws, as a browser that blocks storage
+ * in a framed page does. */
+if (flags.includes("no-local-storage")) {
+  Object.defineProperty(page, "localStorage", {
+    get() { throw new Error("SecurityError: the browser keeps nothing for this page"); }, configurable: true,
+  });
 }
 
 function key(type, code, modifier) {
@@ -646,6 +683,8 @@ async function steps() {
       printed.push(`worked frames=${asked.frames - before}`);
     }
     else if (step === "text") printed.push(text(what));
+    else if (step === "wait") await real_ms(Number(what));
+    else if (step === "clipboard") printed.push(`clipboard ${clipboard}`);
     else if (step === "state") printed.push(state());
     else if (step) throw new Error(`page_harness: no step called ${step}`);
     await settle();
