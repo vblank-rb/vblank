@@ -448,7 +448,7 @@ class TestSNESOnChip < Minitest::Test
     end
     error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 8) }
 
-    assert_match(/list :cells is full/, error.message)
+    assert_match(/`cells` is full/, error.message)
   end
 
   def test_a_pop_from_an_empty_list_on_the_chip_stops_the_game
