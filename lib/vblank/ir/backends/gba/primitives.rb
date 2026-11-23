@@ -172,6 +172,87 @@ module VBlank
             @emitter.emit(ASM.store_halfword(ADDR, TMP)) # the interrupt switch as it was
           end
 
+          # Whether code the game runs from an interrupt can copy or fill (InterruptCopies.any?).
+          # Set by GBA#lower before anything is emitted. Only then can a handler use the copying
+          # engine while the game is part way through setting it up, so only then is a setup held.
+          attr_writer :interrupts_copy
+
+          def interrupts_copy? = @interrupts_copy
+
+          # How far the interrupt switch (IME) sits from the copying engine's first register, so
+          # a setup that has the engine's address in a register reaches the switch for nothing.
+          IME_STEP = REG_IME - REG_DMA3SAD
+
+          STACK_POINTER = 13 # sp
+
+          # The block's writes to the copying engine with the interrupt switch off, in a game whose
+          # interrupts run its own code.
+          #
+          # ### Why a setup is held
+          #
+          # The engine (DMA3) is set up by three writes: where from, where to, then the control
+          # word, whose enable bit starts the copy (GBATEK, "DMA Transfers"). An interrupt can come
+          # between any two instructions (GBATEK, "Interrupt Control"). A handler that copies writes
+          # its own from, to and control and starts its own copy, and the game then writes the rest
+          # of its setup over the handler's and starts a copy from or to the wrong place. The
+          # engine's registers are write-only, so the handler cannot save and put them back; the
+          # setup is held instead. The interrupt switch, IME at 4000208h, holds every interrupt while
+          # bit 0 is off, and one that came meanwhile waits in IF and is taken as the switch comes
+          # back on. The copy itself already holds interrupts while it runs, since the processor is
+          # stopped until it ends (GBATEK, "DMA Transfers"), so the hold adds only the few
+          # instructions of the setup.
+          #
+          # The switch is put back as it was, not on, so a setup inside a stretch that already
+          # holds interrupts leaves them held. +engine+ holds the engine's first address
+          # (REG_DMA3SAD) and the block keeps it; +spare+ is free as the block starts and once it
+          # ends, and the switch as it was waits on the stack between. The switch is read and
+          # written as a word, with the unused halfword beside it (GBATEK, I/O map: 400020Ah).
+          # Five instructions for each setup, and none in a game whose interrupt code never copies.
+          def with_copy_setup_held(engine:, spare:)
+            return yield unless @interrupts_copy
+
+            @emitter.emit(ASM.ldr_offset(spare, engine, IME_STEP))
+            @emitter.emit(ASM.push(spare))
+            @emitter.emit(ASM.load_immediate(spare, 0))
+            @emitter.emit(ASM.str_offset(spare, engine, IME_STEP))
+            yield
+            @emitter.emit(ASM.pop(spare))
+            @emitter.emit(ASM.str_offset(spare, engine, IME_STEP)) # the interrupt switch as it was
+          end
+
+          # The interrupt switch turned off, as #with_copy_setup_held turns it, for code that keeps
+          # its numbers on the stack at fixed places and so cannot push the switch as it was: it is
+          # kept in the stack slot +saved_at+ bytes up, which the caller set aside.
+          # #emit_copies_let_through puts it back. Nothing in a game whose interrupt code never copies.
+          def emit_copies_held(engine:, spare:, saved_at:)
+            return unless @interrupts_copy
+
+            @emitter.emit(ASM.ldr_offset(spare, engine, IME_STEP))
+            @emitter.emit(ASM.str_offset(spare, STACK_POINTER, saved_at))
+            @emitter.emit(ASM.load_immediate(spare, 0))
+            @emitter.emit(ASM.str_offset(spare, engine, IME_STEP))
+          end
+
+          def emit_copies_let_through(engine:, spare:, saved_at:)
+            return unless @interrupts_copy
+
+            @emitter.emit(ASM.ldr_offset(spare, STACK_POINTER, saved_at))
+            @emitter.emit(ASM.str_offset(spare, engine, IME_STEP)) # the interrupt switch as it was
+          end
+
+          # The block, run from an interrupt, with the fill's colour word saved around it. A fill
+          # writes its colour to that one word and then hands the copying engine its address, row
+          # after row, so a handler that fills between two of the game's rows would leave its own
+          # colour for the rest of them. Uses the accumulator, which a handler may spend, and one
+          # word of the interrupt stack (TopOfQuickMemory::HANDLER_OWN_BYTES).
+          def with_fill_word_saved
+            load_var(ACC, FILL_SCRATCH)
+            @emitter.emit(ASM.push(ACC))
+            yield
+            @emitter.emit(ASM.pop(ACC))
+            store_var(ACC, FILL_SCRATCH)
+          end
+
           # Write a full 32-bit word to an address.
           def store_word_immediate(value, address)
             @emitter.emit_number(ACC, value)
@@ -220,8 +301,10 @@ module VBlank
             # still waiting for its turn.
             kept = [TMP, *(control.register if control.is_a?(InRegister))]
             waiting, loaded = [[from, 0], [to, COPY_TO_STEP]].partition { |value, _| value.is_a?(InRegister) }
-            (waiting + loaded).each { |value, step| emit_copy_engine_store(value, step, kept) }
-            emit_copy_engine_store(control, COPY_START_STEP, kept)
+            with_copy_setup_held(engine: TMP, spare: ADDR) do
+              (waiting + loaded).each { |value, step| emit_copy_engine_store(value, step, kept) }
+              emit_copy_engine_store(control, COPY_START_STEP, kept)
+            end
           end
 
           # The value of an operand the author fixed, or nil if the game works it out. The
@@ -359,6 +442,10 @@ module VBlank
             if waiting.any? { |value| value.register == TMP }
               raise ArgumentError, "the copying engine's own address is kept in r#{TMP}, so a number " \
                                    "for it cannot wait there"
+            end
+            if waiting.any? { |value| value.register == ADDR }
+              raise ArgumentError, "the interrupt switch as it was passes through r#{ADDR} while the copying " \
+                                   "engine is set up (#with_copy_setup_held), so a number for it cannot wait there"
             end
             return unless control == InRegister.new(ACC) && waiting != [from, to, control]
 

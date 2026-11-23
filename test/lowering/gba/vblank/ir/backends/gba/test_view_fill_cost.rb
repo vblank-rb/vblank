@@ -86,7 +86,9 @@ class TestViewFillCost < Minitest::Test
     (0...64).map { |at| at.zero? ? :white : (n[(at - 1) % 4].zero? ? :red : :blue) }
   end
 
-  private def jumping
+  # +ticking+ adds a fast timer whose handler fills a list with the copying engine, so the view
+  # fill holds interrupts off row by row while it copies (GBA::MapStreaming#emit_view_fill).
+  private def jumping(ticking: false)
     jumps = JUMPS
     small_jumps = ON_THE_SMALL_MAP
     b = Builder.new
@@ -98,6 +100,10 @@ class TestViewFillCost < Minitest::Test
       small = Array.new(12) { |row| Array.new(20) { |col| ((row * 5) + col) % 16 } }
       ground = background :ground, tiles: :cells, map: { big: big, small: small }
       pass = var :pass, 0
+      if ticking
+        box = list :box, capacity: 64, width: :byte, full_of: 0
+        timer(:beat, per_second: 8000).on_tick { box.fill 7 }
+      end
       game_loop do
         pass += 1
         jumps.each_with_index { |(x, y), at| ground.scroll_to(x, y) if pass == at + 2 }
@@ -112,5 +118,11 @@ class TestViewFillCost < Minitest::Test
   # The cells a whole fill writes are the interpreter's, wherever the view lands.
   def test_a_view_filled_whole_shows_what_the_interpreter_shows
     assert_backends_agree(jumping, frames: 2..(JUMPS.length + ON_THE_SMALL_MAP.length + 3), name: "VIEWJUMP")
+  end
+
+  # ...and the same in a game whose timer's handler copies from its interrupt, where the fill holds
+  # interrupts off a row at a time.
+  def test_a_view_filled_whole_with_a_ticking_timer_shows_what_the_interpreter_shows
+    assert_backends_agree(jumping(ticking: true), frames: 2..(JUMPS.length + ON_THE_SMALL_MAP.length + 3), name: "VIEWTICK")
   end
 end

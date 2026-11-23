@@ -147,6 +147,7 @@ module VBlank
           def register_row_bends(program)
             @bends = RowBends.new(program)
             @bends.bends.each { |bend| @row_bends[bend.background] = bend.node }
+            @lines_copy = InterruptCopies.lines_copy?(program)
             program.walk.each { |node| @light = node if node.kind == :shade_outside }
             @dark_scenes = IR::LightScenes.switches?(program) ? IR::LightScenes.dark(program).keys : []
             # A game that places a fade in the stack keeps the object window's field of the
@@ -924,9 +925,17 @@ module VBlank
               # Every bend is told the line first, because working one offset out needs the
               # accumulator the line number is sitting in.
               feed_keys.each { |key| @primitives.store_var(ACC, row_var(key)) }
-              feed_keys.each { |key| emit_row_without_table(key) }
+              emit_rows_without_table
             end
             @emitter.place_label(done)
+          end
+
+          # Each thing's number for this line, worked out here, with the fill's colour word saved
+          # around them where a block can copy or fill: the block runs between any two of the
+          # game's instructions, as a timer's handler does (Primitives#with_fill_word_saved).
+          def emit_rows_without_table
+            rows = -> { feed_keys.each { |key| emit_row_without_table(key) } }
+            @lines_copy ? @primitives.with_fill_word_saved(&rows) : rows.call
           end
 
           # One thing's row, out of the table and into its register. The display reads that

@@ -116,15 +116,39 @@ class TestTopOfQuickMemory < Minitest::Test
                     END_OF_QUICK - 256 - (TICK_DEPTH * PLAIN_CALL_BYTES)
   end
 
+  # What the console leaves a handler past what the two handlers save: the dispatcher's share is the registers GBA#emit_irq_handler pushes, so a register added there
+  # shows here.
+  def test_the_room_a_handler_keeps_for_itself_is_what_the_two_handlers_leave
+    assert_equal GBA::IRQ_SAVED_REGS.size * 4, Top::DISPATCHER_SAVES_BYTES
+    assert_equal 100, Top::HANDLER_OWN_BYTES
+  end
+
   # The game loop sits two routines deep, in a long counted loop, while a fast timer ticks: so its
   # return addresses are at the top of its stack whenever the handler runs.
   def test_a_handler_forty_routines_deep_leaves_the_game_running_on_the_console
+    assert_deep_handler_leaves_game_running(fills: false)
+  end
+
+  # ...and one whose deepest routine fills, so the handler keeps the fill's colour word and the
+  # interrupt switch on the interrupt stack too (Top::HANDLER_COPY_BYTES).
+  def test_a_handler_forty_routines_deep_that_fills_leaves_the_game_running_on_the_console
+    assert_deep_handler_leaves_game_running(fills: true)
+  end
+
+  private def assert_deep_handler_leaves_game_running(fills:)
     rom = VBlank.build("TICKDEEP", console: :gba, out: StringIO.new, err: StringIO.new) do
       hits = 0
       passes = 0
       sum = 0
       (1..TICK_DEPTH).each do |level|
-        func(:"tick#{level}") { level == TICK_DEPTH ? hits += 1 : call(:"tick#{level + 1}") }
+        func(:"tick#{level}") do
+          if level < TICK_DEPTH
+            call(:"tick#{level + 1}")
+          else
+            hits += 1
+            fill_rect 0, 0, 8, 2, :blue if fills
+          end
+        end
       end
       timer(:beat, per_second: 4000).on_tick { call :tick1 }
       func(:inner) { repeat(3000) { |i| sum = sum + i } }

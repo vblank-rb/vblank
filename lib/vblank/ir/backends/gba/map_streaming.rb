@@ -94,6 +94,7 @@ module VBlank
           FILL_FIRST_COL = 0
           FILL_END_ROW = 4
           FILL_BLANK = 8
+          FILL_IME = 12 # the interrupt switch as it was, in a game whose interrupt code copies
 
           # The variables this keeps for one background: the column and row the grid was last
           # filled for, and the column and row the view is at now.
@@ -297,13 +298,15 @@ module VBlank
               emit_kept_map_copy_in_pieces(stream)
             else
               emit_number(STRIP_COL, REG_DMA3SAD)
-              emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
-              emit_number(ACC, kept_map_address(stream))
-              emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
-              emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
-              emit_number(TMP, DMA_ENABLE | DMA_16BIT)
-              emit(ASM.orr_reg(ACC, ACC, TMP))
-              emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
+              @primitives.with_copy_setup_held(engine: STRIP_COL, spare: TMP) do
+                emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
+                emit_number(ACC, kept_map_address(stream))
+                emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
+                emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
+                emit_number(TMP, DMA_ENABLE | DMA_16BIT)
+                emit(ASM.orr_reg(ACC, ACC, TMP))
+                emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
+              end
             end
             place_label(have)
             emit_number(STREAM_SOURCE, kept_map_address(stream))
@@ -328,10 +331,13 @@ module VBlank
             emit(ASM.cmp_reg(ACC, piece))
             emit(ASM.mov_reg(TMP, ACC))
             emit(ASM.mov_reg_cond(:gt, TMP, piece)) # this piece: what is left, no more than a piece
-            emit(ASM.str_offset(from, STRIP_COL, 0))
-            emit(ASM.str_offset(to, STRIP_COL, Primitives::COPY_TO_STEP))
-            emit(ASM.orr_reg(STRIP_SCRATCH, TMP, control))
-            emit(ASM.str_offset(STRIP_SCRATCH, STRIP_COL, Primitives::COPY_START_STEP))
+            # Held a piece at a time, so an interrupt still waits no longer than one piece.
+            @primitives.with_copy_setup_held(engine: STRIP_COL, spare: STRIP_SCRATCH) do
+              emit(ASM.str_offset(from, STRIP_COL, 0))
+              emit(ASM.str_offset(to, STRIP_COL, Primitives::COPY_TO_STEP))
+              emit(ASM.orr_reg(STRIP_SCRATCH, TMP, control))
+              emit(ASM.str_offset(STRIP_SCRATCH, STRIP_COL, Primitives::COPY_START_STEP))
+            end
             emit(ASM.add_reg_lsl(from, from, TMP, 1)) # two bytes a cell
             emit(ASM.add_reg_lsl(to, to, TMP, 1))
             emit(ASM.subs_reg(ACC, ACC, TMP))
@@ -502,6 +508,14 @@ module VBlank
           # The blank cell is copied from the stack, with the engine reading the same halfword
           # over and over. So STREAM_BLANK's register is free during the fill, and holds the
           # engine's address instead.
+          #
+          # In a game whose interrupt code can copy, each row holds interrupts off while its copies
+          # are set up and made (Primitives#with_copy_setup_held says why), and lets them through
+          # between rows. A row is 31 cells in a few copies and a few dozen instructions, a fraction
+          # of the time the display takes to draw one line (GBATEK, "LCD Dimensions and Timings":
+          # 1232 cycles), so an interrupt waits less than a line. The fill's numbers are on the stack
+          # at fixed places from the top, so the switch as it was cannot be pushed there for each
+          # row: it gets a slot of its own below them, FILL_IME, set aside only in such a game.
           def emit_view_fill(routine, name, filled, piece)
             again = gensym
             map_cells = gensym
@@ -515,12 +529,15 @@ module VBlank
             emit(ASM.add_imm(TMP, TMP, VIEW_ROWS))
             # Kept on the stack for the whole fill, since the registers are all taken: the view's
             # first column, the row past its last, and the blank cell.
+            held = @primitives.interrupts_copy?
+            emit(ASM.sub_imm(STACK_POINTER, STACK_POINTER, 4)) if held # FILL_IME
             emit(ASM.push(ACC, TMP, STREAM_BLANK))
             emit_number(FILL_COPIER, REG_DMA3SAD)
 
             place_label(again)
             # Every row of the view writes VIEW_COLS cells, in whichever runs.
             @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(routine), VIEW_COLS * 2)
+            @primitives.emit_copies_held(engine: FILL_COPIER, spare: ACC, saved_at: FILL_IME)
             emit(ASM.and_imm(FILL_GRID_ROW, FILL_ROW, STREAM_CELLS - 1))
             emit(ASM.add_reg_lsl(FILL_GRID_ROW, STREAM_GRID, FILL_GRID_ROW, 6)) # 64 bytes a grid row
             emit(ASM.ldr_offset(PIECE_COL, STACK_POINTER, FILL_FIRST_COL))
@@ -554,11 +571,13 @@ module VBlank
             emit_branch(:bl, piece)
 
             place_label(next_row)
+            @primitives.emit_copies_let_through(engine: FILL_COPIER, spare: ACC, saved_at: FILL_IME)
             emit(ASM.add_imm(FILL_ROW, FILL_ROW, 1))
             emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_END_ROW))
             emit(ASM.cmp_reg(FILL_ROW, ACC))
             emit_branch(:bcond, again, cond: :lt)
             emit(ASM.pop(ACC, TMP, STREAM_BLANK))
+            emit(ASM.add_imm(STACK_POINTER, STACK_POINTER, 4)) if held
             emit_number(ACC, 1)
             store_var(ACC, filled)
           end

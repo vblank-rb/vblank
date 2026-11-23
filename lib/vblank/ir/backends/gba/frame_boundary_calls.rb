@@ -115,11 +115,13 @@ module VBlank
             @lowering = lowering
             @functions = functions
             @plan = Plan.none
+            @copying_handlers = []
           end
 
           # Works out +program+'s Plan, and makes each handler that waits a routine.
           def prepare(program)
             @plan = FrameBoundaryCalls.plan(program)
+            @copying_handlers = IR::Nodes::OnTimer.of(program).select { |_, handler| InterruptCopies.copies?(program, handler) }.keys
             @plan.waiting.each do |timer, handler|
               @functions.define_generated_func(routine_for(timer)) do
                 handler.children.each { |child| @lowering.statement(child) }
@@ -138,9 +140,17 @@ module VBlank
           end
 
           # In the interrupt, for a handler that does not wait: its body, with the state of the
-          # routines it shares with the rest of the game saved.
+          # routines it shares with the rest of the game saved, and the fill's colour word where the
+          # handler can copy or fill (Primitives#with_fill_word_saved, InterruptCopies). The word is
+          # the handler's own to save, as the registers are, so its four bytes are in the room the
+          # console leaves a handler (TopOfQuickMemory::HANDLER_OWN_BYTES), not in the state
+          # counted here.
           def with_handler_state_saved(timer, &)
-            emit_saving(@plan.for_handler.fetch(timer, SavedState.none), &)
+            emit_saving(@plan.for_handler.fetch(timer, SavedState.none)) do
+              next yield unless @copying_handlers.include?(timer)
+
+              @primitives.with_fill_word_saved(&)
+            end
           end
 
           # Whether any timer's handler waits.

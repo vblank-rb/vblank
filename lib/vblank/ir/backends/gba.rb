@@ -37,6 +37,7 @@ require_relative "gba/scene_entry"
 require_relative "gba/drawing"
 require_relative "gba/quick_memory_plan" # what goes in the quick memory, worked out from plain numbers
 require_relative "gba/top_of_quick_memory" # what the build holds back at its top: the stack, the divide routines
+require_relative "gba/interrupt_copies" # which code run from an interrupt can copy, so the game's copies are held
 require_relative "gba/scene_quick_memory" # each scene its own share of the quick memory, swapped as it takes over
 require_relative "gba/routine_pieces" # a routine too big for the quick memory, cut into pieces that fit
 require_relative "gba/placement"
@@ -901,6 +902,7 @@ module VBlank
           # the program lowered, as each measuring pass sized it.
           plan_top_of_quick_memory(cut) unless cut.equal?(program)
           program = cut
+          @primitives.interrupts_copy = InterruptCopies.any?(program)
           allocate_where_words # where each scene's own routines are, side by side, before any other variable
           # The throwaway measuring pass keeps the phase its caller named, since from the
           # outside it is that phase — it is not lowering the program, it is finding out how
