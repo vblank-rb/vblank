@@ -35,7 +35,7 @@ module VBlank
         # building: in game code with no `break` or `next`, its rounds are written out or made a
         # loop (KnownRounds); anywhere else it is only Ruby's.
         def known_rounds(jumps, body, &ruby_loop)
-          builder = VBlank::Builder.in_use
+          builder = VBlank::Builder::Session.builder
           return ruby_loop.call(body) if jumps || builder.nil? || body.nil?
 
           KnownRounds.run(builder, body, &ruby_loop)
@@ -61,7 +61,7 @@ module VBlank
         # switching round did: a plain value that changed between the two (`steps.next`) would
         # be kept at one round's number for ever, so that is refused (#refuse_changing_round!).
         def endless(jumps, &)
-          builder = VBlank::Builder.in_use
+          builder = VBlank::Builder::Session.builder
           rounds = 0
           ended = loop do
             jumps.note_round_start!(builder) if builder
@@ -131,7 +131,7 @@ module VBlank
         # Goes round +rounds+ times as a loop the game runs, handing the block +first+, then
         # +first+ plus +by+, and so on. +first+ must not change while the loop runs (#held).
         def game_loop(first, rounds, by, jumps)
-          game_rounds(VBlank::Builder.in_use, rounds, jumps) do |index|
+          game_rounds(VBlank::Builder::Session.builder, rounds, jumps) do |index|
             number = by == 1 ? index : index * by
             number += first unless first.is_a?(Integer) && first.zero?
             yield number

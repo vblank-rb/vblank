@@ -75,8 +75,13 @@ module VBlank
         # out while building. Items that are not all numbers stay a Ruby Array, as
         # #list_from_literal says: `Array.new(3) { |n| var :"shown#{n}", 0 }` is three variables.
         def list_from_new(owner, declaration, *given, capacity: nil, **settings, &block)
+          # Run as plain Ruby on purpose (Builder::Session.running_as_plain_ruby): Ruby's Array,
+          # which grows as it needs to.
+          return ruby_array(*given, **settings, &block) if Builder::Session.plain_ruby?
+
           # `TABLE[i]` reads like `Spark[...]`, but TABLE is a table of numbers, not a class.
           if declaration.things&.call&.any?(Module)
+            refuse_made_with_no_game!(owner, declaration.local)
             return StructArray.declare(owner, declaration, given, capacity, settings, block)
           end
 
@@ -111,7 +116,7 @@ module VBlank
         # does: a write to an item changes that place. An Array of anything else stays Ruby's too.
         def list_from_literal(owner, declaration, items)
           refuse_nested_items!(declaration.local, items)
-          return items unless list_items?(items)
+          return items if !list_items?(items) || Builder::Session.plain_ruby?
 
           declare(owner, declaration, items, nil, {})
         end
@@ -146,8 +151,9 @@ module VBlank
           refuse_no_room!(name) if room.zero? || (declaration.grows && capacity.nil?)
           refuse_nested_items!(name, items)
           refuse_too_many_items!(name, items.length, room)
+          refuse_made_with_no_game!(owner, name)
 
-          builder = owner.is_a?(Builder) ? owner : Builder.in_use
+          builder = owner.is_a?(Builder) ? owner : Builder::Session.builder
           owner = Builder::ListOwner.new(owner: [:array, declaration.source], at: declaration.declared_at)
           list_name = builder.plain_array_list_name(declaration.name, owner)
           fraction_at = declaration.fraction_at || (declaration.declared_at if items.any? { |item| fraction?(item) })
@@ -194,6 +200,17 @@ module VBlank
 
           Steps.refuse_game_code!("In game code, `Array.new` does not take `#{unknown.first}:`. It takes a size, the " \
                                   "number each item starts as, and `capacity:`, `width:` and `fast:`.")
+        end
+
+        # A game's Array made while no game is being built: by a part made above `VBlank.game`,
+        # in a constant as its file loads, or after a build ended. A Ruby Array in its place would
+        # take the game's pushes once, while building, so it is refused.
+        def refuse_made_with_no_game!(owner, name)
+          return if owner.is_a?(Builder) || Builder::Session.builder
+
+          Steps.refuse_game_code!("`#{name}` is made while no game is being built. The game keeps this Array only " \
+                                  "when the line that makes it runs while the game is built. To fix this, make " \
+                                  "the part inside the `VBlank.game` block.")
         end
 
         def refuse_unknown_size!(name, size)

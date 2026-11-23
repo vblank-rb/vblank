@@ -120,7 +120,7 @@ module VBlank
         def most(items, compare)
           return items.first if items.length < 2
 
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           kept = builder.hidden_variable(:picked, like: items.find { |item| item.is_a?(Value) || item.is_a?(Float) })
           kept.store!(items.first)
           items.drop(1).each do |item|
@@ -133,7 +133,7 @@ module VBlank
         # How many of +answers+ hold, a test at a time, kept in a hidden number. An answer known
         # while building counts then.
         def how_many(answers)
-          counted = Builder.in_use.hidden_variable(:counted)
+          counted = Builder::Session.builder.hidden_variable(:counted)
           counted.store!(answers.count { |answer| answer && !Steps.game_test?(answer) })
           answers.select { |answer| Steps.game_test?(answer) }.each do |answer|
             Steps.as_condition(answer).record_branch { counted.increase!(1) }

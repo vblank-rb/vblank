@@ -65,7 +65,7 @@ module VBlank
           names += [chosen_by_keyword] unless chosen_by_keyword.empty?
           labels, chosen = labels_and_chosen_names(names)
           refuse_unsaved_naming_nothing! if !saved && labels.empty?
-          uses = owner.is_a?(Builder) ? owner.instance_variable_uses : Builder.in_use&.instance_variable_uses
+          uses = owner.is_a?(Builder) ? owner.instance_variable_uses : Builder::Session.builder&.instance_variable_uses
           uses&.refuse_late_unsaved_mark!(owner, labels) unless saved
           case owner
           when Builder then uses.name_on_builder(labels, chosen, unsaved: saved ? [] : labels)
@@ -134,7 +134,7 @@ module VBlank
             uses.mark_readers_on_builder(list_readers, changed_readers)
           when Module
             name_in_module(owner, labels, constant: CHANGING_CONSTANT)
-            Builder.in_use&.instance_variable_uses&.clear_class_name_cache
+            Builder::Session.builder&.instance_variable_uses&.clear_class_name_cache
           end
           nil
         end
@@ -261,7 +261,7 @@ module VBlank
         # follows the order they were made in (Uses#made_name), as a named one's does by being made
         # in `initialize`: a save made before finds each number under the name it had.
         def free_name_for(owner, label, name)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           uses = builder.instance_variable_uses
           name = uses.made_name(owner, label, name)
           free = builder.reserve_free_variable_name(name)
@@ -458,7 +458,7 @@ module VBlank
         end
 
         def own_variable_while_setting_up(owner, current, value, label)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return current unless current.nil? && (value.is_a?(Value) || value.is_a?(Condition))
           return current unless builder && !owner.is_a?(Module) && builder.instance_variable_uses.named?(owner, label)
 
@@ -513,8 +513,8 @@ module VBlank
 
         # The builder's record of instance variables, while it records game code.
         def uses_while_recording(owner)
-          builder = Builder.in_use
-          return unless builder&.recording_game_code? && !owner.is_a?(Module)
+          builder = Builder::Session.builder
+          return unless Builder::Session.recording? && !owner.is_a?(Module)
 
           builder.instance_variable_uses
         end
@@ -528,7 +528,7 @@ module VBlank
           uses = uses_while_recording(owner)
           return if uses.nil? || uses.followed?(owner, label, current)
 
-          Builder.in_use
+          Builder::Session.builder
         end
 
         # A read in game code of +owner+'s plain flag +label+, which held +current+.
@@ -538,24 +538,24 @@ module VBlank
         # test asks before its own test runs, then takes what was read since (#flag_reads_since):
         # the flags its answer came from, through a reader (`if door.open?`) as well.
         def flag_read_mark
-          builder = Builder.in_use
-          builder.instance_variable_uses.flag_read_mark if builder&.recording_game_code?
+          builder = Builder::Session.builder
+          builder.instance_variable_uses.flag_read_mark if Builder::Session.recording?
         end
 
-        def flag_reads_since(mark) = mark ? Builder.in_use.instance_variable_uses.flag_reads_since(mark) : []
+        def flag_reads_since(mark) = mark ? Builder::Session.builder.instance_variable_uses.flag_reads_since(mark) : []
 
         # A test written for its value, made while building, picked a value by +read+.
-        def note_flag_picks(read) = Builder.in_use.instance_variable_uses.note_flag_picks(read)
+        def note_flag_picks(read) = Builder::Session.builder.instance_variable_uses.note_flag_picks(read)
 
         # The side of a test of +owner+'s plain flag +label+ written at +site+ ran, and +records+
         # says whether it recorded game code.
         def note_flag_side_run(owner, label, current, site, records:)
-          Builder.in_use.instance_variable_uses.note_flag_side_run(owner, label, current, site, records: records)
+          Builder::Session.builder.instance_variable_uses.note_flag_side_run(owner, label, current, site, records: records)
         end
 
         # ...and the side at +site+ was skipped.
         def note_flag_side_skipped(owner, label, current, site)
-          Builder.in_use.instance_variable_uses.note_flag_side_skipped(owner, label, current, site)
+          Builder::Session.builder.instance_variable_uses.note_flag_side_skipped(owner, label, current, site)
         end
 
         # The game variable a named instance variable holding +current+ is: made now from a number
@@ -580,7 +580,7 @@ module VBlank
         # that holds something already, or a value no game variable starts from. Nothing unnamed
         # comes here.
         def first_variable(owner, current, value, label)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return unless current.nil? && builder && !owner.is_a?(Module)
 
           uses = builder.instance_variable_uses
@@ -599,7 +599,7 @@ module VBlank
         # where `initialize` gives it (+starting+): that part is made once, as its routine is recorded
         # (`screen = FadedScreen.new(...)` in `scene :copyright do`), and its number is the start.
         # Anywhere else in game code the line runs on every pass, as Ruby's would.
-        def first_number_set_where_reached?(starting) = Builder.in_use.recording_game_code? && !starting
+        def first_number_set_where_reached?(starting) = Builder::Session.recording? && !starting
 
         # The body of an object's `initialize` in a game file, as the rewrite runs it: a part game
         # code makes puts things into its Arrays once, as its numbers start once (Builder#making_part).
@@ -614,7 +614,7 @@ module VBlank
         # Builder#note_made_in_part for its Arrays), unless the line keeps it as Ruby would: `@counter
         # ||= Counter.new` makes it the first time it runs (#keeping_part).
         def making_part(owner, &)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return yield unless builder
 
           uses = builder.instance_variable_uses
@@ -633,7 +633,7 @@ module VBlank
         # again on every pass (Uses#made_every_pass?) is new in Ruby on every pass, and so is what
         # its `||=` keeps: that part is made every pass too, and refused if it changes.
         def keeping_part(owner, &)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return yield unless builder
 
           uses = builder.instance_variable_uses
@@ -646,8 +646,8 @@ module VBlank
         # since +label+ holds something already: two lines in game code that keep different
         # things in one name are refused (Uses#refuse_kept_as_another!).
         def note_kept_part(owner, label, made)
-          builder = Builder.in_use
-          return unless builder&.recording_game_code?
+          builder = Builder::Session.builder
+          return unless Builder::Session.recording?
 
           builder.instance_variable_uses.refuse_kept_as_another!(owner, label, made)
         end
@@ -685,13 +685,13 @@ module VBlank
         # (#keep_arrays_as_lists)?
         def list_kept?(owner, label, held)
           held.is_a?(Array) && !held.empty? && held.all?(Numeric) &&
-            Builder.in_use.instance_variable_uses.kept_as_list?(owner, label)
+            Builder::Session.builder.instance_variable_uses.kept_as_list?(owner, label)
         end
 
         # The list a named Array of numbers is, holding its items, with room for no more, and
         # named as its variable would be (`counts_by_number_part_counts`).
         def list_of(owner, label, held)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           builder.instance_variable_uses.refuse_array_kept_twice!(held, owner, label)
           # Each object keeps its own: a second one of the class takes the next free list name.
           held_by = Builder::ListOwner.new(owner: [:object, owner.object_id, label],
@@ -732,7 +732,7 @@ module VBlank
         def element_variable(owner, label, base, key, start)
           return start if Steps.variable?(start)
 
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           suffix = key.is_a?(Symbol) || key.is_a?(Integer) || key.is_a?(String) ? key.to_s : "key"
           variable = builder.var(free_name_for(owner, label, :"#{base}_#{suffix}"), start)
           note_made_variable(builder, variable, owner, label)
@@ -913,8 +913,8 @@ module VBlank
 
         # Game code read a field of +holder+, a Struct or a Data object (Writes.refuse_object_replaced!).
         def note_object_read(holder)
-          builder = Builder.in_use
-          builder.instance_variable_uses.note_object_read(holder) if builder&.recording_game_code?
+          builder = Builder::Session.builder
+          builder.instance_variable_uses.note_object_read(holder) if Builder::Session.recording?
         end
 
         # Is +field+ of +holder+, a Struct, one its class names?
@@ -930,14 +930,14 @@ module VBlank
         def followed_field?(holder, field)
           return true if named_field?(holder, field)
 
-          uses = Builder.in_use&.instance_variable_uses
+          uses = Builder::Session.builder&.instance_variable_uses
           return false unless uses && holder.is_a?(Struct) && !uses.made_in_game_code?(holder)
 
           uses.changing?(holder, :"@#{field}")
         end
 
         # Is +field+ of +holder+ a Struct's field that stays Ruby's (#followed_field?)? A Struct with
-        # no builder in use is Ruby's too, as is everything a game runs outside a build.
+        # no game being built is Ruby's too, as is everything a game runs outside a build.
         def ruby_field?(holder, field) = holder.is_a?(Struct) && !followed_field?(holder, field)
 
         def read_field(holder, field)
@@ -982,7 +982,7 @@ module VBlank
         # The same for +field+ of +holder+, a Data object, which held +current+ as it was made. A
         # Data object cannot change, so the copy is kept beside it (Uses#data_field_copy).
         def copy_data_field_number!(holder, field, current)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return current unless builder
 
           note_object_read(holder)
@@ -998,7 +998,7 @@ module VBlank
         # +current+, or the variable of its own that +field+ of +holder+ needs (#copy_field_number!),
         # recorded where the field was given +current+.
         def recorded_field_copy(holder, field, current)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return current unless builder && copied_into_field?(holder, field, current)
 
           mark = builder.instance_variable_uses.field_given_at(holder, field)
@@ -1009,7 +1009,7 @@ module VBlank
 
         # +holder+, a Data object, is just made: each field noted as given its number here.
         def start_data_fields(holder)
-          return unless Builder.in_use
+          return unless Builder::Session.builder
 
           holder.to_h.each { |field, value| note_field_given(holder, field) if value.is_a?(Value) }
         end
@@ -1031,7 +1031,7 @@ module VBlank
           own = if followed_field?(holder, field)
                   variable_starting_like(holder, label, value)
                 else
-                  Builder.in_use.hidden_variable(:field, like: value)
+                  Builder::Session.builder.hidden_variable(:field, like: value)
                 end
           Writes.store_in_variable(own, value)
           Writes.keep_as_own(own, holder, label)
@@ -1040,7 +1040,7 @@ module VBlank
         # +field+ of +holder+ is given what it holds now, on the line the builder records: where a
         # copy of it is set, if game code needs one (#copy_field_number!).
         def note_field_given(holder, field)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           builder&.instance_variable_uses&.note_field_given(holder, field, builder.statement_mark)
         end
 
@@ -1049,8 +1049,8 @@ module VBlank
         # routine, is the one Ruby has. Read anywhere else (after the `if` that made it, in another
         # routine), Ruby has the one an earlier pass made, which the game cannot follow.
         def refuse_field_outside_making!(holder, field)
-          builder = Builder.in_use
-          return unless builder&.recording_game_code? && holder.is_a?(Struct)
+          builder = Builder::Session.builder
+          return unless Builder::Session.recording? && holder.is_a?(Struct)
 
           made_in = builder.instance_variable_uses.struct_made_in(holder)
           return if made_in.nil? || builder.recording_inside?(made_in)
@@ -1074,12 +1074,12 @@ module VBlank
         # number here (#note_field_given), and each named one given its game variable
         # (#first_variable).
         def start_fields(holder)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return unless builder
 
           uses = builder.instance_variable_uses
           uses.note_object_made(holder)
-          uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil) if builder.recording_game_code?
+          uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil) if Builder::Session.recording?
           holder.members.each do |field|
             note_field_given(holder, field) if field_as_held(holder, field).is_a?(Value)
             next unless named_field?(holder, field)
@@ -1096,22 +1096,23 @@ module VBlank
         end
 
         def make_variable(owner, label, start)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           variable = builder.var(free_name_for(owner, label, variable_name(owner, label)), start)
           variable.note_ruby_start(start)
           note_made_variable(builder, variable, owner, label)
         end
 
         # The number Ruby held where +held+, a variable made for an instance variable, was made by a
-        # build other than the one running now (or after every build has ended): a part made outside
-        # the game's block, in a constant of a game file, outlives the build that made it, and the
-        # next build (for another console, say) starts it again from that number. Nil for anything
-        # else. Every change to such a variable was the game's, never Ruby's, so Ruby's number then
-        # is Ruby's number still.
+        # game whose build has ended (Value#made_in_ended_game?): a part made outside the game's
+        # block, in a constant of a game file, outlives the build that made it, and the next build
+        # (for another console, say) starts it again from that number. Nil for anything else. Every
+        # change to such a variable was the game's, never Ruby's, so Ruby's number then is Ruby's
+        # number still. A variable of a game still being built, reached from a program built as part
+        # of it (a data pack's unpacking), stays a variable, and the data pack refuses the read.
         def ruby_number_of_stale(held)
           return unless held.is_a?(Value) && !held.ruby_start.nil?
 
-          held.ruby_start unless held.made_by?(Builder.in_use)
+          held.ruby_start if held.made_in_ended_game?
         end
 
         # +current+, or Ruby's number for a stale variable (#ruby_number_of_stale), handed to the
@@ -1148,7 +1149,7 @@ module VBlank
         # block's `@score`. An object of a class with no name is a `part`'s. A name the class chose
         # (`game_variables busy: :tilt_wait`) is taken as it is.
         def variable_name(owner, label)
-          chosen = Builder.in_use.instance_variable_uses.chosen_name(owner, label)
+          chosen = Builder::Session.builder.instance_variable_uses.chosen_name(owner, label)
           return chosen if chosen
 
           bare = label.to_s.delete_prefix("@")
@@ -1581,7 +1582,7 @@ module VBlank
 
             use = use_of(owner, label)
             refuse_unnamed_change!(owner, label, use.changed_from_ruby_at) if use.changed_from_ruby_at
-            if use.changed_at && !use.given_in.equal?(Builder.in_use.recorded_routine_body)
+            if use.changed_at && !use.given_in.equal?(Builder::Session.builder.recorded_routine_body)
               refuse_unnamed_change!(owner, label, use.changed_at)
             end
             use.read_before_change = true unless use.changed_at
@@ -1603,7 +1604,7 @@ module VBlank
             use = use_of(owner, label)
             here = Messages::AuthorSource.author_file_and_line
             refuse_unnamed_change!(owner, label, here) if use.read_before_change
-            builder = Builder.in_use
+            builder = Builder::Session.builder
             routine = builder.recorded_routine_body
             given_here = use.changed_at && use.given_in.equal?(routine) && !use.changed_from_ruby_at
             unknown = builder.recording_under_game_test? || (operator && !given_here)
@@ -1625,7 +1626,7 @@ module VBlank
           # flag on and off, and the change still stands.
           def note_flag_change(owner, label, current, value)
             flag = flag_of(owner, label)
-            routine = Builder.in_use.recorded_routine_body
+            routine = Builder::Session.builder.recorded_routine_body
             flag.start = current unless flag.started
             flag.started = true
             if !value == !flag.start

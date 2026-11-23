@@ -309,6 +309,7 @@ A list is named after its local, so a test or a profile reads `trail` by that na
 | A Ruby method an Array the game keeps does not have | The methods in the table above, or a `while` loop |
 | A setting on `Array.new` other than `capacity:`, `width:`, `fast:` | One of those three |
 | An instance variable's Array read through another object, `part.counts[which]` | Read it in a method of that class, and call the method |
+| A part whose Array the game keeps, made while no game is being built: above `VBlank.game`, or after a build | Make the part inside the `VBlank.game` block |
 
 Each refused limit is refused before the game is built, naming the line. Several are shown with their messages under "What is refused, and what to write instead".
 

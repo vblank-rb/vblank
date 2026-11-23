@@ -54,7 +54,7 @@ module VBlank
         refuse_start!(declaration.local) unless given.empty? && block.nil?
         refuse_unknown_settings!(declaration.local, settings)
         refuse_no_capacity!(declaration.local, capacity)
-        new(Builder.in_use, owner, declaration, classes.first, capacity, settings)
+        new(Builder::Session.builder, owner, declaration, classes.first, capacity, settings)
       end
 
       def initialize(builder, owner, declaration, kind, capacity, settings)

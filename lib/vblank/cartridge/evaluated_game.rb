@@ -34,28 +34,27 @@ module VBlank
       #
       # +screen_as_asked+ gives the game the screen size it asks for (Builder#initialize).
       #
-      # A build that fails puts back the builder in use before it (Builder.in_use): left in use,
-      # stopped part way through a routine, it would take plain Ruby run after it for game code.
+      # The block runs in a build session of its own (Builder::Session.building), closed when the
+      # build ends, however it ends: a part made after it finds no game being built.
       def initialize(block, options: Options.new, progress: Messages::Progress.silent, settings: {}, screen_as_asked: false)
-        was_in_use = Builder.in_use
-        @builder = Builder.new(options: options, progress: progress, settings: settings, screen_as_asked: screen_as_asked)
-        # `debug_halt` throws rather than returns, because it stops the game's block where it
-        # stands and there is no other way out of somebody else's code. Catching it here is
-        # what makes a truncated build a build like any other: everything above the call is
-        # in the tree, everything below it never happened, and the tree that comes back is a
-        # real (short) program rather than an exception.
-        catch(:debug_halt) { @builder.instance_eval(&block) }
-        # ...and a setting the block never reached may simply be below the halt.
-        @builder.check_settings_were_asked! unless @builder.debug_halted?
-        # Finalizing the tree is also what paces it: `game_loop` runs once per frame and the
-        # builder writes that wait itself, so nothing downstream has to think about it.
-        @builder.finalize_program
+        make = -> { Builder.new(options: options, progress: progress, settings: settings, screen_as_asked: screen_as_asked) }
+        Builder::Session.building(make) do |builder|
+          @builder = builder
+          # `debug_halt` throws rather than returns, because it stops the game's block where it
+          # stands and there is no other way out of somebody else's code. Catching it here is
+          # what makes a truncated build a build like any other: everything above the call is
+          # in the tree, everything below it never happened, and the tree that comes back is a
+          # real (short) program rather than an exception.
+          catch(:debug_halt) { @builder.instance_eval(&block) }
+          # ...and a setting the block never reached may simply be below the halt.
+          @builder.check_settings_were_asked! unless @builder.debug_halted?
+          # Finalizing the tree is also what paces it: `game_loop` runs once per frame and the
+          # builder writes that wait itself, so nothing downstream has to think about it.
+          @builder.finalize_program
+        end
         # Nothing changes the tree after this, so every pass that reads it can read an index
         # rather than walking it again (see IR::Node#mark_written!).
         @program = @builder.program.mark_written!
-      rescue StandardError, ScriptError
-        Builder.in_use = was_in_use if @builder.nil? || Builder.in_use.equal?(@builder)
-        raise
       end
 
       # The op-tree the block built: what a backend lowers and what the reference

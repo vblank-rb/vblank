@@ -329,8 +329,8 @@ module VBlank
         def refuse_object_replaced!(label, current, value)
           return unless fields_object?(current) && fields_object?(value) && !value.equal?(current)
 
-          builder = Builder.in_use
-          return unless builder&.recording_game_code? && builder.instance_variable_uses.object_read?(current)
+          builder = Builder::Session.builder
+          return unless Builder::Session.recording? && builder.instance_variable_uses.object_read?(current)
 
           kind = current.class.name || current.class.superclass.name
           fix = if current.is_a?(Data)
@@ -393,7 +393,7 @@ module VBlank
         # is the object it belongs to, nil in VBlank's own files, which keep their variables with
         # `var`. While setting up the line runs once, so it moves the name as Ruby does.
         def refuse_write_to_handed_variable!(label, current, owner = nil)
-          return unless Builder.in_use&.recording_game_code?
+          return unless Builder::Session.recording?
 
           bare = label.to_s.delete("@")
           fix = if owner
@@ -415,8 +415,8 @@ module VBlank
         def note_handed_name_written(current, value, label)
           return unless Steps.variable?(current) && !value.equal?(current) && handed?(current)
 
-          builder = Builder.in_use
-          builder.record_handed_name_write(label, current.name) if builder&.recording_game_code?
+          builder = Builder::Session.builder
+          builder.record_handed_name_write(label, current.name) if Builder::Session.recording?
         end
 
         # A handle with no name is a field of a pool or the like, which the library's own code
@@ -495,7 +495,7 @@ module VBlank
         # A variable the author never wrote `var` for, which the out-of-memory error names.
         #
         # A game block runs on the builder, which has `var`. A part of a game is a plain class
-        # that holds one, so the variable comes from the builder in use, under a name nothing has
+        # that holds one, so the variable comes from the game being built (Builder::Session), under a name nothing has
         # taken: two parts, or two of one part, each have a local of their own, as in Ruby. The owner is
         # whatever the game's block ran on, whose own `var` may be private, as a method the block called
         # bare would be: __send__ calls it as the block would have.
@@ -530,16 +530,16 @@ module VBlank
         # each time it runs, so a second run finds it made. A part's line makes a new variable each
         # time it runs, which nothing has changed yet.
         def reached_after_power_on?(owner, name, source)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return false if builder.nil?
-          return true if builder.recording_game_code?
+          return true if Builder::Session.recording?
           return builder.plain_local_made?(source, name) if source && owner.is_a?(Builder)
 
           owner.respond_to?(:var, true) && builder.variable_declared?(name)
         end
 
         def variable_for_part(name, start)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           Steps.refuse_game_code!("`#{name}` is changed by game code, but no game is being built. To fix this, " \
                             "make this part while a game is being built.") if builder.nil?
 

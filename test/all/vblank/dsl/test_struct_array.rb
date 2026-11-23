@@ -158,6 +158,27 @@ class TestStructArray < Minitest::Test
     assert_match(/@part \|\|= Part\.new/, error.message)
   end
 
+  # A part made while no game is being built (above `VBlank.game`) cannot keep its Array for a
+  # game: a Ruby Array in its place would take the game's pushes once, while building. A thread
+  # of its own has no build open, whatever an earlier test on this one left.
+  def test_a_parts_array_of_structs_made_with_no_game_being_built_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { Thread.new { HatcheryPart.new(nil) }.value }
+
+    assert_match(/no game is being built/, error.message)
+  end
+
+  # A finished build leaves no game open: a part made after it is not put into that game.
+  def test_a_part_made_after_a_build_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      Thread.new do
+        VBlank.build("AFTER", console: :gba) { game_loop {} }
+        HatcheryPart.new(nil)
+      end.value
+    end
+
+    assert_match(/no game is being built/, error.message)
+  end
+
   # Only an Array the part makes in its initialize is filled once. A push there into an Array
   # handed in runs every time the line making the object runs, as Ruby's does.
   def test_an_object_made_in_the_game_loop_pushes_into_handed_arrays_every_pass

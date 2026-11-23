@@ -1047,9 +1047,10 @@ module VBlank
             "#{RECORDING_TEST_SOURCE}#{source_option_text})"
         end
 
-        # The Ruby a rewritten line asks with: true where the builder records game code as the line
-        # runs. A part of a game runs on no builder, so it answers false there.
-        RECORDING_TEST_SOURCE = "(respond_to?(:recording_game_code?) && recording_game_code?)"
+        # The Ruby a rewritten line asks with: true where the line runs on the builder of the game
+        # being built, recording game code (Builder::Session.records_for?). A part of a game runs
+        # on no builder, so it answers false there.
+        RECORDING_TEST_SOURCE = "::VBlank::Builder::Session.records_for?(self)"
 
         def promoted_in_block?(node)
           !@block_tests.empty? && node.depth.positive? && @promotion.write_under_test(node).promoted?

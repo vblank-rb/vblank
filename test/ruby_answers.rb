@@ -102,11 +102,10 @@ module RubyAnswers
   private def ruby_answers(passes, reads, &game)
     stage = Stage.new(passes)
     Thread.current[:ruby_answers_stage] = true
-    # Plain Ruby, with no game being built: a builder an earlier test left in use on this thread
-    # would take the parts' instance variables for game code's.
-    VBlank::Builder.keeping_builder_in_use do
-      VBlank::Builder.in_use = nil
-      stage.instance_eval(&game)
+    # Plain Ruby, with no game being built: a builder an earlier test made by hand on this thread
+    # would take the parts' instance variables for game code's, and a part's Array is Ruby's.
+    begin
+      VBlank::Builder::Session.running_as_plain_ruby { stage.instance_eval(&game) }
     ensure
       Thread.current[:ruby_answers_stage] = nil
     end

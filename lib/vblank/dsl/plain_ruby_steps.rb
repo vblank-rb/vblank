@@ -676,10 +676,10 @@ module VBlank
             test_statements.empty? ? [] : [@jumps.unless_left(test_statements)]
           end
 
-          # Where the builder in use records next, or nil with none: a plain Ruby loop outside a
+          # Where the game being built records next, or nil with none: a plain Ruby loop outside a
           # game. The builder is kept with it, so the statements are taken from the one recording.
           def statement_mark
-            @builder = VBlank::Builder.in_use
+            @builder = VBlank::Builder::Session.builder
             @builder&.statement_mark
           end
 

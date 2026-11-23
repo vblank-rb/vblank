@@ -8,39 +8,9 @@
 # in normal Ruby: a name that holds a variable is changed by assigning to it, and `if` on a test
 # the game makes records that test.
 
-module VBlank
-  #--
-  # Must come before the concerns: a game file among them runs its `while` loops as it loads, and
-  # a loop asks which builder is in use (PlainRuby::Steps::LoopTest).
-  #++
-  class Builder
-    IN_USE_KEY = :vblank_builder_in_use
-
-    # The builder of the game being built on this thread, for a part of a game that makes a
-    # variable with no `var` of its own to call.
-    #
-    # Kept on the thread, not the Ractor: two threads of one Ractor can build two games at once
-    # (minitest's threads, with --no-ractor), and each game's code must find its own builder. A
-    # thread variable is shared by the thread's fibers, so a build stepped through an Enumerator
-    # still finds it. Each Ractor has threads of its own, so this is per Ractor as well.
-    def self.in_use = Thread.current.thread_variable_get(IN_USE_KEY)
-
-    # Make +builder+ the one in use on this thread (Builder.new does this for each new builder).
-    def self.in_use=(builder)
-      Thread.current.thread_variable_set(IN_USE_KEY, builder)
-    end
-
-    # Run the block, then put back the builder that was in use before it, whatever the block made.
-    # Builder.new makes each new builder the one in use, so a builder made to build a program
-    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
-    def self.keeping_builder_in_use
-      was = in_use
-      yield
-    ensure
-      self.in_use = was
-    end
-  end
-end
+# Must come before the concerns: a game file among them runs its `while` loops as it loads, and a
+# loop asks which game is being built (PlainRuby::Steps::LoopTest).
+require_relative "builder/session"
 
 require_relative "builder/randomness"
 require_relative "builder/sound"
@@ -333,14 +303,18 @@ module VBlank
       # the one boot-time save_init and the auto-save after each change.
       @persisted = []
       @saves = nil             # the save_data records and what saves them (see Saves), made with the first
-      # Must come last: plain Ruby asks the builder in use whether it records game code, and a
-      # builder whose making stopped part way could not answer.
-      Builder.in_use = self
+      # Must come last: plain Ruby asks the session's builder whether it records game code, and a
+      # builder whose making stopped part way could not answer. A builder made by hand stands as
+      # the thread's game; one a build makes is its session's already (Session.building).
+      Session.stand(self)
     end
 
     # The IR tree built so far (the whole program). Lets tests assert the DSL
     # constructs the right tree without lowering it to a ROM.
     attr_reader :program
+
+    # The Session this builder builds in, which says whether its build has ended (Session#take sets it).
+    attr_accessor :build_session # :nodoc:
 
     # The console this game is being built for (a Console::Description): the screen the DSL
     # lays things out on, clamps them to and checks them against.

@@ -625,9 +625,10 @@ module VBlank
       # learns which slots it writes (#pieced_unpacking).
       def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
                             slot_uses: {}, built_names: Original::BuiltNames.new, piece: nil, part_programs: nil)
-        Builder.keeping_builder_in_use do
-          # A shell's unpacking shows in the game's window, so it takes the screen the game was given.
-          maker = Builder.new(options: unpacking_options, screen_size: @program.screen_size)
+        # A shell's unpacking shows in the game's window, so it takes the screen the game was given.
+        # It is a game of its own, built in a session of its own: the game's parts made in it are its.
+        made = -> { Builder.new(options: unpacking_options, screen_size: @program.screen_size) }
+        Session.building(made, part_of: self) do |maker|
           copy_size = bytes ? bytes.bytesize : release.size
           copy_table = declare_copy_table_from_start_file(maker, slots, copy_size, piece_number: !piece.nil?)
           slots_size = piece ? piece.most_bytes(slots) : slots.sum(&:byte_size)
