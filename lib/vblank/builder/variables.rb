@@ -11,10 +11,15 @@ module VBlank
     #
     # ```ruby
     # VBlank.game "COUNTER", consoles: %i[gba] do
+    #   screen :bitmap
+    #   clear_screen rgb(3, 4, 7)
     #   score = 0
     #   game_loop do
     #     score += 1
     #     score = 0 if score > 99
+    #     # a bar as long as the score
+    #     fill_rect 70, 72, 100, 16, rgb(8, 8, 12)
+    #     fill_rect 70, 72, score, 16, :yellow
     #   end
     # end
     # ```

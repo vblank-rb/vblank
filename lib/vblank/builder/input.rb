@@ -125,12 +125,17 @@ module VBlank
       # lays out its seats from this number, so that the two cannot drift apart.
       #
       # ```ruby
-      # VBlank.game "PARTY", consoles: %i[gba], players: { computer: 1..4, else: 1 } do
-      #   screen :bitmap
-      #   image :walker, "#" => :yellow do
-      #     "##\n##"
+      # VBlank.game "PARTY", consoles: %i[gba],
+      #             players: { computer: 1..4,
+      #                        else: 1 } do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image(:walker, "#" => :yellow) do
+      #     "################\n" * 16
       #   end
-      #   (1..max_players).each { |player| sprite :walker, at: [20 * player, 80] }
+      #   (1..max_players).each do |player|
+      #     x = 84 + 28 * player
+      #     sprite :walker, at: [x, 72]
+      #   end
       #   game_loop {}
       # end
       # ```

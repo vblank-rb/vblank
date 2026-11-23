@@ -10,19 +10,24 @@ module VBlank
     # name which rooms are up, so that only those have to fit, as the console's own games load a
     # room's things when the room loads and let them go when it is left.
     #
-    # ```ruby
-    # SQUARE = "########\n" * 8
+    # ```ruby picture=still
+    # SQUARE = "################\n" * 16
     #
     # VBlank.game "ROOMS", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :green
-    #   image(:hero, "#" => :white) { SQUARE }
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:hero, "#" => :cyan) { SQUARE }
     #   image(:pot, "#" => :orange) { SQUARE }
     #   image(:chest, "#" => :yellow) { SQUARE }
-    #   rooms = picture_groups :rooms, { 0 => [:pot], 1 => [:chest] }
-    #   rooms.show 0 # room 0's pictures are up; the chest takes no room until room 1 is
-    #   sprite :hero, at: [60, 76] # in no group, so always up
-    #   sprite :pot, at: [120, 76]
-    #   sprite :pot, at: [160, 76]
+    #   rooms = picture_groups :rooms,
+    #                          { 0 => [:pot],
+    #                            1 => [:chest] }
+    #   # room 0's pictures are up; the chest
+    #   # takes no room until room 1 is
+    #   rooms.show 0
+    #   # in no group, so always up
+    #   sprite :hero, at: [84, 72]
+    #   sprite :pot, at: [112, 72]
+    #   sprite :pot, at: [140, 72]
     #   game_loop {}
     # end
     # ```

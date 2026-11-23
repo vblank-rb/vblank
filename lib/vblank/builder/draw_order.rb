@@ -10,16 +10,23 @@ module VBlank
     # you are drawn over it, walk round above it and it is drawn over you, and the answer changes
     # every time two things pass each other. `draw_in_order` does this.
     #
-    # ```ruby
+    # ```ruby picture=once frames=90
     # VBlank.game "DEPTH", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :green
-    #   image(:tree, "#" => :orange) { "########\n" * 24 }
-    #   image(:hero, "#" => :yellow) { "########\n" * 8 }
-    #   tree = sprite :tree, at: [116, 56]
-    #   hero = sprite :hero, at: [112, 30]
-    #   draw_in_order tree, hero # whoever stands lower is in front
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:tree, "#" => :orange) do
+    #     "################\n" * 48
+    #   end
+    #   image(:hero, "#" => :yellow) do
+    #     "################\n" * 16
+    #   end
+    #   tree = sprite :tree, at: [112, 48]
+    #   hero = sprite :hero, at: [104, 32]
+    #   # whoever stands lower is in front
+    #   draw_in_order tree, hero
     #   game_loop do
-    #     hero.y += 1 if hero.y < 76 # walks down past the tree's foot, and so in front of it
+    #     # walks down past the tree's foot,
+    #     # and so in front of it
+    #     hero.y += 1 if hero.y < 84
     #   end
     # end
     # ```

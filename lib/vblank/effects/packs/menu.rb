@@ -10,15 +10,17 @@ module VBlank
       # at both ends, and a button running the picked item's block. Which colour is which, what the
       # cursor looks like and how far apart the rows are are named by the game.
       #
-      # ```ruby
+      # ```ruby picture=still
       # VBlank.game "TITLE", consoles: %i[gba] do
-      #   screen :tiled, backdrop: :blue
-      #   draw_text "SPACE TRIP", 90, 30, :yellow
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   draw_text "SPACE TRIP", 90, 56, :yellow
       #   started = false
       #   game_loop do
-      #     menu :main, at: [96, 70], color: :gray, picked: :white do |m|
+      #     menu :main, at: [96, 74], color: :gray,
+      #                 picked: :cyan do |m|
       #       m.item("NEW GAME") { started = true }
-      #       m.item("CONTINUE", enabled: false) {} # drawn dim, and the cursor steps over it
+      #       # drawn dim; the cursor steps over it
+      #       m.item("CONTINUE", enabled: false) {}
       #       m.item("SOUND") {}
       #     end
       #   end

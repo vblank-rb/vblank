@@ -10,32 +10,35 @@ module VBlank
     # one point of a place lands on the screen, for a game made of rooms that looks through
     # doorways.
     #
-    # ```ruby
-    # BOARDS = <<~ART
-    #   ########
-    #   #......#
-    #   #.####.#
-    #   #.#..#.#
-    #   #.#..#.#
-    #   #.####.#
-    #   #......#
-    #   ########
-    # ART
-    #
+    # ```ruby picture=still
     # VBlank.game "CRATE", consoles: %i[gba] do
     #   screen :bitmap, tear_free: true
-    #   image(:boards, "#" => rgb(12, 6, 2), "." => rgb(28, 18, 8)) { BOARDS }
-    #   whole = [[0, 0], [8, 0], [8, 8], [0, 8]] # the picture's corners, round to the right
-    #   place :crate do
-    #     a, b, c, d = point(-1.0, 1.0, -1.0), point(1.0, 1.0, -1.0), point(1.0, -1.0, -1.0), point(-1.0, -1.0, -1.0)
-    #     e, f, g = point(-1.0, 1.0, 1.0), point(1.0, 1.0, 1.0), point(1.0, -1.0, 1.0)
-    #     face a, b, c, d, picture: :boards, on_picture: whole # the near side
-    #     face b, f, g, c, picture: :boards, on_picture: whole # the right side
-    #     face e, f, b, a, picture: :boards, on_picture: whole # the top
+    #   image(:boards, "#" => rgb(24, 12, 3),
+    #                  "." => :orange) do
+    #     edge = "########\n"
+    #     edge + "#......#\n" * 6 + edge
     #   end
-    #   eye = viewer :eye, at: [1.6, 1.4, -4.0] # above and to the right, looking ahead
+    #   # the picture's corners, clockwise
+    #   whole = [[0, 0], [8, 0], [8, 8], [0, 8]]
+    #   place :crate do
+    #     a, b, c, d, e, f, g =
+    #       [[-1, 1, -1], [1, 1, -1], [1, -1, -1],
+    #        [-1, -1, -1], [-1, 1, 1], [1, 1, 1],
+    #        [1, -1, 1]].map { |p| point(*p) }
+    #     # the near side, the right, the top
+    #     [[a, b, c, d], [b, f, g, c],
+    #      [e, f, b, a]].each do |corners|
+    #       face(*corners, picture: :boards,
+    #                      on_picture: whole)
+    #     end
+    #   end
+    #   # above and to the right, turned to look
+    #   # down and left at the crate
+    #   eye = viewer :eye, at: [2.0, 1.8, -3.0]
+    #   eye.turn :left, by: 35
+    #   eye.turn :down, by: 30
     #   game_loop do
-    #     clear_screen :black
+    #     clear_screen rgb(3, 4, 7)
     #     draw_place :crate, seen_by: eye
     #   end
     # end

@@ -9,24 +9,35 @@ module VBlank
     # a picture for each direction, or cycle through frames as an animation, and it has a collision
     # box for `overlaps?`. `hide_sprites` keeps every sprite off the screen for one frame.
     #
-    # ```ruby
+    # ```ruby picture=once frames=60
     # VBlank.game "SPRITES", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :blue
-    #   image :hero, "." => :transparent, "#" => :yellow, "o" => :black do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image :hero, "." => :transparent,
+    #                "#" => :yellow,
+    #                "o" => :red do
     #     <<~ART
-    #       ..####..
-    #       .######.
-    #       ##o##o##
-    #       ########
-    #       #o####o#
-    #       ##oooo##
-    #       .######.
-    #       ..####..
+    #       .....######.....
+    #       ...##########...
+    #       ..############..
+    #       .##############.
+    #       .###oo####oo###.
+    #       ####oo####oo####
+    #       ################
+    #       ################
+    #       ################
+    #       ###o########o###
+    #       ####o######o####
+    #       .####oooooo####.
+    #       .##############.
+    #       ..############..
+    #       ...##########...
+    #       .....######.....
     #     ART
     #   end
-    #   hero = sprite :hero, at: [20, 76]
+    #   hero = sprite :hero, at: [64, 72]
     #   game_loop do
-    #     hero.x += 1 if hero.x < 116 # walks to the middle of the screen and stops
+    #     # walks to the middle and stops
+    #     hero.x += 1 if hero.x < 112
     #   end
     # end
     # ```

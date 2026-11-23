@@ -102,12 +102,14 @@ module VBlank
   # described before any of it is built, a `call` can name a `func` that is written later in
   # the block.
   #
-  # ```ruby
-  # rom = VBlank.build("PIXELS", console: :gba) do
+  # ```ruby picture=still
+  # VBlank.game "PIXELS", consoles: %i[gba] do
   #   screen :bitmap
-  #   pixel 120, 80, :red
-  #   pixel 121, 80, color("#00FF00")
-  #   fill_rect 50, 50, 30, 20, rgb(31, 31, 0)
+  #   clear_screen rgb(3, 4, 7)
+  #   fill_rect 96, 56, 32, 32, :red
+  #   amber = color("#FFA000")
+  #   fill_rect 112, 72, 32, 32, amber
+  #   pixel 120, 80, :white
   #   halt
   # end
   # ```

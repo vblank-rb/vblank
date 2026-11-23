@@ -13,14 +13,24 @@ module VBlank
       # game with no light gets one that reaches past the screen and darkens nothing, which is what
       # the iris opens back to.
       #
-      # ```ruby
+      # ```ruby picture=loop frames=120
       # VBlank.game "IRIS", consoles: %i[gba] do
-      #   screen :tiled, backdrop: :blue
-      #   image(:hero, "#" => :yellow) { "########\n" * 8 }
-      #   sprite :hero, at: [116, 76]
-      #   draw_text "LEVEL CLEAR", 88, 60, :white
-      #   iris_out at: [120, 80], from: 150, by: 1 # a circle closing on the hero, a pixel a frame
-      #   game_loop { iris_in if iris_shut? }
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image(:hero, "#" => :yellow) do
+      #     "################\n" * 16
+      #   end
+      #   sprite :hero, at: [112, 76]
+      #   draw_text "CLEAR", 106, 62, :cyan
+      #   frame = 0
+      #   game_loop do
+      #     frame = (frame + 1) % 120
+      #     # a circle closes on the hero,
+      #     # then opens again
+      #     if frame == 1
+      #       iris_out at: [120, 80], frames: 50
+      #     end
+      #     iris_in frames: 50 if frame == 60
+      #   end
       # end
       # ```
       #

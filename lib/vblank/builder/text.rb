@@ -9,13 +9,16 @@ module VBlank
     # game uses them differently. `font` makes a font of your own, and `text_width` and
     # `text_height` measure what will be drawn, to size a box round it.
     #
-    # ```ruby
+    # ```ruby picture=still
     # VBlank.game "TEXT", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :blue
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
     #   score = 0
-    #   draw_text "SCORE", 8, 8, :white
-    #   draw_number score, 44, 8, :yellow, digits: 5 # shows the score as it changes
-    #   draw_text "HELLO FROM VBLANK", 68, 76, :white
+    #   draw_text "SCORE", 84, 68, :white
+    #   # shows the score as it changes
+    #   draw_number score, 120, 68, :yellow,
+    #                               digits: 5
+    #   draw_text "HELLO FROM VBLANK", 70, 84,
+    #                                  :cyan
     #   game_loop do
     #     score += 7
     #   end

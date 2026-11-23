@@ -8,23 +8,35 @@ module VBlank
     # loop of pictures, over a map that does not change. Every picture is drawn ahead of time, so
     # the game only names which one a group shows, and the whole group changes as one.
     #
-    # ```ruby
-    # # Three pictures of one tile: water (place 1) with a crest (place 2) that moves along.
-    # WAVES = (0..2).map { |n| Array.new(64) { |at| (at / 8).even? && (at % 8) / 3 == n ? 2 : 1 } }
+    # ```ruby picture=loop frames=48
+    # # Three pictures of one tile: water (1)
+    # # with a crest (2) that moves along.
+    # WAVES = (0..2).map do |n|
+    #   Array.new(64) do |at|
+    #     row, col = at.divmod(8)
+    #     row.even? && col / 3 == n ? 2 : 1
+    #   end
+    # end
     #
     # VBlank.game "WATER", consoles: %i[gba] do
-    #   screen :tiled
-    #   colors :pond, %i[transparent blue cyan]
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :pond, [:transparent,
+    #                  rgb(6, 10, 22), :cyan]
     #   WAVES.each_with_index do |places, n|
-    #     image :"wave#{n}", width: 8, height: 8, colors: :pond, places: places
+    #     image :"wave#{n}", width: 8, height: 8,
+    #           colors: :pond, places: places
     #   end
-    #   water = tile_pictures :water, colors: :pond, tiles: { wave: %i[wave0 wave1 wave2] }
+    #   water = tile_pictures :water,
+    #     colors: :pond,
+    #     tiles: { wave: %i[wave0 wave1 wave2] }
     #   tiles :lake_tiles, "~" => water[:wave]
-    #   background :lake, tiles: :lake_tiles, map: "#{'~' * 30}\n" * 20
+    #   background :lake, tiles: :lake_tiles,
+    #                     map: "#{'~' * 8}\n" * 4
     #   step = 0
     #   game_loop do
     #     step += 1
-    #     water.show (step / 8) % 3 # every tile of the lake changes picture at once
+    #     # every tile of the lake changes at once
+    #     water.show (step / 8) % 3
     #   end
     # end
     # ```

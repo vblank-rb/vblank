@@ -10,14 +10,20 @@ module VBlank
     # top left of the screen. `fade`, `tint`, `pixelate`, `spotlight` and `camera` change how the
     # whole picture is shown without redrawing it, so they cost the same however much is on screen.
     #
-    # ```ruby
+    # ```ruby picture=still
     # VBlank.game "PAINT", consoles: %i[gba] do
     #   screen :bitmap
-    #   clear_screen :blue                  # the sky
-    #   fill_rect 0, 120, 240, 40, :green   # the ground
-    #   fill_rect 96, 72, 48, 48, :orange   # a house
-    #   fill_rect 112, 96, 16, 24, :black   # its door
-    #   [[30, 20], [70, 34], [190, 16], [210, 40]].each { |x, y| pixel x, y, :white } # stars
+    #   # the night sky
+    #   clear_screen rgb(3, 4, 7)
+    #   # the ground
+    #   fill_rect 72, 112, 96, 16, rgb(6, 10, 5)
+    #   # a house, and its door
+    #   fill_rect 96, 64, 48, 48, :orange
+    #   fill_rect 112, 88, 16, 24, rgb(10, 4, 2)
+    #   stars = [[80, 40], [104, 32], [150, 44]]
+    #   stars.each do |x, y|
+    #     fill_rect x, y, 3, 3, :yellow
+    #   end
     #   halt
     # end
     # ```

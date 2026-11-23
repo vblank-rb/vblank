@@ -15,20 +15,22 @@ module VBlank
       # code costs one paint. A game moved from `screen :bitmap` to `screen :bitmap, tear_free:
       # true` keeps working, and the flicker that would have appeared never does.
       #
-      # ```ruby
+      # ```ruby picture=once frames=90
       # VBlank.game "HEALTH", consoles: %i[gba] do
       #   screen :bitmap, tear_free: true
       #   health = 100
-      #   clear_screen :black
+      #   clear_screen rgb(3, 4, 7)
       #   bar = redraw_on_change(:health_bar) do
-      #     fill_rect 20, 20, 100, 8, :red
-      #     fill_rect 20, 20, health, 8, :green
+      #     fill_rect 70, 72, 100, 16, :red
+      #     fill_rect 70, 72, health, 16, :yellow
       #   end
       #   bar.changed
       #   game_loop do
       #     if health > 40
       #       health -= 1
-      #       bar.changed # painted again on both pages, and then left alone
+      #       # painted again on both pages,
+      #       # and then left alone
+      #       bar.changed
       #     end
       #     bar.draw
       #   end

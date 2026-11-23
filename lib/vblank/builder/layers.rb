@@ -9,17 +9,30 @@ module VBlank
     # names, the only way to set what sits in front is the order the declarations happen to run
     # in, which is invisible and, in a game split across files, depends on which file loaded first.
     #
-    # ```ruby
+    # ```ruby picture=once frames=60
     # VBlank.game "LAYERS", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :blue
-    #   image(:post, "#" => :gray) { "########\n" * 32 }
-    #   image(:hero, "#" => :yellow) { "################\n" * 16 }
-    #   layers :back, :actors, :front # the stack, back to front
-    #   hero = layer(:actors) { sprite :hero, at: [20, 72] }
-    #   layer(:back) { sprite :post, at: [100, 64] }
-    #   layer(:front) { sprite :post, at: [116, 64] }
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:post, "#" => :orange) do
+    #     "################\n" * 32
+    #   end
+    #   image(:hero, "#" => :yellow) do
+    #     "################\n" * 16
+    #   end
+    #   # the stack, back to front
+    #   layers :back, :actors, :front
+    #   hero = layer(:actors) do
+    #     sprite :hero, at: [72, 72]
+    #   end
+    #   layer(:back) do
+    #     sprite :post, at: [96, 64]
+    #   end
+    #   layer(:front) do
+    #     sprite :post, at: [120, 64]
+    #   end
     #   game_loop do
-    #     hero.x += 1 if hero.x < 104 # stops in front of one post and behind the other
+    #     # stops in front of one post
+    #     # and behind the other
+    #     hero.x += 1 if hero.x < 108
     #   end
     # end
     # ```

@@ -10,17 +10,25 @@ module VBlank
     # pack's verbs and nothing else does, so two games built side by side can each have a verb of
     # the same name.
     #
-    # ```ruby
+    # ```ruby picture=still
     # module Dungeon
     #   module Torch
-    #     def light_torch(at:) = spotlight(at: at, radius: 30, dark: 80)
+    #     def light_torch(at:)
+    #       spotlight at: at, radius: 24, dark: 80
+    #     end
     #   end
     # end
     #
     # VBlank.game "DUNGEON", consoles: %i[gba] do
     #   uses Dungeon::Torch
-    #   screen :tiled, backdrop: :blue
-    #   light_torch at: [40, 40]
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:wall, "#" => :orange) do
+    #     "################\n" * 16
+    #   end
+    #   [84, 112, 140].each do |x|
+    #     sprite :wall, at: [x, 72]
+    #   end
+    #   light_torch at: [120, 80]
     #   game_loop {}
     # end
     # ```

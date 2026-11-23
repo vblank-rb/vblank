@@ -9,27 +9,28 @@ module VBlank
     # of the sprite is a picture made of some of them. Rewrite the tiles and every pose that draws
     # them shows the new picture from the next frame on, while the poses take no room of their own.
     #
-    # ```ruby
-    # VBlank.game "SPRITETILES", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :blue
-    #   colors :ball, %i[transparent white red]
-    #   image :art, "." => :transparent, "#" => :white, "o" => :red, colors: :ball do
-    #     <<~ART
-    #       ....####oooo....
-    #       ..######oooooo..
-    #       .#######ooooooo.
-    #       ########oooooooo
-    #       ########oooooooo
-    #       .#######ooooooo.
-    #       ..######oooooo..
-    #       ....####oooo....
-    #     ART
+    # ```ruby picture=still
+    # VBlank.game "TILESET", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :ball, %i[transparent yellow red]
+    #   # two tiles side by side: yellow, red
+    #   image :art, "#" => :yellow, "o" => :red,
+    #               colors: :ball do
+    #     "########oooooooo\n" * 8
     #   end
-    #   tiles = sprite_tiles :ball_tiles, count: 2, colors: :ball
-    #   # A pose of four pieces made of the set's two tiles: [left, top, tile].
-    #   image :ball, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 1], [8, 8, 0]]
+    #   tiles = sprite_tiles :ball_tiles,
+    #                        count: 2,
+    #                        colors: :ball
+    #   # A pose of four pieces made of the
+    #   # set's two tiles: [left, top, tile].
+    #   pieces = [[0, 0, 0], [8, 0, 1],
+    #             [0, 8, 1], [8, 8, 0]]
+    #   image :ball, tiles_from: :ball_tiles,
+    #                pieces: pieces
     #   sprite :ball, at: [112, 72]
-    #   tiles.copy_from :art, at: 0, count: 2, to: 0 # load the art's two tiles into the set
+    #   # load the art's two tiles into the set
+    #   tiles.copy_from :art, at: 0, count: 2,
+    #                         to: 0
     #   game_loop {}
     # end
     # ```

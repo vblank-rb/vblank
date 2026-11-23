@@ -9,23 +9,22 @@ module VBlank
       # for a collectable that begs to be picked up, a boss winding up, a menu item that says "this
       # one is selected", or a heart beating faster as the health drops.
       #
-      # ```ruby
+      # ```ruby picture=loop frames=240
       # VBlank.game "PULSE", consoles: %i[gba] do
-      #   screen :tiled, backdrop: :black
-      #   image :coin, "." => :transparent, "#" => :yellow, "o" => :orange do
-      #     <<~ART
-      #       ...##...
-      #       ..####..
-      #       .##oo##.
-      #       .##oo##.
-      #       .##oo##.
-      #       .##oo##.
-      #       ..####..
-      #       ...##...
-      #     ART
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image :coin, "." => :transparent,
+      #                "#" => :yellow,
+      #                "o" => :orange do
+      #     cap = "....########....\n"
+      #     rim = "..############..\n"
+      #     mid = "..####oooo####..\n"
+      #     cap * 2 + rim * 2 + mid * 8 +
+      #       rim * 2 + cap * 2
       #   end
-      #   coin = sprite :coin, at: [116, 76]
-      #   pulse coin, to: 2.0, over: 4.0 # grows to twice its size and back, every four seconds
+      #   coin = sprite :coin, at: [112, 72]
+      #   # grows to twice its size and back,
+      #   # every four seconds
+      #   pulse coin, to: 2.0, over: 4.0
       #   game_loop {}
       # end
       # ```

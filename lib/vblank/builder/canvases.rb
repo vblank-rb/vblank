@@ -9,18 +9,23 @@ module VBlank
     # it goes, such as a name typed a letter at a time, a meter or a map of where the player has
     # been. A background shows it, or a sprite uses it as its picture.
     #
-    # ```ruby
+    # ```ruby picture=once frames=90
     # VBlank.game "CANVAS", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :black
-    #   colors :ink, %i[transparent white green blue]
-    #   board = canvas :board, width: 160, height: 32, colors: :ink
-    #   background :sign, tiles: :board, map: board.cells
-    #   board.clear :blue
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :ink,
+    #          %i[transparent white yellow red]
+    #   board = canvas :board, width: 96,
+    #                  height: 32, colors: :ink
+    #   background :sign, tiles: :board,
+    #                     map: board.cells
     #   board.draw_text "ENERGY", 8, 4, :white
+    #   board.fill_rect 8, 18, 80, 8, :red
     #   energy = 0
     #   game_loop do
-    #     energy += 1 if energy < 140
-    #     board.fill_rect 8, 18, energy, 8, :green # a meter that fills as the game runs
+    #     energy += 1 if energy < 80
+    #     # a meter that fills as the game runs
+    #     board.fill_rect 8, 18, energy, 8,
+    #                     :yellow
     #   end
     # end
     # ```

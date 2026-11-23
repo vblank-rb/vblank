@@ -9,20 +9,32 @@ module VBlank
     # colours that a sprite can be drawn with instead of its own. `mirror` and `upside_down` give
     # the same picture turned round without drawing it twice.
     #
-    # ```ruby
+    # ```ruby picture=still
     # VBlank.game "PICTURES", consoles: %i[gba] do
     #   screen :bitmap
-    #   image :ship, "." => :transparent, "#" => :cyan, "o" => rgb(31, 20, 0) do
+    #   image :ship, "." => :transparent,
+    #                "#" => :cyan,
+    #                "o" => rgb(31, 20, 0) do
     #     <<~ART
-    #       ...#...
-    #       ..###..
-    #       .##o##.
-    #       #######
-    #       #.#.#.#
+    #       .......##.......
+    #       .......##.......
+    #       ......####......
+    #       ......####......
+    #       .....##oo##.....
+    #       .....##oo##.....
+    #       ....########....
+    #       ..############..
+    #       ################
+    #       ################
+    #       ##..##....##..##
+    #       ##..##....##..##
     #     ART
     #   end
-    #   clear_screen :black
-    #   [60, 116, 172].each { |x| blit :ship, x, 70 } # one picture, drawn three times
+    #   clear_screen rgb(3, 4, 7)
+    #   # one picture, drawn three times
+    #   [84, 112, 140].each do |x|
+    #     blit :ship, x, 74
+    #   end
     #   halt
     # end
     # ```

@@ -10,18 +10,25 @@ module VBlank
     # The framework paints the grid for you. A tile is just an `image`, so tiles are made like any
     # other art: text, a list of numbers or an imported picture.
     #
-    # ```ruby
+    # ```ruby picture=still
     # VBlank.game "DUNGEON", consoles: %i[gba] do
-    #   screen :tiled
-    #   image(:brick, "#" => :orange, "-" => :gray) { ("###-####\n" * 3 + "--------\n") * 2 }
-    #   image(:floor, "." => :black) { "........\n" * 8 }
-    #   tiles :dungeon, "#" => :brick, "." => :floor
-    #   background :level, tiles: :dungeon, map: <<~MAP
-    #     ##############################
-    #     #............................#
-    #     #....######..........######..#
-    #     #............................#
-    #     ##############################
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:brick, "#" => :orange,
+    #                 "-" => rgb(12, 6, 3)) do
+    #     ("###-####\n" * 3 + "--------\n") * 2
+    #   end
+    #   image(:floor, "." => rgb(9, 8, 7)) do
+    #     "........\n" * 8
+    #   end
+    #   tiles :dungeon, "#" => :brick,
+    #                   "." => :floor
+    #   background :level, tiles: :dungeon,
+    #                      map: <<~MAP
+    #     ############
+    #     #..........#
+    #     #..##..##..#
+    #     #..........#
+    #     ############
     #   MAP
     #   game_loop {}
     # end

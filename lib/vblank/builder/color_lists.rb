@@ -12,29 +12,32 @@ module VBlank
     # `recolor` does that, `colors_in_use` says which lists a room needs, and `color_walk` makes
     # the steps of a fade.
     #
-    # ```ruby
+    # ```ruby picture=once frames=90
     # VBlank.game "RECOLOR", consoles: %i[gba] do
-    #   screen :tiled, backdrop: :black
-    #   image :gem, "." => :transparent, "#" => :red, "o" => :white, colors: %i[transparent red white] do
-    #     <<~ART
-    #       ..####..
-    #       .#oo###.
-    #       #oo#####
-    #       ########
-    #       ########
-    #       .######.
-    #       ..####..
-    #       ...##...
-    #     ART
-    #   end
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :ruby, %i[transparent red white]
     #   colors :slot, %i[transparent red white]
     #   colors :ice, %i[transparent cyan white]
-    #   sprite :gem, at: [60, 76] # its own colours
-    #   [110, 160].each { |x| sprite(:gem, at: [x, 76]).draw_with :slot }
+    #   image :gem, "." => :transparent,
+    #               "#" => :red, "o" => :white,
+    #               colors: :ruby do
+    #     "....########....\n" * 4 +
+    #     "..oo##########..\n" * 4 +
+    #     "################\n" * 4 +
+    #     "....########....\n" * 4
+    #   end
+    #   # in the gem's own list
+    #   sprite :gem, at: [84, 72]
+    #   # two drawn with a list that changes
+    #   [112, 140].each do |x|
+    #     gem = sprite :gem, at: [x, 72]
+    #     gem.draw_with :slot
+    #   end
     #   frames = 0
     #   game_loop do
     #     frames += 1
-    #     recolor :slot, :ice if frames == 60 # every gem drawn with :slot turns icy
+    #     # every gem drawn with :slot turns icy
+    #     recolor :slot, :ice if frames == 60
     #   end
     # end
     # ```
