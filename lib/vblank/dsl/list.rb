@@ -67,8 +67,11 @@ module VBlank
       # ```ruby
       # shots << hero_x
       # ```
+      #
+      # In the `initialize` of a part made by game code that made this list there, the push is made
+      # on the part's first pass alone (Builder#once_for_part), since the part is made once.
       def push(value)
-        record(Build.list_push(@name, item_node(value, "hold")))
+        @builder.once_for_part(@name) { record(Build.list_push(@name, item_node(value, "hold"))) }
         self
       end
       alias << push

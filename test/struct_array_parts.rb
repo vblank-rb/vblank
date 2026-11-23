@@ -36,6 +36,24 @@ class FlockPart
   end
 end
 
+# A part that puts two eggs in while it is set up, and one more each time `lay` is called.
+class HatcheryPart
+  def initialize(_builder)
+    @eggs = Array.new(capacity: 8)
+    2.times { |i| @eggs << Spark.new(i, 0, 0) }
+  end
+
+  def lay = @eggs << Spark.new(9, 0, 0)
+end
+
+# An object whose initialize pushes into Arrays it is handed, not its own.
+class HandedPush
+  def initialize(notes, sparks, x)
+    notes << x
+    sparks << Spark.new(x, 0, 0)
+  end
+end
+
 # An arrow drawn facing right. Facing left, it is the same picture mirrored.
 Arrow = Struct.new(:x, :y) do
   drawn_as facing: { right: :arrow }

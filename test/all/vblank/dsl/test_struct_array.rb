@@ -5,10 +5,13 @@ require "test_helper"
 VBlank.require_game_file "../../../struct_array_parts"
 require "struct_array_plain_parts"
 require "fixtures/own_struct_games"
+require "first_pass_presses"
 
 # An Array of Structs that game code changes is a pool (DSL::StructArray), and plays as the same
 # game written with `pool`. Each test plays a tiny game and reads what it leaves, on every lowering.
 class TestStructArray < Minitest::Test
+  include FirstPassPresses
+
   private def played(frames:, &block)
     builder = Builder.new
     builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, checked: false))
@@ -122,6 +125,84 @@ class TestStructArray < Minitest::Test
     birds = player.pool(:flock_part_birds, :x).zip(player.pool(:flock_part_birds, :y))
 
     assert_equal [[0, 3], [10, 6], [20, 9]], birds.reject { |x, _| x.nil? }.sort
+  end
+
+  # A part made in a game block is made once, as its numbers start once: the things its
+  # initialize puts in go in on the first pass alone, not again on every pass the block plays.
+  def test_a_part_made_in_the_game_loop_fills_its_array_once
+    builder = Builder.new
+    builder.game_loop do
+      FlockPart.new(builder)
+      builder.call(:flock_tick)
+    end
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 10)
+
+    birds = player.pool(:flock_part_birds, :x).zip(player.pool(:flock_part_birds, :y))
+
+    assert_equal [[0, 10], [10, 20], [20, 30]], birds.reject { |x, _| x.nil? }.sort
+  end
+
+  # Only an Array the part makes in its initialize is filled once. A push there into an Array
+  # handed in runs every time the line making the object runs, as Ruby's does.
+  def test_an_object_made_in_the_game_loop_pushes_into_handed_arrays_every_pass
+    player = played(frames: 4) do
+      notes = Array.new(capacity: 8)
+      sparks = Array.new(capacity: 8)
+      game_loop do
+        HandedPush.new(notes, sparks, 7)
+        # Never true: these lines tell the build both are Arrays the game changes.
+        if notes.size > 8
+          notes << 1
+          sparks << Spark.new(1, 0, 0)
+        end
+      end
+    end
+
+    assert_equal [7, 7, 7, 7], player.list(:notes)
+    assert_equal [7, 7, 7, 7], player.pool(:sparks, :x).compact
+  end
+
+  # A save that keeps a part's Array keeps whether the part has put its first things in, so a
+  # game loaded on a fresh power-on does not put them in again on top of the loaded ones.
+  def test_a_part_filled_once_and_saved_is_not_filled_again_after_a_load
+    program = Builder.new.tap do |builder|
+      builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc do
+        files = save_data(:file) { keep part: :play }
+        files[0].load
+        scene :play do
+          hatchery = HatcheryPart.new(self)
+          if pressed(:a)
+            hatchery.lay
+            files[0].save
+          end
+        end
+        mode = :play
+        game_loop do
+          mode = :play
+          call mode
+        end
+      end, checked: false))
+      builder.finalize_program
+    end.program
+    store = SaveImage.new
+    game_player(save: store).input_each_frame(&presses_from_first_pass({ 2 => :a })).run(program, frames: 8)
+    loaded = game_player(save: store).run(program, frames: 2)
+
+    assert_equal [0, 1, 9], loaded.pool(:hatchery_part_eggs, :x).compact.sort
+  end
+
+  # Only the part's own making is once: a push in another of its methods, called on every pass,
+  # puts a thing in on every pass.
+  def test_a_part_made_in_the_game_loop_pushes_from_its_other_methods_every_pass
+    builder = Builder.new
+    builder.game_loop { HatcheryPart.new(builder).lay }
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 3)
+
+    assert_equal [0, 1, 9, 9, 9], player.pool(:hatchery_part_eggs, :x).compact.sort
   end
 
   # The Struct's file is not read as game code, so its `self.y += 2` is Ruby's own setter, which

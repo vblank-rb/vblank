@@ -37,6 +37,8 @@ module VBlank
         found: ["keeps whether the Array held a thing for min or max to hand back.", nil],
         best: ["keeps the thing that min or max has found so far.", nil],
         kept: ["keeps which thing this name holds after the walk that handed it over.", nil],
+        part_started: ["keeps whether this part, made on every pass, has put its first things in, so they go in once.",
+                       "Unneeded if the part is made above the game loop."],
         truth: ["keeps a second hidden variable for nil, or for false beside a number.",
                 "Unneeded if it starts with false, or a number such as -1."]
       })

@@ -451,6 +451,7 @@ module VBlank
         keeping = @save_data_keeping.fetch(layout.name)
         pools = keeping.select { |one| pool_part?(one) }
         kept = keeping.flat_map { |one| pool_part?(one) ? pool_items(one) : [one] }
+        kept += kept_part_started(layout.name, keeping, kept)
         if kept.empty?
           raise ArgumentError, "save_data :#{layout.name} keeps nothing, so a save of it has nothing to save. " \
                                "To fix this, name what it keeps: `files.keep hearts`, or " \
@@ -460,6 +461,19 @@ module VBlank
         lay_out_save_data(layout.name, layout.copies, kept, place: layout.place, number: layout.number,
                                                             when_busy: layout.when_busy, pools: pools,
                                                             fast: layout.fast)
+      end
+
+      # The hidden numbers that keep the Arrays +record+ keeps to one filling by the part that made
+      # them (Builder#part_started_for), each kept beside them, unnamed in the record's shape as the
+      # framework's own are. Without it a game loaded on a fresh power-on would fill them again on
+      # top of what it loaded.
+      def kept_part_started(record, keeping, kept)
+        arrays = keeping.map { |one| pool_part?(one) ? (one.is_a?(DSL::Pool) ? one : one.pool).name : one.name }
+        flags = arrays.filter_map { |name| @port.handle.part_started_for(name) }.uniq
+        flags.reject { |flag| kept.any? { |item| item.name == flag } }.map do |flag|
+          @save_data_unnamed << flag
+          claim_kept!(record, Kept.new(kind: :var, name: flag, at: 0, width: :word, count: 1))
+        end
       end
 
       # One record's lists, buffer, power-on scans and routines, once it is laid out.

@@ -109,7 +109,7 @@ class Lamp
 end
 ```
 
-Write `game_variables` in the class's body. A named instance variable is the game's from its first number on, wherever it is read: in another routine, through `attr_reader`, or in another part it was handed to. A part made inside a scene or a routine starts once, from the numbers its `initialize` gives.
+Write `game_variables` in the class's body. A named instance variable is the game's from its first number on, wherever it is read: in another routine, through `attr_reader`, or in another part it was handed to. A part made inside a scene or a routine is made once for the whole game, not again each time the scene comes back: it starts from the numbers its `initialize` gives, and what its `initialize` puts into an Array it makes there goes in on the first pass alone. `rom.profile` names the hidden number that keeps it to once, and a save that keeps the Array keeps that number too; to skip it, make the part above the game loop. A push in `initialize` into an Array the part was handed runs each time the line making the part runs, as in Ruby, and so does everything else `initialize` does in the game, such as drawing or putting up a picture.
 
 `game_variables busy: :lamp_wait` gives the number a name of the game's own, which a profile and a test read it by. `game_variables :damage, saved: false` marks numbers a save never keeps.
 

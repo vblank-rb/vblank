@@ -88,8 +88,10 @@ module VBlank
         end
         # A push that can run during a walk of this Array may need a slot the walk took a thing
         # out of: one written inside a walk, or in a routine that may be called from one, as for
-        # #shift.
-        @pool.spawn_with(values, during_walk: @walks_open.positive? || @builder.building_callable_routine?)
+        # #shift. In the `initialize` of a part made by game code that made this Array there, it is
+        # made on the part's first pass alone (Builder#once_for_part), since the part is made once.
+        during_walk = @walks_open.positive? || @builder.building_callable_routine?
+        @builder.once_for_part(@pool.name) { @pool.spawn_with(values, during_walk: during_walk) }
         self
       end
       alias push <<

@@ -71,7 +71,12 @@ instance variables.
   start, as `var` does: `screen = FadedScreen.new(...)` in `scene :copyright do`, with `@phase =
   WAITING` in `initialize`, starts the phase at WAITING and does not set it back on every pass. A
   first number given anywhere else in game code, a method `initialize` calls included, is set there
-  on every pass, as Ruby would.
+  on every pass, as Ruby would. What `initialize` puts into an Array it makes there, itself or
+  through a method it calls (`hatch`), goes in on the part's first pass alone, behind a hidden
+  number `rom.profile` names and a save keeping the Array keeps (`Builder#making_part`,
+  `#once_for_part`). The part is made once for the whole game, not again when its scene comes back.
+  A push into an Array it was handed, a push from a method called on every pass (`update`), what a
+  routine, loop or timer `initialize` opens, and its drawing and pictures all run every time.
 - Setting-up code that works with a named one works with the game variable, so `@busy.times` while
   setting up is refused as any game number is: keep a number only the build uses unnamed.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as

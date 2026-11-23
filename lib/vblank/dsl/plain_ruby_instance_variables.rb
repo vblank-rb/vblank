@@ -450,6 +450,13 @@ module VBlank
         # Anywhere else in game code the line runs on every pass, as Ruby's would.
         def first_number_set_where_reached?(starting) = Builder.in_use.recording_game_code? && !starting
 
+        # The body of an object's `initialize` in a game file, as the rewrite runs it: a part game
+        # code makes puts things into its Arrays once, as its numbers start once (Builder#making_part).
+        def making_part(&)
+          builder = Builder.in_use
+          builder ? builder.making_part(&) : yield
+        end
+
         # A Hash or an Array of numbers (`@tilt_counters = { left: 0, right: 0 }`), or one already
         # made of game variables here.
         def numbers_collection?(held)

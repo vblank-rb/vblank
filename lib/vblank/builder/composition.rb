@@ -122,6 +122,7 @@ module VBlank
         art = pool_art!(name, image: image, facing: facing, frames: frames, rate: rate, fields: fields)
         handle = DSL::Pool.new(self, name, fields, capacity, image: image, hitbox: art&.hitbox, on_full: on_full,
                                                         art: art)
+        note_made_in_part(name) # what a part's `initialize` puts in goes in once (Builder#once_for_part)
         # A pool too big to share the quick memory is kept out of it, as though the game had
         # set `fast: false` — unless it set `fast: true`, which is then a friendly error.
         bytes = pool_bytes(handle, fields, widths)

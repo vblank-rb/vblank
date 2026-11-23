@@ -468,9 +468,13 @@ module VBlank
       # A build started in a chosen state makes it empty and then holds the items given (Game#starting_with).
       chosen = chosen_list_pushes(name, capacity, bits) if chosen_start?(name)
       full_of = nil if chosen
-      record(Build.list_new(name, capacity, width: width, fast: fast,
-                                            full_of: list_starting_item(name, full_of, bits)))
-      chosen&.each { |push| record(push.copy) }
+      # A part made by game code makes its list once, as it fills it once (#once_for_part).
+      note_made_in_part(name)
+      once_for_part(name) do
+        record(Build.list_new(name, capacity, width: width, fast: fast,
+                                              full_of: list_starting_item(name, full_of, bits)))
+        chosen&.each { |push| record(push.copy) }
+      end
       @fraction_lists[name] = bits if bits
       add_part_member(:list, name)
       DSL::List.new(self, name, fraction_bits: bits)
@@ -1450,6 +1454,88 @@ module VBlank
 
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
+
+    # Runs a part's `initialize` (PlainRuby's rewrite wraps each in a game file). A part made by
+    # game code, in a scene or the game loop, is made once, as its numbers start once
+    # (InstanceVariables.first_number_set_where_reached?), though the line making it plays on
+    # every pass: what it puts into its Arrays goes in on the first pass alone (#once_for_part).
+    # Made while setting up, it runs once anyway, and nothing changes.
+    def making_part # :nodoc:
+      return yield unless recording_game_code?
+
+      (@part_starts ||= []).push(PartStart.new(depth: @container_stack.length, made: Set.new))
+      begin
+        yield
+      ensure
+        close_part_start(@part_starts.pop)
+      end
+    end
+
+    # The part's things are in: its hidden number holds 1 from here on. Set inside the test the
+    # last push recorded, where that ends the `initialize`, so a pass after the first sets nothing.
+    def close_part_start(start)
+      return unless start.started
+
+      branch = start.branch
+      return start.started.store!(1) unless branch && @container_stack.last.children.last.equal?(branch)
+
+      open_container(branch, branch.cond)
+      begin
+        start.started.store!(1)
+      ensure
+        close_branch
+      end
+    end
+    private :close_part_start
+
+    # A part being made in game code (#making_part): where its `initialize` records, the Arrays it
+    # made there, its hidden number, whether a #once_for_part is open, and the last test one made.
+    PartStart = Struct.new(:depth, :made, :started, :once_open, :branch, keyword_init: true)
+
+    # The Array +name+ (a list, or the pool an Array of Structs is) is made while a part is being
+    # made, so what that part's `initialize` puts into it goes in once (#once_for_part). Every part
+    # being made takes note: one made inside another's `initialize` is made once with it, and an
+    # object Ruby makes while the Array is declared opens a #making_part of its own.
+    def note_made_in_part(name) # :nodoc:
+      (@part_starts || []).each { |start| start.made << name if part_start_code?(start) }
+    end
+
+    # Records what the block records (a push into the Array +name+, or its making) so it runs only
+    # on the first pass of the part being made, where #making_part is open, the part made +name+
+    # in its `initialize` (#note_made_in_part), and the block is in that `initialize`'s
+    # straight-line code or a test there. A push into an Array handed in, and anything in a
+    # routine, loop or timer the `initialize` opens, plays every time, as written.
+    def once_for_part(name) # :nodoc:
+      start = @part_starts&.last
+      return yield unless start && start.made.include?(name) && !start.once_open && part_start_code?(start)
+
+      start.started ||= hidden_variable(:part_started)
+      (@part_started_by_array ||= {})[name] = start.started.name
+      start.once_open = true
+      # Pushes one after another (a Ruby loop filling the Array) share one test.
+      if (branch = start.branch) && @container_stack.last.children.last.equal?(branch)
+        open_container(branch, branch.cond)
+      else
+        start.branch = open_branch(Build.binop(:==, DSL::Value.node_for(start.started), Build.int(0)))
+      end
+      begin
+        yield
+      ensure
+        close_branch
+        start.once_open = false
+      end
+    end
+
+    # The hidden number that keeps the Array +name+ (a list, or a pool's name) to one filling by its
+    # part's `initialize` (#once_for_part), or nil. A save that keeps the Array keeps it too.
+    def part_started_for(name) = @part_started_by_array&.fetch(name, nil) # :nodoc:
+
+    # Is the builder recording in +start+'s `initialize` itself, under nothing but tests?
+    def part_start_code?(start)
+      @container_stack.length >= start.depth &&
+        @container_stack.drop(start.depth).all? { |node| %i[if else].include?(node.kind) }
+    end
+    private :part_start_code?
 
     # Is the body being built now a routine's that is not a scene's? It runs wherever it is
     # called, inside a walk of a pool among them. DSL::StructArray#shift asks.

@@ -61,13 +61,8 @@ module Dive
       # six species keep their groups for as long as the dive lasts.
       build.colors_in_use SPECIES
       @shoal = Array.new(capacity: SHOAL)
-      # The dive makes its fish in the scene, which plays on every pass, so the shoal is put
-      # in only while it is empty: once, on the first pass of the dive. A push onto a full
-      # Array stops the game, as Ruby would have grown it.
-      if @shoal.empty?
-        SHOAL_AT.each_with_index do |(x, y, speed), which|
-          @shoal << One.new(x, y, speed, which % SPECIES.length)
-        end
+      SHOAL_AT.each_with_index do |(x, y, speed), which|
+        @shoal << One.new(x, y, speed, which % SPECIES.length)
       end
     end
 

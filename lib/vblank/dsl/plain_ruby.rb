@@ -509,11 +509,20 @@ module VBlank
             start = child.location.start_offset
             next "" if start < at || start >= ends
 
-            piece = between(at, start) + rewritten_text(child)
+            text = rewritten_text(child)
+            text = "#{INSTANCE_VARIABLES}.making_part do; #{text}; end" if initialize_body?(node, child)
+            piece = between(at, start) + text
             at = child.location.end_offset
             piece
           end
           pieces.join + between(at, node.location.end_offset)
+        end
+
+        # Is +child+ the body of +node+, an object's `initialize`? The body runs inside
+        # InstanceVariables.making_part, on the line it was written, so a part game code makes is
+        # made once (Builder#making_part).
+        def initialize_body?(node, child)
+          node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil? && child.equal?(node.body)
         end
 
         # A `return` in a block belongs to that block, so tests open outside it do not apply.

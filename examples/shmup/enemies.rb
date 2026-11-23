@@ -116,11 +116,10 @@ module Shmup
       end
     end
 
-    # The opening flock, spread across the screen, put in while the flock is empty: the scene
-    # makes this part on every pass, and a push onto a full Array stops the game. A new game
-    # finds it empty again, which `start_over` does with the rest of the play.
+    # The opening flock, spread across the screen. A new game calls it once the pool is empty
+    # again, which `start_over` does with the rest of the play.
     def spawn_flock
-      LIVE.times { |i| @enemies << Enemy.new(36 + (i * 72), i * 52) } if @enemies.empty?
+      LIVE.times { |i| @enemies << Enemy.new(36 + (i * 72), i * 52) }
     end
 
     private
