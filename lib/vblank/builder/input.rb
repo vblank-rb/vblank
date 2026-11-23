@@ -126,7 +126,12 @@ module VBlank
       #
       # ```ruby
       # VBlank.game "PARTY", consoles: %i[gba], players: { computer: 1..4, else: 1 } do
-      #   walkers = (1..max_players).map { |player| sprite :walker, at: [20 * player, 80] }
+      #   screen :bitmap
+      #   image :walker, "#" => :yellow do
+      #     "##\n##"
+      #   end
+      #   (1..max_players).each { |player| sprite :walker, at: [20 * player, 80] }
+      #   game_loop {}
       # end
       # ```
       #
