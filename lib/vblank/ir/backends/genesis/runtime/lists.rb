@@ -152,28 +152,64 @@ module VBlank
             # rt_list_fill(list, from, count, value): count items from +from+ set to the value. A count
             # of nought or less sets none; an index outside the list, first or last, stops the game
             # before anything is written.
+            #
+            # Once both ends are checked, every slot between them is inside the list, so the slots are
+            # written straight through, one MOVE with the address moving on and a DBRA each, as a block
+            # of memory is filled on the 68000 (the Programmer's Reference Manual's DBcc, whose example
+            # is this loop): no index worked out and no check per slot. The items go round the ring, so
+            # the run is written in two parts where it reaches the last slot: up to there, then on from
+            # the first. A game that fills its lists as it starts (`full_of:`) pays this before its first
+            # pass, so a slot costs the loop's two instructions and nothing else.
             def emit_fill(asm)
               asm.label("rt_list_fill")
               asm.movea(:l, asm.d(0), asm.a(0))
               asm.move(:l, asm.d(3), asm.d(5))
               asm.tst(:l, asm.d(2))
               asm.branch(:le, "rt_list_fill_done")
-              asm.move(:l, asm.d(1), asm.d(6)) # the next item
-              asm.move(:l, asm.d(2), asm.d(7)) # how many are left
+              asm.move(:l, asm.d(2), asm.d(7)) # how many
+              asm.add(:l, asm.d(1), asm.d(2))
+              asm.subq(:l, 1, asm.d(2))
+              asm.move(:l, asm.d(2), asm.d(6)) # the last item
               asm.jsr(asm.abs_l("rt_list_slot_of_index")) # the first, checked
+              asm.movea(:l, asm.a(1), asm.a(3))
               asm.move(:l, asm.d(6), asm.d(1))
-              asm.add(:l, asm.d(7), asm.d(1))
-              asm.subq(:l, 1, asm.d(1))
-              asm.jsr(asm.abs_l("rt_list_slot_of_index")) # and the last
-              asm.label("rt_list_fill_item")
-              asm.move(:l, asm.d(6), asm.d(1))
-              asm.jsr(asm.abs_l("rt_list_slot_of_index"))
-              asm.jsr(asm.abs_l("rt_list_write_slot"))
-              asm.addq(:l, 1, asm.d(6))
-              asm.subq(:l, 1, asm.d(7))
-              asm.branch(:ne, "rt_list_fill_item")
+              asm.jsr(asm.abs_l("rt_list_slot_of_index")) # and the last; D4 is the shift
+              asm.movea(:l, asm.a(3), asm.a(1))
+              # A2 just past the last slot, and D2 how many slots from the first item's up to there.
+              asm.moveq(0, asm.d(3))
+              asm.move(:w, asm.disp(0, CAPACITY), asm.d(3))
+              asm.lsl(:l, asm.d(4), asm.d(3))
+              asm.lea(asm.idx(0, HEADER, 3), asm.a(2))
+              asm.move(:l, asm.a(2), asm.d(2))
+              asm.sub(:l, asm.a(1), asm.d(2))
+              asm.lsr(:l, asm.d(4), asm.d(2))
+              asm.cmp(:l, asm.d(7), asm.d(2))
+              asm.branch(:ls, "rt_list_fill_first_part")
+              asm.move(:l, asm.d(7), asm.d(2)) # the whole run fits before the last slot
+              asm.label("rt_list_fill_first_part")
+              asm.sub(:l, asm.d(2), asm.d(7))
+              asm.jsr(asm.abs_l("rt_list_fill_run"))
+              asm.tst(:l, asm.d(7))
+              asm.branch(:eq, "rt_list_fill_done")
+              asm.lea(asm.disp(0, HEADER), asm.a(1)) # on from the first slot
+              asm.move(:l, asm.d(7), asm.d(2))
+              asm.jsr(asm.abs_l("rt_list_fill_run"))
               asm.label("rt_list_fill_done")
               asm.rts
+
+              # D2 slots (one or more) from A1 set to D5, each as wide as the shift in D4 says.
+              asm.label("rt_list_fill_run")
+              asm.subq(:w, 1, asm.d(2))
+              asm.tst(:w, asm.d(4))
+              asm.branch(:eq, "rt_list_fill_bytes")
+              asm.cmp(:w, asm.imm(1), asm.d(4))
+              asm.branch(:eq, "rt_list_fill_halves")
+              { "rt_list_fill_longs" => :l, "rt_list_fill_halves" => :w, "rt_list_fill_bytes" => :b }.each do |label, size|
+                asm.label(label)
+                asm.move(size, asm.d(5), asm.post(1))
+                asm.dbra(asm.d(2), label)
+                asm.rts
+              end
             end
 
             # rt_list_copy(list, table, kept, length, at, count): the list made to hold the run of the

@@ -26,10 +26,17 @@ class TestFramesSincePowerOnOnTheGenesis < Minitest::Test
   # The frame a game's first pass is seen on, from power-on: setting up clears the video chip's memory
   # with its own fill while the processor clears work RAM (Runtime::Boot). Cleared a long word at a
   # time through the data port, then work RAM a long word a turn, it was frame 9 for a small game and
-  # 11 for one of 700 numbers and 40 lists. The fill is the longer of the two, and with neither clear
-  # at all the first pass is seen on frames 3 and 4: the clearing costs one frame.
+  # 11 for one of 700 numbers and 40 lists.
+  #
+  # Frame 4 is as early as a cartridge that clears all of video RAM can be. The chip's fill is the
+  # quickest way it has to write video RAM, a byte an access slot with the screen off, and its 64K
+  # take a little longer than a frame; the emulator's first frame ends soon after power-on, so the
+  # fill ends early in frame 3, and the first pass waits for the blank that ends it. Video RAM must be
+  # cleared all the same: it holds whatever it held before at power-on and after a reset (plutiedev,
+  # "Setting up the VDP"). A game of 700 numbers and 40 lists sets them up after the fill, its lists
+  # filled a slot an instruction pair (Runtime::Lists rt_list_fill), well inside that frame.
   SMALL_GAME_FIRST_PASS_FRAME = 4
-  BIG_GAME_FIRST_PASS_FRAME = 5
+  BIG_GAME_FIRST_PASS_FRAME = 4
 
   def test_a_small_game_shows_its_first_pass_early
     frame, reading = first_pass_frame_and_reading(:genesis, declaring_game(2, 2))

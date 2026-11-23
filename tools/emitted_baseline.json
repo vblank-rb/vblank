@@ -6,7 +6,7 @@
       "data": 0
     },
     "animate@genesis": {
-      "code": 4358,
+      "code": 4432,
       "data": 1122
     },
     "animate@snes": {
@@ -74,7 +74,7 @@
       "data": 3392
     },
     "everywhere@genesis": {
-      "code": 4878,
+      "code": 4952,
       "data": 880
     },
     "everywhere@snes": {
@@ -114,7 +114,7 @@
       "data": 0
     },
     "fonts@genesis": {
-      "code": 3940,
+      "code": 4014,
       "data": 826
     },
     "fonts@snes": {
@@ -126,7 +126,7 @@
       "data": 0
     },
     "grid_cursor@genesis": {
-      "code": 4426,
+      "code": 4500,
       "data": 44
     },
     "grid_cursor@snes": {
@@ -158,7 +158,7 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4396,
+      "code": 4470,
       "data": 2404
     },
     "level@snes": {
@@ -178,7 +178,7 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 3968,
+      "code": 4042,
       "data": 2108
     },
     "maze@snes": {
@@ -214,7 +214,7 @@
       "data": 0
     },
     "parallax@genesis": {
-      "code": 3224,
+      "code": 3298,
       "data": 4448
     },
     "parallax@snes": {
@@ -230,7 +230,7 @@
       "data": 0
     },
     "pixels@genesis": {
-      "code": 4236,
+      "code": 4310,
       "data": 44
     },
     "pixels@snes": {
@@ -278,7 +278,7 @@
       "data": 0
     },
     "scroll@genesis": {
-      "code": 3212,
+      "code": 3286,
       "data": 8472
     },
     "scroll@snes": {
@@ -322,7 +322,7 @@
       "data": 0
     },
     "sprite_mover@genesis": {
-      "code": 4766,
+      "code": 4840,
       "data": 134
     },
     "sprite_mover@snes": {
@@ -334,7 +334,7 @@
       "data": 0
     },
     "tiles@genesis": {
-      "code": 3332,
+      "code": 3406,
       "data": 2776
     },
     "tiles@snes": {
@@ -350,7 +350,7 @@
       "data": 16032
     },
     "tower@genesis": {
-      "code": 6394,
+      "code": 6468,
       "data": 3740
     },
     "tower@snes": {
@@ -374,7 +374,7 @@
       "data": 5616
     },
     "wanderers@genesis": {
-      "code": 6690,
+      "code": 6764,
       "data": 3152
     },
     "wanderers@ps1": {
