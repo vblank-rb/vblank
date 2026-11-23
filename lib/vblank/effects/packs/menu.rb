@@ -11,6 +11,21 @@ module VBlank
       # cursor looks like and how far apart the rows are are named by the game.
       #
       # ```ruby
+      # VBlank.game "TITLE", consoles: %i[gba] do
+      #   screen :tiled, backdrop: :blue
+      #   draw_text "SPACE TRIP", 90, 30, :yellow
+      #   started = false
+      #   game_loop do
+      #     menu :main, at: [96, 70], color: :gray, picked: :white do |m|
+      #       m.item("NEW GAME") { started = true }
+      #       m.item("CONTINUE", enabled: false) {} # drawn dim, and the cursor steps over it
+      #       m.item("SOUND") {}
+      #     end
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
       # menu :main, at: [80, 60] do |m|
       #   m.item("NEW GAME") { state = PLAYING }
       #   m.item("SOUND")    { state = SOUND }
@@ -38,10 +53,9 @@ module VBlank
       # exactly why it is a pack and not part of the library proper (see {Effects}).
       #++
       module Menus
-        # How long a held button waits before it walks to the next row. Copied from
-        # Wolfenstein 3D, which waits 20 tics: a tap always moves exactly one row, and
-        # holding walks at about three rows a second — fast enough to feel responsive,
-        # slow enough that you can stop where you meant to.
+        # How long a held button waits before it walks to the next row: a tap always moves
+        # exactly one row, and holding walks at about three rows a second — fast enough to
+        # feel responsive, slow enough that you can stop where you meant to.
         HELD_REPEAT_FRAMES = 20  # :nodoc:
 
         # What is drawn beside the row the cursor is on.
@@ -53,8 +67,7 @@ module VBlank
         DISABLED_COLOR = "#404040"  # :nodoc:
 
         # The gap between the bottom of one row and the top of the next, when the game
-        # does not set one. With the built-in 7px font that puts rows 13 pixels apart, which
-        # is what Wolfenstein's menus use.
+        # does not set one. With the built-in 7px font that puts rows 13 pixels apart.
         ROW_GAP = 6  # :nodoc:
 
         # One row of a menu: what it can say, whether it can be picked, the colours it

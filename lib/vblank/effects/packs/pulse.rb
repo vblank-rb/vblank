@@ -10,6 +10,27 @@ module VBlank
       # one is selected", or a heart beating faster as the health drops.
       #
       # ```ruby
+      # VBlank.game "PULSE", consoles: %i[gba] do
+      #   screen :tiled, backdrop: :black
+      #   image :coin, "." => :transparent, "#" => :yellow, "o" => :orange do
+      #     <<~ART
+      #       ...##...
+      #       ..####..
+      #       .##oo##.
+      #       .##oo##.
+      #       .##oo##.
+      #       .##oo##.
+      #       ..####..
+      #       ...##...
+      #     ART
+      #   end
+      #   coin = sprite :coin, at: [116, 76]
+      #   pulse coin, to: 2.0, over: 4.0 # grows to twice its size and back, every four seconds
+      #   game_loop {}
+      # end
+      # ```
+      #
+      # ```ruby
       # pulse coin, to: 1.3
       # ```
       #--

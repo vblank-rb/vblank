@@ -9,6 +9,23 @@ module VBlank
     # unless the game says otherwise. `picture_groups` lets a game group its pictures by room and
     # name which rooms are up, so that only those have to fit, as the console's own games load a
     # room's things when the room loads and let them go when it is left.
+    #
+    # ```ruby
+    # SQUARE = "########\n" * 8
+    #
+    # VBlank.game "ROOMS", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :green
+    #   image(:hero, "#" => :white) { SQUARE }
+    #   image(:pot, "#" => :orange) { SQUARE }
+    #   image(:chest, "#" => :yellow) { SQUARE }
+    #   rooms = picture_groups :rooms, { 0 => [:pot], 1 => [:chest] }
+    #   rooms.show 0 # room 0's pictures are up; the chest takes no room until room 1 is
+    #   sprite :hero, at: [60, 76] # in no group, so always up
+    #   sprite :pot, at: [120, 76]
+    #   sprite :pot, at: [160, 76]
+    #   game_loop {}
+    # end
+    # ```
     #--
     # A concern of Builder, mixed in so `picture_groups` stays a flat DSL verb. The sprite picture
     # memory is 32K.

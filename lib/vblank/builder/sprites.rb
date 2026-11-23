@@ -10,6 +10,28 @@ module VBlank
     # box for `overlaps?`. `hide_sprites` keeps every sprite off the screen for one frame.
     #
     # ```ruby
+    # VBlank.game "SPRITES", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :blue
+    #   image :hero, "." => :transparent, "#" => :yellow, "o" => :black do
+    #     <<~ART
+    #       ..####..
+    #       .######.
+    #       ##o##o##
+    #       ########
+    #       #o####o#
+    #       ##oooo##
+    #       .######.
+    #       ..####..
+    #     ART
+    #   end
+    #   hero = sprite :hero, at: [20, 76]
+    #   game_loop do
+    #     hero.x += 1 if hero.x < 116 # walks to the middle of the screen and stops
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
     # hero = sprite :hero, at: [100, 60]
     # game_loop { hero.x += 2 if held(:right) }
     # ```

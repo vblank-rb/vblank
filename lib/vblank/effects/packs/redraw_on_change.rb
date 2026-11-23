@@ -16,6 +16,26 @@ module VBlank
       # true` keeps working, and the flicker that would have appeared never does.
       #
       # ```ruby
+      # VBlank.game "HEALTH", consoles: %i[gba] do
+      #   screen :bitmap, tear_free: true
+      #   health = 100
+      #   clear_screen :black
+      #   bar = redraw_on_change(:health_bar) do
+      #     fill_rect 20, 20, 100, 8, :red
+      #     fill_rect 20, 20, health, 8, :green
+      #   end
+      #   bar.changed
+      #   game_loop do
+      #     if health > 40
+      #       health -= 1
+      #       bar.changed # painted again on both pages, and then left alone
+      #     end
+      #     bar.draw
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
       # bar = redraw_on_change(:status_bar) { paint_the_bar }
       # bar.changed if health != last
       # bar.draw

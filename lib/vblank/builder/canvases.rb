@@ -8,6 +8,22 @@ module VBlank
     # rectangle, a picture, a letter, some text or a number. Use one for what the game works out as
     # it goes, such as a name typed a letter at a time, a meter or a map of where the player has
     # been. A background shows it, or a sprite uses it as its picture.
+    #
+    # ```ruby
+    # VBlank.game "CANVAS", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :black
+    #   colors :ink, %i[transparent white green blue]
+    #   board = canvas :board, width: 160, height: 32, colors: :ink
+    #   background :sign, tiles: :board, map: board.cells
+    #   board.clear :blue
+    #   board.draw_text "ENERGY", 8, 4, :white
+    #   energy = 0
+    #   game_loop do
+    #     energy += 1 if energy < 140
+    #     board.fill_rect 8, 18, energy, 8, :green # a meter that fills as the game runs
+    #   end
+    # end
+    # ```
     #--
     # See DSL::Canvas. It is the friendly side of `tiles ..., from: list` and `image ..., from:
     # list`, which hand the game a list to pack pixels into itself; a canvas keeps that list.

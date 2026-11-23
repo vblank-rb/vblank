@@ -10,6 +10,31 @@ module VBlank
     # them shows the new picture from the next frame on, while the poses take no room of their own.
     #
     # ```ruby
+    # VBlank.game "SPRITETILES", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :blue
+    #   colors :ball, %i[transparent white red]
+    #   image :art, "." => :transparent, "#" => :white, "o" => :red, colors: :ball do
+    #     <<~ART
+    #       ....####oooo....
+    #       ..######oooooo..
+    #       .#######ooooooo.
+    #       ########oooooooo
+    #       ########oooooooo
+    #       .#######ooooooo.
+    #       ..######oooooo..
+    #       ....####oooo....
+    #     ART
+    #   end
+    #   tiles = sprite_tiles :ball_tiles, count: 2, colors: :ball
+    #   # A pose of four pieces made of the set's two tiles: [left, top, tile].
+    #   image :ball, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 1], [8, 8, 0]]
+    #   sprite :ball, at: [112, 72]
+    #   tiles.copy_from :art, at: 0, count: 2, to: 0 # load the art's two tiles into the set
+    #   game_loop {}
+    # end
+    # ```
+    #
+    # ```ruby
     # ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
     # image :spin0, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 2], [8, 8, 3]]
     # sprite :ball, at: [80, 60], frames: %i[spin0 spin1], rate: 4

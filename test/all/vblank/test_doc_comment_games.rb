@@ -118,6 +118,6 @@ class TestDocCommentGames < Minitest::Test
     VBlank.forget_registered_games!
 
     assert_empty problems, problems.join("\n\n")
-    assert_operator checked.length, :>=, 3
+    assert_operator checked.length, :>=, 20
   end
 end

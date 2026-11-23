@@ -10,6 +10,21 @@ module VBlank
     # in, which is invisible and, in a game split across files, depends on which file loaded first.
     #
     # ```ruby
+    # VBlank.game "LAYERS", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :blue
+    #   image(:post, "#" => :gray) { "########\n" * 32 }
+    #   image(:hero, "#" => :yellow) { "################\n" * 16 }
+    #   layers :back, :actors, :front # the stack, back to front
+    #   hero = layer(:actors) { sprite :hero, at: [20, 72] }
+    #   layer(:back) { sprite :post, at: [100, 64] }
+    #   layer(:front) { sprite :post, at: [116, 64] }
+    #   game_loop do
+    #     hero.x += 1 if hero.x < 104 # stops in front of one post and behind the other
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
     # layers :sky, :world, :actors, :ui     # the stack, back to front
     #
     # scene :playing do

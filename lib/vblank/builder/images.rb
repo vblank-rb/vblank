@@ -10,6 +10,24 @@ module VBlank
     # the same picture turned round without drawing it twice.
     #
     # ```ruby
+    # VBlank.game "PICTURES", consoles: %i[gba] do
+    #   screen :bitmap
+    #   image :ship, "." => :transparent, "#" => :cyan, "o" => rgb(31, 20, 0) do
+    #     <<~ART
+    #       ...#...
+    #       ..###..
+    #       .##o##.
+    #       #######
+    #       #.#.#.#
+    #     ART
+    #   end
+    #   clear_screen :black
+    #   [60, 116, 172].each { |x| blit :ship, x, 70 } # one picture, drawn three times
+    #   halt
+    # end
+    # ```
+    #
+    # ```ruby
     # image :ship, "." => :transparent, "#" => :cyan do
     #   <<~ART
     #     ..#..

@@ -11,6 +11,20 @@ module VBlank
     # every time two things pass each other. `draw_in_order` does this.
     #
     # ```ruby
+    # VBlank.game "DEPTH", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :green
+    #   image(:tree, "#" => :orange) { "########\n" * 24 }
+    #   image(:hero, "#" => :yellow) { "########\n" * 8 }
+    #   tree = sprite :tree, at: [116, 56]
+    #   hero = sprite :hero, at: [112, 30]
+    #   draw_in_order tree, hero # whoever stands lower is in front
+    #   game_loop do
+    #     hero.y += 1 if hero.y < 76 # walks down past the tree's foot, and so in front of it
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
     # draw_in_order hero, guard, guards        # whoever stands lower is in front
     # ```
     #--

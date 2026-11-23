@@ -13,6 +13,23 @@ module VBlank
       # with it.
       #
       # ```ruby
+      # VBlank.game "FOLLOW", consoles: %i[gba] do
+      #   screen :tiled
+      #   image(:grass, "." => :green) { "........\n" * 8 }
+      #   image(:tree, "#" => :orange, "." => :green) { "..####..\n.######.\n" * 4 }
+      #   image(:hero, "#" => :yellow) { "########\n" * 8 }
+      #   tiles :land, "." => :grass, "T" => :tree
+      #   world = background :world, tiles: :land, map: "#{'.......T' * 8}\n#{'...T....' * 8}\n" * 10
+      #   hero = sprite :hero, at: [0, 0]
+      #   hero.center_on_screen
+      #   camera_follows hero, across: world
+      #   game_loop do
+      #     hero.move :right # the hero stays in the middle, and the world slides left
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
       # hero.move :right if held(:right)   # ordinary sprite code, and the world slides left
       # ```
       #--

@@ -9,6 +9,27 @@ module VBlank
     # the game only names which one a group shows, and the whole group changes as one.
     #
     # ```ruby
+    # # Three pictures of one tile: water (place 1) with a crest (place 2) that moves along.
+    # WAVES = (0..2).map { |n| Array.new(64) { |at| (at / 8).even? && (at % 8) / 3 == n ? 2 : 1 } }
+    #
+    # VBlank.game "WATER", consoles: %i[gba] do
+    #   screen :tiled
+    #   colors :pond, %i[transparent blue cyan]
+    #   WAVES.each_with_index do |places, n|
+    #     image :"wave#{n}", width: 8, height: 8, colors: :pond, places: places
+    #   end
+    #   water = tile_pictures :water, colors: :pond, tiles: { wave: %i[wave0 wave1 wave2] }
+    #   tiles :lake_tiles, "~" => water[:wave]
+    #   background :lake, tiles: :lake_tiles, map: "#{'~' * 30}\n" * 20
+    #   step = 0
+    #   game_loop do
+    #     step += 1
+    #     water.show (step / 8) % 3 # every tile of the lake changes picture at once
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
     # tile_pictures :water, colors: :pond,
     #                       tiles: { deep: %i[deep0 deep1 deep2], edge: %i[edge0 edge1 edge2] }
     # ```

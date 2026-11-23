@@ -10,6 +10,19 @@ module VBlank
     # `text_height` measure what will be drawn, to size a box round it.
     #
     # ```ruby
+    # VBlank.game "TEXT", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :blue
+    #   score = 0
+    #   draw_text "SCORE", 8, 8, :white
+    #   draw_number score, 44, 8, :yellow, digits: 5 # shows the score as it changes
+    #   draw_text "HELLO FROM VBLANK", 68, 76, :white
+    #   game_loop do
+    #     score += 7
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
     # draw_text "SCORE", 8, 8, :white
     # draw_number score, 56, 8, :white, digits: 5
     # ```

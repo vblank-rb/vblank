@@ -11,6 +11,18 @@ module VBlank
     # whole picture is shown without redrawing it, so they cost the same however much is on screen.
     #
     # ```ruby
+    # VBlank.game "PAINT", consoles: %i[gba] do
+    #   screen :bitmap
+    #   clear_screen :blue                  # the sky
+    #   fill_rect 0, 120, 240, 40, :green   # the ground
+    #   fill_rect 96, 72, 48, 48, :orange   # a house
+    #   fill_rect 112, 96, 16, 24, :black   # its door
+    #   [[30, 20], [70, 34], [190, 16], [210, 40]].each { |x, y| pixel x, y, :white } # stars
+    #   halt
+    # end
+    # ```
+    #
+    # ```ruby
     # screen :bitmap
     # clear_screen :blue
     # fill_rect 40, 40, 60, 30, :red

@@ -11,6 +11,37 @@ module VBlank
     # doorways.
     #
     # ```ruby
+    # BOARDS = <<~ART
+    #   ########
+    #   #......#
+    #   #.####.#
+    #   #.#..#.#
+    #   #.#..#.#
+    #   #.####.#
+    #   #......#
+    #   ########
+    # ART
+    #
+    # VBlank.game "CRATE", consoles: %i[gba] do
+    #   screen :bitmap, tear_free: true
+    #   image(:boards, "#" => rgb(12, 6, 2), "." => rgb(28, 18, 8)) { BOARDS }
+    #   whole = [[0, 0], [8, 0], [8, 8], [0, 8]] # the picture's corners, round to the right
+    #   place :crate do
+    #     a, b, c, d = point(-1.0, 1.0, -1.0), point(1.0, 1.0, -1.0), point(1.0, -1.0, -1.0), point(-1.0, -1.0, -1.0)
+    #     e, f, g = point(-1.0, 1.0, 1.0), point(1.0, 1.0, 1.0), point(1.0, -1.0, 1.0)
+    #     face a, b, c, d, picture: :boards, on_picture: whole # the near side
+    #     face b, f, g, c, picture: :boards, on_picture: whole # the right side
+    #     face e, f, b, a, picture: :boards, on_picture: whole # the top
+    #   end
+    #   eye = viewer :eye, at: [1.6, 1.4, -4.0] # above and to the right, looking ahead
+    #   game_loop do
+    #     clear_screen :black
+    #     draw_place :crate, seen_by: eye
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
     # place :cube do
     #   a = point -1.0,  1.0, 1.0
     #   b = point  1.0,  1.0, 1.0

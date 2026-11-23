@@ -11,6 +11,23 @@ module VBlank
     # other art: text, a list of numbers or an imported picture.
     #
     # ```ruby
+    # VBlank.game "DUNGEON", consoles: %i[gba] do
+    #   screen :tiled
+    #   image(:brick, "#" => :orange, "-" => :gray) { ("###-####\n" * 3 + "--------\n") * 2 }
+    #   image(:floor, "." => :black) { "........\n" * 8 }
+    #   tiles :dungeon, "#" => :brick, "." => :floor
+    #   background :level, tiles: :dungeon, map: <<~MAP
+    #     ##############################
+    #     #............................#
+    #     #....######..........######..#
+    #     #............................#
+    #     ##############################
+    #   MAP
+    #   game_loop {}
+    # end
+    # ```
+    #
+    # ```ruby
     # image :brick, "#" => :gray  do <<~ART … ART end   # each tile is an image
     # image :floor, "." => :black do <<~ART … ART end
     # tiles :dungeon, "#" => :brick, "." => :floor       # the character -> tile map

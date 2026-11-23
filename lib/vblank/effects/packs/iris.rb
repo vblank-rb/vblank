@@ -14,6 +14,17 @@ module VBlank
       # the iris opens back to.
       #
       # ```ruby
+      # VBlank.game "IRIS", consoles: %i[gba] do
+      #   screen :tiled, backdrop: :blue
+      #   image(:hero, "#" => :yellow) { "########\n" * 8 }
+      #   sprite :hero, at: [116, 76]
+      #   draw_text "LEVEL CLEAR", 88, 60, :white
+      #   iris_out at: [120, 80], from: 150, by: 1 # a circle closing on the hero, a pixel a frame
+      #   game_loop { iris_in if iris_shut? }
+      # end
+      # ```
+      #
+      # ```ruby
       # iris_out at: [hero.x + 8, hero.y + 8]
       # room.show_map next_room if iris_shut?
       # iris_in

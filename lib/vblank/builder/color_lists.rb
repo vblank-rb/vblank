@@ -11,6 +11,33 @@ module VBlank
     # with a few lists, and walking into the next room puts that room's colours in them.
     # `recolor` does that, `colors_in_use` says which lists a room needs, and `color_walk` makes
     # the steps of a fade.
+    #
+    # ```ruby
+    # VBlank.game "RECOLOR", consoles: %i[gba] do
+    #   screen :tiled, backdrop: :black
+    #   image :gem, "." => :transparent, "#" => :red, "o" => :white, colors: %i[transparent red white] do
+    #     <<~ART
+    #       ..####..
+    #       .#oo###.
+    #       #oo#####
+    #       ########
+    #       ########
+    #       .######.
+    #       ..####..
+    #       ...##...
+    #     ART
+    #   end
+    #   colors :slot, %i[transparent red white]
+    #   colors :ice, %i[transparent cyan white]
+    #   sprite :gem, at: [60, 76] # its own colours
+    #   [110, 160].each { |x| sprite(:gem, at: [x, 76]).draw_with :slot }
+    #   frames = 0
+    #   game_loop do
+    #     frames += 1
+    #     recolor :slot, :ice if frames == 60 # every gem drawn with :slot turns icy
+    #   end
+    # end
+    # ```
     #--
     # A concern of Builder, mixed in so `recolor` stays a flat DSL verb. `draw_with` picks which
     # list a sprite reads, and every list it could pick is in the console the whole time.
