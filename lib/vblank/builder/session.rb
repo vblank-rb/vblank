@@ -59,30 +59,12 @@ module VBlank
       # Are a game's parts run as plain Ruby on purpose (#running_as_plain_ruby)?
       def self.plain_ruby? = current&.plain_ruby? || false
 
-      # The game file at +path+ is loaded by the block of the game being built: what its source
-      # names counts for this build (PlainRuby::InstanceVariables.record_file_names). True where a
-      # build opened with #building is open; a builder made by hand has no block to load it from.
-      def self.note_game_file(path)
-        session = current
-        return false if session.nil? || session.standing? || session.plain_ruby?
-
-        session.game_files << path
-        true
-      end
-
-      # The game files the block of the game being built loaded (#note_game_file), in no order.
-      def self.game_files = current&.game_files || NO_FILES
-
-      NO_FILES = Set.new.freeze
-
       # Opens a session for the builder +make+ makes, yields that builder, and puts back the
       # session before it when the block ends. +part_of+ is the builder of the game this program
       # is built for, where it is not a game of its own.
       def self.building(make, part_of: nil)
         was = current
         session = new(standing: false, part_of: part_of)
-        # A program of a game reads the game's files as the game does.
-        session.game_files.merge(was.game_files) if part_of && was
         self.current = session
         session.take(make.call)
         yield session.builder
@@ -115,14 +97,10 @@ module VBlank
         @plain_ruby = plain_ruby
         @part_of = part_of
         @ended = false
-        @game_files = Set.new
       end
 
       # The builder of this session's game, or nil while it is being made.
       attr_reader :builder
-
-      # The game files this build's block loaded (.note_game_file).
-      attr_reader :game_files
 
       # Makes +builder+ this session's.
       def take(builder)
