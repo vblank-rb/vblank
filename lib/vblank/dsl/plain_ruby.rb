@@ -217,6 +217,9 @@ module VBlank
         WRITES = "::VBlank::DSL::PlainRuby::Writes"
         INSTANCE_VARIABLES = "::VBlank::DSL::PlainRuby::InstanceVariables"
         ARRAYS = "::VBlank::DSL::PlainRuby::Arrays"
+        COUNTS = "::VBlank::DSL::PlainRuby::Counts"
+        # Ruby's counting loops on a number, which Counts answers (#counted_loop_text).
+        COUNTING_LOOPS = %i[times upto downto step].freeze
         NEW_VALUE = "__plain_ruby_new"
         JUMPS = [Prism::ReturnNode, Prism::BreakNode, Prism::NextNode].freeze
 
@@ -573,8 +576,34 @@ module VBlank
             return visible_attribute_methods_text(node) if visibility_of_attribute_call?(node)
           end
           return listed_attribute_methods_text(node) if listed_attribute_call?(node)
+          return counted_loop_text(node) if node.receiver && node.block.is_a?(Prism::BlockNode)
 
           copied_text(node)
+        end
+
+        # The numbers Ruby counts with given a block, `n.times { }`, `0.upto(n) { }` or
+        # `(0...n).each { }`, answered by Counts: Ruby's own on plain numbers, a loop the game runs
+        # where either end is a number the game keeps.
+        def counted_loop_text(node)
+          range = range_written(node.receiver)
+          start =
+            if range
+              from = range.left ? argument(range.left) : "nil"
+              upto = range.right ? argument(range.right) : "nil"
+              "#{COUNTS}.range(#{from}, #{upto}, #{range.exclude_end?})"
+            elsif COUNTING_LOOPS.include?(node.name)
+              "#{COUNTS}.start(#{argument(node.receiver)})"
+            end
+          return copied_text(node) unless start
+
+          start + copied_text(node, from: node.receiver.location.end_offset)
+        end
+
+        # `a..b` or `(a...b)` written as it is.
+        def range_written(node)
+          node = node.body.body.first while node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) &&
+                                                node.body.body.length == 1
+          node if node.is_a?(Prism::RangeNode)
         end
 
         # `item = trail.shift` on a game's own list, where something reads the item it drops: a

@@ -20,6 +20,7 @@ require_relative "dsl/plain_ruby_names"    # What each local name in that block 
 require_relative "dsl/plain_ruby_promotion" # Which names in that block become game variables, and why
 require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs
+require_relative "dsl/plain_ruby_counts"   # Ruby's counting loops, run by the game on a number it keeps
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
 require_relative "dsl/plain_ruby_item_questions" # Ruby's questions about items, such as max, in that block
 require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is

@@ -124,31 +124,6 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
-  def test_for_up_to_a_number_the_game_keeps_is_refused
-    assert_refused("`while`") do
-      n = 3
-      total = 0
-      game_loop do
-        for each_number in 0...n
-          total += each_number
-        end
-        n += 1
-      end
-    end
-  end
-
-  def test_for_from_a_number_the_game_keeps_is_refused
-    assert_refused("`while`") do
-      n = 0
-      game_loop do
-        for each_number in n..3
-          wait_vblank
-        end
-        n += 1
-      end
-    end
-  end
-
   def test_for_over_a_list_the_game_keeps_is_refused
     assert_refused("`.each`") do
       things = list(:things, capacity: 4)

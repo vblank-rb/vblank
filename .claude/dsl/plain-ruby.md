@@ -332,13 +332,19 @@ end
 - **`repeat(n) { |i| … }` is the loop counted as the game plays** (`control-flow.md`).
 - **A block verb called on a builder held in a name means what it means bare**: `@build.repeat(n) { … }`
   or `build.every(2) { … }` in a method of a part is `repeat` or `every` in a game block.
-- **`.each`, `.times`, `upto`, `step` and `.map` on something written in the source** (a literal, a
-  constant, a range) run while building: the body is written out once for each time round. In a game
-  block, `3.times { x += 1 }` adds 3 on every pass. That is right for laying out a row of sprites, and
-  wrong for a count the game works out.
+- **Ruby's counting loops go round as often as Ruby says** (`PlainRuby::Counts`): `n.times`,
+  `a.upto(b)`, `a.downto(b)`, `a.step(b, by)`, `(a...b).each`, `(a..b).step(by)` and `for i in a...b`.
+  With a count or an end that is a game number, the loop is one the game runs (`repeat` underneath),
+  reading its start and count once as it begins, as Ruby does. With every number known while
+  building, the body is written out once for each time round: `3.times { x += 1 }` adds 3 on every
+  pass. That is fast, and a large count makes the cartridge bigger, which `rom.profile` shows. A step
+  the game works out is refused (write it as a number), and so is any method but `each` and `step` on
+  a range that ends at a game number (`(0...n).map`).
+- `.each`, `.map` and the rest on something written in the source (a literal, a constant, a range of
+  plain numbers) run while building, written out once for each item.
 - `.each` on a name is taken as game code, since it may be a pool's.
-- `for x in 1..3` runs while building, as `(1..3).each` does. A `for` from or to a game number is
-  refused (write a `while` loop), and so is one over a list or a pool (write `.each`).
+- `for x in 1..3` runs while building, as `(1..3).each` does; `for i in 0...n` with `n` a game number
+  is the game's loop. A `for` over a list or a pool is refused (write `.each`).
 
 ## Splitting a game into files
 
@@ -388,7 +394,8 @@ Each is a friendly error naming the line.
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |
 | `case` asking about a game test, or `when String` of a number | `if` |
 | `case … in` on a game number with a pattern other than values and ranges | values, ranges and `\|`; or `case` with no subject and `when hp > 3` |
-| `for` from or to a game number | `i = 0`, `while i < n`, `i += 1` at the end of its body |
+| `step` by a game number (`0.step(10, by)`) | a step written as a number: `0.step(n, 2)` |
+| a method but `each` or `step` on a range that ends at a game number (`(0...n).map`) | `(0...n).each do \|i\|`, the work done in the loop |
 | `for` over a list or a pool | `things.each do \|thing\|` |
 | a game number put into a Symbol (`:"slot#{n}"`) or a heredoc, or words holding one used as a String (`"HP #{hp}".center(9)`) | draw it: `draw_text "HP #{hp}", x, y, :white` (`text.md`) |
 | `nonzero?` used as a number (`lives.nonzero? \|\| 1`, `shown = lives.nonzero?`); `finite?`, `infinite?`, `integer?` on a game number | the test in full: `lives != 0 ? lives : 1` |
@@ -404,7 +411,6 @@ Each is a friendly error naming the line.
   a game number alone is refused instead.)
 - `x = 0` inside `game_loop`, a `func` or a method the game loop calls: set again every pass. State
   that lasts goes above the loop.
-- `3.times { … }` in a game block: written out three times, run every pass.
 - Changing a method's argument: the caller's variable is left as it was (a warning, not an error).
 - `/` on a negative game number truncates toward zero (`-7 / 2` is -3), where the same sum on a plain
   number while building is Ruby's -4. `%` follows Ruby in both (`variables.md`).

@@ -163,15 +163,10 @@ module VBlank
           end)
         end
 
-        # The range of `for x in a..b`, which Ruby runs while building. See Rewriter#for_text.
-        def for_range(from, upto, exclusive)
-          if [from, upto].any?(Value)
-            refuse_game_code!("A `for` loop cannot count from or to a number the game keeps. Ruby runs a `for` loop " \
-                              "while it builds the game. To fix this, use a `while` loop. Write `i = 0`, then " \
-                              "`while i < n`, and end the loop's body with `i += 1`.")
-          end
-          Range.new(from, upto, exclusive)
-        end
+        # The range of `for x in a..b`. Ruby asks it for `each`, so a range on plain numbers runs
+        # while building, and one with a number the game keeps at an end is a loop the game runs
+        # (Counts.range). See Rewriter#for_text.
+        def for_range(from, upto, exclusive) = Counts.range(from, upto, exclusive)
 
         # What `for x in things` goes over, which Ruby runs while building. See Rewriter#for_text.
         def for_collection(collection)

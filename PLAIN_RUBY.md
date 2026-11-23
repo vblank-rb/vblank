@@ -340,16 +340,20 @@ game_loop do
 end
 ```
 
-`repeat(n) { |i| ... }` is a loop counted as the game plays. `.each`, `.times` and `for` on something written in the source run while building: the body is written out once for each time round, so `3.times { x += 1 }` in a game block adds 3 on every pass.
+Ruby's counting loops go round as often as Ruby says: `n.times { |i| }`, `a.upto(b) { |i| }`, `a.downto(b) { |i| }`, `a.step(b, 2) { |i| }`, `(a...b).each { |i| }` and `for i in a...b`. When a count or an end is a number the game keeps, the loop is a loop in the game, and it goes round as many times as the number holds when the loop starts. When every number is written in the source or known while building, the body is written out once for each time round. That is fast, but a large count makes the cartridge bigger; `rom.profile` shows the size.
 
 ```ruby
 screen :bitmap
-x = 0
+lives = 3
 game_loop do
-  3.times { |i| draw_rect_at 10 + (i * 20), 10, 8, 8, :blue }   # three rectangles, laid out
-  repeat(2) { x += 1 }                                       # a loop the game runs
+  clear_screen :black
+  lives -= 1 if pressed(:a)
+  lives.times { |i| draw_rect_at 10 + (i * 20), 10, 8, 8, :blue }   # one box for each life
+  2.times { |i| draw_rect_at 10 + (i * 20), 30, 8, 8, :green }      # written out two times
 end
 ```
+
+A step the game works out is refused: write the step as a number. A range that ends at a game number goes round with `each`, `step` or `for`; other methods on it, such as `map`, are refused.
 
 ## Splitting a game into files
 
@@ -575,7 +579,7 @@ game_loop do
 end
 ```
 
-Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test; a local set outside the game block and changed inside it; an instance variable game code changes and reads back that nobody named; a `for` from or to a game number; a constant from outside the game, `system`, `eval` and the like.
+Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test; a local set outside the game block and changed inside it; an instance variable game code changes and reads back that nobody named; a constant from outside the game, `system`, `eval` and the like.
 
 ## What builds and means something else
 
@@ -591,7 +595,6 @@ end
 ```
 
 - `x = 0` inside `game_loop`, a `func` or a method the loop calls is set again every pass.
-- `3.times { ... }` in a game block is written out three times, and runs every pass.
 - `/` on a negative game number rounds toward zero (`-7 / 2` is -3), where Ruby while building gives -4.
 - `puts` and other harmless Ruby in a game block run once, while building.
 - An instance variable nobody named, that game code only changes, keeps the number Ruby gave it.
