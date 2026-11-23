@@ -16,6 +16,7 @@ require_relative "diagnostics/emulator"          # The one seam to the emulator 
 require_relative "diagnostics/screen_questions"  # A whole screen's questions in Ruby, for an emulator not the Advance's
 require_relative "diagnostics/frame_sound"       # One frame's samples and the loudest of them
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
+require_relative "diagnostics/played_cartridge_file" # A reader's cartridge file and its emulator, shut in order
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4
 require_relative "diagnostics/film_reel"         # A film's pictures put together and handed to ffmpeg as they arrive

@@ -366,8 +366,7 @@ module VBlank
       # this reader. Something that opens one cartridge after another (Film plays each side in
       # turn) calls this so only one emulator is running at a time. Nothing can be read after it.
       def close
-        @probe.close if @probe.respond_to?(:close) && !@probe.closed?
-        @tempfile&.close!
+        @cartridge_file&.close
         nil
       end
 
@@ -1082,9 +1081,21 @@ module VBlank
       # cartridge, which hid this until a test wanted to put a save in it beforehand. What
       # Ruby does after the last at_exit hook is finish the objects still alive, so the
       # directory goes when this constant's keeper is finished.
+      #
+      # Ruby finishes objects in the order their finalizers were defined, so the keeper, defined
+      # as this file loads, runs before the finalizer of every reader still alive at exit — while
+      # their emulators are still running, each holding its save file open here. Windows refuses
+      # to remove an open file, so the keeper cannot empty the directory then. Where it is left
+      # standing, the keeper defines one more finalizer, which Ruby runs after those it already
+      # had: after the readers have shut their emulators and removed their files
+      # (PlayedCartridgeFile).
       SAVE_DIR = Dir.mktmpdir("verify-save").freeze
       SAVE_DIR_KEEPER = Object.new.tap do |keeper|
-        ObjectSpace.define_finalizer(keeper, ->(_) { FileUtils.remove_entry(SAVE_DIR, true) })
+        remove_save_dir = ->(_) { FileUtils.remove_entry(SAVE_DIR, true) }
+        ObjectSpace.define_finalizer(keeper, lambda do |id|
+          remove_save_dir.call(id)
+          ObjectSpace.define_finalizer(Object.new, remove_save_dir) if Dir.exist?(SAVE_DIR)
+        end)
       end.freeze
 
       def self.save_dir = SAVE_DIR
@@ -1105,7 +1116,7 @@ module VBlank
         File.binwrite(save_path, kit.save_file_of(@rom).file_of(@save.to_sav, @save.clock_state))
       end
 
-      def save_path = File.join(@save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")
+      def save_path = File.join(@save_dir, "#{File.basename(@cartridge_file.path, '.*')}#{kit.save_file_extension}")
 
       # What says how this cartridge's console is played.
       def kit = Console.for(@rom.console)
@@ -1140,12 +1151,18 @@ module VBlank
         # Keep the emulator (and its ROM file) alive on the instance rather than tearing them
         # down here: memory reads (#mem32 / #var) run against the same console after the frames,
         # at the final frame boundary. Both are released when this Verifier is garbage-collected.
-        @tempfile = Tempfile.new(["verify", kit.description.extension])
-        @tempfile.binmode
-        @rom.write(@tempfile.path)
-        @tempfile.flush
+        #
+        # The file and the emulator are taken down together, the emulator first, by one object
+        # that is also this reader's finalizer (PlayedCartridgeFile says why the order matters).
+        # It is made and registered before the emulator opens, so a cartridge the emulator
+        # refuses still has its file removed.
+        @cartridge_file = PlayedCartridgeFile.create(kit.description.extension)
+        @cartridge_file.removing_save(save_path) if @save_dir == SAVE_DIR
+        ObjectSpace.define_finalizer(self, @cartridge_file)
+        @rom.write(@cartridge_file.path)
         write_save_memory if @save
-        @probe = kit.open_probe(@tempfile.path, save_dir: @save_dir, multitap: multitap?)
+        @probe = kit.open_probe(@cartridge_file.path, save_dir: @save_dir, multitap: multitap?)
+        @cartridge_file.playing_in(@probe)
         read_picture_size
         @probe.clock_at(@clock, set: @clock_set) if @clock
         @rendered = true

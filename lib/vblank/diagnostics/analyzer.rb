@@ -396,16 +396,21 @@ module VBlank
 
         in_temp_rom(measuring[:rom]) do |path|
           probe = Emulator.probe(path)
-          probe.watch_arrivals(loop_span.begin)
-          probe.step(SETTLE, keys: keys)
-          before = probe.arrivals
-          # Step the window a frame at a time rather than in one go, so the same run that counts
-          # the passes also adds up the work — one emulator run answers both questions, and both
-          # answers are then about the same frames rather than about two different runs.
-          work = FPS_WINDOW.times.sum { frame_scanlines(probe.frame_cost(keys: keys)) }
-          # A difference, so whether a pass is in flight at either end cancels out.
-          elapsed = probe.arrivals - before
-          probe.close
+          begin
+            probe.watch_arrivals(loop_span.begin)
+            probe.step(SETTLE, keys: keys)
+            before = probe.arrivals
+            # Step the window a frame at a time rather than in one go, so the same run that counts
+            # the passes also adds up the work — one emulator run answers both questions, and both
+            # answers are then about the same frames rather than about two different runs.
+            work = FPS_WINDOW.times.sum { frame_scanlines(probe.frame_cost(keys: keys)) }
+            # A difference, so whether a pass is in flight at either end cancels out.
+            elapsed = probe.arrivals - before
+          ensure
+            # Shut before the folder holding the cartridge goes, which Windows refuses while the
+            # emulator has the file open.
+            probe.close
+          end
           next {} unless elapsed.positive?
 
           { fps: (elapsed * 60.0 / FPS_WINDOW).round(1), per_pass: (work / elapsed).round(1) }
