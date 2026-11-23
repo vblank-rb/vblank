@@ -54,6 +54,11 @@ module VBlank
 
       def counted_loops = @counted_loops || []
 
+      # The numbers kept in instance variables (see Diagnostics::InstanceVariableNumbers).
+      attr_writer :instance_variable_numbers
+
+      def instance_variable_numbers = @instance_variable_numbers || []
+
       # The things the record holds, read straight off it. Each is nil without a record,
       # and each is documented on {BuildRecord}: the IR program this cartridge was built from,
       # which routines it keeps in the console's quick memory, where its variables landed,
@@ -204,6 +209,7 @@ module VBlank
                                        .merge(Diagnostics::BuildReport.as_json(self))
                                        .merge(Diagnostics::HiddenVariables.as_json(self))
                                        .merge(Diagnostics::CountedLoops.as_json(self))
+                                       .merge(Diagnostics::InstanceVariableNumbers.as_json(self))
                                        .merge(findings: findings_json)))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end

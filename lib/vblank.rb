@@ -247,6 +247,7 @@ module VBlank
     kit.builder.build(request).tap do |rom|
       rom.hidden_variables = evaluated.hidden_variable_notes if rom.respond_to?(:hidden_variables=)
       rom.counted_loops = evaluated.counted_loop_notes if rom.respond_to?(:counted_loops=)
+      rom.instance_variable_numbers = evaluated.instance_variable_numbers if rom.respond_to?(:instance_variable_numbers=)
     end
   ensure
     # However the build ended: close the line, then say what the guardrails found — with what the

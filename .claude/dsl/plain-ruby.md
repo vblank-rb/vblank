@@ -58,18 +58,45 @@ plays.
   whether the method is called from a game loop, from an unpacking routine or twice while setting up,
   and whatever number the line works out each time. `count, other = 0, 0` does the same for both
   names, and `target = nil` sets the name to nil, which reads as 0.
-- **An instance variable is a game variable only where it is named** (next section).
+- **An instance variable is a game variable where game code changes it, or a class names it** (next
+  section).
 
 ## Instance variables
 
 A part of a game is a plain class (`Splitting a game into files`), and it keeps what it knows in
 instance variables.
 
-- **`game_variables :busy, :seed` names the instance variables that are the game's.** Write it in the
-  class's body, under `class`. A second line, or the class reopened, names more. In a method
-  (`def self.setup` too) it is refused, and in a file loaded with `require_relative` it stops the
-  build naming `VBlank.require_game_file`.
-- **A named instance variable is a game variable from its first number on**, as if `var` had made
+- **An instance variable game code may change is the game's, with no line naming it.** The rewrite
+  marks, from the source, each instance variable a class's code (or the game block's) changes from
+  what it holds, wherever the line is (`@ticks += 1`, `@lit = 1 - @lit`, `@open = !@open`,
+  `@counts[at] += 1`, `@counts[at] = @counts[at] * 2`), and each one a line gives a value inside a
+  game verb's block (`func(:open) { @open = true }`, `game_loop { @mode = 1 }`)
+  (`LocalNames#changing_instance_variables`, `InstanceVariables.mark_changing`, written at the end of
+  the class's body as the list mark is). An attribute changed through a writer counts for every
+  object with that writer (`dial.level += 3`, `dial.level = dial.level + 3`, or any `lamp.lit = 1`
+  in a game verb's block, marks `@level` and `@lit`). A marked one stays plain Ruby while setting up
+  (a counter bumped as parts are made, `@size += 1` in a method setting up calls), and becomes a
+  game variable at the first line of game code that reads or changes it, starting from the number
+  Ruby holds there (`Uses#followed?`). Since the mark is there before any game code runs, a read
+  recorded before the line that changes it (a draw routine recorded before the one that switches
+  the lamp) is the game's too. Not one holding nil, which has no number to start from, nor one a
+  line of game code gave a number outright first (`@named = 0`, then `@named += 1` used in a
+  name): Ruby knows that number where it is read, and the rules for plain ones below keep it to
+  that. The answers suite (`test/all/vblank/dsl/test_plain_ruby_answers.rb`) holds each case to Ruby.
+- **Ruby can still use such a number while building** where it needs a plain whole number
+  (`Array.new(ticker.size)`): until something changes the variable, that is the number it holds
+  (`Value#to_int`, `#ruby_start_while_unchanged`). A line that changes it after Ruby used it is
+  refused, naming both lines.
+- **`game_variables :busy, :seed` names them ahead**, which a build needs for a name of the game's
+  own or `saved: false` (below), and for one the source cannot show game code changes (`@busy = 1`
+  in a method a routine calls, tested elsewhere). Write it in the class's body, under `class`. A
+  second line, or the class reopened, names more. In a method (`def self.setup` too) it is
+  refused, and in a file loaded with `require_relative` it stops the build naming
+  `VBlank.require_game_file`.
+- **A part made outside the game's block** (in a constant of a game file) outlives the build that
+  made its variables. The next build of the game (for another console, say) starts each from the
+  number Ruby gave it (`InstanceVariables.ruby_number_of_stale`).
+- **A game instance variable is a game variable from its first number on**, as if `var` had made
   it: `@busy = 0` in `initialize` makes it, starting at 0 at power-on. Every read and change after
   that is the game's, wherever it is: in another routine, in a block another part calls later,
   through `attr_reader`, or in a part it was handed to as that part was made (`Ball.new(selection:
@@ -85,12 +112,16 @@ instance variables.
   `#once_for_part`). The part is made once for the whole game, not again when its scene comes back.
   A push into an Array it was handed, a push from a method called on every pass (`update`), what a
   routine, loop or timer `initialize` opens, and its drawing and pictures all run every time.
-- Setting-up code that works with a named one works with the game variable, so `@busy.times` while
-  setting up is refused as any game number is: keep a number only the build uses unnamed.
+- Setting-up code that works with a game one works with the game variable, so `@busy.times` while
+  setting up is refused as any game number is: keep a number only the build uses out of game code.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as
   `tilt_busy` (the class's name in small letters, `_` before each capital that follows a small
   letter or a digit, then `_` and the instance variable's: `RedFieldCAVELights` gives
-  `red_field_cavelights_held`), and a second Tilt's as `tilt_busy_2`.
+  `red_field_cavelights_held`), and a second Tilt's as `tilt_busy_2`. For one no line names, the
+  number follows the order the objects were made in, whichever game code reaches first
+  (`Uses#made_name`), so a save made before finds each under the name it had.
+- `rom.profile` lists each instance variable the game keeps, with its name and whose it is
+  (`Diagnostics::InstanceVariableNumbers`).
 - **`game_variables busy: :tilt_wait` gives the variable a name of the game's own**, read as
   `tilt_wait` (a second Tilt's as `tilt_wait_2`, and a second one's Hash slot as
   `cave_light_state_0_2`). Names with and without one mix on one line: `game_variables :seed,
@@ -112,7 +143,9 @@ instance variables.
   `test/all/vblank/builder/test_saves_keep_everything.rb`.
 - **A named value given another game value copies its number**: `@held = @states[0]`, `@best =
   @score`, `@phase = start_phase` and `@level = other.level` set the named value's own variable,
-  in game code and while setting up, and never make it share the other's. So a rotation through a
+  in game code and while setting up, and never make it share the other's. In game code the same
+  holds for any instance variable holding a number or nothing (`@a = @b`, then `@b += 1`): it is
+  made the game's there, with a variable of its own. So a rotation through a
   held value (`@held = @states[0]; @states[0] = @states[1]; @states[1] = @held`) and a swap (`@a,
   @b = @b, @a`) work as in Ruby.
 - **An instance variable nobody named that takes a slot's variable only holds it**: `@held =
@@ -125,8 +158,9 @@ instance variables.
   `attr_reader`, `attr_writer` and `attr_accessor`, with names written out or from a list
   (`attr_accessor(*LEVELS)`), reach the same variable, so another part can test `tilt.busy` and write
   `tilt.busy = 1` in its game code.
-- **The game block names its own the same way**: `game_variables :score` in the block, then `@score =
-  0` above the game loop and `@score += 1` in it. Its variable is `score`.
+- **The game block's own work the same way**: `@score = 0` above the game loop and `@score += 1` in it
+  make the variable `score` (the block marks its own on the builder before its first line,
+  `PlainRuby.callable_source`); `game_variables` in the block names them ahead.
 - **A named Hash or Array of numbers is a game variable for each key**: `game_variables
   :tilt_counters`, `@tilt_counters = SIDES.to_h { |side| [side, 0] }` in `initialize`, then
   `@tilt_counters[side] += 1` and `if @tilt_counters[side] > 2` in game code, inside `SIDES.each do
@@ -146,20 +180,22 @@ instance variables.
 - **A Struct's fields are named the same way**, in the block of `Struct.new` (`Box = Struct.new(:count,
   :step) { game_variables :count }`) or in the body of a class made from one. Then `box.count += 1` in
   game code changes a game variable, `box_count` in a profile. A field nobody names is plain Ruby.
-- **Any other instance variable is plain Ruby.** One that game code changes and also reads back is
-  refused at the line that changes it, since the game would never see the change: name it. One changed
-  only while setting up (a counter that makes names, a count a setting-up method works out and game
-  code uses as `repeat(@count)` or `@count.times`) is not refused. Nor is one that a routine gives a
-  number outright before that routine reads it (`@rows = 2`, then `@rows.times`), one only put into a
-  String, or a number read while it holds nil. Nor is a line of `initialize`, wherever the object is
-  made. A number one routine gives and another reads is refused: the game can run them in either order.
-- **A plain `true` or `false` (or nil) is refused when it is a game flag**: a test on it (`if @open`,
-  `unless @open`, `if !@open`) has game code on a side, and game code changes it and leaves it changed.
-  Ruby would decide that test once, while building. The build watches the side Ruby runs. A side Ruby
-  skips counts as game code unless the build ran that same side somewhere else and it recorded
-  nothing, or it holds nothing but a `return`, `break`, `next` or `raise`. So `seen += 1 if @open` with
-  `@open = true` anywhere in game code is refused, in one routine or two, naming both lines and the
-  fix, `game_variables :open` (and `@open = false` where it starts, for one left nil). Not refused: a
+- **Any other instance variable is plain Ruby.** One game code only reads, or one set only by a
+  method that is not marked (`@count = count + 1` in `lay_out`, used as `repeat(@count)` or
+  `@count.times`), stays Ruby's. So does one that a routine gives a number outright before that
+  routine reads it (`@rows = 2`, then `@rows.times`), one only put into a String, a number read while
+  it holds nil, and a line of `initialize`, wherever the object is made. One that game code changes
+  and also reads back, where the source does not show it (`@busy = 1` in a method a routine calls,
+  read by another), is refused at the line that changes it, naming `game_variables :busy`.
+- **A plain `true` or `false` (or nil) not marked is refused when it is a game flag**: a test on it
+  (`if @open`, `unless @open`, `if !@open`) has game code on a side, and game code changes it and
+  leaves it changed. Ruby would decide that test once, while building. The build watches the side
+  Ruby runs. A side Ruby skips counts as game code unless the build ran that same side somewhere else
+  and it recorded nothing, or it holds nothing but a `return`, `break`, `next` or `raise`. So `seen
+  += 1 if @open` with `@open = true` in a method game code calls is refused, naming both lines and
+  `game_variables :open` (and `@open = false` where it starts, for one left nil). Marked, it is the
+  game's (above), tested through a method (`door.open?`) or to pick a number (`@open ? 1 : 0`) too.
+  Not the game's: a
   once-guard, whose test guards building work and no game code (`plan unless @planned`, with `plan`
   setting `@planned = true` and declaring routines; `return if @laid_out` above `@laid_out = true`;
   `raise "..." if @written`), and a switch a routine sets and puts back (`@white = true`, `yield`, then
@@ -425,7 +461,11 @@ Each is a friendly error naming the line.
 | a plain number the build could not follow to a game test (a slot at a key worked out on the line, `counts[i + 1] += 1`) changed under that test | a game variable where it is first set: `var :counts, 0` |
 | a new Hash key given a number under a game test | give it a number before the test |
 | a misspelt key of a Hash of game variables | one of the keys it has |
-| an instance variable that game code changes and reads back, not named | `game_variables :busy` in the class's body (or the game block) |
+| an instance variable that game code changes and reads back, where the source does not show the change (`@busy = 1` in a method a routine calls) | `game_variables :busy` in the class's body (or the game block) |
+| an instance variable not marked, set outright by a method under a test the game makes (`r.reset if k == 2`), or worked out from a number another routine gave it, then read | `game_variables :n` in the class's body |
+| `@lives -= 1` in game code while `@lives` holds nil (a routine recorded later gives it its number) | a number where it is first set, `@lives = 0` in `initialize` |
+| a line that changes an instance variable's game number after Ruby used that number while building (`Array.new(part.size)`, then `@size += 1` in game code) | keep the number Ruby uses in another instance variable |
+| `floor`, `ceil`, `round`, `truncate`, `succ`, `pred`, `divmod`, `**`, `pow` or `fdiv` on a game number | `to_i` for the whole part of a fraction (it rounds down) |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
 | an instance variable nobody named that holds a slot's game variable (`@held = @states[0]`), given a number or changed in game code (`@held = 5`, `@held += 1`) | `game_variables :held` in the class's body: then the line copies the number |
 | a `var` line naming a variable a part already made for an instance variable (`game_variables held: :x` in a part made first, then `var :x, 0`) | a name of its own for the `var` |

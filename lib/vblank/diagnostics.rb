@@ -51,6 +51,7 @@ require_relative "diagnostics/split_hints"       # Which part of a routine too b
 require_relative "diagnostics/routine_lines"     # Which lines of any routine its time went to
 require_relative "diagnostics/hidden_variables"  # Variables normal Ruby needed that nobody declared
 require_relative "diagnostics/counted_loops"     # Counted Ruby loops, and whether each was written out
+require_relative "diagnostics/instance_variable_numbers" # Numbers kept in instance variables
 require_relative "diagnostics/profiler"          # The measured half: where the frames went
 require_relative "diagnostics/time_by_routine"   # A frame's time by routine, from an emulator that counts by address
 require_relative "diagnostics/tape_profile"      # Each frame of a tape read by itself, and which work held its picture

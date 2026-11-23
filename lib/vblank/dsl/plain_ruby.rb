@@ -104,10 +104,20 @@ module VBlank
 
       # A lambda stays one, since it checks what it is given and a proc does not. `->` has its
       # arrow in its own text, and `lambda { }` does not.
+      #
+      # A game block whose code may change instance variables of its own marks them on the
+      # builder it runs on before its first line (InstanceVariables.mark_changing), as a class
+      # marks its own at the end of its body.
       def callable_source(rewriter, block)
         return rewriter.rewritten_block if rewriter.block_node.is_a?(Prism::LambdaNode)
 
-        "#{block.lambda? ? 'lambda' : 'proc'} #{rewriter.rewritten_block}"
+        code = "#{block.lambda? ? 'lambda' : 'proc'} #{rewriter.rewritten_block}"
+        changing = rewriter.changing_instance_variables
+        attributes = rewriter.changing_attributes
+        return code if (changing.empty? && attributes.empty?) || block.lambda?
+
+        "proc { |*__plain_ruby_given| #{Rewriter::INSTANCE_VARIABLES}.mark_changing(self, #{changing.inspect}, " \
+          "attributes: #{attributes.inspect}); (#{code}).call(*__plain_ruby_given) }"
       end
 
       def checked_source(rewriter, code, file, allow)
@@ -204,6 +214,8 @@ module VBlank
         rewriter = Rewriter.new(source, source_label: File.expand_path(path), follows_instance_variables: !library)
         rewritten = "#{opening}#{rewriter.rewritten(root)}"
         return rewritten if library
+
+        InstanceVariables.record_changing_attributes(rewriter.changing_attributes)
 
         checks = BlockChecks.new(root, file: path, allow: [])
         checks.refuse_outside_calls_in_file!
@@ -436,14 +448,35 @@ module VBlank
         # a file brought in before this one, or in a parent the class is made from. A named Array
         # is made a game's at the first line of game code that reads it, as the game is built,
         # which is after every file it is made from has run.
+        #
+        # The instance variables its code may change as the game plays are marked the same way
+        # (InstanceVariables.mark_changing), and for the same reason: each is known before the first
+        # line of game code reads one.
         def module_text(node)
           text = copied_text(node)
-          labels = @names.instance_variables_at_worked_out_keys_by_module.fetch(node, nil)
-          return text if labels.nil? || !@follows_instance_variables
+          return text unless @follows_instance_variables
+
+          lists = @names.instance_variables_at_worked_out_keys_by_module.fetch(node, nil)
+          changing = @names.changing_instance_variables_by_module.fetch(node, nil)
+          marks = []
+          marks << "#{INSTANCE_VARIABLES}.keep_arrays_as_lists(self, #{lists.to_a.inspect}); " if lists
+          marks << "#{INSTANCE_VARIABLES}.mark_changing(self, #{changing.to_a.inspect}); " if changing
+          return text if marks.empty?
 
           # Whatever stands before `end` ends the last line with a line break or a `;` already.
-          "#{text.delete_suffix('end')}#{INSTANCE_VARIABLES}.keep_arrays_as_lists(self, #{labels.to_a.inspect}); end"
+          "#{text.delete_suffix('end')}#{marks.join}end"
         end
+
+        public
+
+        # The game block's own instance variables its code may change as the game plays
+        # (LocalNames#changing_instance_variables), as `:@score`. Asked once the block is rewritten.
+        def changing_instance_variables = @names.changing_instance_variables.to_a
+
+        # ...and the attributes it may change through a writer (LocalNames#changing_attributes).
+        def changing_attributes = @names.changing_attributes.to_a
+
+        private
 
         # A statement with another after it has nothing reading its value, so a join there
         # needs no variable to keep its answer in.
@@ -510,7 +543,7 @@ module VBlank
             next "" if start < at || start >= ends
 
             text = rewritten_text(child)
-            text = "#{INSTANCE_VARIABLES}.making_part do; #{text}; end" if initialize_body?(node, child)
+            text = "#{INSTANCE_VARIABLES}.making_part(self) do; #{text}; end" if initialize_body?(node, child)
             piece = between(at, start) + text
             at = child.location.end_offset
             piece
@@ -1004,7 +1037,7 @@ module VBlank
           joined = "#{STEPS}.#{step}(#{instance_variable_read_call(node.name)}) { #{rewritten_text(node.value)} }"
           current = instance_variable_place_text(node.name)
           followed = "#{node.name} = #{write_call(current, joined, node.name, options: ", moves: true#{owner_option}")}"
-          "(#{INSTANCE_VARIABLES}.followed?(self, :#{node.name}) ? (#{followed}) : (#{plain}))"
+          "(#{INSTANCE_VARIABLES}.followed?(self, #{node.name}, :#{node.name}) ? (#{followed}) : (#{plain}))"
         end
 
         # A read of an instance variable. InstanceVariables follows one the game names, and notes

@@ -238,7 +238,6 @@ module VBlank
       @variables_with_no_var_line = []
       @unsaved_variables = Set.new # named `game_variables ..., saved: false` (Builder::SaveData)
       @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
-      Builder.in_use = self
       @boolean_variables = {}   # the variables started with `true` or `false`
       @timer_seq = 0           # counts every/after timers, to name each one's hidden counter var
       @rng_seq = 0             # counts anonymous random draws, to name each one's hidden var
@@ -332,6 +331,9 @@ module VBlank
       # the one boot-time save_init and the auto-save after each change.
       @persisted = []
       @saves = nil             # the save_data records and what saves them (see Saves), made with the first
+      # Must come last: plain Ruby asks the builder in use whether it records game code, and a
+      # builder whose making stopped part way could not answer.
+      Builder.in_use = self
     end
 
     # The IR tree built so far (the whole program). Lets tests assert the DSL
@@ -1487,6 +1489,11 @@ module VBlank
 
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
+
+    # Is what is recorded now game code under a test the game makes, inside the routine or loop
+    # being recorded? Only some passes run it. DSL::PlainRuby::InstanceVariables::Uses asks, since a
+    # number a method sets there is one Ruby cannot know after it.
+    def recording_under_game_test? = @container_stack.drop(2).any? { |node| %i[if else].include?(node.kind) } # :nodoc:
 
     # Runs a part's `initialize` (PlainRuby's rewrite wraps each in a game file). A part made by
     # game code, in a scene or the game loop, is made once, as its numbers start once

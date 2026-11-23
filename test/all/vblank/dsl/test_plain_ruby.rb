@@ -3470,19 +3470,18 @@ class TestPlainRuby < Minitest::Test
     assert_match(/game_variables\(\{ saved: :points \}\)/, error.message)
   end
 
-  def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
-      played do
-        @score = 0
-        seen = var :seen, 0
-        game_loop do
-          @score += 1
-          seen.store!(@score)
-        end
+  # Game code counts it from what it holds, so it is the game's, with no game_variables line.
+  def test_the_games_own_unnamed_instance_variable_counted_then_read_is_a_game_number
+    player = played do
+      @score = 0
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen.store!(@score)
       end
     end
 
-    assert_match(/game_variables :score` to the game block/, error.message)
+    assert_equal [3, 3], [player[:seen], player[:score]]
   end
 
   # Game code reads the builder of the game being built on its own thread. A game built on another
@@ -3499,11 +3498,9 @@ class TestPlainRuby < Minitest::Test
       end
     end)
 
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
-      builder.instance_eval(&game)
-      builder.finalize_program
-    end
+    builder.instance_eval(&game)
+    builder.finalize_program
 
-    assert_match(/game_variables :score` to the game block/, error.message)
+    assert_equal 3, game_player.run(builder.program, frames: 3)[:score]
   end
 end

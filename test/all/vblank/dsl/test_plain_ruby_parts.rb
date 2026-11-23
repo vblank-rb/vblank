@@ -85,26 +85,23 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [3, 5], [player[:lamp_ons], player[:lamp_glow]]
   end
 
-  def test_an_unnamed_instance_variable_game_code_tests_then_changes_is_refused_at_the_change
+  # Unnamed instance variables the source shows game code changing are game numbers, as if named.
+
+  def test_an_unnamed_instance_variable_game_code_counts_then_tests_plays_as_a_var
+    assert_equal 1, played(UnnamedCountPart, :unnamed_count_tick)[:unnamed_count_late]
+  end
+
+  def test_an_unnamed_instance_variable_one_routine_sets_and_another_tests_plays_as_a_var
+    assert_equal 2, played(UnnamedAcrossRoutinesPart, :across_routines_test, :across_routines_set)[:across_routines_seen]
+  end
+
+  # `@busy = 1` in a method a routine calls, tested above it: nothing in the source shows the method
+  # is game code, so the build stops at the change, naming the fix.
+  def test_an_unnamed_instance_variable_a_method_sets_outright_after_game_code_tests_it_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnnamedTiltPart, :unnamed_tilt_handle) }
 
     assert_match(/`@busy` is changed while the game plays.*\(changed at plain_ruby_game_parts\.rb:\d+\)/m, error.message)
     assert_match(/game_variables :busy` to UnnamedTiltPart/, error.message)
-  end
-
-  def test_an_unnamed_instance_variable_game_code_counts_then_tests_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnnamedCountPart, :unnamed_count_tick) }
-
-    assert_match(/`@frames` is changed while the game plays/, error.message)
-    assert_match(/game_variables :frames` to UnnamedCountPart/, error.message)
-  end
-
-  def test_an_unnamed_instance_variable_one_routine_sets_and_another_tests_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
-      played(UnnamedAcrossRoutinesPart, :across_routines_test, :across_routines_set)
-    end
-
-    assert_match(/game_variables :mode` to UnnamedAcrossRoutinesPart/, error.message)
   end
 
   def test_a_module_names_its_own_instance_variable_for_the_class_taking_it_in

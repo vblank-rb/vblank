@@ -102,7 +102,10 @@ module RubyAnswers
   private def ruby_answers(passes, reads, &game)
     stage = Stage.new(passes)
     Thread.current[:ruby_answers_stage] = true
-    begin
+    # Plain Ruby, with no game being built: a builder an earlier test left in use on this thread
+    # would take the parts' instance variables for game code's.
+    VBlank::Builder.keeping_builder_in_use do
+      VBlank::Builder.in_use = nil
       stage.instance_eval(&game)
     ensure
       Thread.current[:ruby_answers_stage] = nil
@@ -110,11 +113,10 @@ module RubyAnswers
     reads.to_h { |read| [read, stage.read(read)] }
   end
 
+  # Built as a game is built (Cartridge::EvaluatedGame), which may build it again where game code
+  # read an instance variable before changing it.
   private def built_program(&game)
-    builder = VBlank::Builder.new
-    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(game, checked: false))
-    builder.finalize_program
-    builder.program
+    VBlank::Cartridge::EvaluatedGame.new(VBlank::DSL::PlainRuby.rewrite(game, checked: false)).program
   end
 
   # The game played for +passes+ passes: the interpreter starts its first pass in the first frame.

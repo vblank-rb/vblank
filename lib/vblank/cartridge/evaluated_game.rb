@@ -33,7 +33,11 @@ module VBlank
       # +options+ is how the game is built (see {Options}).
       #
       # +screen_as_asked+ gives the game the screen size it asks for (Builder#initialize).
+      #
+      # A build that fails puts back the builder in use before it (Builder.in_use): left in use,
+      # stopped part way through a routine, it would take plain Ruby run after it for game code.
       def initialize(block, options: Options.new, progress: Messages::Progress.silent, settings: {}, screen_as_asked: false)
+        was_in_use = Builder.in_use
         @builder = Builder.new(options: options, progress: progress, settings: settings, screen_as_asked: screen_as_asked)
         # `debug_halt` throws rather than returns, because it stops the game's block where it
         # stands and there is no other way out of somebody else's code. Catching it here is
@@ -49,6 +53,9 @@ module VBlank
         # Nothing changes the tree after this, so every pass that reads it can read an index
         # rather than walking it again (see IR::Node#mark_written!).
         @program = @builder.program.mark_written!
+      rescue StandardError, ScriptError
+        Builder.in_use = was_in_use if @builder.nil? || Builder.in_use.equal?(@builder)
+        raise
       end
 
       # The op-tree the block built: what a backend lowers and what the reference
@@ -91,6 +98,9 @@ module VBlank
 
       # The counted loops of game code and what the build made of each (see Diagnostics::CountedLoops).
       def counted_loop_notes = @builder.counted_loop_notes
+
+      # The game variables kept in instance variables (see Diagnostics::InstanceVariableNumbers).
+      def instance_variable_numbers = @builder.instance_variable_uses.part_variable_notes
 
       def variables_with_no_var_line = @builder.variables_with_no_var_line
 

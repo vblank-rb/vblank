@@ -9,16 +9,21 @@ module VBlank
       # its own `if @busy == 1` would be decided then, from the 0 Ruby holds, and the game would
       # never see the line that changes it.
       #
-      # A class names the instance variables that are the game's (`game_variables :busy`, in its
-      # body), and only those are followed: game code reading or changing one makes it a game
+      # Two kinds are followed. One a class names (`game_variables :busy`, in its body) is the
+      # game's from its first number. One the source shows game code may change (#mark_changing:
+      # `@busy = 1 - @busy` anywhere, `@busy = 1` in a game verb's block) is the game's from the
+      # first line of game code that reads or changes it. Either way the line makes a game
       # variable, starting at power-on from the number Ruby holds then, and keeps that variable in
       # the instance variable from then on. So the read above the change asks the number the pass
-      # before left. The game block names its own the same way.
+      # before left. The game block's own work the same way.
       #
-      # Any other instance variable stays Ruby's. One that game code both changes and reads back
-      # is the bug above, so the build stops and names the fix (Uses). One changed only while
-      # setting up (a counter that makes names, a count a setting-up method works out) or only read
-      # by game code is left alone.
+      # The marks are made from the source, so each is known before game code first reads the
+      # instance variable, in whatever order the routines are recorded: the build runs once.
+      #
+      # Any other instance variable stays Ruby's. One that game code both changes and reads back,
+      # where the source does not show the change, is the bug above, so the build stops and names
+      # the fix (Uses). One changed only while setting up (a counter that makes names, a count a
+      # setting-up method works out) or only read by game code is left alone.
       #
       # Every instance variable a game file or block reads or writes comes through here
       # (Rewriter#instance_variable_read_text, Writes.write and Writes.change with +owner+);
@@ -87,6 +92,42 @@ module VBlank
           when Module then name_in_module(owner, labels, constant: LISTS_CONSTANT)
           end
           nil
+        end
+
+        # The constant a class keeps the instance variables its code may change as the game plays
+        # in (#mark_changing), as `:@ticks`.
+        CHANGING_CONSTANT = :VBLANK_CHANGING_INSTANCE_VARIABLES
+
+        # +labels+ are instance variables of +owner+ (a class or module, or the game block's
+        # builder) that its code may change as the game plays: the rewrite read a line that works
+        # one out from what it holds, or gives one a value in a game verb's block
+        # (LocalNames#changing_instance_variables). Each stays Ruby's while the game is set up, and
+        # becomes a game variable where game code first reads or changes it (Uses#followed?), as if
+        # `game_variables` named it. Marked from the source, so the mark is there before game code
+        # reads any of them, however the methods that read and change them are ordered.
+        #
+        # +attributes+ are the game block's: the attributes it may change on any object through a
+        # writer (LocalNames#changing_attributes). A game file's are kept for every build
+        # (#record_changing_attributes).
+        def mark_changing(owner, labels, attributes: [])
+          case owner
+          when Builder then owner.instance_variable_uses.mark_changing_on_builder(labels, attributes)
+          when Module
+            name_in_module(owner, labels, constant: CHANGING_CONSTANT)
+            Builder.in_use&.instance_variable_uses&.clear_class_name_cache
+          end
+          nil
+        end
+
+        # The attributes game files may change through a writer (LocalNames#changing_attributes),
+        # as `:level`. Files are loaded in the main Ractor, before any game is built, and every
+        # Ractor reads the same names, as CallChanges.game_method_names.
+        def self.changing_attributes_in_files = @changing_attributes_in_files || Set.new.freeze
+
+        def self.record_changing_attributes(names)
+          return if names.empty? || Ractor.current != Ractor.main
+
+          @changing_attributes_in_files = Ractor.make_shareable(changing_attributes_in_files | names)
         end
 
         def refuse_unsaved_naming_nothing!
@@ -180,9 +221,15 @@ module VBlank
         # for a second object of one class. A name the game chose is refused where something else
         # has the variable already, a `var` line or another class's choice, since a test reading it
         # would read the wrong one.
+        #
+        # One its code may change, which no line names, is made where game code first reads or
+        # changes it, and the objects of a class can be reached in any order there. So its name
+        # follows the order they were made in (Uses#made_name), as a named one's does by being made
+        # in `initialize`: a save made before finds each number under the name it had.
         def free_name_for(owner, label, name)
           builder = Builder.in_use
           uses = builder.instance_variable_uses
+          name = uses.made_name(owner, label, name)
           free = builder.reserve_free_variable_name(name)
           if free != name && uses.chosen_name(owner, label) && !uses.made_for?(name, owner, label)
             refuse_chosen_name_taken!(label, name)
@@ -288,10 +335,11 @@ module VBlank
         # A named one becomes its game variable here, handed to the block to keep, and that is the
         # answer. +in_text+ is a read put into a String or a Symbol, which can only be Ruby's.
         def read_value(owner, current, label, in_text: false)
+          current = current_or_ruby_number(current) { |number| yield number }
           uses = uses_while_recording(owner)
           return current unless uses
 
-          if uses.named?(owner, label)
+          if uses.followed?(owner, label, current)
             variable = game_variable_of(owner, current, label)
             yield variable unless variable.equal?(current)
             return variable
@@ -305,17 +353,20 @@ module VBlank
         # makes, so nothing is noted. It runs before the line works out what it writes, so a write
         # that reads the instance variable too (`@seed = @seed * 5`) finds the one variable.
         def value_before_write(owner, current, label)
+          current = current_or_ruby_number(current) { |number| yield number }
           uses = uses_while_recording(owner)
-          return current unless uses&.named?(owner, label) && !current.nil?
+          return current unless uses&.followed?(owner, label, current) && !current.nil?
 
           variable = game_variable_of(owner, current, label)
           yield variable unless variable.equal?(current)
           variable
         end
 
-        # Is +label+ of +owner+ followed on the line running now? A line that reads and writes in
-        # one (`@busy ||= 1`) is written out the long way only then.
-        def followed?(owner, label) = uses_while_recording(owner)&.named?(owner, label) || false
+        # Is +label+ of +owner+, holding +current+, followed on the line running now? A line that
+        # reads and writes in one (`@busy ||= 1`) is written out the long way only then.
+        def followed?(owner, current, label)
+          uses_while_recording(owner)&.followed?(owner, label, current_or_ruby_number(current) {}) || false
+        end
 
         # What Writes.write writes to, where +owner+'s +label+ holds +current+ and a line of game code
         # gives it +value+: a named one's game variable, made here if it held nil; anything else as
@@ -326,10 +377,11 @@ module VBlank
         # variable or a working-out while it holds nothing, it gets a variable of its own, which
         # the write then sets to that number (`@held = @states[0]`, `@phase = start_phase`).
         def write_target(owner, current, value, label, starting: false)
+          current = current_or_ruby_number(current) {}
           uses = uses_while_recording(owner)
           return own_variable_while_setting_up(owner, current, value, label) unless uses
 
-          unless uses.named?(owner, label)
+          unless uses.followed?(owner, label, current) || game_number_given?(current, value, starting)
             uses.note_change(owner, label, current, value, operator: false) unless starting
             return current
           end
@@ -337,6 +389,17 @@ module VBlank
           return current unless Writes.number_kept?(value) && !value.nil?
 
           variable_starting_like(owner, label, value)
+        end
+
+        # Does a line of game code give an instance variable that holds a plain number, or nothing,
+        # a game number (`@shown = @ticks`)? Ruby copies a number, so it must keep a variable of its
+        # own holding that number: sharing the other's variable, it would change when the other
+        # does. A line of `initialize` is left as it is: a part handed a variable as it is made was
+        # given it to change.
+        def game_number_given?(current, value, starting)
+          return false if starting || !(value.is_a?(Value) || value.is_a?(Condition))
+
+          current.nil? || STARTS.any? { |kind| current.is_a?(kind) }
         end
 
         def own_variable_while_setting_up(owner, current, value, label)
@@ -349,12 +412,24 @@ module VBlank
 
         # The same for `@busy += 1`, which reads it as well.
         def change_target(owner, current, label, starting: false)
+          current = current_or_ruby_number(current) {}
           uses = uses_while_recording(owner)
           return current unless uses
-          return game_variable_of(owner, current, label) if uses.named?(owner, label)
+          return game_variable_of(owner, current, label) if uses.followed?(owner, label, current)
 
+          refuse_nil_changed!(label) if current.nil?
           uses.note_change(owner, label, current, current, operator: true) unless starting
           current
+        end
+
+        # `@lives -= 1` in game code while `@lives` holds nil. Ruby would stop here with its own
+        # error; in a game it is usually a routine that gives the number which the build has not
+        # recorded yet, since the build records routines in its own order, not the order they run.
+        def refuse_nil_changed!(label)
+          raise Refused, "`#{label}` holds `nil` here, so this line cannot change it as a number. The line that " \
+                         "gives `#{label}` a number can run first in the game, but VBlank does not read the lines " \
+                         "in that order. To fix this, give `#{label}` a number where it is first set, like " \
+                         "`#{label} = 0` in `initialize`.#{Messages::AuthorSource.at_author_line}"
         end
 
         # The same for a change under a test the game makes, about to be given a hidden variable
@@ -396,7 +471,7 @@ module VBlank
           return unless Uses::FLAGS.include?(current)
 
           uses = uses_while_recording(owner)
-          return if uses.nil? || uses.named?(owner, label)
+          return if uses.nil? || uses.followed?(owner, label, current)
 
           Builder.in_use
         end
@@ -436,7 +511,12 @@ module VBlank
         def first_variable(owner, current, value, label)
           builder = Builder.in_use
           return unless current.nil? && builder && !owner.is_a?(Module)
-          return unless builder.instance_variable_uses.named?(owner, label)
+
+          uses = builder.instance_variable_uses
+          # A list is made where it is filled, which must be once, at power-on: so an Array its code
+          # may change at a worked-out index is made a list at its first number, as a named one is.
+          return list_of(owner, label, value) if list_kept?(owner, label, value) && uses.changing?(owner, label)
+          return unless uses.named?(owner, label)
           return list_of(owner, label, value) if list_kept?(owner, label, value)
           return game_variables_in(owner, label, value) if numbers_collection?(value)
           return unless STARTS.any? { |kind| value.is_a?(kind) }
@@ -452,9 +532,15 @@ module VBlank
 
         # The body of an object's `initialize` in a game file, as the rewrite runs it: a part game
         # code makes puts things into its Arrays once, as its numbers start once (Builder#making_part).
-        def making_part(&)
+        #
+        # +owner+ is the object being made, counted in the order its class's objects are made
+        # (Uses#note_object_made), which names its game variables.
+        def making_part(owner, &)
           builder = Builder.in_use
-          builder ? builder.making_part(&) : yield
+          return yield unless builder
+
+          builder.instance_variable_uses.note_object_made(owner)
+          builder.making_part(&)
         end
 
         # A Hash or an Array of numbers (`@tilt_counters = { left: 0, right: 0 }`), or one already
@@ -619,7 +705,30 @@ module VBlank
         def make_variable(owner, label, start)
           builder = Builder.in_use
           variable = builder.var(free_name_for(owner, label, variable_name(owner, label)), start)
+          variable.note_ruby_start(start)
           note_made_variable(builder, variable, owner, label)
+        end
+
+        # The number Ruby held where +held+, a variable made for an instance variable, was made by a
+        # build other than the one running now (or after every build has ended): a part made outside
+        # the game's block, in a constant of a game file, outlives the build that made it, and the
+        # next build (for another console, say) starts it again from that number. Nil for anything
+        # else. Every change to such a variable was the game's, never Ruby's, so Ruby's number then
+        # is Ruby's number still.
+        def ruby_number_of_stale(held)
+          return unless held.is_a?(Value) && !held.ruby_start.nil?
+
+          held.ruby_start unless held.made_by?(Builder.in_use)
+        end
+
+        # +current+, or Ruby's number for a stale variable (#ruby_number_of_stale), handed to the
+        # block to keep.
+        def current_or_ruby_number(current)
+          number = ruby_number_of_stale(current)
+          return current if number.nil?
+
+          yield number
+          number
         end
 
         # A game variable just made for +owner+'s +label+: noted as made with no `var` line, and as
@@ -713,8 +822,13 @@ module VBlank
             @named_on_builder = Set.new
             @unsaved_on_builder = Set.new
             @lists_on_builder = Set.new
+            @changing_on_builder = Set.new
+            @changing_attributes = Set.new
             @chosen_on_builder = {}
             @names_by_class = {}
+            @changing_by_class = {}
+            @made_order = {}.compare_by_identity
+            @made_count = Hash.new(0)
             @unsaved_by_class = {}
             @chosen_by_class = {}
             @makers_by_name = {}
@@ -798,6 +912,7 @@ module VBlank
           # Clear the cache of what each class names, after a class names more.
           def clear_class_name_cache
             @names_by_class.clear
+            @changing_by_class.clear
             @unsaved_by_class.clear
             @chosen_by_class.clear
           end
@@ -835,6 +950,17 @@ module VBlank
           # The variable named +name+ is made for +owner+'s +label+ (#free_name_for).
           def note_part_variable(name, owner, label) = @part_variables[name] = PartVariable.new(owner, label)
 
+          # One game variable made for an instance variable, for `rom.profile`
+          # (Diagnostics::InstanceVariableNumbers): its name, the instance variable, and whose it is.
+          PartVariableNote = Data.define(:name, :label, :part)
+
+          def part_variable_notes
+            @part_variables.map do |name, made|
+              part = made.owner.is_a?(Builder) ? "the game block" : made.owner.class.name || "a part"
+              PartVariableNote.new(name: name, label: made.label, part: part)
+            end
+          end
+
           # A `var` or `save_var` line names +name+, which a variable of the build has already. One
           # made for an instance variable is that part's, and the line would share it with no word
           # (the other order, a part choosing a name a `var` line took, is refused at the part).
@@ -853,6 +979,56 @@ module VBlank
             return @named_on_builder.include?(label) if owner.is_a?(Builder)
 
             (@names_by_class[owner.class] ||= InstanceVariables.names_in_module(owner.class)).include?(label)
+          end
+
+          def mark_changing_on_builder(labels, attributes)
+            @changing_on_builder.merge(labels)
+            @changing_attributes.merge(attributes)
+          end
+
+          # +owner+'s `initialize` runs: it is the next object of its class, counted from 1.
+          def note_object_made(owner) = @made_order[owner] ||= (@made_count[owner.class] += 1)
+
+          # The variable name for +owner+'s +label+, from +name+ (InstanceVariables.free_name_for):
+          # for one followed only because its code may change it, +name+ for the first object of
+          # its class and `name_2` and so on for the next, in the order #note_object_made counted.
+          # Any other keeps +name+, and the build takes the next free name after it.
+          def made_name(owner, label, name)
+            return name if owner.is_a?(Builder) || named?(owner, label) || !changing?(owner, label)
+
+            order = @made_order[owner]
+            order.nil? || order == 1 ? name : :"#{name}_#{order}"
+          end
+
+          # Is +owner+'s +label+ one its code may change as the game plays (InstanceVariables.mark_changing)?
+          #
+          # An attribute game code changes through a writer counts for every object whose class has
+          # that writer (`dial.level += 3` marks `@level` of anything with a `level=`), since the
+          # rewrite cannot tell the object's class.
+          def changing?(owner, label)
+            return @changing_on_builder.include?(label) if owner.is_a?(Builder)
+            return true if (@changing_by_class[owner.class] ||=
+                              InstanceVariables.names_in_module(owner.class, constant: CHANGING_CONSTANT)).include?(label)
+
+            attribute = label.to_s.delete_prefix("@").to_sym
+            (@changing_attributes.include?(attribute) || InstanceVariables.changing_attributes_in_files.include?(attribute)) &&
+              owner.respond_to?(:"#{attribute}=")
+          end
+
+          # Is +owner+'s +label+, holding +current+, a game variable on the line of game code running
+          # now? One a class names is. So is one its code may change (#changing?), from the first line
+          # of game code that reads or changes it: it starts from the number Ruby holds there, which
+          # setting up gave it. Not one that holds nothing yet, which has no number to start from,
+          # nor one a line of game code gave a number outright before (`@named = 0`, then `@named +=
+          # 1`): Ruby knows what that holds where it is read, and #note_read and #note_change keep
+          # it to that.
+          def followed?(owner, label, current)
+            return true if named?(owner, label)
+            return false unless changing?(owner, label)
+            return true if Steps.variable?(current) || current.is_a?(Condition) || current.is_a?(List)
+            return false if (@uses[owner] || {})[label]&.changed_at
+
+            STARTS.any? { |kind| current.is_a?(kind) } || InstanceVariables.numbers_collection?(current)
           end
 
           # The variable name +owner+'s class (or the game block) chose for +label+, or nil.
@@ -876,6 +1052,12 @@ module VBlank
           # A line of game code gives +label+ +value+, or changes it with an operator (+operator+)
           # from what it holds. Only a plain number held is the game's to lose; nil counts, given a
           # number.
+          #
+          # After the line, Ruby knows what it holds where the line gives it a number outright, or
+          # changes the number a line of this same routine gave it outright. Not where the line runs
+          # under a test the game makes (`reset if k == 2`, the write inside `reset`): only some
+          # passes run it. Nor where the change works from a number another routine gave it, which
+          # the game can run in either order. Then a read after it is refused (#note_read).
           def note_change(owner, label, current, value, operator:)
             return note_flag_change(owner, label, current, value) if FLAGS.include?(current) && [true, false].include?(value)
             return unless (current.nil? || plain_number?(current)) && plain_number?(value)
@@ -883,8 +1065,12 @@ module VBlank
             use = use_of(owner, label)
             here = Messages::AuthorSource.author_file_and_line
             refuse_unnamed_change!(owner, label, here) if use.read_before_change
-            use.changed_from_ruby_at = operator && (use.changed_from_ruby_at || (here unless use.changed_at))
-            use.given_in = Builder.in_use.recorded_routine_body
+            builder = Builder.in_use
+            routine = builder.recorded_routine_body
+            given_here = use.changed_at && use.given_in.equal?(routine) && !use.changed_from_ruby_at
+            unknown = builder.recording_under_game_test? || (operator && !given_here)
+            use.changed_from_ruby_at = unknown ? use.changed_from_ruby_at || here : nil
+            use.given_in = routine
             use.changed_at ||= here
           end
 

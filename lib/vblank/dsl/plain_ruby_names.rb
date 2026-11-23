@@ -63,6 +63,22 @@ module VBlank
         # The same, for those inside a `class` or `module`, by the nearest one around them.
         attr_reader :instance_variables_at_worked_out_keys_by_module
 
+        # The instance variables the code may change as the game plays, as `:@ticks`
+        # (#note_changing_instance_variable): one a line works out from what it holds (`@ticks += 1`,
+        # `@lit = 1 - @lit`, `@counts[at] += 1`, `@counts[at] = @counts[at] * 2`), wherever it is
+        # written, and one a line gives a value inside a game verb's block (`func(:open) { @open =
+        # true }`). These are the game block's own, outside any `class` or `module`.
+        attr_reader :changing_instance_variables
+
+        # The same, for those inside a `class` or `module`, by the nearest one around them.
+        attr_reader :changing_instance_variables_by_module
+
+        # The attributes the code may change as the game plays through a writer, on any object, as
+        # `:level` (#note_changing_attribute): `dial.level += 3`, `dial.level = dial.level + 3`, or
+        # any `dial.level = ...` in a game verb's block. Its object's class is known only as the
+        # game is built, so the name is all that is kept (Uses#changing?).
+        attr_reader :changing_attributes
+
         # Every method, lambda and game block: code that runs when it is called, or as the game
         # plays, after the lines around it.
         attr_reader :bodies_run_later
@@ -255,6 +271,9 @@ module VBlank
           @bodies_run_later = []
           @instance_variables_at_worked_out_keys = Set.new
           @instance_variables_at_worked_out_keys_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
+          @changing_instance_variables = Set.new
+          @changing_instance_variables_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
+          @changing_attributes = Set.new
           @open_modules = []
           # Things made from a class written out (`Enemy.new`) put into an instance variable, by
           # the class or module around the line (nil outside one), then by the instance variable.
@@ -714,6 +733,7 @@ module VBlank
             @module_of_instance_variable_write[node] = @open_modules.last
             record_change(node.name, node)
             @names_moved_in_game_code[node.name] = true if in_game_code && name_given?(node)
+            note_changing_instance_variable(node.name) if in_game_code || changed_from_itself?(node, node.name)
             read_children(node, scopes, in_game_code)
           when Prism::IndexOperatorWriteNode, Prism::CallOperatorWriteNode
             read_children(node, scopes, in_game_code)
@@ -721,6 +741,9 @@ module VBlank
             if node.is_a?(Prism::IndexOperatorWriteNode)
               note_array_change(node, in_game_code)
               note_instance_variable_index(node)
+              note_changing_instance_variable(node.receiver.name) if node.receiver.is_a?(Prism::InstanceVariableReadNode)
+            else
+              @changing_attributes << node.read_name
             end
           when Prism::LocalVariableReadNode then
             local = scopes[-1 - node.depth]&.[](node.name)
@@ -878,6 +901,8 @@ module VBlank
           read_place_change(node) if node.name == :[]= || node.attribute_write?
           note_array_change(node, in_game_code)
           note_instance_variable_index(node)
+          note_changing_slot(node, in_game_code)
+          note_changing_attribute(node, in_game_code)
           note_instance_variable_thing_put(node)
           record_bang_call_change(node)
           note_func_block(node) if node.name == :func
@@ -903,6 +928,56 @@ module VBlank
 
           noted = @open_modules.empty? ? @instance_variables_at_worked_out_keys : @instance_variables_at_worked_out_keys_by_module[@open_modules.last]
           noted << node.receiver.name
+        end
+
+        # `@counts[at] = @counts[at] * 2`, or any `@counts[at] = ...` in a game verb's block
+        # (#changing_instance_variables).
+        def note_changing_slot(node, in_game_code)
+          return unless node.name == :[]= && node.receiver.is_a?(Prism::InstanceVariableReadNode)
+          return unless in_game_code || changed_from_itself?(node.arguments&.arguments&.last, node.receiver.name)
+
+          note_changing_instance_variable(node.receiver.name)
+        end
+
+        # `dial.level = dial.level + 3`, or any `dial.level = ...` in a game verb's block
+        # (#changing_attributes).
+        def note_changing_attribute(node, in_game_code)
+          return unless node.attribute_write? && node.receiver && node.name != :[]=
+
+          name = node.name.to_s.delete_suffix("=").to_sym
+          value = node.arguments&.arguments&.last
+          return unless in_game_code || reads_attribute?(value, node.receiver.slice, name)
+
+          @changing_attributes << name
+        end
+
+        # Does +node+ read the attribute +name+ of the receiver written +receiver+?
+        def reads_attribute?(node, receiver, name)
+          return false if node.nil?
+          return true if node.is_a?(Prism::CallNode) && node.name == name && node.receiver&.slice == receiver
+
+          node.compact_child_nodes.any? { |child| reads_attribute?(child, receiver, name) }
+        end
+
+        # Is +node+ a change of the instance variable +name+ worked out from what it holds: an
+        # operator write (`@n += 1`), or a write whose value reads +name+ (`@lit = 1 - @lit`)?
+        def changed_from_itself?(node, name)
+          return true if node.is_a?(Prism::InstanceVariableOperatorWriteNode)
+
+          node = node.value if node.is_a?(Prism::InstanceVariableWriteNode)
+          reads_instance_variable?(node, name)
+        end
+
+        def reads_instance_variable?(node, name)
+          return false if node.nil?
+          return true if node.is_a?(Prism::InstanceVariableReadNode) && node.name == name
+
+          node.compact_child_nodes.any? { |child| reads_instance_variable?(child, name) }
+        end
+
+        def note_changing_instance_variable(name)
+          noted = @open_modules.empty? ? @changing_instance_variables : @changing_instance_variables_by_module[@open_modules.last]
+          noted << name
         end
 
         def key_known_while_building?(key)

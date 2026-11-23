@@ -451,7 +451,8 @@ class BuildTimeCountsPart
 end
 
 # One routine gives `@mode` a number and another tests it, with nothing named: the game can run them
-# in either order, so the test would be decided from whichever ran first while building.
+# in either order. The line is in a routine's block, so `@mode` is the game's from the first
+# routine that reads or sets it.
 class UnnamedAcrossRoutinesPart
   def initialize(builder)
     @mode = 0
@@ -566,8 +567,8 @@ class WrittenOncePart
 end
 
 # A door flag the game keeps, named nowhere: one routine opens the door outright, and another
-# tests it. The game can run them in either order, and Ruby decides the test while building, so
-# the build stops at whichever line comes second. Declared in each order.
+# tests it. The game can run them in either order; the line opening it is in a routine's block, so
+# the flag is the game's from whichever comes first. Declared in each order.
 class UnnamedDoorOpenedFirstPart
   def initialize(builder)
     @open = false
@@ -587,8 +588,8 @@ class UnnamedDoorTestedFirstPart
 end
 
 # The door tested and then opened in one routine. It has the shape of a once-guard, but the side
-# of the test holds game code, so the flag decides what the game does as it plays. Once with the
-# side Ruby skips (the door starts shut), once with the side it runs.
+# of the test holds game code, so the flag decides what the game does as it plays, and the game
+# keeps it. Once with the side Ruby skips (the door starts shut), once with the side it runs.
 class UnnamedDoorOneRoutinePart
   def initialize(builder)
     @open = false
@@ -609,6 +610,19 @@ class UnnamedDoorOneRoutineRunSidePart
       @open = true
     end
   end
+end
+
+# A latch set outright by a method a routine calls, and tested by another routine. Nothing in the
+# source shows the method is game code, so the build stops at the end, naming the fix.
+class UnnamedLatchPart
+  def initialize(builder)
+    @set = false
+    @seen = builder.var(:latch_seen, 0)
+    builder.func(:latch_set) { latch }
+    builder.func(:latch_test) { @seen += 1 if @set }
+  end
+
+  def latch = @set = true
 end
 
 # The door again, named: a game variable, which plays as its twin with `var`.

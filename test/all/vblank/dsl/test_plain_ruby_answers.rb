@@ -170,6 +170,349 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # --- instance variables game code changes ---
+
+  def test_an_instance_variable_switched_on_one_line
+    agrees("@lit = 1 - @lit", reads: %i[n], passes: 3) do
+      lamp = AnswerLamp.new
+      n = 0
+      game_loop do
+        lamp.switch
+        n = lamp.lit
+      end
+    end
+  end
+
+  def test_an_instance_variable_switched_by_a_routine
+    agrees("@lit switched in a func its part made", reads: %i[n], passes: 3) do
+      lamp = AnswerRoutineLamp.new(self)
+      n = 0
+      game_loop do
+        call :switch_answer_lamp
+        n = lamp.lit
+      end
+    end
+  end
+
+  def test_an_instance_variable_read_before_it_is_changed
+    agrees("@ticks read in one method before another changes it", reads: %i[a b], passes: 3) do
+      ticker = AnswerTicker.new
+      ticker.grow!
+      a = b = 0
+      game_loop do
+        a = ticker.shown
+        ticker.tick
+        b = Array.new(ticker.size, 1).sum
+      end
+    end
+  end
+
+  def test_a_flag_tested_around_game_code_then_toggled
+    agrees("@seen += 1 if @open, then @open = !@open", reads: %i[s], passes: 3) do
+      door = AnswerRoutineDoor.new(self)
+      s = 0
+      game_loop do
+        call :answer_door_tick
+        s = door.seen
+      end
+    end
+  end
+
+  # A flag toggled from what it holds (`@open = !@open`) is one its class may change, so it is the
+  # game's wherever game code first tests it: through a method, or to pick a number.
+  def test_a_flag_tested_through_a_method_before_it_is_changed
+    agrees("s += 1 if door.open?, then toggled", reads: %i[s], passes: 3) do
+      door = AnswerDoor.new
+      s = 0
+      game_loop do
+        s += 1 if door.open?
+        door.toggle
+      end
+    end
+  end
+
+  def test_a_flag_tested_for_a_number_before_it_is_changed
+    agrees("@open tested for a number, then toggled", reads: %i[s], passes: 2) do
+      door = AnswerDoor.new
+      s = 0
+      game_loop do
+        s = door.seen
+        door.toggle
+      end
+    end
+  end
+
+  def test_two_objects_of_one_class
+    agrees("one lamp switched, one left", reads: %i[x y], passes: 3) do
+      one = AnswerLamp.new
+      other = AnswerLamp.new
+      x = y = 0
+      game_loop do
+        one.switch
+        x = one.lit
+        y = other.lit
+      end
+    end
+  end
+
+  def test_an_instance_variable_changed_through_its_writer
+    agrees("dial.level = dial.level + 3", reads: %i[m], passes: 3) do
+      dial = AnswerDial.new
+      m = 0
+      game_loop do
+        m = dial.level
+        dial.level = dial.level + 3
+      end
+    end
+  end
+
+  def test_a_hash_instance_variable_counted_at_known_keys
+    agrees("@counters[side] += 1", reads: %i[n], passes: 3) do
+      tally = AnswerTally.new
+      n = 0
+      game_loop do
+        tally.count
+        n = tally.left
+      end
+    end
+  end
+
+  def test_an_array_instance_variable_counted_at_a_worked_out_index
+    agrees("@counts[at] += 1", reads: %i[n], passes: 3) do
+      slots = AnswerSlots.new
+      at = 2
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        slots.bump(at)
+        n = slots.first
+      end
+    end
+  end
+
+  def test_a_struct_field_game_code_changes
+    known_gap("point.x += 1 on a Struct kept in a local",
+              gap: "A Struct's field that game code changes stays Ruby's unless game_variables names it",
+              reads: %i[n], passes: 3) do
+      point = AnswerPoint.new(1, 2, 0)
+      n = 0
+      game_loop do
+        point.x += 1
+        n = point.x
+      end
+    end
+  end
+
+  def test_a_struct_field_read_before_game_code_changes_it
+    known_gap("n = point.x, then point.x += 1",
+              gap: "A Struct's field that game code changes stays Ruby's unless game_variables names it",
+              reads: %i[n], passes: 3) do
+      point = AnswerPoint.new(1, 2, 0)
+      n = 0
+      game_loop do
+        n = point.x
+        point.x += 1
+      end
+    end
+  end
+
+  def test_the_game_blocks_own_instance_variable
+    agrees("@score += 2 in the game block", reads: %i[s], passes: 3) do
+      @score = 0
+      s = 0
+      game_loop do
+        s = @score
+        @score += 2
+      end
+    end
+  end
+
+  def test_one_instance_variable_given_another_then_the_other_changed
+    agrees("@a = @b, then @b += 1", reads: %i[x y], passes: 3) do
+      pair = AnswerPair.new
+      x = y = 0
+      game_loop do
+        pair.step
+        x = pair.a
+        y = pair.b
+      end
+    end
+  end
+
+  def test_an_instance_variable_set_back_under_a_test_the_game_makes
+    agrees("@n = 0 if reset, then @n += 1", reads: %i[m], passes: 3) do
+      counter = AnswerReset.new
+      k = 0
+      m = 0
+      game_loop do
+        k += 1
+        counter.step(k == 100)
+        m = counter.n
+      end
+    end
+  end
+
+  def test_an_instance_variable_set_back_in_a_routine_nothing_calls
+    agrees("@n = 0 in a func never called, @n += 1 in the loop", reads: %i[m], passes: 3) do
+      setter = AnswerSetter.new
+      m = 0
+      func(:answer_setter_reset) { setter.reset }
+      game_loop do
+        setter.step
+        m = setter.n
+      end
+    end
+  end
+
+  # The set comes before the read in one routine, but under a test the game makes: Ruby's number
+  # after it is the one only some passes give.
+  def test_a_number_set_outright_by_its_own_method_under_a_game_test_then_read_is_refused
+    refused("r.reset if k == 2, then m = r.n", /game_variables :n/) do
+      r = AnswerResetOutright.new
+      k = 0
+      m = 0
+      game_loop do
+        k += 1
+        r.reset if k == 2
+        m = r.n
+      end
+    end
+  end
+
+  def test_a_number_read_then_set_outright_by_its_own_method_under_a_game_test_is_refused
+    refused("m = r.n, then r.reset if k == 2", /game_variables :n/) do
+      r = AnswerResetOutright.new
+      k = 0
+      m = 0
+      game_loop do
+        k += 1
+        m = r.n
+        r.reset if k == 2
+      end
+    end
+  end
+
+  # `@lives = nil` to start: the loop counting it down is read before the routine that gives it
+  # its number.
+  def test_lives_that_start_as_nothing_counted_down_before_their_number_is_refused
+    refused("@lives -= 1 while @lives holds nil", /`@lives` holds `nil`/) do
+      lives = AnswerLives.new
+      m = 0
+      k = 0
+      func(:answer_lives_start) { lives.start }
+      game_loop do
+        k += 1
+        call :answer_lives_start if k == 1
+        lives.lose
+        m = lives.lives
+      end
+    end
+  end
+
+  # ...and with the routine giving the number read first, in another routine than the count.
+  def test_lives_given_a_number_in_one_routine_and_counted_in_another_are_refused
+    refused("start in one func, lose and read in another", /game_variables :lives/) do
+      lives = AnswerLives.new
+      m = 0
+      k = 0
+      func(:answer_lives_begin) { lives.start }
+      func(:answer_lives_tick) do
+        lives.lose
+        m = lives.lives
+      end
+      game_loop do
+        k += 1
+        call :answer_lives_begin if k == 1
+        call :answer_lives_tick
+      end
+    end
+  end
+
+  def test_a_fraction_asked_a_verb_a_game_number_does_not_answer_is_refused
+    refused("@x.floor after @x += 0.5", /does not answer `floor`/) do
+      fraction = AnswerFraction.new
+      w = 0
+      game_loop do
+        fraction.step
+        w = fraction.whole
+      end
+    end
+  end
+
+  def test_an_object_of_a_class_with_no_name
+    agrees("Class.new(AnswerTicker)", reads: %i[a], passes: 3) do
+      ticker = Class.new(AnswerTicker).new
+      a = 0
+      game_loop do
+        a = ticker.shown
+        ticker.tick
+      end
+    end
+  end
+
+  def test_setting_up_runs_once
+    agrees("a part counting itself made", reads: %i[i h], passes: 3) do
+      named = AnswerNamed.new(AnswerMadeCount.new)
+      i = h = 0
+      game_loop do
+        named.hit
+        i = named.id
+        h = named.hits
+      end
+    end
+  end
+
+  # A part made outside the game's block, as one kept in a constant of a game file is, and the game
+  # built twice, as a build for two consoles does: each build plays it from where Ruby left it.
+  def test_a_part_made_outside_the_game_built_twice
+    ticker = AnswerTicker.new
+    game = proc do
+      a = 0
+      game_loop do
+        a = ticker.shown
+        ticker.tick
+      end
+    end
+
+    first = game_player.run(built_program(&game), frames: 3)[:a]
+    second = game_player.run(built_program(&game), frames: 3)[:a]
+
+    assert_equal [20, 20], [first, second]
+  end
+
+  # A build stopped by an error part way through game code leaves no builder recording: plain Ruby
+  # run after it answers as Ruby does.
+  def test_plain_ruby_after_a_build_that_failed
+    assert_raises(ArgumentError) do
+      built_program do
+        k = 0
+        game_loop do
+          k += 1
+          raise ArgumentError, "stopped inside a game test" if k == 3
+        end
+      end
+    end
+    ticker = AnswerTicker.new
+    3.times { ticker.tick }
+
+    assert_equal 30, ticker.shown
+  end
+
+  # Two lamps, the second switched first: each keeps the name of the order it was made in, as it
+  # would with `game_variables`, so a save made before still finds each number.
+  def test_objects_of_one_class_are_named_in_the_order_they_were_made
+    player = game_player.run(built_program do
+      first = AnswerLamp.new
+      second = AnswerLamp.new
+      game_loop do
+        second.switch
+        first.lit
+      end
+    end, frames: 1)
+
+    assert_equal [0, 1], [player[:answer_lamp_lit], player[:answer_lamp_lit_2]]
+  end
+
   def test_swap
     agrees("a, b = b, a", reads: %i[a b], passes: 3) do
       a = 3

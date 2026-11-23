@@ -518,6 +518,9 @@ module VBlank
       # left: Ruby routes `& | ^` through #coerce and pointedly does not route `<<` and
       # `>>` that way, so the message names that case.
       def to_int # :nodoc:
+        ruby_number = ruby_start_while_unchanged
+        return ruby_number if ruby_number
+
         raise ArgumentError,
               "Ruby needs a plain whole number here, and this one is worked out as the " \
               "game runs. This usually happens on the right of `<<` or `>>`, so " \
@@ -729,7 +732,16 @@ module VBlank
       # class of the library's and nothing a game wrote.
       UNANSWERED_NUMBER_QUESTIONS = %i[finite? infinite? integer?].freeze # :nodoc:
 
+      # Ruby's number verbs a game's numbers do not answer yet. Each is refused in plain words, for
+      # the same reason.
+      UNANSWERED_NUMBER_VERBS = %i[floor ceil round truncate succ pred divmod ** pow fdiv].freeze # :nodoc:
+
       def method_missing(name, *args, &) # :nodoc:
+        if UNANSWERED_NUMBER_VERBS.include?(name)
+          raise ArgumentError,
+                "A game's number does not answer `#{name}` yet. To keep the whole part of a fraction, use " \
+                "`to_i`. It rounds down.#{at_dsl_line}"
+        end
         return super unless unanswered_number_question?(name)
 
         raise ArgumentError,
@@ -743,7 +755,7 @@ module VBlank
       end
 
       def respond_to_missing?(name, include_private = false) # :nodoc:
-        return false if unanswered_number_question?(name)
+        return false if unanswered_number_question?(name) || UNANSWERED_NUMBER_VERBS.include?(name)
 
         super
       end
@@ -913,6 +925,29 @@ module VBlank
       # was not made by one of the five words above straight from a variable or a pool field.
       attr_reader :bang_spelling # :nodoc:
 
+      # --- a variable an instance variable holds (PlainRuby::InstanceVariables) ---
+
+      # This variable was made for an instance variable that held +start+ as Ruby's number.
+      def note_ruby_start(start) = @ruby_start = start # :nodoc:
+
+      # The number Ruby held where this variable was made for an instance variable, or nil for any
+      # other variable.
+      attr_reader :ruby_start # :nodoc:
+
+      # Was this variable made by +builder+? A part kept outside a game's block outlives the build
+      # that made its variables (InstanceVariables.ruby_number_of_stale).
+      def made_by?(builder) = @builder.equal?(builder) # :nodoc:
+
+      # Ruby needs a plain whole number from an instance variable's variable while the game is
+      # built (`Array.new(part.size)`). Until something changes the variable it holds the number
+      # Ruby gave it, so that is the answer, and a change after this is refused (#mutate).
+      def ruby_start_while_unchanged # :nodoc:
+        return unless @ruby_start.is_a?(Integer) && !@changed_from_ruby_start
+
+        @ruby_start_used_at ||= Messages::AuthorSource.author_file_and_line
+        @ruby_start
+      end
+
       private
 
       # The velocity is changed, so it must name somewhere a number is kept: a variable, or a
@@ -1081,8 +1116,25 @@ module VBlank
       def mutate
         raise ArgumentError, NOT_A_VARIABLE unless @name
 
+        note_changed_from_ruby_start
         yield
         self
+      end
+
+      # A variable made for an instance variable (#note_ruby_start) is changed: refused where Ruby
+      # used its number while building (#ruby_start_while_unchanged), since Ruby used the number
+      # it held before this change.
+      def note_changed_from_ruby_start
+        return if @ruby_start.nil?
+
+        if @ruby_start_used_at
+          raise ArgumentError,
+                "This line changes a number the game keeps, and Ruby used that number while it built the game " \
+                "(at #{@ruby_start_used_at}). There Ruby used #{@ruby_start}, the number it had before the game " \
+                "changed it. To fix this, keep the number Ruby uses in another instance variable, which the game " \
+                "does not change.#{at_dsl_line}"
+        end
+        @changed_from_ruby_start = true
       end
 
       # The IR node for an operand — the shared coercion (see Value.node_for).

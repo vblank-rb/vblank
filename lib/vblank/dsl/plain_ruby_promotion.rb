@@ -233,16 +233,17 @@ module VBlank
             Answer.new(:changed_under_game_test)
           end
 
-          # Is +owner+'s instance variable +label+ one the game names (`game_variables`), changed
-          # under a test the game makes (Writes.promote_place)? A named one uses its own game
-          # variable (:named_instance_variable), and one still holding nil is left as it is
+          # Is +owner+'s instance variable +label+ one the game follows (`game_variables`, or
+          # InstanceVariables.mark_changing; Uses#followed?), changed under a test the game makes
+          # (Writes.promote_place)? A followed one uses its own game variable
+          # (:named_instance_variable), and one still holding nil is left as it is
           # (:named_still_nil): the line that sets it may be one this build skips, under a test
           # decided while building, and then no game code reads or writes it. Only while game code
           # is recorded is any instance variable followed (:setting_up).
           def instance_variable(owner, current, label)
             uses = InstanceVariables.uses_while_recording(owner)
             return Answer.new(:setting_up) unless uses
-            return Answer.new(:not_named) unless uses.named?(owner, label)
+            return Answer.new(:not_named) unless uses.followed?(owner, label, current)
 
             Answer.new(current.nil? ? :named_still_nil : :named_instance_variable)
           end

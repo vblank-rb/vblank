@@ -67,6 +67,11 @@ module VBlank
 
       def counted_loops = @counted_loops || []
 
+      # The numbers kept in instance variables (see Diagnostics::InstanceVariableNumbers).
+      attr_writer :instance_variable_numbers
+
+      def instance_variable_numbers = @instance_variable_numbers || []
+
       # +banks+ is the linked cartridge, bank 0 first, each 16K. +rumble+ marks that it carries a motor.
       def initialize(banks, title:, save_bytes: 0, clock: false, rumble: false, built: nil)
         @built = built
@@ -135,10 +140,12 @@ module VBlank
         when :human
           Diagnostics::HiddenVariables.render(self, IR::Printer.for(out))
           Diagnostics::CountedLoops.render(self, IR::Printer.for(out))
+          Diagnostics::InstanceVariableNumbers.render(self, IR::Printer.for(out))
           Diagnostics::GBCProfiler.render(result, out: out)
         when :json
           out.puts(JSON.generate(result.to_h.merge(Diagnostics::HiddenVariables.as_json(self))
-                                            .merge(Diagnostics::CountedLoops.as_json(self))))
+                                            .merge(Diagnostics::CountedLoops.as_json(self))
+                                            .merge(Diagnostics::InstanceVariableNumbers.as_json(self))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result

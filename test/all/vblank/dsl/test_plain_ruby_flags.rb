@@ -5,8 +5,9 @@ require "test_helper"
 VBlank.require_game_file "../../../plain_ruby_game_parts"
 
 # A plain `true` or `false` instance variable in game code: a flag the build keeps for itself is
-# left alone, and one whose test decides what the game does as it plays, while game code changes
-# it, is refused naming `game_variables`. The parts are in test/plain_ruby_game_parts.rb.
+# left alone; one the source shows game code changes is the game's; and one whose test decides
+# what the game does as it plays, changed where the source cannot show it, is refused naming
+# `game_variables`. The parts are in test/plain_ruby_game_parts.rb.
 class TestPlainRubyFlags < Minitest::Test
   Refused = VBlank::DSL::PlainRuby::Refused
 
@@ -56,70 +57,68 @@ class TestPlainRubyFlags < Minitest::Test
     assert_equal 3, game_player.run(builder.program, frames: 3)[:seen]
   end
 
-  # Flags the game keeps, named nowhere.
+  # Flags the game keeps, named nowhere: each is given a value in a routine's block, so it is the
+  # game's from the first line of game code that tests or sets it, and plays as Ruby would.
 
-  def test_an_unnamed_flag_one_routine_sets_and_another_tests_is_refused
-    error = assert_raises(Refused) do
-      played(UnnamedDoorOpenedFirstPart, :door_opened_first_open, :door_opened_first_test)
-    end
+  def test_an_unnamed_flag_one_routine_sets_and_another_tests_plays_as_ruby
+    player = played(UnnamedDoorOpenedFirstPart, :door_opened_first_open, :door_opened_first_test)
 
-    assert_match(/`@open` is changed while the game plays/, error.message)
-    assert_match(/game_variables :open` to UnnamedDoorOpenedFirstPart/, error.message)
-    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+    assert_equal 3, player[:door_opened_first_seen]
   end
 
-  def test_an_unnamed_flag_one_routine_tests_and_another_sets_is_refused
-    error = assert_raises(Refused) do
-      played(UnnamedDoorTestedFirstPart, :door_tested_first_test, :door_tested_first_open)
-    end
+  def test_an_unnamed_flag_one_routine_tests_and_another_sets_plays_as_ruby
+    player = played(UnnamedDoorTestedFirstPart, :door_tested_first_test, :door_tested_first_open)
 
-    assert_match(/game_variables :open` to UnnamedDoorTestedFirstPart/, error.message)
+    assert_equal 2, player[:door_tested_first_seen]
   end
 
-  def test_an_unnamed_flag_tested_around_game_code_then_set_in_one_routine_is_refused
-    error = assert_raises(Refused) { played(UnnamedDoorOneRoutinePart, :door_one_routine_tick) }
-
-    assert_match(/game_variables :open` to UnnamedDoorOneRoutinePart/, error.message)
-    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+  def test_an_unnamed_flag_tested_around_game_code_then_set_in_one_routine_plays_as_ruby
+    assert_equal 2, played(UnnamedDoorOneRoutinePart, :door_one_routine_tick)[:door_one_routine_seen]
   end
 
-  def test_an_unnamed_flag_whose_run_side_holds_game_code_and_is_set_in_that_routine_is_refused
-    error = assert_raises(Refused) { played(UnnamedDoorOneRoutineRunSidePart, :door_one_routine_run_tick) }
-
-    assert_match(/game_variables :open` to UnnamedDoorOneRoutineRunSidePart/, error.message)
+  def test_an_unnamed_flag_whose_run_side_holds_game_code_and_is_set_in_that_routine_plays_as_ruby
+    assert_equal 1, played(UnnamedDoorOneRoutineRunSidePart, :door_one_routine_run_tick)[:door_one_routine_run_seen]
   end
 
-  def test_a_flag_of_the_game_block_one_routine_sets_and_the_loop_tests_is_refused
-    error = assert_raises(Refused) do
-      built do
-        @open = false
-        seen = var :seen, 0
-        func(:open_door) { @open = true }
-        game_loop do
-          call :open_door if pressed(:a)
-          seen += 1 if @open
-        end
+  def test_a_flag_of_the_game_block_one_routine_sets_and_the_loop_tests_plays_as_ruby
+    builder = built do
+      @open = false
+      passes = var :passes, 0
+      seen = var :seen, 0
+      func(:open_door) { @open = true }
+      game_loop do
+        passes += 1
+        call :open_door if passes == 2
+        seen += 1 if @open
       end
     end
 
-    assert_includes error.message, "`game_variables :open` to the game block"
-    assert_includes error.message, "`true` or `false`"
-    assert_match(/\(at test_plain_ruby_flags\.rb:\d+\)/, error.message)
+    assert_equal 2, game_player.run(builder.program, frames: 3)[:seen]
   end
 
-  def test_a_flag_of_the_game_block_tested_then_set_in_the_loop_is_refused
-    error = assert_raises(Refused) do
-      built do
-        @open = false
-        seen = var :seen, 0
-        game_loop do
-          seen += 1 if @open
-          @open = true
-        end
+  def test_a_flag_of_the_game_block_tested_then_set_in_the_loop_plays_as_ruby
+    builder = built do
+      @open = false
+      seen = var :seen, 0
+      game_loop do
+        seen += 1 if @open
+        @open = true
       end
     end
 
-    assert_includes error.message, "`game_variables :open` to the game block"
+    assert_equal 2, game_player.run(builder.program, frames: 3)[:seen]
+  end
+
+  # A flag set outright in a method, which the source does not show to be game code, and tested
+  # in another routine: the build cannot tell the method is game code until it records it, so it
+  # stops and names the fix.
+  def test_an_unnamed_flag_set_in_a_method_and_tested_in_another_routine_is_refused
+    error = assert_raises(Refused) do
+      played(UnnamedLatchPart, :latch_test, :latch_set)
+    end
+
+    assert_match(/`@set` is changed while the game plays/, error.message)
+    assert_match(/game_variables :set` to UnnamedLatchPart/, error.message)
   end
 
   def test_a_flag_left_nil_one_routine_tests_and_another_sets_is_told_to_start_as_false

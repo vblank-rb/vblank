@@ -1023,6 +1023,7 @@ module VBlank
           printer.puts("")
           HiddenVariables.render(rom, printer)
           CountedLoops.render(rom, printer)
+          InstanceVariableNumbers.render(rom, printer)
         end
         printer.puts("where your frames went, measured over #{result.frames} frames#{held_keys_suffix(result.keys)}")
         # Which moment this is of, said out loud: the same cartridge measured on its title screen
