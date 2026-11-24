@@ -114,8 +114,11 @@ module VBlank
             # The layers the game can be seen through, and the number rg_screen.c knows each by.
             @see_through = SeeThrough.layers(@program)
             @see_through_numbers = @see_through.each_with_index.to_h { |layer, number| [layer.name, number] }
-            # By name, the furthest forward anything of that name was declared (see #fade_place).
-            @fade_places = (@stacking.scenery + @stacking.objects).group_by(&:name).transform_values do |named|
+            # By name, the furthest forward anything of that name was declared (see #fade_place),
+            # leaving out a sprite that changes layer: its place is the layer it is in as it is
+            # drawn (#fade_place_drawn_at).
+            settled = @stacking.objects.reject { |obj| changes_layer?(obj) }
+            @fade_places = (@stacking.scenery + settled).group_by(&:name).transform_values do |named|
               named.filter_map { |thing| @stacking.stack.index(thing.layer) }.max || NO_LAYER
             end
             # The patches of picture saved under sprites on a painted screen, as the program
@@ -191,7 +194,7 @@ module VBlank
           # --- the art, for rg_screen.c ---
 
           def picture_data
-            [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, sprites_in_front_array,
+            [*image_arrays, *background_arrays, see_through_array, sprites_in_front_array,
              *sprite_block_arrays,
              *run_arrays, image_pieces_array,
              runtime_array("picture_sizes", "int32_t",
@@ -749,19 +752,14 @@ module VBlank
 
           # Each see-through layer as rg_screen.h's three flags (Reference#fixed_see_through?,
           # SeeThroughLayer#split, and the half of Reference#layer_has_anything? that asks
-          # about sprites), and for every sprite the see-through layer it was declared in.
-          def see_through_arrays
+          # about sprites, in any layer it can be in). Which of them a sprite is in is handed over
+          # as it is drawn (#see_through_drawn_at).
+          def see_through_array
             flags = @see_through.flat_map do |layer|
               [layer.shows.kind == :int && layer.behind.kind == :int, layer.split,
-               @objects.each_value.any? { |obj| obj.layer == layer.name }].map { |flag| flag ? 1 : 0 }
+               @objects.each_value.any? { |obj| layers_drawn_at(obj).include?(layer.name) }].map { |flag| flag ? 1 : 0 }
             end
-            [runtime_array("see_through", "int32_t", flags),
-             runtime_array("sprite_see_through", "int32_t", @objects.each_value.map { |obj| see_through_number(obj) })]
-          end
-
-          # For every sprite, whether a fade placed in the stack reaches it (see #fade_place).
-          def sprite_fade_places_array
-            runtime_array("sprite_fade_places", "int32_t", @objects.each_value.map { |obj| fade_place(obj) })
+            runtime_array("see_through", "int32_t", flags)
           end
 
           # Each sprite by its number: 1 for one drawn in front of the cells in front (Nodes::Object#in_front).
@@ -784,10 +782,10 @@ module VBlank
           # place given here.
           def fade_place(thing) = @fade_places.fetch(thing.name, NO_LAYER)
 
-          # Reference#see_through_layer_of: the see-through layer a background or a sprite was
-          # declared in, by its number, or SOLID. The interpreter asks by name, and a name is
-          # first the last background declared by it, so two backgrounds of one name, or a sprite
-          # named like a background, are both drawn as that background's layer is.
+          # Reference#see_through_layer_of: the see-through layer a background was declared in,
+          # by its number, or SOLID. The interpreter asks by name, and a name is first the last
+          # background declared by it, so two backgrounds of one name are both drawn as that
+          # background's layer is. A sprite is asked by the layer it is in (#see_through_drawn_at).
           def see_through_number(thing)
             @see_through_numbers.fetch(@last_declared.fetch(thing.name, thing).layer, SOLID)
           end
@@ -1326,7 +1324,8 @@ module VBlank
           def sprite_placement(obj)
             pose = local_name("pose")
             in_range = call("rg_both", call("rg_ge", pose, Statements::Int.new(0)), call("rg_lt", pose, Statements::Int.new(obj.poses.length)))
-            placed = [sprite_number(obj), picture_drawn(obj, pose), value(obj.x), value(obj.y), level_drawn_at(obj)]
+            placed = [sprite_number(obj), picture_drawn(obj, pose), value(obj.x), value(obj.y), level_drawn_at(obj),
+                      see_through_drawn_at(obj), fade_place_drawn_at(obj)]
             add = if turns_or_resizes?(obj)
                     eval_call("rg_objects_add_turned", *placed, value(obj.angle), value(obj.scale),
                               yes_or_no(!constant?(obj.scale, Build::SCALE_ONE)))
@@ -1354,6 +1353,40 @@ module VBlank
             pick = call("rg_place_of_choice", variable(obj.layer_pick), Statements::Int.new(levels.length - 1))
             Statements::Index.new(drawing_array("levels", "int32_t", levels), pick)
           end
+
+          # Reference#set_see_through_for, for a sprite: the see-through layer it is in now, by its
+          # number, or SOLID. One that can be put in other layers has a number for each, picked as
+          # its level is (#level_drawn_at).
+          def see_through_drawn_at(obj)
+            pick_by_layer(obj, layers_drawn_at(obj).map { |layer| @see_through_numbers.fetch(layer, SOLID) }, "see_through")
+          end
+
+          # Reference#set_blend_for, for a sprite: the furthest forward a placed fade's layer can be
+          # and still leave it as drawn (#fade_place). One that can be put in other layers is left
+          # as drawn by the layer it is in now (Reference#kept_by_layer?), or by anything else of
+          # its name that is kept.
+          def fade_place_drawn_at(obj)
+            return Statements::Int.new(fade_place(obj)) unless changes_layer?(obj)
+
+            others = fade_place(obj)
+            pick_by_layer(obj, layers_drawn_at(obj).map { |layer| [stack_place(layer), others].max }, "fade_places")
+          end
+
+          # The layers a sprite can be in, in the order its levels are counted: the one it was
+          # declared in, then each it can be put in (Stacking.levels_of).
+          def layers_drawn_at(obj) = [obj.layer, *obj.layers]
+
+          # The one of +by_layer+ (a number for each of #layers_drawn_at) for the layer +obj+ is in
+          # now, picked as #level_drawn_at picks its level.
+          def pick_by_layer(obj, by_layer, what)
+            return Statements::Int.new(by_layer.first) if by_layer.uniq.one?
+
+            pick = call("rg_place_of_choice", variable(obj.layer_pick), Statements::Int.new(by_layer.length - 1))
+            Statements::Index.new(drawing_array(what, "int32_t", by_layer), pick)
+          end
+
+          # Can the game put +obj+ in another layer as it runs (`put_in_layer`)?
+          def changes_layer?(obj) = !obj.layers.nil? && !obj.layers.empty?
 
           # Which picture a sprite showing pose number +pose+ (one of its poses, already checked)
           # is drawn from, in the colors it is drawn with now. Its pictures are a row of poses in

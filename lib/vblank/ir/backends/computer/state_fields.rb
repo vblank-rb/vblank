@@ -47,7 +47,7 @@ module VBlank
 
           # How many numbers a runtime writes for one of each thing below: the runtimes' layouts.
           BACKGROUND_NUMBERS = 21 # one background in "tiled.backgrounds"
-          PLACED_SPRITE_NUMBERS = 10 # one sprite in "sprites.drawing" and "sprites.kept"
+          PLACED_SPRITE_NUMBERS = 12 # one sprite in "sprites.drawing" and "sprites.kept"
           LOUDNESS_NUMBERS = 4 # a voice's loudness: now, samples a step holds, samples left, swelling
           SOUND_NUMBERS = 3 + 4 # the sound's carry, slide clock and waveform, and a speaker for each of four voices
           SQUARE_VOICES = 2 # the square voices

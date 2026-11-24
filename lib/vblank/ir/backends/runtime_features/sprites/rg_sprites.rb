@@ -23,8 +23,10 @@ end
 # One sprite on screen this frame. One that turns or resizes carries its angle and its size for
 # this frame, and whether its size ever changes. One that loses slices to a crowded line keeps them
 # as +cuts+, three numbers a slice: the line, the piece and its first column left out
-# (#rg_mark_slices_left_out).
-RgPlaced = Struct.new(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cuts)
+# (#rg_mark_slices_left_out). Each carries the see-through layer it is in and the furthest forward a
+# placed fade's layer can be and still leave it as drawn, as it was put on screen (rg_sprites.c's
+# placed_object).
+RgPlaced = Struct.new(:sprite, :image, :x, :y, :level, :see_through, :fade_place, :turned, :angle, :size, :resizes, :cuts)
 
 
 RG_NO_PLACE = -1
@@ -33,8 +35,8 @@ RG_TURNED_BOX_LINES = 256
 
 # Reference#set_see_through_for, for a sprite: the same, and what is painted is a sprite's, so it
 # is mixed with the picture as it is with no sprite on it and stays off that picture.
-def rg_mix_as_sprite(sprite)
-  rg_mix_as_layer(@rg_game_sprite_see_through[sprite])
+def rg_mix_as_sprite(placed)
+  rg_mix_as_layer(placed.see_through)
   @rg_painting_sprite = true
 end
 
@@ -503,12 +505,12 @@ def rg_add_placed(placed)
   @rg_drawing << placed
 end
 
-def rg_objects_add(sprite, image, x, y, level)
-  rg_add_placed(RgPlaced.new(sprite, image, x, y, level, false, 0, 0, 0))
+def rg_objects_add(sprite, image, x, y, level, see_through, fade_place)
+  rg_add_placed(RgPlaced.new(sprite, image, x, y, level, see_through, fade_place, false, 0, 0, 0))
 end
 
-def rg_objects_add_turned(sprite, image, x, y, level, angle, size, resizes)
-  rg_add_placed(RgPlaced.new(sprite, image, x, y, level, true, angle, size, resizes))
+def rg_objects_add_turned(sprite, image, x, y, level, see_through, fade_place, angle, size, resizes)
+  rg_add_placed(RgPlaced.new(sprite, image, x, y, level, see_through, fade_place, true, angle, size, resizes))
 end
 
 # The rest of Reference#exec_present_objects. On a picture that is rebuilt whole, the sprites on
@@ -539,7 +541,7 @@ def rg_objects_end
   return if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0
 
   @rg_drawing.each do |placed|
-    rg_mix_as_sprite(placed.sprite)
+    rg_mix_as_sprite(placed)
     rg_draw_placed(placed)
     rg_mix_nothing
     rg_note_drawn_place(placed.sprite, placed.x, placed.y)
@@ -733,8 +735,8 @@ def rg_sprites_paint_level(level)
   @rg_sprite_layer.each do |placed|
     next if placed.level != level
 
-    rg_mix_as_sprite(placed.sprite)
-    rg_fade_unless_left_as_drawn(@rg_game_sprite_fade_places[placed.sprite])
+    rg_mix_as_sprite(placed)
+    rg_fade_unless_left_as_drawn(placed.fade_place)
     rg_paint_kept_sprite(placed)
   end
 end
@@ -744,8 +746,8 @@ def rg_sprites_repaint_ending
   @rg_sprite_layer.each do |placed|
     next if @rg_game_sprites_in_front[placed.sprite].zero?
 
-    rg_mix_as_sprite(placed.sprite)
-    rg_fade_unless_left_as_drawn(@rg_game_sprite_fade_places[placed.sprite])
+    rg_mix_as_sprite(placed)
+    rg_fade_unless_left_as_drawn(placed.fade_place)
     rg_paint_kept_sprite(placed)
   end
 end
@@ -784,8 +786,10 @@ RG_STATE_NOTHING_IN_FRONT = 0x8000 # rg_screen.c's RG_NOTHING_IN_FRONT, which th
 RgSpritesFields = Data.define(:drawn, :kept, :over_picture_up)
 
 # "sprites.drawing" and "sprites.kept", one a sprite: its number, picture, place and level, its
-# turn, and how many slices a crowded line leaves out of it, which follow in the field after.
-RgPlacedSpriteFields = Data.define(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cut_count)
+# turn, how many slices a crowded line leaves out of it, which follow in the field after, its
+# see-through layer and its place for a placed fade.
+RgPlacedSpriteFields = Data.define(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cut_count,
+                                   :see_through, :fade_place)
 
 # The cuts field, one a slice left out: the line, the piece, and its first column left out.
 RgCutFields = Data.define(:line, :piece, :from)
@@ -797,7 +801,8 @@ RgDrawnSpriteFields = Data.define(:drawn, :x, :y)
 def rg_placed_sprite_fields(placed)
   RgPlacedSpriteFields.new(sprite: placed.sprite, image: placed.image, x: placed.x, y: placed.y, level: placed.level,
                     turned: rg_state_flag(placed.turned), angle: placed.angle, size: placed.size,
-                    resizes: rg_state_flag(placed.resizes), cut_count: placed.cuts ? placed.cuts.length / 3 : 0)
+                    resizes: rg_state_flag(placed.resizes), cut_count: placed.cuts ? placed.cuts.length / 3 : 0,
+                    see_through: placed.see_through, fade_place: placed.fade_place)
 end
 
 # The +count+ sprites of +placed+ as field +name+, and the slices left out of them as +cuts_name+;
@@ -819,8 +824,8 @@ def rg_visit_placed_objects(name, cuts_name, placed, count, cuts_before)
 
   placed_fields.map do |fields|
     these = cuts.shift(fields.cut_count).flat_map { |cut| [cut.line, cut.piece, cut.from] }
-    RgPlaced.new(fields.sprite, fields.image, fields.x, fields.y, fields.level, fields.turned != 0, fields.angle, fields.size,
-                 fields.resizes, these.empty? ? nil : these)
+    RgPlaced.new(fields.sprite, fields.image, fields.x, fields.y, fields.level, fields.see_through, fields.fade_place,
+                 fields.turned != 0, fields.angle, fields.size, fields.resizes, these.empty? ? nil : these)
   end
 end
 

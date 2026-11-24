@@ -200,13 +200,8 @@ extern const int32_t rg_game_images[];
 extern const int16_t rg_game_border_pixels[];
 /* RG_MAX_SPRITES, the rows of the sprite tables, is the game's: a row for each sprite it declares
  * (Computer::Picture.sprite_rows), written in rg_console_numbers.h. */
-/* For each sprite, by its number: which see-through layer it was declared in, counting through
- * rg_game_see_through, or RG_SOLID. */
+/* A thing in no see-through layer, where one names its layer by its number in rg_game_see_through. */
 #define RG_SOLID (-1)
-extern const int32_t rg_game_sprite_see_through[];
-/* For each sprite, by its number: the furthest forward a placed fade's layer can be and still
- * leave it as drawn, as RG_BG_FADE_PLACE gives for a background. */
-extern const int32_t rg_game_sprite_fade_places[];
 /* For each sprite, by its number: 1 for one drawn in front of a background's cells in front
  * (Nodes::Object#in_front), painted again once everything else is (rg_sprites.c). */
 extern const int32_t rg_game_sprites_in_front[];
@@ -268,7 +263,7 @@ uint16_t *rg_screen_tile_pixels_to_fill(int32_t count);
  * RG_SEE_THROUGH until the file fills them. Called before anything else asks for the copy. */
 void rg_screen_tile_pixels_room(int32_t total, int32_t held);
 
-/* A layer's place in the stack where a thing named none (RG_BG_FADE_PLACE, rg_game_sprite_fade_places). */
+/* A layer's place in the stack where a thing named none (RG_BG_FADE_PLACE, a sprite's fade_place). */
 #define RG_NO_LAYER (-1)
 
 /* Each run of tiles the game paints from a list is RG_RUN_FIELDS numbers in rg_game_tile_runs. A

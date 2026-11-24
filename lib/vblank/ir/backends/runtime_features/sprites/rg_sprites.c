@@ -13,8 +13,13 @@
 /* The sprites on screen this frame: being set (drawing), and as the last rebuild draws them.
  * One that turns or resizes carries its angle and its size for this frame, and whether its size
  * ever changes. One that loses slices to a crowded line has them listed in left_out, +cut_count+
- * of them from +cut_from+ (mark_slices_left_out). */
-typedef struct { int32_t sprite, image, x, y, level, turned, angle, size, resizes, cut_from, cut_count; } placed_object;
+ * of them from +cut_from+ (mark_slices_left_out). Each carries the see-through layer it is in, by
+ * its number in rg_game_see_through or RG_SOLID, and the furthest forward a placed fade's layer
+ * can be and still leave it as drawn, as RG_BG_FADE_PLACE gives for a background: both of the
+ * layer it is in as it is put on screen, which a sprite the game moves with put_in_layer changes. */
+typedef struct {
+  int32_t sprite, image, x, y, level, turned, angle, size, resizes, cut_from, cut_count, see_through, fade_place;
+} placed_object;
 static placed_object drawing[RG_MAX_SPRITES], sprite_layer[RG_MAX_SPRITES];
 static int32_t drawing_count, sprite_layer_count;
 
@@ -32,8 +37,8 @@ static int32_t over_picture_up;
 
 /* Reference#set_see_through_for, for a sprite: the same, and what is painted is a sprite's, so
  * it is mixed with the picture as it is with no sprite on it and stays off that picture. */
-static void mix_as_sprite(int32_t sprite) {
-  mix_as_layer(rg_game_sprite_see_through[sprite]);
+static void mix_as_sprite(const placed_object *placed) {
+  mix_as_layer(placed->see_through);
   painting_sprite = 1;
 }
 
@@ -397,13 +402,16 @@ static void add_placed(placed_object placed) {
   drawing[drawing_count++] = placed;
 }
 
-void rg_objects_add(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level) {
-  add_placed((placed_object){.sprite = sprite, .image = image, .x = x, .y = y, .level = level});
+void rg_objects_add(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t see_through,
+                    int32_t fade_place) {
+  add_placed((placed_object){.sprite = sprite, .image = image, .x = x, .y = y, .level = level,
+                             .see_through = see_through, .fade_place = fade_place});
 }
 
-void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t angle,
-                           int32_t size, int32_t resizes) {
+void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t see_through,
+                           int32_t fade_place, int32_t angle, int32_t size, int32_t resizes) {
   add_placed((placed_object){.sprite = sprite, .image = image, .x = x, .y = y, .level = level,
+                             .see_through = see_through, .fade_place = fade_place,
                              .turned = 1, .angle = angle, .size = size, .resizes = resizes});
 }
 
@@ -439,7 +447,7 @@ void rg_objects_end(void) {
   /* The sprite layer is off while a painted screen is up in a game with screens drawn from tiles. */
   if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE]) return;
   for (int32_t i = 0; i < drawing_count; i++) {
-    mix_as_sprite(drawing[i].sprite);
+    mix_as_sprite(&drawing[i]);
     draw_placed(&drawing[i]);
     mix_nothing();
     last_drawn[drawing[i].sprite] = (drawn_place){1, drawing[i].x, drawing[i].y};
@@ -604,8 +612,8 @@ static void paint_kept_sprite(const placed_object *placed) {
 static void rg_sprites_paint_level(int32_t level) {
   for (int32_t i = 0; i < sprite_layer_count; i++) {
     if (sprite_layer[i].level != level) continue;
-    mix_as_sprite(sprite_layer[i].sprite);
-    fade_unless_left_as_drawn(rg_game_sprite_fade_places[sprite_layer[i].sprite]);
+    mix_as_sprite(&sprite_layer[i]);
+    fade_unless_left_as_drawn(sprite_layer[i].fade_place);
     paint_kept_sprite(&sprite_layer[i]);
   }
 }
@@ -615,8 +623,8 @@ static void rg_sprites_paint_level(int32_t level) {
 static void rg_sprites_repaint_ending(void) {
   for (int32_t i = 0; i < sprite_layer_count; i++) {
     if (!rg_game_sprites_in_front[sprite_layer[i].sprite]) continue;
-    mix_as_sprite(sprite_layer[i].sprite);
-    fade_unless_left_as_drawn(rg_game_sprite_fade_places[sprite_layer[i].sprite]);
+    mix_as_sprite(&sprite_layer[i]);
+    fade_unless_left_as_drawn(sprite_layer[i].fade_place);
     paint_kept_sprite(&sprite_layer[i]);
   }
 }
@@ -653,8 +661,9 @@ static const uint16_t *rg_sprites_front_layer(void) { return over_picture_up ? o
  * leaves out of it, which follow in the field after, a line, a piece and its first column left out
  * each. */
 enum {
-  PLACED_STATE_NUMBERS = 10, PLACED_SPRITE = 0, PLACED_IMAGE = 1, PLACED_X = 2, PLACED_Y = 3, PLACED_LEVEL = 4,
-  PLACED_TURNED = 5, PLACED_ANGLE = 6, PLACED_SIZE = 7, PLACED_RESIZES = 8, PLACED_CUT_COUNT = 9,
+  PLACED_STATE_NUMBERS = 12, PLACED_SPRITE = 0, PLACED_IMAGE = 1, PLACED_X = 2, PLACED_Y = 3, PLACED_LEVEL = 4,
+  PLACED_TURNED = 5, PLACED_ANGLE = 6, PLACED_SIZE = 7, PLACED_RESIZES = 8, PLACED_CUT_COUNT = 9, PLACED_SEE_THROUGH = 10,
+  PLACED_FADE_PLACE = 11,
   CUT_NUMBERS = 3,          /* the line, the piece, and its first column left out */
   DRAWN_PLACE_NUMBERS = 3,  /* whether drawn, and where */
 };
@@ -668,7 +677,7 @@ static void visit_placed_objects(const char *name, const char *cuts_name, placed
   for (int32_t i = 0; !reading && i < count; i++) {
     const placed_object *p = &placed[i];
     int64_t kept[PLACED_STATE_NUMBERS] = {p->sprite, p->image, p->x, p->y, p->level, p->turned, p->angle, p->size, p->resizes,
-                                          p->cut_count};
+                                          p->cut_count, p->see_through, p->fade_place};
     memcpy(numbers + (int64_t)i * PLACED_STATE_NUMBERS, kept, sizeof kept);
   }
   rg_state_numbers(name, numbers, count * PLACED_STATE_NUMBERS);
@@ -697,7 +706,8 @@ static void visit_placed_objects(const char *name, const char *cuts_name, placed
     const int64_t *n = numbers + (int64_t)i * PLACED_STATE_NUMBERS;
     placed[i] = (placed_object){(int32_t)n[PLACED_SPRITE], (int32_t)n[PLACED_IMAGE], (int32_t)n[PLACED_X], (int32_t)n[PLACED_Y],
                                 (int32_t)n[PLACED_LEVEL], (int32_t)n[PLACED_TURNED], (int32_t)n[PLACED_ANGLE],
-                                (int32_t)n[PLACED_SIZE], (int32_t)n[PLACED_RESIZES], left_out_count, (int32_t)n[PLACED_CUT_COUNT]};
+                                (int32_t)n[PLACED_SIZE], (int32_t)n[PLACED_RESIZES], left_out_count, (int32_t)n[PLACED_CUT_COUNT],
+                                (int32_t)n[PLACED_SEE_THROUGH], (int32_t)n[PLACED_FADE_PLACE]};
     for (int64_t k = 0; k < n[PLACED_CUT_COUNT]; k++, at += CUT_NUMBERS)
       left_out[left_out_count++] = (left_out_piece){(int32_t)cuts[at], (int32_t)cuts[at + 1], (int32_t)cuts[at + 2]};
   }

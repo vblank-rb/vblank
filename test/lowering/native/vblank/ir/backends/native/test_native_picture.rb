@@ -1708,8 +1708,8 @@ class TestNativePicture < Minitest::Test
 
   # The line falling in the middle of the stack, with no scenery at all: the backdrop and the
   # sprite behind the line fade, and the sprite in the line's own layer and the one in front of
-  # it do not. A sprite put in the front layer as the game runs is still reached, since the line
-  # goes by the layer a thing was declared in. Then the fade is placed under the front layer
+  # it do not. A sprite put in the front layer as the game runs is left alone, since the line
+  # goes by the layer a thing is in now. Then the fade is placed under the front layer
   # instead, and reaches the middle one too.
   def test_a_fade_placed_under_a_middle_layer_over_the_bare_backdrop
     block = "########\n" * 8
@@ -1744,7 +1744,7 @@ class TestNativePicture < Minitest::Test
     assert_equal 31 | (15 << 5) | (15 << 10), at.(under_middle, 24, 24), "and so should the sprite behind the line"
     assert_equal Color.resolve(:green), at.(under_middle, 64, 24), "the sprite in the line's own layer is as drawn"
     assert_equal Color.resolve(:blue), at.(under_middle, 104, 24), "and so is the one in front of it"
-    refute_equal Color.resolve(:orange), at.(under_middle, 144, 24), "one declared behind the line fades wherever it is put"
+    assert_equal Color.resolve(:orange), at.(under_middle, 144, 24), "one put in front of the line is as drawn, wherever it was declared"
     assert_equal 15 | (31 << 5) | (15 << 10), at.(moments.last, 64, 24), "under the front layer the middle sprite fades too"
     assert_equal Color.resolve(:blue), at.(moments.last, 104, 24), "and the front one still does not"
   end

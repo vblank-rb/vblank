@@ -11,7 +11,7 @@ void rg_screen_fade(int32_t toward_white, int32_t steps, int32_t walked);
  * everything in front of it are left as drawn. +layer_place+ is how far forward that layer is
  * among the layers the game declared, or RG_NO_LAYER when it is none of them, and then
  * everything fades. Each thing gives how far forward such a layer can be and still leave it as
- * drawn (RG_BG_FADE_PLACE, rg_game_sprite_fade_places). */
+ * drawn (RG_BG_FADE_PLACE, a sprite's fade_place). */
 void rg_screen_fade_under(int32_t layer_place, int32_t toward_white, int32_t steps, int32_t walked);
 /* A game whose light takes turns with a fade placed in the stack calls this as each frame ends,
  * with the light's switch: a scene the light is on in (+on+ not 0) takes such a fade off. */

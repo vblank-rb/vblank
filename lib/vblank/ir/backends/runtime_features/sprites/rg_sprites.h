@@ -23,9 +23,10 @@
 void rg_objects_begin(void);
 void rg_object_take_off(int32_t sprite, int32_t width, int32_t height);
 void rg_object_take_off_turned(int32_t sprite, int32_t image, int32_t resizes);
-void rg_objects_add(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level);
-void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t angle,
-                           int32_t size, int32_t resizes);
+void rg_objects_add(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t see_through,
+                    int32_t fade_place);
+void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t see_through,
+                           int32_t fade_place, int32_t angle, int32_t size, int32_t resizes);
 void rg_objects_end(void);
 
 /* Which sprite of a run the game puts in order is drawn next: the one the number +said+ names of

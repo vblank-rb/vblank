@@ -2621,7 +2621,7 @@ module VBlank
         # showing now, or a sprite anywhere, since whether a sprite is shown is a variable too.
         def layer_has_anything?(layer)
           showing_scenery.any? { |bg| bg.layer == layer.name } ||
-            @objects.each_value.any? { |object| object.layer == layer.name }
+            @objects.each_value.any? { |object| object.layer == layer.name || object.layers&.include?(layer.name) }
         end
 
         # Statements that cannot change the picture or anything it is built from, so a repaint
@@ -3034,10 +3034,10 @@ module VBlank
         # An object that changes layer is placed by the layer it was in as the frame was captured
         # (+layer+, from the snapshot) rather than by +kept+, which holds the names a layer's place in
         # the stack settles once.
-        def set_blend_for(name, kept, layer: nil)
+        def set_blend_for(name, kept, layer: BY_NAME)
           set_see_through_for(name, layer: layer)
           return @screen.set_paint_fade(nil, nil) if kept.nil?
-          return @screen.set_paint_fade(nil, nil) if name && (kept.include?(name) || kept_by_layer?(layer))
+          return @screen.set_paint_fade(nil, nil) if name && (kept.include?(name) || (layer != BY_NAME && kept_by_layer?(layer)))
 
           @screen.set_paint_fade(@fade_placed[1], @fade_placed[2])
         end
@@ -3049,8 +3049,11 @@ module VBlank
         # already in the buffer that the display would not blend with is another sprite,
         # so the screen is told when the thing is a sprite, and mixes it with the scenery it
         # keeps apart instead (see Framebuffer#keep_scenery).
-        def set_see_through_for(name, layer: nil)
-          layer = layer ? @see_through&.[](layer) : see_through_layer_of(name)
+        #
+        # A sprite gives the layer it is in (+layer+, nil for none); a background, the backdrop or a
+        # status bar is asked by +name+ (#see_through_layer_of).
+        def set_see_through_for(name, layer: BY_NAME)
+          layer = layer == BY_NAME ? see_through_layer_of(name) : layer && @see_through&.[](layer)
           @screen.set_paint_see_through(layer && !fading? ? see_through_weights(layer) : nil,
                                         sprite: @objects.key?(name))
         end
@@ -3085,14 +3088,18 @@ module VBlank
           layer.shows.kind == :int && layer.behind.kind == :int
         end
 
-        # The see-through layer the thing called +name+ is in now, or nil. A sprite the game moves with
-        # `put_in_layer` is in the layer it was last put in (#layer_of), not the one it was declared in.
+        # The see-through layer the background called +name+ is in, or nil. A sprite is asked by the
+        # layer it is in (#layer_of), since one the game moves with `put_in_layer` is in the layer it was
+        # last put in, not the one it was declared in.
         def see_through_layer_of(name)
           return nil unless @see_through && name
 
-          node = @bg_by_name[name] || @objects[name]
-          node && @see_through[layer_of(node)]
+          node = @bg_by_name[name]
+          node && @see_through[node.layer]
         end
+
+        # Asked of #set_see_through_for and #set_blend_for: the thing is not a sprite, and is asked by name.
+        BY_NAME = :by_name
 
         # The layer +node+ is in now: for an object that changes layer, the one its pick names, or the
         # one it was declared in for a number that names none (as #object_level reads it); the one it was
@@ -3409,7 +3416,7 @@ module VBlank
         # the scrolling-scene recomposite. +left_out+ is the slices a crowded line leaves out of it
         # (#mark_slices_left_out), or nil.
         def draw_object(obj, image, x, y, left_out: nil)
-          set_see_through_for(obj.name)
+          set_see_through_for(obj.name, layer: layer_of(obj))
           recolor = object_recolor(obj, image)
           if object_transformed?(obj)
             blit_image_transformed(image, x, y, *object_transform(obj), scales: object_scales?(obj), recolor: recolor)
