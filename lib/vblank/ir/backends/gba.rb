@@ -668,7 +668,7 @@ module VBlank
           @screen.each_built_sprite.each_with_object({}) do |(_node, sprite), where|
             next unless sprite.frames
 
-            address = var_addr(sprite.resident_frame_var)
+            address = @primitives.var_addr(sprite.resident_frame_var)
             sprite.pieces.times { |piece| where[sprite.slot + piece] = address }
           end
         end
@@ -911,8 +911,8 @@ module VBlank
 
           @planned_screen = screen
           plan_top_of_quick_memory(program)
-          Faces.words.each { |name| var_addr(name) } if @top.fill_face_at
-          variables_first.each { |name| var_addr(name) }
+          Faces.words.each { |name| @primitives.var_addr(name) } if @top.fill_face_at
+          variables_first.each { |name| @primitives.var_addr(name) }
           @lists_to_roomy = lists_to_roomy
           @scene_blocks = scene_blocks
           @fast_funcs = fast_funcs || choose_fast_funcs(program)
@@ -1079,7 +1079,7 @@ module VBlank
           # The game's stack, before anything is pushed on it, where a timer's handler or a bend
           # worked out a line at a time calls routines, and so needs room under the interrupt
           # stack (see TopOfQuickMemory).
-          emit(ASM.load_immediate(STACK, @top.stack_starts_at)) if @top.stack_moved?
+          @emit.emit(ASM.load_immediate(STACK, @top.stack_starts_at)) if @top.stack_moved?
           # A game that reads frames since power-on has them counted from here, before the setting
           # up below, which can take longer than the first frame (see #emit_arm_frame_counting).
           if counts_from_power_on
@@ -1184,7 +1184,7 @@ module VBlank
           @lists.emit_copy_routine # ...and every list_copy
           emit_swap_routine # copying a scene's own routines in as it takes over
           register_quick_tables
-          emit_data_region
+          @emit.emit_data_region
           emit_save_signature if @uses_save # the marker that maps the save chip (past all code/data)
           # Only now does every variable have a home, so only now is it known where the
           # quick memory's spare room begins — which is where the moved block goes.
@@ -1281,40 +1281,9 @@ module VBlank
           @statements.emit_halt(node)
         end
 
-        # Forwards to @emit — the code buffer + two-pass label/fixup collaborator built
-        # in #initialize. Every other lowering concern in this class calls these as bare
-        # methods (see {Emit}).
-        def emit(bytes) = @emit.emit(bytes)
-        def pos = @emit.pos
-        def place_label(name) = @emit.place_label(name)
-        def gensym = @emit.gensym
-        def emit_branch(kind, target, cond: nil) = @emit.emit_branch(kind, target, cond: cond)
-        def emit_call_through(reg) = @emit.emit_call_through(reg)
-        def emit_data_region = @emit.emit_data_region
-        def emit_load_data_address(reg, name) = @emit.emit_load_data_address(reg, name)
-        def emit_load_label_address(reg, label) = @emit.emit_load_label_address(reg, label)
-        def write_reg16(address, value) = @emit.write_reg16(address, value)
-
         # Forwards to @timers — the hardware-timer collaborator built in #initialize.
         def register_timers(program) = @timers.register_timers(program)
         def irq_timers = @timers.irq_timers
-
-        # Forwards to @primitives — variable addressing, register stores, constant
-        # folding (see {Primitives}).
-        def var_addr(name) = @primitives.var_addr(name)
-        def load_var(reg, name) = @primitives.load_var(reg, name)
-        def store_var(reg, name) = @primitives.store_var(reg, name)
-        def var_offset(name) = @primitives.var_offset(name)
-        def without_var_in_register(name, &block) = @primitives.without_var_in_register(name, &block)
-        def with_var_in_register(name, reg, &block) = @primitives.with_var_in_register(name, reg, &block)
-        def store_word_acc(address) = @primitives.store_word_acc(address)
-        def store_halfword_acc(address) = @primitives.store_halfword_acc(address)
-        def store_word_immediate(value, address) = @primitives.store_word_immediate(value, address)
-        def const_int(node) = @primitives.const_int(node)
-        def constant_ints!(node, **sides) = @primitives.constant_ints!(node, **sides)
-        def emit_row_loop(counter, &block) = @primitives.emit_row_loop(counter, &block)
-        def emit_add_const(rd, rn, imm, scratch) = @primitives.emit_add_const(rd, rn, imm, scratch)
-        def emit_and_const(rd, rn, imm, scratch) = @primitives.emit_and_const(rd, rn, imm, scratch)
 
         # The variables grow up from the base and the lists and buffers grow down from the
         # routines held at the top (TopOfQuickMemory), so a program with a great many of either
@@ -1337,7 +1306,7 @@ module VBlank
         def emit_top_level_stops
           return unless @fault_stops.pending?
 
-          emit(ASM.loop_forever)
+          @emit.emit(ASM.loop_forever)
           @fault_stops.emit_pending
         end
 
@@ -1461,16 +1430,16 @@ module VBlank
           write_io_halfword(REG_IME, 0)                          # interrupts off while we wire things up
           write_io_halfword(REG_DISPSTAT, announce) unless announce.zero?
           write_io_halfword(REG_IE, enabled)                     # listen for exactly these interrupts
-          emit(ASM.load_immediate(TMP, REG_INTR_VECTOR))         # the vector the BIOS reads on every interrupt
+          @emit.emit(ASM.load_immediate(TMP, REG_INTR_VECTOR))         # the vector the BIOS reads on every interrupt
           # ...store our dispatcher's address there. It runs from wherever its bytes ended
           # up, and by this point the copy into the quick memory has already happened, so a
           # dispatcher that moved is pointed at its home there rather than the cartridge.
           if irq_runs_fast?
             emit_load_fast_address(ACC, IRQ_HANDLER_LABEL)
           else
-            emit_load_label_address(ACC, IRQ_HANDLER_LABEL)
+            @emit.emit_load_label_address(ACC, IRQ_HANDLER_LABEL)
           end
-          emit(ASM.str(ACC, TMP))
+          @emit.emit(ASM.str(ACC, TMP))
           emit_strikes_answered_address if @audio.striking? && @mixer.plays_samples?
           write_io_halfword(REG_IME, 1)                          # interrupts on
         end
@@ -1481,9 +1450,9 @@ module VBlank
           if irq_runs_fast?
             emit_load_fast_address(ACC, EffectStrikes::ANSWERED)
           else
-            emit_load_label_address(ACC, EffectStrikes::ANSWERED)
+            @emit.emit_load_label_address(ACC, EffectStrikes::ANSWERED)
           end
-          store_var(ACC, EffectStrikes::ANSWERED_ADDRESS)
+          @primitives.store_var(ACC, EffectStrikes::ANSWERED_ADDRESS)
         end
 
         # The frames shown while the game sets up are counted, for a game that reads frames since
@@ -1506,18 +1475,18 @@ module VBlank
           write_io_halfword(REG_IME, 0)
           write_io_halfword(REG_DISPSTAT, DISPSTAT_VBLANK_IRQ)
           write_io_halfword(REG_IE, IRQ_VBLANK)
-          emit(ASM.load_immediate(TMP, REG_INTR_VECTOR))
-          emit_load_label_address(ACC, FRAME_COUNTING_HANDLER_LABEL)
-          emit(ASM.str(ACC, TMP))
+          @emit.emit(ASM.load_immediate(TMP, REG_INTR_VECTOR))
+          @emit.emit_load_label_address(ACC, FRAME_COUNTING_HANDLER_LABEL)
+          @emit.emit(ASM.str(ACC, TMP))
           write_io_halfword(REG_IME, 1)
         end
 
         # Reached through the vector, from the BIOS, which has saved r0-r3, r12 and lr: the count
         # and the frame's acknowledgement use only those.
         def emit_frame_counting_handler
-          place_label(FRAME_COUNTING_HANDLER_LABEL)
+          @emit.place_label(FRAME_COUNTING_HANDLER_LABEL)
           emit_irq_source(IRQ_VBLANK, bios_ack: true) { emit_frame_count }
-          emit(ASM.return)
+          @emit.emit(ASM.return)
         end
 
         # The interrupt dispatcher, reached only through the vector. The BIOS enters it in
@@ -1527,9 +1496,9 @@ module VBlank
         # is what wakes wait_vblank (its work is below); the first line's handler builds
         # the next slice of sound; a timer's is its on_tick body. The body may clobber r0-r3/r12, so REG_IF is re-read per source.
         def emit_irq_handler
-          start = pos
-          place_label(IRQ_HANDLER_LABEL)
-          emit(ASM.push(*IRQ_SAVED_REGS))
+          start = @emit.pos
+          @emit.place_label(IRQ_HANDLER_LABEL)
+          @emit.emit(ASM.push(*IRQ_SAVED_REGS))
           # A bending background is checked first because it fires by far the most often —
           # once for every line the display draws, against once a frame for everything
           # else. Every check ahead of it would be paid 228 times a frame.
@@ -1594,7 +1563,7 @@ module VBlank
               # nowhere near where it sits in the cartridge — and the offset is the same either
               # way, because a copy is a copy. Whoever reads it adds the routine's own runtime
               # base (see #routine_addresses).
-              @timer_handlers[name] = { hz: timer.hz, at: pos - start }
+              @timer_handlers[name] = { hz: timer.hz, at: @emit.pos - start }
               # A handler that waits runs as the game wakes, and here its tick is only counted
               # (see FrameBoundaryCalls).
               next @boundary_calls.emit_tick_seen(name) if @boundary_calls.answered_at_wait?(name)
@@ -1604,8 +1573,8 @@ module VBlank
               end
             end
           end
-          emit(ASM.pop(*IRQ_SAVED_REGS))
-          emit(ASM.return) # BX LR back to the BIOS dispatcher
+          @emit.emit(ASM.pop(*IRQ_SAVED_REGS))
+          @emit.emit(ASM.return) # BX LR back to the BIOS dispatcher
           # The routines the music player calls to find its notes a voice, past the return and
           # inside this routine's span — so they move with it if it is copied to the quick
           # memory, and a call to them from in here is always near enough. The effects' step,
@@ -1628,7 +1597,7 @@ module VBlank
           @audio.emit_called_recorded_note_routines
           # Its byte span, so the build can weigh keeping it in the quick memory against
           # everything else that wants the room (see Placement#IRQ_ROUTINE).
-          @functions.func_ranges[Placement::IRQ_ROUTINE] = (start...pos)
+          @functions.func_ranges[Placement::IRQ_ROUTINE] = (start...@emit.pos)
         end
 
         # The IE/IF bit for the interrupt hardware timer +index+ raises (timer 0 -> bit
@@ -1661,38 +1630,38 @@ module VBlank
         # if any) and acknowledge it. REG_IF is loaded fresh here because a previous
         # source's body may have clobbered the scratch registers.
         def emit_irq_source(bit, bios_ack: false)
-          skip = gensym
-          emit(ASM.load_immediate(TMP, REG_IF))
-          emit(ASM.load_halfword(ACC, TMP))     # r0 = pending interrupt flags
-          emit(ASM.tst_imm(ACC, bit))
-          emit_branch(:bcond, skip, cond: :eq)  # this source's bit is clear -> it didn't fire
+          skip = @emit.gensym
+          @emit.emit(ASM.load_immediate(TMP, REG_IF))
+          @emit.emit(ASM.load_halfword(ACC, TMP))     # r0 = pending interrupt flags
+          @emit.emit(ASM.tst_imm(ACC, bit))
+          @emit.emit_branch(:bcond, skip, cond: :eq)  # this source's bit is clear -> it didn't fire
           yield if block_given?
           emit_irq_ack(bit, bios: bios_ack)
-          place_label(skip)
+          @emit.place_label(skip)
         end
 
         # Acknowledge an interrupt: clear its bit in the hardware flag register (writing a
         # 1 bit clears it), and for VBlank also OR it into the BIOS's mirror (REG_IFBIOS)
         # that VBlankIntrWait polls. Uses only r0-r2 (all BIOS-saved).
         def emit_irq_ack(bit, bios: false)
-          emit(ASM.load_immediate(ACC, bit))       # r0 = the bit
-          emit(ASM.load_immediate(TMP, REG_IF))    # r1 = &REG_IF
-          emit(ASM.store_halfword(ACC, TMP))       # REG_IF = bit -> clear it in hardware
+          @emit.emit(ASM.load_immediate(ACC, bit))       # r0 = the bit
+          @emit.emit(ASM.load_immediate(TMP, REG_IF))    # r1 = &REG_IF
+          @emit.emit(ASM.store_halfword(ACC, TMP))       # REG_IF = bit -> clear it in hardware
           return unless bios
 
-          emit(ASM.load_immediate(TMP, REG_IFBIOS)) # r1 = &REG_IFBIOS
-          emit(ASM.load_halfword(2, TMP))           # r2 = its current value
-          emit(ASM.orr_reg(2, 2, ACC))              # r2 |= bit
-          emit(ASM.store_halfword(2, TMP))          # write it back -> VBlankIntrWait can wake
+          @emit.emit(ASM.load_immediate(TMP, REG_IFBIOS)) # r1 = &REG_IFBIOS
+          @emit.emit(ASM.load_halfword(2, TMP))           # r2 = its current value
+          @emit.emit(ASM.orr_reg(2, 2, ACC))              # r2 |= bit
+          @emit.emit(ASM.store_halfword(2, TMP))          # write it back -> VBlankIntrWait can wake
         end
 
         # Store a 16-bit immediate into a memory-mapped I/O register — both the address and
         # the value are known at build time, so: load the address, load the value, store the
         # halfword. (r0/r1 are scratch between statements, so this needs no save/restore.)
         def write_io_halfword(address, value)
-          emit(ASM.load_immediate(TMP, address))
-          emit(ASM.load_immediate(ACC, value))
-          emit(ASM.store_halfword(ACC, TMP))
+          @emit.emit(ASM.load_immediate(TMP, address))
+          @emit.emit(ASM.load_immediate(ACC, value))
+          @emit.emit(ASM.store_halfword(ACC, TMP))
         end
 
         # Register every definition in the tree up front — funcs, named sound
@@ -1795,7 +1764,7 @@ module VBlank
                                    .transform_values { |made| made.map { |node, _ring| node.capacity }.uniq }
           @lists.lists_of_varying_capacity = capacities.select { |_name, held| held.length > 1 }.keys.to_set
           ranked.each do |node, ring|
-            at = var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
+            at = @primitives.var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
             @lists.register_list(node.name, capacities.fetch(node.name).max, ring: ring, width: node.width || :word,
                                                            fast: node.fast, roomy: @lists_to_roomy.include?(node.name), at: at)
           end

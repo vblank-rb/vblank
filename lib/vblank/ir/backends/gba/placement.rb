@@ -562,16 +562,16 @@ module VBlank
           def emit_hot_functions
             return if @fast_funcs.empty? && !swaps_quick_memory?
 
-            emit(ASM.loop_forever) # fall-through guard, outside the block so it is not copied
+            @emit.emit(ASM.loop_forever) # fall-through guard, outside the block so it is not copied
             unless @fast_funcs.empty?
-              place_label(HOT_START)
+              @emit.place_label(HOT_START)
               @emitting_hot = true
               @emitting_region = :resident
               @functions.funcs.each { |name, node| @functions.emit_one_function(name, node) if @fast_funcs.include?(name) }
               while_emitting_interrupt { emit_irq_handler } if irq_runs_fast?
               @emitting_hot = false
               @emitting_region = nil
-              place_label(HOT_END)
+              @emit.place_label(HOT_END)
               @emit.keep_jumps_inside(HOT_START, HOT_END)
             end
             emit_scene_sets
@@ -638,11 +638,11 @@ module VBlank
             # block where it sits in the cartridge, where it is going, and how much of it
             # there is — a size rather than an address, so that one refers to nothing.
             @primitives.emit_start_copy_engine(
-              from: -> { emit_load_label_address(ACC, HOT_START) },
+              from: -> { @emit.emit_load_label_address(ACC, HOT_START) },
               to: -> { emit_load_fast_address(ACC, HOT_START) },
               control: lambda do
-                @emit.fixups << Emit::AddressLoad.new(pos: pos, kind: :hot_size, reg: ACC, target: nil)
-                emit(ASM.load_immediate_fixed(ACC, 0))
+                @emit.fixups << Emit::AddressLoad.new(pos: @emit.pos, kind: :hot_size, reg: ACC, target: nil)
+                @emit.emit(ASM.load_immediate_fixed(ACC, 0))
               end
             )
           end
@@ -676,14 +676,14 @@ module VBlank
             generated_call_sites << [@emit.pos, name] if @functions.generated_func?(name)
             refuse_interrupt_call_into_set!(name)
             target = region_of(name)
-            return emit_branch(:bl, @functions.func_label(name)) if target == emitting_region
+            return @emit.emit_branch(:bl, @functions.func_label(name)) if target == emitting_region
 
             case target
             when :resident then emit_load_fast_address(ADDR, @functions.func_label(name))
-            when :cartridge then emit_load_label_address(ADDR, @functions.func_label(name))
+            when :cartridge then @emit.emit_load_label_address(ADDR, @functions.func_label(name))
             else @primitives.load_var(ADDR, where_word(name)) # wherever its set has put it
             end
-            emit_call_through(ADDR)
+            @emit.emit_call_through(ADDR)
           end
 
           # Call a routine that never itself moves to the quick memory — always in the
@@ -699,20 +699,20 @@ module VBlank
           # pass writes it, as a call the build made for itself (see #crossing_call_targets).
           def emit_call_cold_routine(label)
             generated_call_sites << [@emit.pos, nil] # nil: no routine that could be kept beside the caller
-            return emit_branch(:bl, label) unless @emitting_hot
+            return @emit.emit_branch(:bl, label) unless @emitting_hot
 
-            emit_load_label_address(ADDR, label)
-            emit_call_through(ADDR)
+            @emit.emit_load_label_address(ADDR, label)
+            @emit.emit_call_through(ADDR)
           end
 
           # ...and a jump there that does not come back (FaultStops), which grows the same way
           # when its routine moves, and is counted the same way.
           def emit_jump_to_cold_routine(label)
             generated_call_sites << [@emit.pos, nil]
-            return emit_branch(:b, label) unless @emitting_hot
+            return @emit.emit_branch(:b, label) unless @emitting_hot
 
-            emit_load_label_address(ADDR, label)
-            emit(ASM.bx(ADDR))
+            @emit.emit_load_label_address(ADDR, label)
+            @emit.emit(ASM.bx(ADDR))
           end
 
           # Call a routine emitted inside the screen's interrupt routine, past its return (see
@@ -721,14 +721,14 @@ module VBlank
           # routine would, and it is counted as one (see #crossing_call_targets).
           def emit_call_irq_routine(label)
             generated_call_sites << [@emit.pos, IRQ_ROUTINE]
-            return emit_branch(:bl, label) if (irq_runs_fast? ? :resident : :cartridge) == emitting_region
+            return @emit.emit_branch(:bl, label) if (irq_runs_fast? ? :resident : :cartridge) == emitting_region
 
             if irq_runs_fast?
               emit_load_fast_address(ADDR, label)
             else
-              emit_load_label_address(ADDR, label)
+              @emit.emit_load_label_address(ADDR, label)
             end
-            emit_call_through(ADDR)
+            @emit.emit_call_through(ADDR)
           end
 
           # Load the quick-memory address of a label inside the moved block. Where the
@@ -857,7 +857,7 @@ module VBlank
             claims = quick.map { |name, address| [address, name, nil] } +
                      near.map { |name, place| [place.base, name, place.bytes] }
             claims.sort_by(&:first).each do |_address, name, list_bytes|
-              list_bytes ? @lists.claim_measured_near_list(name, list_bytes) : var_addr(name)
+              list_bytes ? @lists.claim_measured_near_list(name, list_bytes) : @primitives.var_addr(name)
             end
           end
 

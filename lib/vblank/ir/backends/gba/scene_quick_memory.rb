@@ -315,8 +315,8 @@ module VBlank
           def allocate_where_words
             return unless swaps_quick_memory?
 
-            var_addr(LOADED_SET)
-            addresses = routines_in_sets.map { |name| var_addr(where_word(name)) }
+            @primitives.var_addr(LOADED_SET)
+            addresses = routines_in_sets.map { |name| @primitives.var_addr(where_word(name)) }
             return if addresses.each_cons(2).all? { |a, b| b == a + WHERE_WORD_BYTES }
 
             raise LoweringError, "the words that say where each scene's routines are did not land side by " \
@@ -329,13 +329,13 @@ module VBlank
           def emit_scene_sets
             quick_memory_sets.each_with_index do |(_, names), index|
               number = index + 1
-              place_label(set_start_label(number))
+              @emit.place_label(set_start_label(number))
               @emitting_hot = true
               @emitting_region = number
               names.each { |name| @functions.emit_one_function(name, @functions.funcs.fetch(name)) }
               @emitting_hot = false
               @emitting_region = nil
-              place_label(set_end_label(number))
+              @emit.place_label(set_end_label(number))
             end
           end
 
@@ -441,7 +441,7 @@ module VBlank
           # their places in the quick memory.
           def word_copy(which, names)
             [-> { @emit.data_address(:"__scene_set_words_#{which}") },
-             -> { var_addr(where_word(names.first)) },
+             -> { @primitives.var_addr(where_word(names.first)) },
              -> { names.size | DMA_32BIT | DMA_ENABLE }]
           end
 
@@ -480,13 +480,13 @@ module VBlank
           end
 
           def emit_power_on_routine
-            place_label(POWER_ON_ROUTINE)
-            emit(ASM.push(14))
+            @emit.place_label(POWER_ON_ROUTINE)
+            @emit.emit(ASM.push(14))
             [0, *power_on_sets].each do |number|
-              emit(ASM.load_immediate(ACC, number))
-              emit_branch(:bl, SWAP_ROUTINE)
+              @emit.emit(ASM.load_immediate(ACC, number))
+              @emit.emit_branch(:bl, SWAP_ROUTINE)
             end
-            emit(ASM.pop(15))
+            @emit.emit(ASM.pop(15))
           end
 
           # The sets the game loop runs go first, whatever order the dispatch names their scenes in.
@@ -506,21 +506,21 @@ module VBlank
           def emit_scene_set_entry
             entry = @emit.gensym
             over = @emit.gensym
-            emit_branch(:b, over)
-            place_label(entry)
-            emit(ASM.push(14))
+            @emit.emit_branch(:b, over)
+            @emit.place_label(entry)
+            @emit.emit(ASM.push(14))
             bit = 2
             @primitives.load_var(TMP, LOADED_SET)
-            emit(ASM.load_immediate(bit, 1))
-            emit(ASM.mov_reg_lsl_reg(bit, bit, ACC))                 # this set's bit
-            emit(ASM.and_reg(bit, TMP, bit))
-            emit(ASM.cmp_imm(bit, 0))
+            @emit.emit(ASM.load_immediate(bit, 1))
+            @emit.emit(ASM.mov_reg_lsl_reg(bit, bit, ACC))                 # this set's bit
+            @emit.emit(ASM.and_reg(bit, TMP, bit))
+            @emit.emit(ASM.cmp_imm(bit, 0))
             done = @emit.gensym
-            emit_branch(:bcond, done, cond: :ne)                     # in already
+            @emit.emit_branch(:bcond, done, cond: :ne)                     # in already
             emit_call_cold_routine(SWAP_ROUTINE)
-            place_label(done)
-            emit(ASM.pop(15))
-            place_label(over)
+            @emit.place_label(done)
+            @emit.emit(ASM.pop(15))
+            @emit.place_label(over)
             entry
           end
 
@@ -543,32 +543,32 @@ module VBlank
             return unless swaps_quick_memory?
 
             place_scene_sets # every set's code is written, so their sizes and places are known
-            place_label(SWAP_ROUTINE)
+            @emit.place_label(SWAP_ROUTINE)
             @emit.emit_load_data_address(SWAP_TABLE, QUICK_TABLE)
-            emit(ASM.ldr_reg_lsl(SWAP_LIST, SWAP_TABLE, ACC, 2))      # this set's list
+            @emit.emit(ASM.ldr_reg_lsl(SWAP_LIST, SWAP_TABLE, ACC, 2))      # this set's list
             @primitives.load_var(ACC, LOADED_SET)
-            emit(ASM.ldr(SWAP_LEFT, SWAP_LIST))                       # the sets that stay in...
-            emit(ASM.and_reg(ACC, ACC, SWAP_LEFT))
-            emit(ASM.ldr_offset(SWAP_LEFT, SWAP_LIST, 4))             # ...and this one
-            emit(ASM.orr_reg(ACC, ACC, SWAP_LEFT))
+            @emit.emit(ASM.ldr(SWAP_LEFT, SWAP_LIST))                       # the sets that stay in...
+            @emit.emit(ASM.and_reg(ACC, ACC, SWAP_LEFT))
+            @emit.emit(ASM.ldr_offset(SWAP_LEFT, SWAP_LIST, 4))             # ...and this one
+            @emit.emit(ASM.orr_reg(ACC, ACC, SWAP_LEFT))
             @primitives.store_var(ACC, LOADED_SET)
-            emit(ASM.ldr_offset(SWAP_LEFT, SWAP_LIST, 8))             # how many copies
-            emit(ASM.add_imm(SWAP_LIST, SWAP_LIST, 12))
+            @emit.emit(ASM.ldr_offset(SWAP_LEFT, SWAP_LIST, 8))             # how many copies
+            @emit.emit(ASM.add_imm(SWAP_LIST, SWAP_LIST, 12))
             again = @emit.gensym
             done = @emit.gensym
-            place_label(again)
-            emit(ASM.cmp_imm(SWAP_LEFT, 0))
-            emit_branch(:bcond, done, cond: :eq)
-            @primitives.emit_start_copy_engine(from: -> { emit(ASM.ldr(ACC, SWAP_LIST)) },
-                                               to: -> { emit(ASM.ldr_offset(ACC, SWAP_LIST, 4)) },
-                                               control: -> { emit(ASM.ldr_offset(ACC, SWAP_LIST, 8)) })
-            emit(ASM.add_imm(SWAP_LIST, SWAP_LIST, 12))
-            emit(ASM.sub_imm(SWAP_LEFT, SWAP_LEFT, 1))
-            emit_branch(:b, again)
-            place_label(done)
-            emit(ASM.bx(14))
+            @emit.place_label(again)
+            @emit.emit(ASM.cmp_imm(SWAP_LEFT, 0))
+            @emit.emit_branch(:bcond, done, cond: :eq)
+            @primitives.emit_start_copy_engine(from: -> { @emit.emit(ASM.ldr(ACC, SWAP_LIST)) },
+                                               to: -> { @emit.emit(ASM.ldr_offset(ACC, SWAP_LIST, 4)) },
+                                               control: -> { @emit.emit(ASM.ldr_offset(ACC, SWAP_LIST, 8)) })
+            @emit.emit(ASM.add_imm(SWAP_LIST, SWAP_LIST, 12))
+            @emit.emit(ASM.sub_imm(SWAP_LEFT, SWAP_LEFT, 1))
+            @emit.emit_branch(:b, again)
+            @emit.place_label(done)
+            @emit.emit(ASM.bx(14))
             emit_power_on_routine
-            place_label(DerivedNames.routine_end(SWAP_ROUTINE))
+            @emit.place_label(DerivedNames.routine_end(SWAP_ROUTINE))
           end
 
           # What a reader of the running cartridge needs to name a routine that ran from where
@@ -582,7 +582,7 @@ module VBlank
               names = quick_memory_sets.values[number - 1]
               [number, names.to_h { |name| [name, swapped_address(name)...(swapped_address(name) + @functions.func_ranges.fetch(name).size)] }]
             end
-            VBlank::Cartridge::BuildRecord::SceneSets.new(loaded_at: var_addr(LOADED_SET), scenes: scenes, routines: routines)
+            VBlank::Cartridge::BuildRecord::SceneSets.new(loaded_at: @primitives.var_addr(LOADED_SET), scenes: scenes, routines: routines)
           end
         end
       end
