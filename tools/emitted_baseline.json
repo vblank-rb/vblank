@@ -14,11 +14,11 @@
       "data": 16281
     },
     "bird": {
-      "code": 7344,
+      "code": 7336,
       "data": 0
     },
     "breakout": {
-      "code": 70636,
+      "code": 70632,
       "data": 0
     },
     "breakout@gbc": {
@@ -34,11 +34,11 @@
       "data": 555
     },
     "cave": {
-      "code": 38536,
+      "code": 38532,
       "data": 0
     },
     "chip_band": {
-      "code": 36824,
+      "code": 36820,
       "data": 0
     },
     "chip_band@gbc": {
@@ -54,7 +54,7 @@
       "data": 0
     },
     "cube3d": {
-      "code": 37028,
+      "code": 37024,
       "data": 0
     },
     "cube3d@ps1": {
@@ -62,7 +62,7 @@
       "data": 5044
     },
     "dive": {
-      "code": 57212,
+      "code": 57208,
       "data": 0
     },
     "everywhere": {
@@ -134,7 +134,7 @@
       "data": 555
     },
     "hero": {
-      "code": 81484,
+      "code": 81456,
       "data": 0
     },
     "hero@snes": {
@@ -142,7 +142,7 @@
       "data": 13831
     },
     "jukebox": {
-      "code": 72434,
+      "code": 72430,
       "data": 0
     },
     "lake": {
@@ -166,7 +166,7 @@
       "data": 3977
     },
     "lit_corridor": {
-      "code": 40452,
+      "code": 40448,
       "data": 0
     },
     "lit_corridor@ps1": {
@@ -186,7 +186,7 @@
       "data": 3322
     },
     "meadow": {
-      "code": 33108,
+      "code": 33104,
       "data": 0
     },
     "pacman": {
@@ -238,11 +238,11 @@
       "data": 555
     },
     "pong": {
-      "code": 42576,
+      "code": 42560,
       "data": 0
     },
     "pong_gbc": {
-      "code": 41620,
+      "code": 41604,
       "data": 0
     },
     "pong_gbc@gbc": {
@@ -294,7 +294,7 @@
       "data": 3977
     },
     "shmup": {
-      "code": 37672,
+      "code": 37668,
       "data": 0
     },
     "snake": {
@@ -358,7 +358,7 @@
       "data": 8091
     },
     "two_rooms": {
-      "code": 36826,
+      "code": 36822,
       "data": 0
     },
     "two_rooms@ps1": {

@@ -8,10 +8,12 @@ require "stringio"
 # `repeat` or a game's `while i < n` with `i += 1` last (a counted while, LoopForm#counted_while),
 # and its body sets a variable (:set) or reads a list at the loop's count into one (:read). A search
 # reads the list and asks whether to `break` (:break) or to go to its `next` round (:next) on an
-# item no slot holds, so every turn is made and asks.
+# item no slot holds, so every turn is made and asks. A Ruby `times` whose rounds the build folds
+# into one loop works four numbers out from its count each round, as the rounds written out would
+# hold them (:steps, PlainRuby::Counts::KnownRounds).
 module LoopCostGames
   # The loops measured: how each is written, and what its body does.
-  LOOPS = %i[repeat_set repeat_read while_set while_read while_break while_next].freeze
+  LOOPS = %i[repeat_set repeat_read while_set while_read while_break while_next steps].freeze
 
   # The turns of the longer loop and of the shorter.
   MORE_TURNS = 64
@@ -60,6 +62,13 @@ module LoopCostGames
             next if s == 2
 
             c = 1
+          end
+        when :steps
+          turns.times do |k|
+            s += (k * 3) + 1
+            c += (k * 5) + 2
+            i ^= k + 7
+            s += 100 - k
           end
         end
       end

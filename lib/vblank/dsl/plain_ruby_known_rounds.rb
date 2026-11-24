@@ -156,6 +156,10 @@ module VBlank
           # still be alike.
           def worked_out_from(index, whole: false)
             round = IR::Build.var_ref(index)
+            # A number falling by one a round is first - round, which a console can work out in one
+            # step where the multiply by -1 and the add are two.
+            return IR::Build.binop(:-, IR::Build.int(first), round) if step == -1 && !whole
+
             sum = step == 1 && !whole ? round : IR::Build.binop(:*, round, IR::Build.int(step))
             first.zero? && !whole ? sum : IR::Build.binop(:+, sum, IR::Build.int(first))
           end

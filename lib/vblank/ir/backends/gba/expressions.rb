@@ -192,8 +192,23 @@ module VBlank
           end
 
           def emit_subtract(node)
+            return if emit_subtract_from_constant(node)
+
             left, right = emit_sides(node)
             @emitter.emit(ASM.sub_reg(ACC, left, right))
+          end
+
+          # n - x for a small n: one reverse subtract, the number riding inside the instruction
+          # (GBATEK, "ARM Opcodes: Data Processing", RSB), where `100 - i` would otherwise load
+          # the 100 into a register of its own. What a counted loop's stepping number comes to when
+          # it falls by one a round (PlainRuby::Counts::KnownRounds).
+          def emit_subtract_from_constant(node)
+            value = @primitives.const_int(node.lhs)
+            return false unless value && SMALL_NUMBERS.cover?(value)
+
+            source = emit_operand(node.rhs)
+            @lowering.measure_value(node.lhs) { @emitter.emit(ASM.rsb_imm(ACC, source, value)) }
+            true
           end
 
           # What a side costs is mostly where the other one waits. A side that is a variable or a
@@ -432,13 +447,28 @@ module VBlank
           def emit_small_add_or_subtract(node, value)
             return false unless SMALL_NUMBERS.cover?(value)
 
-            @lowering.value(node.lhs)
-            return true if value.zero?
+            if value.zero?
+              @lowering.value(node.lhs)
+              return true
+            end
 
+            source = emit_operand(node.lhs)
             @lowering.measure_value(node.rhs) do
-              @emitter.emit(node.op == :+ ? ASM.add_imm(ACC, ACC, value) : ASM.sub_imm(ACC, ACC, value))
+              @emitter.emit(node.op == :+ ? ASM.add_imm(ACC, source, value) : ASM.sub_imm(ACC, source, value))
             end
             true
+          end
+
+          # The register +lhs+ is read from by the one instruction that works on it: the register a
+          # variable is held in for the moment (Primitives#held_register, a loop's count), read
+          # straight into that instruction, or else ACC with +lhs+ worked out into it. The held
+          # register is only read, so the variable's register is never changed.
+          def emit_operand(lhs)
+            held = lhs.kind == :var_ref && @primitives.held_register(lhs.name)
+            return held if held
+
+            @lowering.value(lhs)
+            ACC
           end
 
           # `&`, `|` and `^` give the same answer whichever way round they are written,
@@ -465,19 +495,19 @@ module VBlank
           # loaded into a register first when it is not: one instruction or two, against
           # the five the general path spends putting both sides through the stack.
           def emit_constant_bitwise(lhs, value, op)
-            @lowering.value(lhs)
+            source = emit_operand(lhs)
             if SMALL_NUMBERS.cover?(value)
               @emitter.emit(case op
-                            when :& then ASM.and_imm(ACC, ACC, value)
-                            when :| then ASM.orr_imm(ACC, ACC, value)
-                            else ASM.eor_imm(ACC, ACC, value)
+                            when :& then ASM.and_imm(ACC, source, value)
+                            when :| then ASM.orr_imm(ACC, source, value)
+                            else ASM.eor_imm(ACC, source, value)
                             end)
             else
               @emitter.emit_number(TMP, value)
               @emitter.emit(case op
-                            when :& then ASM.and_reg(ACC, ACC, TMP)
-                            when :| then ASM.orr_reg(ACC, ACC, TMP)
-                            else ASM.eor_reg(ACC, ACC, TMP)
+                            when :& then ASM.and_reg(ACC, source, TMP)
+                            when :| then ASM.orr_reg(ACC, source, TMP)
+                            else ASM.eor_reg(ACC, source, TMP)
                             end)
             end
             true
@@ -552,15 +582,13 @@ module VBlank
           def emit_multiply_by_shifted_sum(lhs, factor)
             above = power_of_two_bits(factor - 1)
             below = power_of_two_bits(factor + 1)
-            step =
-              if factor == -1 then ASM.rsb_imm(ACC, ACC, 0)
-              elsif above&.positive? then ASM.add_reg_lsl(ACC, ACC, ACC, above)
-              elsif below && below >= 2 then ASM.rsb_reg_lsl(ACC, ACC, ACC, below)
-              end
-            return false unless step
+            return false unless factor == -1 || above&.positive? || (below && below >= 2)
 
-            @lowering.value(lhs)
-            @emitter.emit(step)
+            source = emit_operand(lhs)
+            @emitter.emit(if factor == -1 then ASM.rsb_imm(ACC, source, 0)
+                          elsif above&.positive? then ASM.add_reg_lsl(ACC, source, source, above)
+                          else ASM.rsb_reg_lsl(ACC, source, source, below)
+                          end)
             true
           end
 
