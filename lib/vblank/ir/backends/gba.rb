@@ -1456,7 +1456,7 @@ module VBlank
           enabled |= IRQ_VBLANK if @uses_vblank
           enabled |= IRQ_HBLANK if interrupts_rows?
           enabled |= IRQ_VCOUNT if mixes_at_first_line?
-          irq_timers.each { |_, info| enabled |= timer_irq_bit(info[:rate]) }
+          irq_timers.each { |_, timer| enabled |= timer_irq_bit(timer.rate) }
           enabled |= @audio.strikes.interrupt_bit if @audio.striking?
 
           # Which moments the display announces: the gap between frames (so wait_vblank
@@ -1593,8 +1593,8 @@ module VBlank
           # The sound effects' strike list's alarm: a timer, or the line match where every timer is
           # the game's (EffectStrikes).
           emit_irq_source(@audio.strikes.interrupt_bit) { @audio.strikes.emit_alarm_answered } if @audio.striking?
-          irq_timers.each do |name, info|
-            emit_irq_source(timer_irq_bit(info[:rate])) do
+          irq_timers.each do |name, timer|
+            emit_irq_source(timer_irq_bit(timer.rate)) do
               # Where this handler's first instruction sits, kept so a profile can count how
               # many ticks really arrived. A handler's body is emitted inline here rather than
               # as a routine of its own, so there is no name in the profile to count — but its
@@ -1606,13 +1606,13 @@ module VBlank
               # nowhere near where it sits in the cartridge — and the offset is the same either
               # way, because a copy is a copy. Whoever reads it adds the routine's own runtime
               # base (see #routine_addresses).
-              @timer_handlers[name] = { hz: info[:hz], at: pos - start }
+              @timer_handlers[name] = { hz: timer.hz, at: pos - start }
               # A handler that waits runs as the game wakes, and here its tick is only counted
               # (see FrameBoundaryCalls).
               next @boundary_calls.emit_tick_seen(name) if @boundary_calls.answered_at_wait?(name)
 
               @boundary_calls.with_handler_state_saved(name) do
-                info[:handler].children.each { |child| @lowering.statement(child) }
+                timer.handler.children.each { |child| @lowering.statement(child) }
               end
             end
           end
