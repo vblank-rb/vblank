@@ -137,10 +137,14 @@ module VBlank
           # each shifted and set as the loops the step stands for do, is several instructions a
           # byte where the copy is a fraction of one.
           #
+          # A ring's items wrap round the end of its block (slot (head + i) & mask), so they are two runs
+          # of memory, the items from the head to the block's end and then those from its start, and
+          # each run is one call of the same routine (#emit_ring_pack_runs).
+          #
           # A bad run stays inside the list the way a list_set does: one starting before +into+ or
-          # running past its length writes nothing. A ring, a pool's field, a list narrower or
-          # wider than its slots, or a build checked against the interpreter (which stops at the
-          # first bad index, as the loops' list_sets do) takes the loops instead.
+          # running past its length writes nothing. A pool's field, a list narrower or wider than its
+          # slots, or a build checked against the interpreter (which stops at the first bad index, as
+          # the loops' list_sets do) takes the loops instead.
           def emit_list_pack(node)
             from = list_info(node.name)
             into = list_info(node.into)
@@ -162,14 +166,58 @@ module VBlank
             @emitter.emit(ASM.sub_reg(3, TMP, 2))                            # r3 = the last start that fits
             @emitter.emit(ASM.cmp_reg(ACC, 3))
             @emitter.emit_branch(:bcond, skip, cond: :gt)                    # runs past its end
-            @primitives.emit_list_base(into[:base])
-            @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))                  # r1 = where the run goes
-            @primitives.emit_list_base(from[:base])
-            @emitter.emit(ASM.mov_reg(ACC, LIST_ADDR))                       # r0 = the list's first slot
-            @placement.emit_call_cold_routine(COPY_ROUTINE)
+            if from[:ring]
+              emit_ring_pack_runs(node, from, into, shift)
+            else
+              @primitives.emit_list_base(into[:base])
+              @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))                # r1 = where the run goes
+              @primitives.emit_list_base(from[:base])
+              @emitter.emit(ASM.mov_reg(ACC, LIST_ADDR))                     # r0 = the list's first slot
+              @placement.emit_call_cold_routine(COPY_ROUTINE)
+            end
             @emitter.place_label(skip)
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, node.index)                           # left at nought, as the loops leave it
+          end
+
+          # The two runs of a ring packed, with r0 the byte the items go to in +into+ and r2 how many
+          # bytes all of them are, both already held inside the list. The first run is the items from
+          # the head to the end of the block (its slots, less the head, or all the items if they are
+          # fewer); the second, only when items are left, is those from the block's first slot, going
+          # on from where the first ended. The three numbers the second run needs wait on the stack.
+          def emit_ring_pack_runs(node, from, into, shift)
+            e = @emitter
+            head = head_var(node.name)
+            done = e.gensym
+            sp = 13 # the stack pointer
+            @primitives.load_var(3, head)
+            e.emit(ASM.rsb_imm(3, 3, from[:mask] + 1))                       # slots from the head to the block's end
+            e.emit(ASM.lsl_imm(3, 3, shift)) if shift.positive?
+            e.emit(ASM.cmp_reg(3, 2))
+            e.emit(ASM.mov_reg_cond(:gt, 3, 2))                              # r3 = bytes in the first run
+            e.emit(ASM.push(ACC, 2, 3))                                      # where, all the bytes, the first run's
+            @primitives.load_var(TMP, head)
+            e.emit(ASM.lsl_imm(TMP, TMP, shift)) if shift.positive?
+            @primitives.emit_list_base(from[:base])
+            e.emit(ASM.add_reg(ACC, LIST_ADDR, TMP))                         # r0 = the head's slot
+            @primitives.emit_list_base(into[:base])
+            e.emit(ASM.ldr_offset(TMP, sp, 0))
+            e.emit(ASM.add_reg(TMP, LIST_ADDR, TMP))                         # r1 = where the run goes
+            e.emit(ASM.ldr_offset(2, sp, 8))                                 # r2 = the first run's bytes
+            @placement.emit_call_cold_routine(COPY_ROUTINE)
+            e.emit(ASM.ldr_offset(2, sp, 4))
+            e.emit(ASM.ldr_offset(3, sp, 8))
+            e.emit(ASM.subs_reg(2, 2, 3))                                    # r2 = the bytes left
+            e.emit_branch(:bcond, done, cond: :eq)
+            @primitives.emit_list_base(from[:base])
+            e.emit(ASM.mov_reg(ACC, LIST_ADDR))                              # r0 = the block's first slot
+            @primitives.emit_list_base(into[:base])
+            e.emit(ASM.ldr_offset(TMP, sp, 0))
+            e.emit(ASM.add_reg(TMP, TMP, 3))                                 # where + the first run's bytes
+            e.emit(ASM.add_reg(TMP, LIST_ADDR, TMP))                         # r1 = where the rest goes
+            @placement.emit_call_cold_routine(COPY_ROUTINE)
+            e.place_label(done)
+            e.emit(ASM.pop(ACC, 2, 3))
           end
 
           # The routine every list_copy calls, named once.
@@ -332,11 +380,35 @@ module VBlank
             emit_start_engine_with_interrupts_held
             e.emit(ASM.return)
             e.place_label(bytes)
+            # A run that comes from a whole word and is a whole number of words can only have got here
+            # by going to an odd address. Read a word and write it as a byte, a half-word and a byte:
+            # the half-word lands on an even address whichever odd one the run starts at, and the
+            # three writes cost one read where four byte writes cost four. The write is to memory
+            # that takes a byte or a half-word on its own, as every list's is.
+            alone = e.gensym
+            word_out = e.gensym
+            e.emit(ASM.orr_reg(3, ACC, 2))
+            e.emit(ASM.tst_imm(3, 3))
+            e.emit_branch(:bcond, alone, cond: :ne)
+            e.place_label(word_out)
+            e.emit(ASM.ldr_offset(3, ACC, 0))
+            e.emit(ASM.add_imm(ACC, ACC, 4))
+            e.emit(ASM.strb_post(3, TMP, 1))
+            e.emit(ASM.lsr_imm(3, 3, 8))
+            e.emit(ASM.store_halfword_post(3, TMP, 2))
+            e.emit(ASM.lsr_imm(3, 3, 16))
+            e.emit(ASM.strb_post(3, TMP, 1))
+            e.emit(ASM.subs_imm(2, 2, 4))
+            e.emit_branch(:bcond, word_out, cond: :ne)
+            e.emit(ASM.return)
+            e.place_label(alone)
+            alone_loop = e.gensym
+            e.place_label(alone_loop)
             e.emit(ASM.ldrb_offset(3, ACC, 0))
             e.emit(ASM.add_imm(ACC, ACC, 1))
             e.emit(ASM.strb_post(3, TMP, 1))
             e.emit(ASM.subs_imm(2, 2, 1))
-            e.emit_branch(:bcond, bytes, cond: :ne)
+            e.emit_branch(:bcond, alone_loop, cond: :ne)
             e.emit(ASM.return)
             # Where it ends, so a profile can say how much of a frame went into copying (see
             # GBA#lowered_routine_addresses).
@@ -1165,10 +1237,11 @@ module VBlank
 
           private
 
-          # Whether a list_pack's two lists are each a plain array whose slots sit side by side
-          # from the first, as wide as the step says, the one written into of bytes.
+          # Whether a list_pack's two lists can be moved as blocks: the one written into a plain array
+          # of bytes whose slots sit side by side from the first, the one read as wide as the step
+          # says and no pool's field, a plain array or a ring (#emit_ring_pack_runs).
           def block_copyable?(node, from, into)
-            @bookkeeping.nil? && plain_array?(node.name, from) && plain_array?(node.into, into) &&
+            @bookkeeping.nil? && !(@slot_places || {}).key?(node.name) && plain_array?(node.into, into) &&
               from[:bytes] == ListPacking::WIDTH_BYTES.fetch(node.width) && into[:bytes] == 1
           end
 

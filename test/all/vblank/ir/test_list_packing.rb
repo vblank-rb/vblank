@@ -17,16 +17,21 @@ module ListPackingPrograms
   SLOTS = 14
 
   # The cases: a name, and the width, the items, the slot the run starts on and whether the list
-  # has come round its ring.
+  # has come round its ring: true for two items in and out of the front, or how many (nought is a
+  # list that is a ring but has not moved).
   CASES = Ractor.make_shareable((ITEMS.map { |width, items| [width, [width, items, 2, false]] } +
            [[:odd_start, [:word, ITEMS[:word], 1, false]], [:ring, [:half, ITEMS[:half], 3, true]],
-            [:empty, [:word, [], 0, false]]]).to_h)
+            [:empty, [:word, [], 0, false]],
+            [:ring_no_wrap, [:word, ITEMS[:word], 2, 0]], [:ring_one_before_the_end, [:word, ITEMS[:word], 1, 3]],
+            [:ring_odd_start, [:half, ITEMS[:half], 3, 2]]]).to_h)
 
   # SLOTS slots of -1 in a byte list, and +items+ in a list of +width+ written into it from slot
   # +at+. With +ring+, the list's items come round its slots first: two in and out of the front,
   # so its oldest is in its third slot and its newest have come round to the first.
   private def packed(width, items, at, ring)
-    lead = ring ? [list_push(:kept, 9), list_push(:kept, 9), list_drop(:kept, from: :front), list_drop(:kept, from: :front)] : []
+    pairs = ring == true ? 2 : ring
+    lead = ring ? Array.new(pairs) { list_push(:kept, 9) } + Array.new(pairs) { list_drop(:kept, from: :front) } : []
+    lead << if_(binop(:==, var_ref(:start), int(99)), list_drop(:kept, from: :front)) if ring == 0 # shifted, but never as played
     program(set(:count, 0), set(:start, at), list_new(:bytes, SLOTS, width: :byte, full_of: -1), list_new(:kept, 3, width: width),
             *lead, *items.map { |item| list_push(:kept, item) },
             list_pack(:kept, into: :bytes, at: var_ref(:start), width: width, index: :count), loop_(wait_vblank))

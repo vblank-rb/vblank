@@ -30,15 +30,21 @@ class TestSaveJobsSnapshotCost < Minitest::Test
 
   # A game that saves a file of three numbers and a list of 128 words when A is pressed, the list
   # full of nought, or with +full+ false empty.
-  private def saving_game(full:)
+  #
+  # With +ring+ the game drops from the front of the list once, so it is a ring. With +odd_before+
+  # a list of that many bytes is kept first, so the words that follow do not start on a whole word
+  # in the record.
+  private def saving_game(full:, ring: false, odd_before: 0)
     VBlank.game("SNAPSHOT", consoles: %i[gba]) do
       screen :bitmap
       hearts = var :hearts, 3
       coins = var :coins, 10
       room = var :room, 2
+      lead = list :lead, capacity: odd_before, width: :byte, full_of: 0 if odd_before.positive?
       flags = list :flags, capacity: TestSaveJobsSnapshotCost::ITEMS, width: :word, full_of: full ? 0 : nil
-      files = save_data(:file, copies: 2) { keep hearts, coins, room, flags }
+      files = save_data(:file, copies: 2) { odd_before.positive? ? keep(hearts, coins, room, lead, flags) : keep(hearts, coins, room, flags) }
       game_loop do
+        flags.shift if ring && full && pressed(:b)
         files[0].save if pressed(:a)
       end
     end
@@ -70,5 +76,26 @@ class TestSaveJobsSnapshotCost < Minitest::Test
 
     assert_operator empty, :>, idle, "the frame A is pressed on asks for the save"
     assert_operator full - empty, :<, LIST_CYCLES, "the list's 512 bytes cost #{full - empty} cycles on the frame of the save"
+  end
+
+  # A ring's items are two runs of memory, each moved by the copy engine like a plain list's, so a ring
+  # costs what a plain list does: it took 27,000 cycles one byte at a time.
+  def test_a_ring_list_costs_the_frame_of_the_save_what_a_plain_one_does
+    full, = save_frame_cycles(saving_game(full: true, ring: true))
+    empty, = save_frame_cycles(saving_game(full: false, ring: true))
+
+    assert_operator full - empty, :<, LIST_CYCLES, "the ring's 512 bytes cost #{full - empty} cycles on the frame of the save"
+  end
+
+  # The copy engine writes whole words or half-words only, so a list that starts on an odd byte of the
+  # record is written by the processor, a byte, a half-word and a byte for each word read: about six
+  # times the engine's cost and under half of the 15,000 cycles of a byte at a time.
+  UNALIGNED_LIST_CYCLES = 7_000
+
+  def test_a_list_after_an_odd_number_of_bytes_costs_under_half_of_a_byte_at_a_time
+    full, = save_frame_cycles(saving_game(full: true, odd_before: 3))
+    empty, = save_frame_cycles(saving_game(full: false, odd_before: 3))
+
+    assert_operator full - empty, :<, UNALIGNED_LIST_CYCLES, "the list's 512 bytes cost #{full - empty} cycles on the frame of the save"
   end
 end
