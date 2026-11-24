@@ -735,7 +735,6 @@ module VBlank
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
           def emit_store_zero(name) = store_number(name, 0)
-          def emit_increment(name) = emit_sum(name, :+, Build.int(1))
           def loop_statements(node) = children_of(node).first
           def game_loops = @plan.game_loops
           def loop_form = @plan.loop_form
@@ -764,13 +763,84 @@ module VBlank
             @counters_held[counter] = @asm.d(register)
             @indexes_checked.delete(counter)
             (@counts_only_the_loop_writes ||= []) << counter if counter == node.index
+            steps = loaded ? {} : held_steps(node, counter)
+            unless steps.empty?
+              @asm.movem_push(:l, *steps.values.map { |reg| :"d#{reg}" })
+              steps.each_value { |reg| @asm.moveq(0, @asm.d(reg)) }
+            end
+            @steps_held = steps.empty? ? nil : [counter, steps]
             begin
               yield
             ensure
               @counters_held.delete(counter)
               @counts_only_the_loop_writes&.delete(counter)
+              @steps_held = nil
             end
+            @asm.movem_pop(:l, *steps.values.map { |reg| :"d#{reg}" }) unless steps.empty?
             @asm.move(:l, @asm.d(register), var(counter))
+          end
+
+          # The registers a held loop keeps its count times a number in (#held_steps).
+          STEP_REGISTERS = [3, 4].freeze
+
+          # The numbers a loop holding its count keeps stepped, each factor with its register
+          # (STEP_REGISTERS), or none.
+          #
+          # A body that works a number out as the count times a number written in the program,
+          # `k * 3 + 1`, multiplies every turn, where the console's own loops add: the number is
+          # held in a data register that starts at nought and has the factor added as each turn ends
+          # (#emit_increment), beside the count's own add, and each read of it is that register
+          # (#held_product). A product by a power of two is one shift and is left as it is. Only
+          # where the loop counts in its own variable from nought and holds no loop of its own,
+          # whose count or walk could want the same registers; the registers are saved and restored
+          # around the loop, as code around it may keep something of its own in them.
+          def held_steps(node, counter)
+            return {} unless counter == node.index && @steps_held.nil?
+
+            body = children_of(node).first
+            return {} if body.any? { |child| child.walk.any? { |inner| inner.kind == :repeat } }
+
+            factors = body.flat_map { |child| child.walk.filter_map { |inner| stepped_factor(inner, counter) } }.uniq
+            factors.first(STEP_REGISTERS.size).zip(STEP_REGISTERS).to_h
+          end
+
+          # The factor +node+ multiplies the loop's count +counter+ by, or nil: not nought, one or
+          # a power of two, which are nothing or a shift.
+          def stepped_factor(node, counter)
+            return nil unless node.is_a?(Node) && node.kind == :binop && node.op == :* && variable_named(node.lhs) == counter
+
+            factor = folded(node.rhs)
+            return nil if factor.nil? || factor.zero? || (factor.positive? && (factor & (factor - 1)).zero?)
+
+            factor
+          end
+
+          # The register a held loop keeps +node+ in (#held_steps), or nil.
+          def held_product(node)
+            return nil unless @steps_held && node.is_a?(Node) && node.kind == :binop && node.op == :*
+
+            counter, steps = @steps_held
+            return nil unless variable_named(node.lhs) == counter
+
+            reg = steps[folded(node.rhs)]
+            reg && @asm.d(reg)
+          end
+
+          # The loop's count one more, and each number it keeps stepped (#held_steps) on by its
+          # factor.
+          def emit_increment(name)
+            if @steps_held && @steps_held.first == name
+              @steps_held.last.each { |factor, reg| emit_long_sum_of_number(factor, @asm.d(reg)) }
+            end
+            emit_sum(name, :+, Build.int(1))
+          end
+
+          # +number+ added to +destination+: ADDQ or SUBQ for 1 to 8, and ADD of the long otherwise.
+          def emit_long_sum_of_number(number, destination)
+            if number.between?(1, 8) then @asm.addq(:l, number, destination)
+            elsif number.between?(-8, -1) then @asm.subq(:l, -number, destination)
+            else @asm.add(:l, @asm.imm(number), destination)
+            end
           end
 
           # Is +node+ a statement written in place with D0, D1, D2 and A0 alone, everything it holds
@@ -2107,6 +2177,8 @@ module VBlank
           end
 
           def value_of_binop(node)
+            held = held_product(node)
+            return @asm.move(:l, held, @asm.d(0)) if held
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if %i[<< >>].include?(node.op) && emit_shift_by_number(node)
@@ -2316,7 +2388,7 @@ module VBlank
             name = variable_named(node)
             return var(name) if name
 
-            held_word_field(node) || fixed_word_slot(node)
+            held_product(node) || held_word_field(node) || fixed_word_slot(node)
           end
 
           # A long slot of a list at an address known here (#fixed_slot), kept as it is, which an

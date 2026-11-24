@@ -131,6 +131,37 @@ class TestRepeat < Minitest::Test
     assert_equal 7, run[:found]
   end
 
+  # The count times a number written in the program, read twice a turn, falling, under a test,
+  # past a `next` and in the test that stops the loop: what a build that keeps such a number
+  # stepped beside the count works out is what multiplying gives.
+  def test_the_count_times_a_number_reads_as_the_product_every_turn
+    run = game_player.run(logic_program do
+      rising = var :rising, 0
+      falling = var :falling, 0
+      twice = var :twice, 0
+      last = var :last, 0
+      game_loop do
+        rising = 0
+        falling = 0
+        twice = 0
+        last = 0
+        repeat(12,stop_when: (last * 3) > 25) do |i|
+          rising += (i * 3) + 1
+          record_statement(VBlank::IR::Build.next_repeat) if i == 4
+          falling += 1000 + (i * -7)
+          twice += (i * 3) - (i * -7) if i > 2
+          last = i
+        end
+      end
+    end, frames: 2)
+
+    turns = (0..9).to_a
+    assert_equal turns.sum { |i| (i * 3) + 1 }, run[:rising]
+    assert_equal turns.reject { |i| i == 4 }.sum { |i| 1000 - (i * 7) }, run[:falling]
+    assert_equal turns.select { |i| i > 2 && i != 4 }.sum { |i| i * 10 }, run[:twice]
+    assert_equal 9, run[:last]
+  end
+
   private def logic_program(&block)
     builder = VBlank::Builder.new
     builder.instance_eval(&block)
