@@ -327,7 +327,7 @@ module VBlank
 
             logged = half(runtime_place(Runtime::Sound::LOGGED))
             read_sound_entries(logged)
-            @dsp_reads << [logged, @core.dsp_registers] unless sound_writes_waiting?
+            @dsp_reads << [logged, dsp_registers_after_strikes] unless sound_writes_waiting?
             logged
           end
 
@@ -335,15 +335,21 @@ module VBlank
 
           # Whether writes the log already counts are still queued for the sound unit, when its
           # registers cannot be held to the log yet.
-          #
-          # In a game whose sound effects are struck inside the frame (Runtime::Strikes), what the sound
-          # unit keeps on its list for later is still waiting too: the registers are read once it has
-          # struck them, as the frame ends.
           def sound_writes_waiting?
             sound = Runtime::Sound
-            return true if @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
+            @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
+          end
 
-            @places.runtime.key?(Runtime::Strikes::FROM_SENT) && @core.apu_ram.getbyte(Runtime::Strikes::LISTED).positive?
+          # The DSP's registers as the sound unit will leave them once it has done what its list holds, in a
+          # game whose sound effects are struck inside the frame (Runtime::Strikes): commands the log already
+          # counts can still be waiting there for their time.
+          def dsp_registers_after_strikes
+            registers = @core.dsp_registers
+            return registers unless @places.runtime.key?(Runtime::Strikes::FROM_SENT)
+
+            Runtime::Strikes.registers_after_list(registers, @core.apu_ram,
+                                                  chip_envelopes: @places.runtime.key?(Runtime::Recordings::CHIP_ENVELOPES),
+                                                  sides: @places.runtime.key?(Runtime::Recordings::SIDES))
           end
 
           # The recordings the cartridge's places held at the moment of +frame+, each [name, level], in

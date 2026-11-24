@@ -328,6 +328,59 @@ module VBlank
               end
             end
 
+            # --- for a reader of a running cartridge ---
+
+            # The DSP's registers (+dsp+, its 128 bytes) as the sound unit will leave them once it has done
+            # every command its list holds, read from its memory (+ram+): for a checked run, which holds the
+            # registers to the interpreter's log at every pass, those whose notes are still listed among
+            # them. Each command does here what the program does with it (Sound.driver,
+            # Sound#emit_whole_note_commands, a note told whole from the list's own NEXT bytes, LIST_NEXT),
+            # so a change to what the program does with a command is a change here too. +chip_envelopes+
+            # and +sides+ are the build's, as Sound.driver is given them.
+            def registers_after_list(dsp, ram, chip_envelopes:, sides:)
+              registers = dsp.bytes
+              next_bytes = ram.byteslice(LIST_NEXT, NEXT_BYTES).bytes
+              at = ram.getbyte(LIST_HEAD)
+              ram.getbyte(LISTED).times do
+                command, first, second = [LIST_COMMANDS, LIST_FIRSTS, LIST_SECONDS].map { |table| ram.getbyte(table + at) }
+                apply_listed_command(registers, next_bytes, command, first, second, chip_envelopes: chip_envelopes, sides: sides)
+                at = (at + 1) & (LIST_ENTRIES - 1)
+              end
+              registers.pack("C*")
+            end
+
+            # One command of the list done on +registers+ (an Array of the DSP's bytes), the note's bytes in
+            # +next_bytes+ (NEXT_PITCH to NEXT_GAIN, from NEXT_PITCH on).
+            def apply_listed_command(registers, next_bytes, command, first, second, chip_envelopes:, sides:)
+              dsp = DSPWrites
+              set_bits = ->(register) { registers[register] = (registers[register] & ~first & 0xFF) | (second & first) }
+              base = command & Sound::VOICE_BITS
+              case command & Sound::COMMAND_BITS
+              when Sound::WRITE_DSP then registers[first] = second
+              when Sound::SET_FLAG_BITS then set_bits.call(dsp::FLAGS)
+              when Sound::SET_KEY_OFF_BITS then set_bits.call(dsp::KEY_OFF)
+              when Sound::HOLD_PITCH then next_bytes[0, 2] = [first, second]
+              when Sound::HOLD_ENVELOPE then next_bytes[2, 2] = [first, second]
+              when Sound::HOLD_GAIN then next_bytes[4] = first
+              when Sound::VOICE_LOUDNESS
+                registers[base + dsp::VOLUME_LEFT] = sides ? first : second
+                registers[base + dsp::VOLUME_RIGHT] = second
+              when Sound::WHOLE_NOTE
+                registers[base + dsp::VOLUME_LEFT] = registers[base + dsp::VOLUME_RIGHT] = second unless sides
+                registers[base + dsp::PITCH_LOW], registers[base + dsp::PITCH_HIGH] = next_bytes[0, 2]
+                registers[base + dsp::SOURCE] = first
+                if chip_envelopes
+                  registers[base + dsp::ADSR1], registers[base + dsp::ADSR2], registers[base + dsp::GAIN] = next_bytes[2, 3]
+                else
+                  registers[base + dsp::ADSR1] = dsp::ADSR_OFF
+                  registers[base + dsp::GAIN] = dsp::FIXED_TOP
+                end
+                bit = 1 << (base >> 4)
+                registers[dsp::KEY_OFF] &= ~bit & 0xFF
+                registers[dsp::KEY_ON] = bit
+              end
+            end
+
             # --- the console's side ---
 
             # rt_strikes_mark (JSL): MARK put in the line ahead as a frame of the music begins, or sent at

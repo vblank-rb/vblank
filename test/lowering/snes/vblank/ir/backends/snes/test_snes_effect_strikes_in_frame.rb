@@ -31,12 +31,23 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second,
   # their keys +keys+ in turn. With +work+ each pass of the game counts that high first, and with
-  # +song+ a tune of three parts, a note on each every sixteenth, plays beside them.
-  private def game(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false)
+  # +song+ a tune of three parts, a note on each every sixteenth, plays beside them. The effect plays
+  # on pass +played_on+.
+  private def game(**) = VBlank.build("STRIKES", console: :snes, out: nil, err: nil, &game_code(**))
+
+  # ...as a program, for a checked run.
+  private def game_program(**)
+    builder = Builder.new
+    builder.instance_eval(&game_code(**))
+    builder.finalize_program
+    builder.program.copy.tap { |program| program.console = :snes }
+  end
+
+  private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
-    VBlank.build("STRIKES", console: :snes, out: nil, err: nil) do
+    proc do
       enable_sound
       if song
         song(:tune) do
@@ -51,7 +62,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
       busy = var :busy, 0
       game_loop do
         pass += 1
-        sfx.play :chime if pass == PLAYED_ON
+        sfx.play :chime if pass == played_on
         repeat(work) { busy += 1 } if work.positive?
       end
     end
@@ -179,5 +190,18 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   def test_a_note_after_more_ticks_than_the_line_holds_sounds_at_its_own_pitch
     assert_in_delta held_wave_length(8), held_wave_length(16), WAVE_NEAR
+  end
+
+  # The checked run holds the sound unit's registers to the interpreter's log at every pass, those
+  # whose notes are still listed to be struck among them: it reads the registers as those commands
+  # leave them. A frame's notes are struck a little after their ticks, so a tick late in a frame is
+  # still listed as the frame ends.
+  def test_the_checked_run_reads_the_registers_at_every_pass_while_notes_wait_to_be_struck
+    frames = PLAYED_ON + 30
+    run = VBlank::IR::Backends::SNES::CheckedRun.new.run(game_program(rate: 50, apart: 3, lasting: 1), frames: frames)
+    quiet = VBlank::IR::Backends::SNES::CheckedRun.new.run(game_program(rate: 50, apart: 3, lasting: 1, played_on: frames * 2),
+                                                            frames: frames)
+
+    assert_equal quiet.dsp_reads.size, run.dsp_reads.size
   end
 end
