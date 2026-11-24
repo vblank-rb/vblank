@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "effect_strikes_heard"
+require "slow_pass_games"
 
 # A sound effect on a timer, struck inside the frame on the Super Nintendo (Runtime::Strikes). Its
 # notes are as far apart in time as their ticks, not rounded to the frames they fall in: a tick of
@@ -29,8 +30,12 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   # timer is an eighth of one, and the console sends each frame's mark a little after the frame
   # begins, not always alike. Frames would put a note out by a fifth of a frame or more, some 160.
   NEAR = 48
-  # The pass of a game that does this much work in each takes two frames or more (the test checks).
-  SLOW_WORK = 9000
+  # The turns of a busy loop that make a pass take two and a half frames' work, so every such pass
+  # takes three frames, however much the frame's sound work varies: measured in the emulator as the
+  # test runs (SlowPassGames), since a count written down takes more or fewer frames as the lowering
+  # gets quicker, and a slow game whose passes take six frames on some and seven on others has a gap
+  # between them where the sound unit's frames cannot follow both.
+  private def slow_work = (Ractor.current[:strikes_slow_work] ||= SlowPassGames.slow_pass_turns(:snes) * 5 / 3)
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second,
   # their keys +keys+ in turn. With +work+ each pass of the game counts that high first, and with
@@ -50,6 +55,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON,
                           slow_once_on: nil)
+    slow_once_turns = slow_work if slow_once_on
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
@@ -78,7 +84,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
         if slow_once_on
           if slowed == 0 && frames_since_power_on >= slow_once_on
             slowed = 1
-            repeat(SLOW_WORK) { busy += 1 }
+            repeat(slow_once_turns) { busy += 1 }
           end
         end
       end
@@ -136,7 +142,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   # the other, and sends them together: each frame's notes are struck a frame after the one before's,
   # their ticks apart, not all at once as they come.
   def test_a_game_slower_than_the_frames_strikes_its_notes_as_far_apart_as_their_ticks
-    assert_struck_apart(rate: 50, apart: 3, lasting: 1, notes: 8, keys: %i[A5 E5], work: SLOW_WORK) do |sound|
+    assert_struck_apart(rate: 50, apart: 3, lasting: 1, notes: 8, keys: %i[A5 E5], work: slow_work) do |sound|
       assert_operator sound.passes, :<=, FRAMES / 2, "every pass takes two frames or more"
     end
   end
