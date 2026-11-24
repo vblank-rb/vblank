@@ -561,6 +561,36 @@ module VBlank
           variable
         end
 
+        # `h = { a: 1, b: 2 }`, a Hash written out that game code changes at a key
+        # (LocalNames#game_hash?): a game variable for each key, named after the local and the key
+        # (`h_a`), each starting from the number Ruby holds there. Left a plain Hash, the change
+        # would run once, while building, and the game would never see it. The line sets each
+        # variable where it is reached, as a local's own line does (#variable_set_where_reached).
+        #
+        # The Hash refuses a key the game works out, and is frozen, so a key it does not have is
+        # refused as a misspelling (#refuse_new_slot!), as a part's Hash of numbers is
+        # (InstanceVariables.game_variables_in). Run as plain Ruby, it stays Ruby's.
+        def game_hash(owner, name, held, source: nil)
+          return held if Builder::Session.plain_ruby?
+
+          slots = held.to_h do |key, value|
+            # A place the game named itself (`{ x: var(:x, 1) }`, `{ x: hero.x }`) is kept as it is,
+            # as an Array keeps one (Arrays.named_place?): a change at its key changes that place.
+            next [key, value] if Arrays.named_place?(value)
+
+            slot_name = :"#{name}_#{key.is_a?(Symbol) || key.is_a?(Integer) || key.is_a?(String) ? key : 'key'}"
+            # Keyed apart from the source's own locals, so a local the game names `h_a` is another variable.
+            slot_source = source && "#{source} #{name}[#{key.inspect}]"
+            made = start_name(value) do |start, sets|
+              variable_set_where_reached(owner, slot_name, start, sets: sets, source: slot_source)
+            end
+            [key, made]
+          end
+          keyed = InstanceVariables::KeyedHash[slots]
+          keyed.each { |key, made| keep_as_own(made, keyed, key) if Steps.variable?(made) && made.holder.nil? }
+          keyed.freeze
+        end
+
         # Does the line that makes the variable +name+ run somewhere other than once at power-on?
         # Asked before the line makes it. A line on the builder makes the one variable of its local
         # each time it runs, so a second run finds it made. A part's line makes a new variable each

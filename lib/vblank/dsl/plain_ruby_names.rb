@@ -133,9 +133,10 @@ module VBlank
 
           attr_accessor :asked_nil
 
-          # Game code changes what the name holds with an Array verb (Arrays::CHANGING_VERBS), and
-          # adds to it with one of Arrays::GROWING_VERBS.
-          attr_accessor :changed_as_array, :grown_as_array
+          # Game code changes what the name holds with an Array verb (Arrays::CHANGING_VERBS) or a
+          # Hash verb (InstanceVariables::KeyedHash::CHANGING_VERBS), and adds to it with one of
+          # Arrays::GROWING_VERBS.
+          attr_accessor :changed_as_collection, :grown_as_array
 
           # What game code puts into what the name holds, as an Array: the nodes of each value
           # given `<<`, `push`, `[]=` and the like (Arrays.put_values).
@@ -160,8 +161,19 @@ module VBlank
 
           # Is this name a game's own list (LocalNames#game_array?)?
           def game_array?
-            changed_as_array && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && Arrays.makes_array?(write.node.value) }
+            changed_as_collection && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && Arrays.makes_array?(write.node.value) }
           end
+
+          # Is this name a Hash the game keeps a variable for at each key (LocalNames#game_hash?)?
+          def game_hash?
+            changed_as_collection && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && LocalNames.keyed_hash?(write.node.value) }
+          end
+        end
+
+        # Is +value+ a Hash written out with a key and a value for each slot, and at least one slot:
+        # `{ left: 0, right: 0 }`, not `{}` or `{ **other }`?
+        def self.keyed_hash?(value)
+          value.is_a?(Prism::HashNode) && !value.elements.empty? && value.elements.all?(Prism::AssocNode)
         end
 
         # Is +node+ a call on something other than nothing or `self`?
@@ -322,6 +334,10 @@ module VBlank
         # own? That is an Array written out on every line that gives the local a value, which game
         # code changes with an Array verb (PlainRuby::Arrays). The one place that question is answered.
         def game_array?(node) = @locals_by_node[node]&.game_array? || false
+
+        # ...and a Hash the game keeps a variable for at each key: a Hash written out on every line
+        # that gives the local a value, which game code changes at a key (`h[:a] += 1`, `h[:a] = 2`).
+        def game_hash?(node) = @locals_by_node[node]&.game_hash? || false
 
         # ...and does game code add items to it?
         def game_array_grown?(node) = @locals_by_node[node]&.grown_as_array || false
@@ -762,7 +778,7 @@ module VBlank
             read_children(node, scopes, in_game_code)
             read_place_change(node)
             if node.is_a?(Prism::IndexOperatorWriteNode)
-              note_array_change(node, in_game_code)
+              note_collection_change(node, in_game_code)
               note_instance_variable_index(node)
               note_reader_index(node)
               note_changing_instance_variable(node.receiver.name) if node.receiver.is_a?(Prism::InstanceVariableReadNode)
@@ -924,7 +940,7 @@ module VBlank
             read_names(child, scopes, in_game_code || game_block)
           end
           read_place_change(node) if node.name == :[]= || node.attribute_write?
-          note_array_change(node, in_game_code)
+          note_collection_change(node, in_game_code)
           note_instance_variable_index(node)
           note_reader_index(node)
           note_changing_slot(node, in_game_code)
@@ -1055,22 +1071,23 @@ module VBlank
         end
 
         # A local changed by game code with an Array verb, `trail << x` or `trail[0] += 1`
-        # (Local#game_array?).
+        # (Local#game_array?), or a Hash verb, `h.store(:a, 1)` (Local#game_hash?).
         #
         # A change inside a Ruby loop in game code (`3.times { |n| xs << n * 8 }`) runs while
         # building, so it is the game's only where it puts in a value the build cannot know then.
-        def note_array_change(node, in_game_code)
+        def note_collection_change(node, in_game_code)
           verb = node.is_a?(Prism::IndexOperatorWriteNode) ? :[]= : node.name
           local = node.receiver.is_a?(Prism::LocalVariableReadNode) && @locals_by_node[node.receiver]
           # What is put in while building tells what the Array holds as well as a put in game code.
           local.building_puts.concat(Arrays.put_values(node)) if local && Arrays::GROWING_VERBS.include?(verb)
-          return unless (in_game_code || @iterating_in_game_code) && Arrays::CHANGING_VERBS.include?(verb)
+          return unless in_game_code || @iterating_in_game_code
+          return unless Arrays::CHANGING_VERBS.include?(verb) || InstanceVariables::KeyedHash::CHANGING_VERBS.include?(verb)
           return unless local
 
           puts = Arrays.put_values(node)
           return if !in_game_code && puts.all? { |put| known_while_building?(put) }
 
-          local.changed_as_array = true
+          local.changed_as_collection = true
           local.grown_as_array = true if Arrays::GROWING_VERBS.include?(verb)
           local.array_puts.concat(puts)
         end

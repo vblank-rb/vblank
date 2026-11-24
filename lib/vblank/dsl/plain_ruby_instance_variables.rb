@@ -831,6 +831,31 @@ module VBlank
         class KeyedHash < Hash
           include KeyedVariables
 
+          # The Hash verbs besides `[]=` that change a Hash in place. The game keeps a variable for
+          # each key, so a verb that adds or drops a key, or gives several keys new numbers at once,
+          # has nothing to change: each is refused (#whole_hash_change_message). Game code calling
+          # one on a local Hash written out makes that Hash one of these (LocalNames#game_hash?),
+          # so the call is refused rather than run once, while building.
+          CHANGING_VERBS = %i[
+            store merge! update delete delete_if keep_if select! filter! reject! compact! transform_values!
+            transform_keys! clear replace shift default= default_proc= compare_by_identity rehash
+          ].freeze
+
+          # Written as source, since a method made from a block cannot be called from another Ractor.
+          CHANGING_VERBS.each do |name|
+            class_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+              def #{name}(...)
+                Steps.refuse_game_code!(whole_hash_change_message(:#{name}))
+              end
+            RUBY
+          end
+
+          def whole_hash_change_message(verb)
+            "This Hash holds game variables, and this line changes it with `#{verb}`. The game keeps one " \
+              "number for each key, and cannot add a key, remove a key or change many keys in one step. " \
+              "To fix this, change one key at a time, like `hash[:key] = 5` or `hash[:key] += 1`."
+          end
+
           def worked_out_key_message
             "This Hash holds game variables, and this line takes one at a key that is worked out as the game " \
               "plays. Ruby finds a slot while it builds the game, so it cannot find this one. To fix this, use a " \

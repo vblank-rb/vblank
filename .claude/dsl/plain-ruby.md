@@ -209,6 +209,11 @@ instance variables.
   reads `cave_light_state_0` to `cave_light_state_3`. That holds where every key is known while
   building: a number, a symbol, a String or a constant written out, or the name a Ruby loop over
   something written out gives (`SIDES.each do |side|`, `3.times do |i|`).
+- **A local Hash written out that game code changes at a key is a game variable for each key**:
+  `h = { a: 1, b: 2 }`, then `h[:a] += 3` or `m = (h[:a] += 3)` in game code (`LocalNames#game_hash?`,
+  `Writes.game_hash`), named `h_a` and `h_b`. A slot holding a place the game named (`{ x:
+  var(:x, 1) }`) stays that place. A Hash verb that adds, drops or changes many keys at once
+  (`KeyedHash::CHANGING_VERBS`: `store`, `merge!`, `delete` ...) is refused.
 - **A named Array of numbers read at an index the game may work out is a list** (`lists.md`):
   `@counts = [0, 0]` in `initialize`, then `@counts[which] += 1` in game code, with any other index
   than those above, written in the class, in the class reopened or in a class made from it, in any
@@ -590,6 +595,7 @@ Each is a friendly error naming the line.
 | a plain number the build could not follow to a game test (a slot at a key worked out on the line, `counts[i + 1] += 1`) changed under that test | a game variable where it is first set: `var :counts, 0` |
 | a new Hash key given a number under a game test | give it a number before the test |
 | a misspelt key of a Hash of game variables | one of the keys it has |
+| `store`, `merge!`, `delete` or another verb that changes many keys of a Hash of game variables at once | one key at a time, `h[:a] = 5` |
 | an instance variable that game code changes and reads back, where the source does not show the change (`@busy = 1` in a method a routine calls) | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable not marked, set outright by a method under a test the game makes (`r.reset if k == 2`), or worked out from a number another routine gave it, then read | `game_variables :n` in the class's body |
 | a part whose numbers or Arrays change, made in a `game_loop`, a scene or a `func` (`c = Counter.new` there) | make it above the game loop, or keep it: `@counter ||= Counter.new` |
@@ -648,8 +654,6 @@ Each is a friendly error naming the line.
 - An instance variable of a class itself (`@cache` in `def self.table`) is always plain Ruby.
 - An instance variable holding `true` or `false` that is not named is a flag of the build's: `if
   @open` is decided while building. Name it if the game sets and tests it as it plays.
-- `m = (h[:a] += 3)` on a Hash of game numbers answers the number before the change. Write the
-  change on its own line.
 - `dup`, `clone` or `first(2)` of an Array of named numbers holds the same variables, so a change
   to the copy changes the Array.
 - An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]; t = Holder.new(src)`)

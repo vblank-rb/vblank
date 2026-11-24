@@ -1341,6 +1341,10 @@ module VBlank
         def write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
           return "#{prefix}#{game_array_text(node)}" if @names.game_array?(node)
+          if @names.game_hash?(node)
+            return "#{prefix}#{WRITES}.game_hash(self, :#{@names.variable_name_of(node)}, #{rewritten_text(node.value)}" \
+                   "#{source_option_text})"
+          end
           # A name kept for a read past its `if` can stay a plain name under a test further out, so
           # it keeps its answer the way any plain name does.
           return "#{prefix}#{second_name_write(node.name, "(#{kept_value_text(node.value, node)})", node)}" if promoted?(node)

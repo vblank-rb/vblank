@@ -130,6 +130,8 @@ The number is named after the class and the instance variable: `lamp_lit` for `@
 
 A Hash or Array of numbers that game code changes is a number for each key, where every key is known while building: a number, a symbol or a constant written out, or the name a Ruby loop over something written out gives.
 
+A Hash written out in the game block, `h = { a: 1, b: 2 }`, works the same way when game code changes it at a key: `h[:a] += 3`, `h[:b] = 0`, or `m = (h[:a] += 3)`, which gives `m` the new number as Ruby does. The numbers are named after the local and the key, `h_a` and `h_b`. The game keeps one number for each key, so a key the Hash does not have stops the build, and so does a method that adds, removes or changes many keys in one step (`store`, `merge!`, `delete`, `transform_values!`, `clear` and the others). Change one key at a time instead.
+
 ```ruby
 # One count for each side, kept by the game
 class Tilt
@@ -720,7 +722,6 @@ end
 - VBlank builds each `func` and scene after the game loop. An instance variable that only a `func` or a scene gives a value, used in the loop as `@point.x`, stops with a message: give it its first value above the game loop.
 - A Struct made in a `game_loop`, a scene or a `func` under an `if`, and used after that `if` or in another routine (a `func` the loop calls, too), stops with a message, since Ruby can keep the one an earlier pass made. Make it above the game loop, or keep it with `@point ||= Point.new(...)`.
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
-- `h[key] += n` on a Hash of game numbers answers the number before the change where it is used as a value (`m = (h[:a] += 3)`). Write the change on its own line, then read `h[:a]`.
 - An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]`, then `tally = Tally.new(src)`), and read through that local after game code changes it through the part (`tally.counts[at] += 1`, then `src[1]`), answers the number Ruby gave it while building. Read it through the part, `tally.counts[1]`, or hand the part a constant.
 - A number or field another class changes through a writer (`dial.level += 3`) and that game code reads before that line stays the game's because of the writer's name: any part with a writer of that name in any game file loaded keeps that field as a game number. This changes what the game costs and how a save is laid out, not what it answers.
 

@@ -89,7 +89,7 @@ class TestPlainRubyAnswers < Minitest::Test
   def test_range_and_list_tests
     agrees("include? and case on a range", reads: %i[m n o]) do
       a = 3
-      m = n = o = 0
+      m = n = o = p = 0
       game_loop do
         a += 1 if pressed(:a)
         m = (0..4).include?(a) ? 1 : 2
@@ -105,7 +105,7 @@ class TestPlainRubyAnswers < Minitest::Test
   def test_tests_on_a_number
     agrees("positive? and zero? as tests", reads: %i[m n o]) do
       a = 3
-      m = n = o = 0
+      m = n = o = p = 0
       game_loop do
         a += 1 if pressed(:a)
         m = a.positive? ? 1 : 2
@@ -118,7 +118,7 @@ class TestPlainRubyAnswers < Minitest::Test
   def test_counted_loops_over_game_numbers
     agrees("upto, times and for over a game number", reads: %i[m n o]) do
       a = 3
-      m = n = o = 0
+      m = n = o = p = 0
       game_loop do
         a += 1 if pressed(:a)
         m = 0
@@ -1034,6 +1034,100 @@ class TestPlainRubyAnswers < Minitest::Test
       game_loop do
         at = (at + 1) % 3
         m = (counts[at] += 1)
+      end
+    end
+  end
+
+  def test_the_answer_of_a_changed_hash_slot
+    agrees("m = (h[:a] += 3), n = (h[:b] -= 1), o = (h[:c] *= 2)", reads: %i[m n o p], passes: 3) do
+      h = { a: 1, b: 2, c: 1, d: 0 }
+      m = n = o = p = 0
+      game_loop do
+        m = (h[:a] += 3)
+        n = (h[:b] -= 1)
+        o = (h[:c] *= 2)
+        h[:d] += 5
+        p = h[:d]
+      end
+    end
+  end
+
+  def test_a_hash_changed_at_known_keys_and_given_numbers
+    agrees("h[:a] = h[:a] + 2, SIDES.each { |s| h[s] += 1 }, h.values.sum", reads: %i[m n o], passes: 3) do
+      h = { a: 1, left: 0, right: 5 }
+      m = n = o = 0
+      game_loop do
+        h[:a] = h[:a] + 2
+        %i[left right].each { |side| h[side] += 1 }
+        m = h[:a]
+        n = h[:right]
+        o = h.values.sum
+      end
+    end
+  end
+
+  def test_a_hash_made_on_every_pass_starts_again
+    agrees("h = { a: 0 } in the game loop, then h[:a] += 2", reads: %i[m n], passes: 3) do
+      m = n = 0
+      game_loop do
+        h = { a: 0, b: 1 }
+        h[:a] += 2
+        n += 1
+        h[:b] += n
+        m = h[:a] + h[:b]
+      end
+    end
+  end
+
+  def test_a_hash_changed_only_while_building_stays_ruby
+    agrees("h[:a] += 3 above the game loop", reads: %i[m], passes: 2) do
+      h = { a: 1 }
+      h[:a] += 3
+      m = 0
+      game_loop { m = h[:a] }
+    end
+  end
+
+  def test_a_hash_changed_at_a_new_key_is_refused
+    refused("h[:z] = 1 on { a: 1 }", /no key :z/) do
+      h = { a: 1 }
+      game_loop { h[:z] = 1 }
+    end
+  end
+
+  def test_a_hash_changed_whole_is_refused
+    refused("h.store(:a, 2) in the game loop", /one key at a time/) do
+      h = { a: 1, b: 2 }
+      game_loop { h.store(:a, h[:a] + 1) }
+    end
+    refused("h.delete(:a) in the game loop", /one key at a time/) do
+      h = { a: 1, b: 2 }
+      game_loop { h.delete(:a) }
+    end
+  end
+
+  def test_a_hash_changed_while_building_then_by_the_game
+    agrees("h[:a] += 10 above the game loop, h[:a] += 1 in it", reads: %i[m], passes: 3) do
+      h = { a: 1, b: 2 }
+      h[:a] += 10
+      h[:b] = 7
+      m = 0
+      game_loop do
+        h[:a] += 1
+        m = h[:a] + h[:b]
+      end
+    end
+  end
+
+  def test_a_hash_slot_beside_a_local_of_its_variable_name
+    agrees("h[:a] beside a local h_a", reads: %i[m], passes: 3) do
+      h = { a: 1 }
+      h_a = 100
+      m = 0
+      game_loop do
+        h[:a] += 1
+        h_a += 1
+        m = h[:a] + h_a
       end
     end
   end
