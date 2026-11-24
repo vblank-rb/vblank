@@ -249,12 +249,13 @@ module VBlank
             unnamed.each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
+              capacity = @plan.most_list_capacity(node.name)
               place = if node.name == corners_list_in_face
                         runtime_place(Runtime::Faces::FACE) + Runtime::Faces::CORNERS_LIST_OFFSET_BYTES
                       else
-                        place_list(node.name, Runtime::Lists::HEADER + (node.capacity * width))
+                        place_list(node.name, Runtime::Lists::HEADER + (capacity * width))
                       end
-              @lists[node.name] = ListPlace.new(address: place, capacity: node.capacity, slot_bytes: width, name: node.name.to_s)
+              @lists[node.name] = ListPlace.new(address: place, capacity: capacity, slot_bytes: width, name: node.name.to_s)
             end
             place_pools
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
@@ -854,6 +855,7 @@ module VBlank
           def emit_list_new(node)
             shown = @shown_sorts&.fetch(node.name, nil)
             emit_shown_start(shown, node.capacity) if shown
+            emit_capacity_into_header(node) if @plan.list_capacity_varies?(node.name)
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -861,6 +863,15 @@ module VBlank
             return emit_pool_area_filled(list, node.full_of) if @pool_areas.key?(slot_place(list).area)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # A list declared with several capacities (LoweringPlan#list_capacities) takes this
+          # declaration's into its header, where the runtime reads it: what rt_list_at_capacity makes
+          # the length, and what a push is held to. The start wrote the most of them there, which its
+          # place has room for.
+          def emit_capacity_into_header(node)
+            @asm.li(:v0, node.capacity)
+            emit_store_word(:v0, @lists.fetch(node.name).address + Runtime::Lists::CAPACITY)
           end
 
           # A pool's list kept in an area of the pool's block made full of +number+, a slot at a time at
@@ -1169,7 +1180,10 @@ module VBlank
             changed = program.walk.filter_map { |node| node.name if %i[list_push list_drop list_copy].include?(node.kind) }
             made = program.walk.select { |node| node.kind == :list_new }.group_by(&:name)
             first = @plan.lists_made_before_use
-            made.filter_map { |name, news| name if news.all?(&:full_of) && first.include?(name) && !changed.include?(name) }
+            made.filter_map do |name, news|
+              # A list declared with several capacities is as long as the declaration run last made it.
+              name if news.all?(&:full_of) && news.map(&:capacity).uniq.one? && first.include?(name) && !changed.include?(name)
+            end
           end
 
           # After the routine's return, for each list it reads or writes in place, where an index past the

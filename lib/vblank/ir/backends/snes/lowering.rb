@@ -351,7 +351,7 @@ module VBlank
             strided = strided_pool_placements
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(list_width(node))
-              capacity = list_capacities.fetch(node.name).max
+              capacity = @plan.most_list_capacity(node.name)
               # A list a pool's layout keeps elsewhere has only its header here.
               slots = strided.key?(node.name) ? 0 : capacity * width
               place = chip_list_place(node.name) || place_list(node.name, Runtime::Lists::HEADER + slots)
@@ -1641,7 +1641,7 @@ module VBlank
             emit_order_tables_start(keyed) if keyed
             shown = @shown_sorts&.fetch(node.name, nil)
             emit_shown_start(shown) if shown
-            emit_capacity_into_header(node) if list_capacities.fetch(node.name).length > 1
+            emit_capacity_into_header(node) if @plan.list_capacity_varies?(node.name)
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -1649,14 +1649,6 @@ module VBlank
             return emit_slots_zeroed(node) if slots_zeroed_by_copying_engine?(node)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
-          end
-
-          # The capacities each list is declared with, by name: one, or several where scenes declare
-          # a list of one name each their own way (Reference#exec_list_new makes the list anew, at
-          # the capacity of the declaration run last). Its place holds the most of them.
-          def list_capacities
-            @list_capacities ||= @reachable.select { |node| node.kind == :list_new }
-                                           .group_by(&:name).transform_values { |made| made.map(&:capacity).uniq }
           end
 
           # A list declared with several capacities takes this declaration's into its header, where
@@ -2382,7 +2374,7 @@ module VBlank
           def full_length_at(place)
             @full_lengths_by_place ||= full_length_lists.each_with_object({}) do |(name, capacity), by_place|
               header, = @lists[name]
-              by_place[header] = capacity if header && capacity <= 0xFFFF && list_capacities.fetch(name).one?
+              by_place[header] = capacity if header && capacity <= 0xFFFF && !@plan.list_capacity_varies?(name)
             end
             @full_lengths_by_place[place]
           end
@@ -3100,7 +3092,7 @@ module VBlank
             @keyed_sorts = {}
             @keys_by_place = {}
             @plan.sorts_kept_apart.each_value do |node|
-              count = @declared_lists.fetch(node.name).capacity
+              count = @plan.most_list_capacity(node.name)
               next if @memory.near_bytes_left < NEAR_BYTES_LAST + (count * 8)
 
               said = "the order #{node.name.inspect}"

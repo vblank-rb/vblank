@@ -298,8 +298,9 @@ module VBlank
             end
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
-              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
-              @lists[node.name] = [place, node.capacity, width, node.name.to_s]
+              capacity = @plan.most_list_capacity(node.name)
+              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (capacity * width))
+              @lists[node.name] = [place, capacity, width, node.name.to_s]
             end
             place_pools
             reserve_patches
@@ -942,12 +943,21 @@ module VBlank
               entries = keyed ? at(keyed.entries) : @asm.abs_l(@lists.fetch(node.name).first, Runtime::Lists::HEADER)
               emit_shown_start(shown, node.capacity, entries)
             end
+            emit_capacity_into_header(node) if @plan.list_capacity_varies?(node.name)
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
             return emit_pool_area_filled(node) if @pool_areas.key?(slot_place(node.name).area)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # A list declared with several capacities (LoweringPlan#list_capacities) takes this
+          # declaration's into its header, where the runtime reads it: what rt_list_at_capacity makes
+          # the length, and what a push is held to. The start wrote the most of them there, which its
+          # place has room for.
+          def emit_capacity_into_header(node)
+            @asm.move(:w, @asm.imm(node.capacity), @asm.abs_l(@lists.fetch(node.name).first, Runtime::Lists::CAPACITY))
           end
 
           # A pool's list kept in an area of the pool's block made full of its number, a slot at a time
@@ -1088,7 +1098,9 @@ module VBlank
           # worked with.
           def emit_slot_address(node, index, fault:)
             place = area_place(slot_place(node.name))
-            full = always_full_lists[node.name]
+            # A list declared with several capacities is as long as the declaration run last made it,
+            # so its length is read where it is kept.
+            full = always_full_lists[node.name] unless @plan.list_capacity_varies?(node.name)
             @asm.lea(at(place), @asm.a(0))
             unless full && (index_inside?(node.index, full) || index_checked_below?(node.index, full))
               emit_list_length(full, index + 1)
@@ -1650,7 +1662,7 @@ module VBlank
           def keep_order_tables
             @keyed_sorts = {}
             @plan.sorts_kept_apart.each do |name, node|
-              count = @declared_lists.fetch(node.name).capacity
+              count = @plan.most_list_capacity(node.name)
               entries = begin
                 @memory.reserve("the items of the order #{node.name.inspect}", count * 2)
               rescue Memory::Full

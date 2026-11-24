@@ -95,7 +95,8 @@ module VBlank
 
         # The lists the program declares, by name: a list is there, empty, from power-on wherever it
         # is declared (the interpreter gathers them before running), so its storage is the first
-        # declaration's. And every table, by name.
+        # declaration's, made room for the most items any declaration holds (#most_list_capacity).
+        # And every table, by name.
         attr_reader :declared_lists, :tables
 
         # What each scene hands the next across a change of screen (SceneHandover), and the number
@@ -562,6 +563,21 @@ module VBlank
             end
           end
         end
+
+        # The capacities each list is declared with, by name: one, or several where scenes declare a
+        # list of one name each their own way. Each declaration makes the list anew at its own
+        # capacity (Reference#exec_list_new), so a lowering keeps room for the most of them and, for
+        # a list with several, sets the capacity it keeps as each declaration runs.
+        def list_capacities
+          @list_capacities ||= @reachable.select { |node| node.kind == :list_new }
+                                         .group_by(&:name).transform_values { |made| made.map(&:capacity).uniq }
+        end
+
+        # The most items list +name+ is declared to hold, which its room is made for.
+        def most_list_capacity(name) = list_capacities.fetch(name).max
+
+        # Whether list +name+ is declared with more than one capacity (#list_capacities).
+        def list_capacity_varies?(name) = list_capacities.fetch(name).length > 1
 
         # The lists made before anything can read or write them, by name: each made by a statement of
         # the program's own top level that comes before every statement that names it, however deep in

@@ -319,8 +319,9 @@ module VBlank
 
               width = LoweringPlan::SLOT_BYTES.fetch(list_width(node))
               # Named as the game names it, since running out of room says which list asked.
-              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
-              @lists[node.name] = [place, node.capacity, width, node.name.to_s]
+              capacity = @plan.most_list_capacity(node.name)
+              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (capacity * width))
+              @lists[node.name] = [place, capacity, width, node.name.to_s]
             end
             place_pools
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
@@ -1154,6 +1155,7 @@ module VBlank
 
             shown = @shown_sorts&.fetch(node.name, nil)
             emit_shown_start(shown, node.capacity) if shown
+            emit_capacity_into_header(node) if @plan.list_capacity_varies?(node.name)
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -1161,6 +1163,18 @@ module VBlank
             return emit_list_filled(node) if filled_in_line?(node)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # A list declared with several capacities (LoweringPlan#list_capacities) takes this
+          # declaration's into its header, where the runtime reads it: what rt_list_at_capacity makes
+          # the length, and what a push is held to. The start wrote the most of them there, which its
+          # place has room for.
+          def emit_capacity_into_header(node)
+            place, = list_placed(node)
+            [node.capacity & 0xFF, node.capacity >> 8].each_with_index do |byte, i|
+              @asm.load(:a, byte)
+              @asm.load([place + Runtime::Lists::CAPACITY + i], :a)
+            end
           end
 
           # Whether list_new +node+ is made full in line (#emit_list_filled): a whole number, into
@@ -1709,7 +1723,8 @@ module VBlank
               end
               others = @program.walk.reject { |node| FIXED_LENGTH_STEPS.include?(node.kind) }
               named = others.flat_map { |node| node.attrs.values.flat_map { |value| Array(value) } }.grep(Symbol)
-              full - named
+              # A list declared with several capacities is as long as the declaration run last made it.
+              full - named - full.select { |name| @plan.list_capacity_varies?(name) }
             end
           end
 
