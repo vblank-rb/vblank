@@ -121,7 +121,8 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
   end
 
   # The wave voice's pitch comes out of the sound circuit, because the register a game writes
-  # it to gives nothing back: its rate bits are write-only, on the console and in mGBA alike.
+  # it to gives nothing back on the console: its rate bits are write-only. (mGBA before 0.11 reads
+  # back what was written, so the register is not asked here.)
   def test_the_wave_voice_says_the_pitch_it_is_playing_where_its_register_cannot
     rom = build_rom("WAVE") do
       screen :bitmap
@@ -133,8 +134,6 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
     with_probe(rom) do |probe|
       probe.step(8)
       assert_equal VBlank::IR::Backends::GameBoySound.wave_rate(440), probe.wave_rate
-      assert_equal 0, probe.read16(VBlank::Cartridge::Constants::REG_SOUND3CNT_X) & 0x07FF,
-                   "the register itself reads back no pitch"
     end
   end
 
