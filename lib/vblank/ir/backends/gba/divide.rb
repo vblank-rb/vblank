@@ -526,14 +526,19 @@ module VBlank
           # the leftover follows the numerator. Both are packed into one register — the
           # numerator's sign where it already sits, the quotient's in the bottom bit —
           # rather than stacked, so nothing touches memory.
+          #
+          # The packed signs word, DIV_SIGNS:
+          #
+          #   bit 31  the numerator's sign   (the leftover will follow it)
+          #   bit 0   1 when the signs differ (the quotient will be negative)
           def emit_divide_strip_signs
-            @emitter.emit(ASM.and_imm(DIV_SIGNS, DIV_NUM, SIGN_BIT))
-            @emitter.emit(ASM.eor_reg(DIV_COUNT, DIV_NUM, DIV_DEN))
-            @emitter.emit(ASM.orr_reg_lsr(DIV_SIGNS, DIV_SIGNS, DIV_COUNT, 31))
+            @emitter.emit(ASM.and_imm(DIV_SIGNS, DIV_NUM, SIGN_BIT))                        # bit 31 = the numerator's sign
+            @emitter.emit(ASM.eor_reg(DIV_COUNT, DIV_NUM, DIV_DEN))                         # top bit = 1 when the signs differ (the count register is spare here)
+            @emitter.emit(ASM.orr_reg_lsr(DIV_SIGNS, DIV_SIGNS, DIV_COUNT, 31))             # bit 0 = that top bit, moved down
             @emitter.emit(ASM.cmp_imm(DIV_NUM, 0))
-            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_NUM, DIV_NUM, 0))
+            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_NUM, DIV_NUM, 0))                       # numerator = |numerator|
             @emitter.emit(ASM.cmp_imm(DIV_DEN, 0))
-            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_DEN, DIV_DEN, 0))
+            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_DEN, DIV_DEN, 0))                       # divisor = |divisor|
           end
 
           # Scale the divisor up under the numerator, then run that many division steps.
@@ -544,16 +549,30 @@ module VBlank
           # of how far it moved is one less than the number of steps the answer needs.
           # Entering the written-out run of steps that far from its end runs exactly that
           # many of them.
+          #
+          # Each written-out step is one place of schoolbook long division in binary:
+          #
+          #   numerator  1101 (13)      divisor lined up under it: 0011 << 2 = 1100
+          #   step: does 1100 fit in 1101? yes -> take it out, answer bit 1; halve the divisor
+          #   step: does 0110 fit in 0001? no  -> answer bit 0; halve the divisor ...
+          #
+          # Registers: DIV_NUM the numerator (what is left over at the end), DIV_DEN the divisor
+          # being slid down, DIV_ANS the answer's bits so far, DIV_COUNT how far the divisor
+          # was moved up.
           def emit_divide_ladder
             @emitter.emit(ASM.load_immediate(DIV_ANS, 0))
             @emitter.emit(ASM.load_immediate(DIV_COUNT, 0))
             SCALE_STEPS.each do |step|
+              # Is the divisor no more than the numerator shifted down +step+ places? If so
+              # (condition "lower or same") move it up that far and count the places.
               @emitter.emit(ASM.cmp_reg_lsr(DIV_DEN, DIV_NUM, step))
               @emitter.emit(ASM.mov_reg_lsl_cond(:ls, DIV_DEN, DIV_DEN, step))
               @emitter.emit(ASM.add_imm_cond(:ls, DIV_COUNT, DIV_COUNT, step))
             end
 
             @emitter.emit(ASM.rsb_imm(DIV_COUNT, DIV_COUNT, LADDER_STEPS - 1)) # steps to skip
+            # Jump forward past that many steps, by adding to the program counter: four
+            # instructions of four bytes each, so the count is shifted left four places.
             @emitter.emit(ASM.add_pc_reg_lsl(DIV_COUNT, 4))                   # four instructions each
             @emitter.emit(ASM.nop)                                            # pc reads two ahead
             LADDER_STEPS.times do
@@ -567,7 +586,7 @@ module VBlank
           # Put the signs back and leave the answers where a caller expects them: the
           # quotient in r0, the leftover in r1 (where it already is).
           def emit_divide_restore_signs
-            @emitter.emit(ASM.mov_reg(DIV_DEN, DIV_ANS))
+            @emitter.emit(ASM.mov_reg(DIV_DEN, DIV_ANS))                  # r0 = the quotient, still unsigned
             @emitter.emit(ASM.tst_imm(DIV_SIGNS, 1))
             @emitter.emit(ASM.rsb_imm_cond(:ne, DIV_DEN, DIV_DEN, 0)) # the two signs differed
             @emitter.emit(ASM.cmp_imm(DIV_SIGNS, 0))
