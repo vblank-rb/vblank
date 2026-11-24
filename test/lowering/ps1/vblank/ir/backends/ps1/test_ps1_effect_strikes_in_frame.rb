@@ -187,4 +187,8 @@ class TestPS1EffectStrikesInFrame < Minitest::Test
   def test_the_games_wave_before_a_listed_strike_on_its_voice_is_heard_over_it
     assert_game_sound_heard_over_effect(:ps1, :wave, near: GAME_SOUND_NEAR)
   end
+
+  def test_the_tune_taking_back_a_voice_the_effect_lets_go_is_heard_on
+    assert_tune_heard_after_effect_lets_go(:ps1)
+  end
 end

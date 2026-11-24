@@ -317,7 +317,9 @@ module VBlank
             # rt_sound_key_on(a0 = a voice) and rt_sound_key_off: the voice's bit set in what the frame
             # boundary writes (+mine+), and taken from the other (+other+), so the last asked for wins.
             # With +struck_as+ (a game whose effects are struck inside the frame), one asked for while a
-            # tick's pass plays goes on Strikes' list instead, as that voice with +struck_as+'s bits.
+            # tick's pass plays goes on Strikes' list instead, as that voice with +struck_as+'s bits, and
+            # one asked for outside it while the list holds something of the voice goes on the list after
+            # it (rt_strikes_after).
             def emit_key(asm, at, label, mine, other, struck_as: nil)
               asm.label(label)
               asm.lw(:t0, at.call(ON), :gp)
@@ -327,12 +329,24 @@ module VBlank
                 asm.beq(:t0, :zero, "#{label}_at_boundary")
                 emit_strikes_call_returning(asm, "rt_strikes_put") { asm.ori(:a0, :a0, struck_as) }
                 asm.label("#{label}_at_boundary")
+                asm.addiu(:sp, :sp, -8)
+                asm.sw(:ra, 0, :sp)
+                asm.sw(:a0, 4, :sp)
+                asm.ori(:a0, :a0, struck_as)
+                asm.jal("rt_strikes_after")
+                asm.lw(:a0, 4, :sp)
+                asm.lw(:ra, 0, :sp)
+                asm.addiu(:sp, :sp, 8)
               end
               asm.li(:t1, 1)
               asm.sllv(:t1, :t1, :a0)
+              if struck_as # listed after the voice's strikes: not gathered for the frame boundary
+                asm.bne(:v0, :zero, "#{label}_listed")
+              end
               asm.lw(:t2, at.call(mine), :gp)
               asm.or(:t2, :t2, :t1)
               asm.sw(:t2, at.call(mine), :gp)
+              asm.label("#{label}_listed") if struck_as
               asm.nor(:t1, :t1, :zero)
               asm.lw(:t2, at.call(other), :gp)
               asm.and(:t2, :t2, :t1)

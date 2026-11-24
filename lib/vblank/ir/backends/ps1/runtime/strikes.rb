@@ -71,6 +71,7 @@ module VBlank
               emit_put(asm, at)
               emit_fold(asm, at)
               emit_drop(asm, at)
+              emit_after(asm, at)
               emit_due(asm, at)
             end
 
@@ -192,6 +193,57 @@ module VBlank
               asm.addiu(:t2, :t2, ENTRY_BYTES)
               asm.b("rt_strikes_drop_next") { asm.andi(:t2, :t2, LIST_MASK) }
               asm.label("rt_strikes_drop_done")
+              asm.mtc0(:t7, R3000::COP0_STATUS)
+              asm.jr(:ra)
+            end
+
+            # rt_strikes_after(a0 = a key's word): for a key asked for outside a tick's pass, the tune's,
+            # while the list holds something of the key's voice: listed after the latest such entry, due on
+            # its line, and v0 one; otherwise v0 nought, and nothing done. A tune taking back a voice an
+            # effect let go of in this frame then keys its note on after the effect's listed key off, not
+            # before it, where the key off would silence the tune's note until its next. With the interrupt
+            # held off, and every register as it was after but v0 and t0 to t7.
+            def emit_after(asm, at)
+              asm.label("rt_strikes_after")
+              asm.mfc0(:t7, R3000::COP0_STATUS)
+              asm.mtc0(:zero, R3000::COP0_STATUS)
+              asm.andi(:t0, :a0, 0xFF) # the key's voice
+              asm.move(:v0, :zero)
+              asm.move(:t6, :zero) # where the latest of the voice is, once found
+              asm.lw(:t2, at.call(HEAD), :gp)
+              asm.lw(:t3, at.call(TAIL), :gp)
+              asm.label("rt_strikes_after_next")
+              asm.beq(:t2, :t3, "rt_strikes_after_looked")
+              asm.addu(:t1, :gp, :t2)
+              asm.lw(:t5, at.call(LIST), :t1)
+              asm.bltz(:t5, "rt_strikes_after_write")
+              asm.b("rt_strikes_after_voice") { asm.andi(:t5, :t5, 0xFF) } # a key's voice
+              asm.label("rt_strikes_after_write")
+              asm.srl(:t5, :t5, 16)
+              asm.andi(:t5, :t5, 0x7FFF)
+              asm.sltiu(:t4, :t5, VOICE_REGISTERS_END)
+              asm.beq(:t4, :zero, "rt_strikes_after_other") # a register every voice shares
+              asm.srl(:t5, :t5, 4) # the write's voice
+              asm.label("rt_strikes_after_voice")
+              asm.bne(:t5, :t0, "rt_strikes_after_other")
+              asm.move(:t6, :t1)
+              asm.label("rt_strikes_after_other")
+              asm.addiu(:t2, :t2, ENTRY_BYTES)
+              asm.b("rt_strikes_after_next") { asm.andi(:t2, :t2, LIST_MASK) }
+              asm.label("rt_strikes_after_looked")
+              asm.beq(:t6, :zero, "rt_strikes_after_done")
+              asm.lw(:t5, at.call(LIST) + 4, :t6) # its line
+              asm.lw(:t2, at.call(TAIL), :gp)
+              asm.addiu(:t3, :t2, ENTRY_BYTES)
+              asm.andi(:t3, :t3, LIST_MASK)
+              asm.lw(:t4, at.call(HEAD), :gp)
+              asm.beq(:t3, :t4, "rt_strikes_after_done") # full: keyed as the frame begins, as before
+              asm.addu(:t4, :gp, :t2)
+              asm.sw(:a0, at.call(LIST), :t4)
+              asm.sw(:t5, at.call(LIST) + 4, :t4)
+              asm.sw(:t3, at.call(TAIL), :gp)
+              asm.li(:v0, 1)
+              asm.label("rt_strikes_after_done")
               asm.mtc0(:t7, R3000::COP0_STATUS)
               asm.jr(:ra)
             end
