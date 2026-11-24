@@ -274,7 +274,7 @@ module VBlank
           # The chip's registers as they will be once Runtime::Strikes has struck what its list holds, in a
           # game whose sound effects are struck inside the frame: writes the log already counts can still be
           # waiting there for their line, so each listed write is laid over the registers read now, oldest
-          # first. A listed key on or off changes no register the log holds.
+          # first. A listed key on or off changes no register the log holds, nor does a dropped entry.
           def spu_registers_after_strikes
             registers = @core.spu_registers
             strikes = Runtime::Strikes
@@ -284,7 +284,7 @@ module VBlank
             tail = read32(runtime_place(strikes::TAIL))
             until at == tail
               word = read32(runtime_place(strikes::LIST) + at)
-              registers[(word >> 16) & 0x7FFF] = word & 0xFFFF if word.anybits?(strikes::WRITE)
+              registers[(word >> 16) & 0x7FFF] = word & 0xFFFF if word.anybits?(strikes::WRITE) && word != strikes::DROPPED
               at = (at + strikes::ENTRY_BYTES) & strikes::LIST_MASK
             end
             registers

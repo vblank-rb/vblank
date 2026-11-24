@@ -265,8 +265,19 @@ module VBlank
               runtime_call(node.this_frame ? "rt_sfx_play_now" : "rt_sfx_play", [node.which, Build.int(@music.effect_list_number(node.name))])
             end
 
-            # +entry+'s writes, then its number into the program's sound log.
+            # The voice each kind of the game's own sound plays on, as against a song's or an effect's.
+            GAME_SOUND_VOICES = { beep: SPUWrites::BEEP_VOICE, noise: SPUWrites::NOISE_VOICE,
+                                  wave: SPUWrites::WAVE_VOICE, stop_wave: SPUWrites::WAVE_VOICE }.freeze
+
+            # Whether the game's sound effects are struck inside the frame (Runtime::Strikes).
+            def strikes_in_frame? = !IR::Tunes.effect_clock_step(@program, @program.described_console).nil?
+
+            # +entry+'s writes, then its number into the program's sound log. The game's own sound, in a game
+            # that strikes its effects inside the frame, first drops what the list still holds for its voice
+            # (Runtime::Strikes#emit_drop).
             def emit_sound_entry(entry)
+              voice = GAME_SOUND_VOICES[entry.first]
+              runtime_call("rt_strikes_drop", [Build.int(voice)]) if voice && strikes_in_frame?
               SPUWrites.for_entry(entry, sound_voicing).each do |write|
                 routine, numbers = Runtime::Sound.call_for(write)
                 runtime_call(routine, numbers.map { |number| Build.int(number) })

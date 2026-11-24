@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "effect_strikes_heard"
 
 # A sound effect on a timer, struck inside the frame on the PlayStation (Runtime::Strikes). Its notes
 # are as far apart in time as their ticks, not rounded to the frames they fall in: a tick of 50 a
@@ -12,6 +13,8 @@ require "test_helper"
 # one before it left, counted in sample pairs from power-on, and the pairs a second the emulator
 # gives out, from how many its frames held.
 class TestPS1EffectStrikesInFrame < Minitest::Test
+  include EffectStrikesHeard
+
   Score = VBlank::Audio::Score
   Part = Score::Part
   Note = Score::Note
@@ -169,5 +172,19 @@ class TestPS1EffectStrikesInFrame < Minitest::Test
     quiet = VBlank::IR::Backends::PS1::CheckedRun.new.run(game_program(**slow_once, played_on: frames * 2), frames: frames)
 
     assert_equal quiet.spu_reads.size, run.spu_reads.size
+  end
+
+  # The game's own sound over the effect (EffectStrikesHeard), within a tenth of a frame of where it is
+  # heard with the effect at the frame's start: the game's sound is keyed on as the next frame begins
+  # either way. Folded into the listed writes, its pitch and volume wait for the strike's line, which
+  # keys the effect's note on over it.
+  GAME_SOUND_NEAR = Rational(1, 10)
+
+  def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:ps1, :beep, near: GAME_SOUND_NEAR)
+  end
+
+  def test_the_games_wave_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:ps1, :wave, near: GAME_SOUND_NEAR)
   end
 end

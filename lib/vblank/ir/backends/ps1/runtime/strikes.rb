@@ -70,6 +70,7 @@ module VBlank
               at = ->(name) { Runtime.at(memory, name) }
               emit_put(asm, at)
               emit_fold(asm, at)
+              emit_drop(asm, at)
               emit_due(asm, at)
             end
 
@@ -153,6 +154,47 @@ module VBlank
             # top bit is clear.
             WRITE = 0x8000_0000
             def write_word(register, value) = WRITE | (register << 16) | (value & 0xFFFF)
+
+            # What a dropped entry becomes: a write of nought to the key-on register, which keys no voice on.
+            DROPPED = WRITE | (Console::PS1Hardware::SPU_KEY_ON << 16)
+
+            # The registers a voice has to itself, as distances from 1F801C00h: a voice's sixteen bytes each.
+            VOICE_REGISTERS_END = SPUWrites::VOICES * 0x10
+
+            # rt_strikes_drop(a0 = a voice): the game's own sound is about to be written to that voice
+            # (IR::Tunes, "The game's own sound against a listed strike"), so every entry still listed for
+            # it, a key or a write of one of its registers, is dropped (DROPPED). The game's writes then
+            # find nothing of the same register to fold into, and reach the chip at once. With the
+            # interrupt held off, and every register as it was after but t0 to t7.
+            def emit_drop(asm, at)
+              asm.label("rt_strikes_drop")
+              asm.mfc0(:t7, R3000::COP0_STATUS)
+              asm.mtc0(:zero, R3000::COP0_STATUS)
+              asm.lw(:t2, at.call(HEAD), :gp)
+              asm.lw(:t3, at.call(TAIL), :gp)
+              asm.label("rt_strikes_drop_next")
+              asm.beq(:t2, :t3, "rt_strikes_drop_done")
+              asm.addu(:t1, :gp, :t2)
+              asm.lw(:t5, at.call(LIST), :t1)
+              asm.bltz(:t5, "rt_strikes_drop_write")
+              asm.b("rt_strikes_drop_voice") { asm.andi(:t6, :t5, 0xFF) } # a key's voice
+              asm.label("rt_strikes_drop_write")
+              asm.srl(:t6, :t5, 16)
+              asm.andi(:t6, :t6, 0x7FFF)
+              asm.sltiu(:t0, :t6, VOICE_REGISTERS_END)
+              asm.beq(:t0, :zero, "rt_strikes_drop_kept") # a register every voice shares
+              asm.srl(:t6, :t6, 4) # the write's voice
+              asm.label("rt_strikes_drop_voice")
+              asm.bne(:t6, :a0, "rt_strikes_drop_kept")
+              asm.li(:t0, DROPPED)
+              asm.sw(:t0, at.call(LIST), :t1)
+              asm.label("rt_strikes_drop_kept")
+              asm.addiu(:t2, :t2, ENTRY_BYTES)
+              asm.b("rt_strikes_drop_next") { asm.andi(:t2, :t2, LIST_MASK) }
+              asm.label("rt_strikes_drop_done")
+              asm.mtc0(:t7, R3000::COP0_STATUS)
+              asm.jr(:ra)
+            end
 
             # rt_strikes_due (with the interrupt held off): every entry whose line has come done, oldest
             # first, and the timer's target set to the next. rt_strikes_key (t5 = an entry's key, t1 = the
