@@ -32,6 +32,15 @@ class TestGBCListReadCost < Minitest::Test
     end
   end
 
+  # A slot named by a number written in the program, `x += a[1]`, costs what a variable read costs:
+  # measured 360 cycles each, the slot read at its address as a variable is.
+  def test_a_read_of_a_written_slot_costs_what_a_variable_read_costs
+    written = ListReadCostGames.cycles_a_read(:gbc, :written, FRAME_CYCLES, width: :word)
+    named = ListReadCostGames.cycles_a_read(:gbc, :named, FRAME_CYCLES, width: :word)
+
+    assert_operator written, :<=, named, "a written slot costs #{written.round(1)} cycles, a variable #{named.round(1)}"
+  end
+
   HALF_BOUNDS.each do |index, bound|
     define_method(:"test_a_read_of_halves_at_a_#{index}_costs_under_#{bound}_cycles") do
       cost = ListReadCostGames.cycles_a_read(:gbc, index, FRAME_CYCLES, width: :half)

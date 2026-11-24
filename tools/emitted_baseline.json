@@ -54,11 +54,11 @@
       "data": 0
     },
     "cube3d": {
-      "code": 37044,
+      "code": 37036,
       "data": 0
     },
     "cube3d@ps1": {
-      "code": 40168,
+      "code": 40064,
       "data": 5044
     },
     "dive": {
@@ -134,11 +134,11 @@
       "data": 555
     },
     "hero": {
-      "code": 81768,
+      "code": 81636,
       "data": 0
     },
     "hero@snes": {
-      "code": 55921,
+      "code": 55387,
       "data": 13831
     },
     "jukebox": {
@@ -150,7 +150,7 @@
       "data": 0
     },
     "lake@snes": {
-      "code": 6462,
+      "code": 6434,
       "data": 5636
     },
     "level": {
@@ -166,11 +166,11 @@
       "data": 3977
     },
     "lit_corridor": {
-      "code": 40540,
+      "code": 40464,
       "data": 0
     },
     "lit_corridor@ps1": {
-      "code": 35168,
+      "code": 35024,
       "data": 6316
     },
     "maze": {
@@ -358,11 +358,11 @@
       "data": 8091
     },
     "two_rooms": {
-      "code": 36906,
+      "code": 36898,
       "data": 0
     },
     "two_rooms@ps1": {
-      "code": 37224,
+      "code": 37144,
       "data": 7076
     },
     "wanderers": {
