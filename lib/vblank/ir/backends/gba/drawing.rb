@@ -824,10 +824,6 @@ module VBlank
           # Where the display's settings are kept while a scene's scenery is sent.
           SCENE_SEND_DISPLAY = :_scene_send_display
 
-          # Switch on the layers held off for the picture just drawn, in the gap
-          # between frames (see BackgroundDrawing::LAYERS_HELD).
-          def emit_held_layers_on = @background_drawing.emit_held_layers_on
-
           # Read the display's settings into ACC, let the block change them, write them back.
           # Where the screen's interrupt can switch held layers on, with the interrupt switch off
           # between the read and the write (SpriteDrawing#changing_display_control).

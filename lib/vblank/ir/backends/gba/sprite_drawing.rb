@@ -1393,7 +1393,7 @@ module VBlank
             @emitter.emit_branch(:bcond, held, cond: :eq)
             @primitives.store_var(ACC, resident_frame_var(obj))
             @emitter.emit_number(TMP, obj.room_member)
-            emit_call_cold_routine(shared_room_label(rooms, :take))
+            @placement.emit_call_cold_routine(shared_room_label(rooms, :take))
             @emitter.place_label(held)
             @emitter.emit_number(TMP, room_held_at(rooms, obj.room_member))
             @emitter.emit(ASM.ldr(ACC, TMP))
@@ -1414,7 +1414,7 @@ module VBlank
             @emitter.emit_branch(:bcond, none, cond: :hs)
             @primitives.store_word_immediate(NO_FRAME, @primitives.var_addr(resident_frame_var(obj)))
             @emitter.emit_number(TMP, obj.room_member)
-            emit_call_cold_routine(shared_room_label(rooms, :let_go))
+            @placement.emit_call_cold_routine(shared_room_label(rooms, :let_go))
             @emitter.place_label(none)
           end
 
@@ -1464,7 +1464,7 @@ module VBlank
             emit_branch_if_off_screen(obj.y, *object_reach(obj, :y), SCREEN_HEIGHT, off_screen)
             emit_branch_if_off_screen(obj.x, *object_reach(obj, :x), SCREEN_WIDTH, off_screen)
             @primitives.load_var(ACC, OBJ_PICKED_ATTR2)
-            emit_call_cold_routine(LEND_COLORS)
+            @placement.emit_call_cold_routine(LEND_COLORS)
             @emitter.emit_branch(:b, bank)
             @emitter.place_label(off_screen)
             @emitter.emit_number(ACC, @layout.screen.lending.banks.first << OBJ_BANK_SHIFT)
@@ -1795,8 +1795,6 @@ module VBlank
           # A sprite named the way the author named it, for the build's list of what is copied when;
           # the build's own name is all a sprite they named nothing for has.
           def declared_name(name) = @layout.screen.picture.objects.find { |node| node.name == name }&.declared || name
-
-          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
           # Add the room a sprite sharing rooms is drawn from to the tile number in r0, which counts
           # from its first room (see #emit_take_shared_room).

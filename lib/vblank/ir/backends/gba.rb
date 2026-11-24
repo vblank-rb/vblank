@@ -1530,7 +1530,7 @@ module VBlank
             # The layers (backgrounds and sprites) a sending that ran into the last picture held
             # off, on now that it is drawn, whatever the game is doing (see
             # BackgroundDrawing::LAYERS_HELD).
-            @drawing.emit_held_layers_on
+            @background_drawing.emit_held_layers_on
             # The pad, for the same reason: a press is the player's, made in real time, and a
             # game that takes two frames a pass must not miss one made between them.
             @expressions.emit_collect_presses if @uses_pressed
