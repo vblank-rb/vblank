@@ -20,6 +20,10 @@ module VBlank
         # SpriteCut's, since the interpreter reads it too. What is here is what only a
         # cartridge needs: refusing a picture that cannot be cut, and packing the tiles.
         class PoseCutter
+          # What #cut makes of a sprite: the canvas its poses are drawn on, and each pose's boxes and mirrors
+          # (SpriteCut::Cut).
+          PoseCut = Data.define(:width, :height, :boxes, :mirrors)
+
           include Console::Hardware
 
           Mirror = SpriteCut::Mirror # A pose that is another pose turned
@@ -46,8 +50,8 @@ module VBlank
             guard_canvas!(node, width, height, transformed: transformed)
             # Each pose is stored at its own size, trimmed to what it actually draws
             # (see SpriteCut#pieces_of) rather than at the canvas they were all drawn on.
-            { width: width, height: height,
-              **SpriteCut.new(@bitmaps).cut(node.poses, width: width, height: height, whole: transformed) }
+            cut = SpriteCut.new(@bitmaps).cut(node.poses, width: width, height: height, whole: transformed)
+            PoseCut.new(width: width, height: height, boxes: cut.boxes, mirrors: cut.mirrors)
           end
 
           # Pack a sprite's picture into tiles the way sprite hardware reads them: 8x8

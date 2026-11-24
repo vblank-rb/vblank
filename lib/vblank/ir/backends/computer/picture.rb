@@ -344,7 +344,7 @@ module VBlank
 
             width, height = sprite_canvas(obj)
             whole = obj.poses.any? { |pose| painted_picture?(pose) }
-            cut = SpriteCut.new(sprite_pictures).cut(obj.poses, width: width, height: height, whole: whole)[:boxes]
+            cut = SpriteCut.new(sprite_pictures).cut(obj.poses, width: width, height: height, whole: whole).boxes
             pictures = obj.poses.uniq
             [pictures.length, *pictures.flat_map do |pose|
               boxes = cut.fetch(obj.poses.index(pose))

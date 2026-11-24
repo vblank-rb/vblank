@@ -43,6 +43,9 @@ module VBlank
         # console reverses it left to right (+across+), top to bottom (+down+), or both.
         Mirror = Data.define(:source, :across, :down)
 
+        # What #cut makes: the boxes each pose is drawn from and the pose each one is a mirror of.
+        Cut = Data.define(:boxes, :mirrors)
+
         def initialize(bitmaps)
           @bitmaps = bitmaps
         end
@@ -57,7 +60,7 @@ module VBlank
         end
 
         # The boxes each of +poses+ is drawn from, and which poses are another pose
-        # mirrored: `{ boxes:, mirrors: }`, a list for each pose. A box is
+        # mirrored: a Cut, a list of each for each pose. A box is
         # [left, top, width, height] inside the canvas, +width+ by +height+, that every
         # pose was drawn on, and a pose's boxes are in the order a display draws them,
         # the one in front first.
@@ -70,7 +73,7 @@ module VBlank
             whole ? [[0, 0, width, height]] : pieces_of(@bitmaps.fetch(image))
           end
           mirrors = whole ? Array.new(poses.length) : mirrors_of(poses)
-          { boxes: boxes, mirrors: reflect_mirrored_poses(poses, mirrors, boxes) }
+          Cut.new(boxes: boxes, mirrors: reflect_mirrored_poses(poses, mirrors, boxes))
         end
 
         # Which bank's part of its colours each box of +bmp+ DRAWS, in the order #pieces_of gives the

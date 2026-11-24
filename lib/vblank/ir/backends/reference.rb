@@ -3209,7 +3209,7 @@ module VBlank
           @object_boxes[obj.name] ||= begin
             width, height = SpriteCut.canvas_of(@bitmaps, obj.poses)
             whole = object_transformed?(obj) || obj.poses.any? { |pose| painted_picture?(pose) }
-            SpriteCut.new(@bitmaps).cut(obj.poses, width: width, height: height, whole: whole)[:boxes]
+            SpriteCut.new(@bitmaps).cut(obj.poses, width: width, height: height, whole: whole).boxes
           end
         end
 

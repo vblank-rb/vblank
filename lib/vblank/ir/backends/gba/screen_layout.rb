@@ -2793,7 +2793,7 @@ module VBlank
             return nil if object_transformed?(node) || painted_sprite?(node) || !node.recolors.empty?
 
             cutter = SpriteCut.new(@bitmaps)
-            mirrors = PoseCutter.new(@bitmaps).cut(node, transformed: false)[:mirrors]
+            mirrors = PoseCutter.new(@bitmaps).cut(node, transformed: false).mirrors
             parts = images.map { |bmp| cutter.parts_of(bmp) }
             return nil if parts.each_with_index.any? { |list, k| list.nil? && mirrors[k].nil? }
 
@@ -3058,8 +3058,8 @@ module VBlank
             # A painted picture is kept whole, never trimmed to what it draws: it draws nothing
             # until the game paints it, and then whatever the game paints.
             cut = cutter.cut(node, transformed: object_transformed?(node) || painted_sprite?(node))
-            mirrors = cut[:mirrors]
-            boxes = cut[:boxes]
+            mirrors = cut.mirrors
+            boxes = cut.boxes
             pieces = boxes.map(&:size).max
             place = obj_banks_for(node).placement(node.name)
             encoded = node.poses.each_with_index.map do |image, k|
@@ -3106,7 +3106,7 @@ module VBlank
             pad_object_pieces(boxes, starts, stored, place, pieces)
             SpritePictures.new(node: node, place: place, boxes: boxes, mirrors: mirrors, encoded: encoded,
                                stored: stored, starts: starts, repeats: repeats,
-                               width: cut[:width], height: cut[:height],
+                               width: cut.width, height: cut.height,
                                animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: grouped,
                                tile_set: nil, piece_banks: sprite_piece_banks(node, pieces))
           end
