@@ -750,6 +750,16 @@ module VBlank
           list
         end
 
+        # +value+, refused where it is a named Array (KeyedArray) that a new Array would copy:
+        # spread with `[*counts]` (the rewrite hands it here, Rewriter#splat_array_text) or given to
+        # `Array.new(counts)` (Arrays.list_from_new and Arrays.ruby_array). Ruby copies an Array
+        # without calling any of its methods there, so the KeyedArray cannot refuse it itself.
+        def refuse_keyed_array_copied!(value)
+          Steps.refuse_game_code!(value.copy_taken_message) if value.is_a?(KeyedArray)
+
+          value
+        end
+
         # A named hash or array of numbers is a game variable for each key, each starting from the
         # number Ruby holds there and named after the key (`tilt_counters_left`). The game reads and
         # changes one at a key known while building (`@tilt_counters[side] += 1`, with `side` a
@@ -851,11 +861,42 @@ module VBlank
           def values_at(*) = Steps.refuse_game_code!(copy_taken_message)
           def +(*) = Steps.refuse_game_code!(copy_taken_message)
 
+          # Methods that hand back a new Array (or a Hash of them) that can hold the items
+          # themselves. Where what comes back holds one of this Array's own variables, the answer is
+          # a copy as `dup` is; where the block worked out new numbers (`map { |c| c + 1 }`), it is
+          # Ruby's own. A single item (`max_by`, `min`) is one of the variables, as `counts[0]` is.
+          ITEMS_ANSWERED = %i[
+            map collect flat_map collect_concat select filter reject filter_map partition group_by
+            sort sort_by min max min_by max_by minmax compact uniq shuffle sample zip each_slice
+            each_cons take_while drop_while chunk_while slice_when entries
+          ].freeze
+
+          # Written as source, since a method made from a block cannot be called from another Ractor.
+          ITEMS_ANSWERED.each do |name|
+            class_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+              def #{name}(...)
+                answer = super
+                Steps.refuse_game_code!(copy_taken_message) if holds_own_item?(answer)
+                answer
+              end
+            RUBY
+          end
+
           def copy_taken_message
             "This Array holds game variables, and this line takes a copy of it, like `counts.dup` or " \
               "`counts.reverse`. In Ruby the copy is its own. Here the copy would hold the same variables, " \
               "so a change to it would change the Array too. To fix this, read the items one at a time, " \
               "like `first = counts[0]`."
+          end
+
+          # Does +answer+, a new Array or Hash (nested too), hold one of this Array's own variables?
+          # An item alone is not a new Array, so it is never a copy.
+          def holds_own_item?(answer)
+            case answer
+            when Array then answer.any? { |item| any? { |own| own.equal?(item) } || holds_own_item?(item) }
+            when Hash then answer.each_value.any? { |value| holds_own_item?(value) }
+            else false
+            end
           end
 
           def part_taken_message

@@ -234,7 +234,13 @@ instance variables.
   Array. Part of a named Array (`counts[0..]`, `counts[1, 2]`, `first(2)`, `last(2)`, `take`,
   `drop`) and a copy of one (`dup`, `clone`, `reverse`, `rotate`, `values_at`, `+`) are refused
   (`KeyedArray#part_taken_message`, `#copy_taken_message`), even where only read: either would hold
-  the same variables, and a write through an item reaches the variable itself (`Writes.change`). One Ruby Array two instance variables hold (handed to two parts) is refused where the
+  the same variables, and a write through an item reaches the variable itself (`Writes.change`).
+  The methods in `KeyedArray::ITEMS_ANSWERED` (`map`, `select`, `sort_by`, `entries`, ...) are
+  refused only where the answer holds one of the Array's own variables (`map(&:itself)`), and
+  `map { |c| c + 1 }` builds. `[*counts]` (rewritten through `Rewriter#splat_array_text`) and
+  `Array.new(counts)` are refused by `InstanceVariables.refuse_keyed_array_copied!`, since Ruby
+  copies an Array there without calling it. `to_a` is not refused: Ruby's answers the Array itself,
+  so a change through it changes the Array in Ruby too. One Ruby Array two instance variables hold (handed to two parts) is refused where the
   second is made a list, or hands it out after the first was (`Uses#refuse_array_kept_twice!`):
   each list is its own, where Ruby shares. Such a list holds
   its items and room for no more, holds fractions where a start is a Float, and a profile reads it

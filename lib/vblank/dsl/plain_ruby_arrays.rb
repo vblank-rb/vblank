@@ -87,6 +87,7 @@ module VBlank
           end
 
           refuse_unknown_settings!(settings)
+          given.each { |copied| InstanceVariables.refuse_keyed_array_copied!(copied) }
           size = given.first
           refuse_unknown_size!(declaration.local, size) unless given.empty?
           refuse_missing_start!(size) if given.length == 1 && block.nil?
@@ -103,6 +104,7 @@ module VBlank
         # it needs to, so the settings for a game's Array are left out.
         def ruby_array(*given, capacity: nil, **settings, &block)
           refuse_unknown_settings!(settings.except(*StructArray::SETTINGS))
+          given.each { |copied| InstanceVariables.refuse_keyed_array_copied!(copied) }
           Array.new(*given, &block)
         end
 

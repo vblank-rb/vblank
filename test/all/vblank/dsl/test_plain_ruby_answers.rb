@@ -508,6 +508,61 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A new Array of the named Array's own items, made by splat, Array.new or a block that hands
+  # each item back, would hold its game variables too.
+  def test_new_array_of_a_named_arrays_items_is_refused
+    refused("c = [*sizes.counts]; c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = [*sizes.counts]
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+    refused("c = Array.new(sizes.counts); c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = Array.new(sizes.counts)
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+    refused("c = sizes.counts.map(&:itself); c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.map(&:itself)
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+    refused("c = sizes.counts.sort_by { 0 }; c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.sort_by { 0 }
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+  end
+
+  # A block that works out new numbers from the items makes numbers of its own, as in Ruby.
+  def test_map_to_new_numbers_of_a_named_array_agrees
+    agrees("c = sizes.counts.map { |c| c + 1 }; c[0] += 5", reads: %i[n m], passes: 2) do
+      sizes = AnswerNamedSizes.new
+      n = m = 0
+      game_loop do
+        copy = sizes.counts.map { |count| count + 1 }
+        copy[0] += 5
+        n = sizes.counts[0]
+        m = copy[0]
+      end
+    end
+  end
+
   # The first or last item alone is one of the Array's numbers, not a part of it.
   def test_first_and_last_item_of_a_named_array_agree
     agrees("sizes.counts.first + sizes.counts.last", reads: %i[n], passes: 2) do

@@ -311,7 +311,7 @@ A list is named after its local, so a test or a profile reads `trail` by that na
 | A setting on `Array.new` other than `capacity:`, `width:`, `fast:` | One of those three |
 | An instance variable's Array read through another object, `part.counts[which]`, after a line that read it first, or one named with `game_variables` | Read it in a method of that class, and call the method |
 | A part of an Array of named numbers, `counts[0..]`, `counts[1, 2]`, `counts.first(2)`, `take` or `drop` | Read the items one at a time, `counts[0]` |
-| A copy of an Array of named numbers, or a new Array made from its items: `dup`, `clone`, `reverse`, `rotate`, `values_at`, `+` | Read the items one at a time, `first = counts[0]` |
+| A copy of an Array of named numbers, or a new Array holding its own items: `dup`, `clone`, `reverse`, `rotate`, `values_at`, `+`, `[*counts]`, `Array.new(counts)`, `entries`, or `map`, `select`, `sort_by` and the like where the block hands an item back (`map { |c| c + 1 }` works) | Read the items one at a time, `first = counts[0]` |
 | A part whose Array the game keeps, made while no game is being built: above `VBlank.game`, or after a build. One whose own class indexes the Array is refused; one indexed through its reader works for one game, but a second game using the same part stops with a raw Ruby error | Make the part inside the `VBlank.game` block |
 
 Each refused limit is refused before the game is built, naming the line. Several are shown with their messages under "What is refused, and what to write instead".

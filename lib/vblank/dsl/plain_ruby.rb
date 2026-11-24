@@ -372,6 +372,7 @@ module VBlank
           when Prism::StatementsNode then statements_text(node)
           when Prism::ClassNode, Prism::ModuleNode then module_text(node)
           when Prism::RangeNode then range_text(node)
+          when Prism::ArrayNode then node.elements.any?(Prism::SplatNode) ? splat_array_text(node) : copied_text(node)
           when Prism::InterpolatedStringNode then text_with_pieces?(node) ? interpolated_string_text(node) : copied_text(node)
           when Prism::ConstantWriteNode then own_class_write_text(node)
           when Prism::ConstantReadNode then own_class_read?(node) ? own_class_local(node.name) : copied_text(node)
@@ -579,6 +580,23 @@ module VBlank
             text = "#{INSTANCE_VARIABLES}.making_part(self) do; #{text}; end" if initialize_body?(node, child)
             piece = between(at, start) + text
             at = child.location.end_offset
+            piece
+          end
+          pieces.join + between(at, node.location.end_offset)
+        end
+
+        # `[a, *b]`, each spread Array handed to InstanceVariables.refuse_keyed_array_copied! first,
+        # which refuses a named Array's game variables being copied into a new one.
+        def splat_array_text(node)
+          at = node.location.start_offset
+          pieces = node.elements.map do |element|
+            text = if element.is_a?(Prism::SplatNode) && element.expression
+                     "*#{INSTANCE_VARIABLES}.refuse_keyed_array_copied!(#{rewritten_text(element.expression)})"
+                   else
+                     rewritten_text(element)
+                   end
+            piece = between(at, element.location.start_offset) + text
+            at = element.location.end_offset
             piece
           end
           pieces.join + between(at, node.location.end_offset)
