@@ -993,15 +993,16 @@ module VBlank
             @layout.screen.scene_send(name).obj_palette && !@layout.screen.scene_colors_picked?(name)
           end
 
-          # IS +name+'S SPRITE PICTURES' SENDING HELD (#emit_with_layers_held_for_art)? On a scene
-          # drawn from tiles in a game that holds its layers, where the scene sends its sprites'
-          # colours or copies pictures, since either landing part way down a picture tears it. A
-          # scene that only marks what it has sent writes nothing seen.
+          # Is +name+'s sending of its sprite pictures held (#emit_with_layers_held_for_art)? In a game
+          # that holds its layers, where the scene sends its sprites' colours or copies pictures, since
+          # either landing part way down a picture tears it: on a painted screen as on one drawn from
+          # tiles, since a painted screen's sprites over the picture are the console's own. A scene that
+          # only marks what it has sent writes nothing seen.
           def art_held?(name)
             own = @layout.screen.scene_send(name)
             arrival = scene_handover.arrival(name)
             sends = sends_scene_colors?(name) || !(own.art || []).empty? || !arrival.painted_pictures.empty?
-            sends && IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(arrival.mode)) && @background_drawing.holds_layers?
+            sends && @background_drawing.holds_layers?
           end
 
           # A scene's sprite pictures sent as its scenery is, with the layers and the sprites off,

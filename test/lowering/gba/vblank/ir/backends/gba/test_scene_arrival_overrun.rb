@@ -69,7 +69,7 @@ class TestSceneArrivalOverrun < Minitest::Test
   # With +missed_gap+ the pass that hands over first runs on to line MISSED_GAP_LINE of the picture
   # after its gap, so it has missed the next gap's start by the time it reaches +late+.
   private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false, own_sprites: 0, shared: false,
-                          title_scenery: true, missed_gap: false)
+                          title_scenery: true, missed_gap: false, painted: false)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
@@ -78,7 +78,11 @@ class TestSceneArrivalOverrun < Minitest::Test
     b = bordered ? Builder.new(options: VBlank::Cartridge::Options.new(console: :gba, variant: :color_screen)) : Builder.new
     b.extend(VBlank::Builder::Debug)
     b.instance_eval do
-      screen :tiled
+      if painted
+        screen :bitmap, tear_free: painted == :tear_free
+      else
+        screen :tiled
+      end
       border("#" => :blue, "." => :yellow) { "#.\n.#\n" } if bordered
       tile_count.times { |n| image(:"stripe_#{n}", width: 8, height: 8, data: TestSceneArrivalOverrun.numbered_tile(n)) }
       tiles :stripes, (0...tile_count).to_h { |n| [n, :"stripe_#{n}"] }
@@ -87,17 +91,27 @@ class TestSceneArrivalOverrun < Minitest::Test
       # A sprite over every scene: the first picture of a scene holds it off too, so a write to
       # the display that lands part way down that picture (a blend, a scroll) shows nowhere.
       image(:marker, "#" => :yellow) { (["#" * 8] * 8).join("\n") }
-      sprite :marker, at: [100, 50], facing: { still: :marker }
+      if painted
+        sprite :marker, at: [100, 50], facing: { still: :marker }, over_picture: true
+      else
+        sprite :marker, at: [100, 50], facing: { still: :marker }
+      end
       map = Array.new(side) { |row| Array.new(side) { |col| ((row * side) + col) % tile_count } }
       state = var :state, 0
       pass = var :pass, 0
       # With +shared+, a background every scene shows, declared outside them.
       background :shared, tiles: :stripes, map: Array.new(20) { |row| Array.new(30) { |col| (row + col) % tile_count } } if shared
-      scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } if title_scenery }
+      scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } if title_scenery && !painted }
       own_sprites.times { |n| image(:"own_#{n}", width: 64, height: 64, data: TestSceneArrivalOverrun.numbered_picture(n)) }
       scene(:play) do
         layers.times { |layer| background :"layer_#{layer}", tiles: :stripes, map: map }
-        own_sprites.times { |n| sprite :"own_#{n}", at: [n * spacing, 0], facing: { still: :"own_#{n}" } }
+        own_sprites.times do |n|
+          if painted
+            sprite :"own_#{n}", at: [n * spacing, 0], facing: { still: :"own_#{n}" }, over_picture: true
+          else
+            sprite :"own_#{n}", at: [n * spacing, 0], facing: { still: :"own_#{n}" }
+          end
+        end
         halt if halts
       end
       game_loop do
@@ -216,6 +230,15 @@ class TestSceneArrivalOverrun < Minitest::Test
   def test_own_sprites_of_a_scene_without_scenery_are_never_torn_on_its_first_picture
     assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0))
     assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, shared: true))
+  end
+
+  # A scene on a painted screen whose sprites are the console's own (`over_picture: true`): its
+  # sprite pictures are copied as it takes over, as a tiled scene's are, so a copy that runs into
+  # the picture must not show them torn either; on a tear-free screen too, whose page flip writes
+  # the display's settings on every pass.
+  def test_own_sprites_of_a_painted_scene_are_never_torn_on_its_first_picture
+    assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, painted: true))
+    assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, painted: :tear_free))
   end
 
   # A game with no backgrounds at all, whose scenes have only sprites: every scene the game picks is

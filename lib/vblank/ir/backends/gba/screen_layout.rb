@@ -557,9 +557,9 @@ module VBlank
           def layers_differ_by_scene? = @scene_sends.each_value.filter_map(&:screen).uniq.size > 1
 
           # Does the game ever switch the background layers off to send them something, a scene's
-          # scenery as it takes over or a set of tiles a background walks to, and on again after?
-          # (See BackgroundDrawing::LAYERS_HELD.)
-          def layers_off_while_sending? = walks_areas? || @scene_sends.each_value.any?(&:screen)
+          # scenery or its own sprite pictures as it takes over (a painted scene's too), or a set of
+          # tiles a background walks to, and on again after? (See BackgroundDrawing::LAYERS_HELD.)
+          def layers_off_while_sending? = walks_areas? || @scene_sends.each_value.any? { |send| send.screen || send.art }
 
           # The screen of the first tiled scene declared — the one boot sets up where the
           # scenes differ (see Drawing#first_scene_layers).
