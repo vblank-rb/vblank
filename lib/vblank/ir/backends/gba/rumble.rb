@@ -18,8 +18,12 @@ module VBlank
         # motor from its lowest bit, and counts a frame off; with none left it sets the motor to 0. So a
         # pass that takes two frames steps the motor twice, as the interpreter's does.
         #
-        # The clock chip drives the same pins a bit at a time and would overwrite the motor's bit, so a
-        # game that reads the clock and rumbles is refused, as the Color's is.
+        # A clock chip talks on pins 0 to 2 of the same port (GBATEK, "GBA Cart Real-Time Clock"), so
+        # the hardware can carry both, as a cartridge with a tilt sensor and a motor does (GBATEK,
+        # "GBA Cart Rumble"). This build does not share the port yet: the clock's routines write
+        # the whole port a bit at a time and would stop the motor, and the motor's step in the
+        # screen's interrupt could land in the middle of a talk with the clock. So a game that
+        # reads the clock and rumbles is refused, saying so.
         class Rumble
           include Console::Hardware
 
@@ -84,7 +88,17 @@ module VBlank
 
           # `rumble frames:, pattern:` as the game runs it: the frames held to what one rumble lasts
           # (IR::Rumble.frames), and the pattern to its eight bits. The next frame shown starts it.
+          #
+          # Numbers written in the game are held there while building, as IR::Rumble.frames holds them.
           def emit_rumble(node)
+            frames = @primitives.const_int(node.frames)
+            pattern = @primitives.const_int(node.pattern)
+            if frames && pattern
+              @primitives.store_word_immediate(IR::Rumble.frames(frames), @primitives.var_addr(LEFT))
+              @primitives.store_word_immediate(pattern & 0xFF, @primitives.var_addr(BITS))
+              return
+            end
+
             @lowering.value(node.frames)
             @emitter.emit_number(TMP, IR::Rumble::MOST_FRAMES)
             @emitter.emit(ASM.cmp_reg(ACC, TMP))
@@ -139,9 +153,9 @@ module VBlank
 
           def refuse_rumble_with_clock!
             raise LoweringError,
-                  "This game reads or sets the clock and also calls `rumble`. The cartridge's clock and its " \
-                  "rumble motor use the same pins, so a cartridge cannot carry both. To fix this, remove " \
-                  "`rumble`, or leave the clock out."
+                  "This game reads or sets the clock and also calls `rumble`. The clock and the rumble motor " \
+                  "share one port of the cartridge, and this build cannot drive both yet. To fix this, " \
+                  "remove `rumble`, or leave the clock out."
           end
         end
       end
