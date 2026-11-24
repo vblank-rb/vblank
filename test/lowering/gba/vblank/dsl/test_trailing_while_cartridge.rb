@@ -7,7 +7,7 @@ require "stringio"
 # on the scanline ends past the line the game waits for, and a counted trailing loop counts.
 class TestTrailingWhileCartridge < Minitest::Test
   def test_a_trailing_wait_on_the_scanline_ends_at_the_late_line
-    rom = VBlank.build("TRAILWAIT", console: :gba, validate: false, err: StringIO.new, out: StringIO.new) do
+    rom = VBlank.build("TRAILWAIT", console: :gba, err: StringIO.new, out: StringIO.new) do
       extend VBlank::Builder::Debug
       screen :bitmap
       late_line = var :late_line, 100
@@ -21,7 +21,7 @@ class TestTrailingWhileCartridge < Minitest::Test
   end
 
   def test_a_trailing_count_reaches_its_limit
-    rom = VBlank.build("TRAILCOUNT", console: :gba, validate: false, err: StringIO.new, out: StringIO.new) do
+    rom = VBlank.build("TRAILCOUNT", console: :gba, err: StringIO.new, out: StringIO.new) do
       screen :bitmap
       limit = var :limit, 7
       i = var :i, 0
