@@ -252,7 +252,7 @@ module VBlank
               place = if node.name == corners_list_in_face
                         runtime_place(Runtime::Faces::FACE) + Runtime::Faces::CORNERS_LIST_OFFSET_BYTES
                       else
-                        @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
+                        place_list(node.name, Runtime::Lists::HEADER + (node.capacity * width))
                       end
               @lists[node.name] = ListPlace.new(address: place, capacity: node.capacity, slot_bytes: width, name: node.name.to_s)
             end
@@ -906,12 +906,28 @@ module VBlank
             slot = slot_place(list)
             if held_field?(node)
               @asm.load(Runtime::Lists::LOADS.fetch(slot.width), :v0, *held_field_operand(node))
+            elsif (address = fixed_slot_address(node))
+              @asm.load(Runtime::Lists::LOADS.fetch(slot.width), :v0, *base_and_distance(address))
             else
               emit_value(node.index)
               distance, base = emit_slot_place(list, node.index)
               @asm.load(Runtime::Lists::LOADS.fetch(slot.width), :v0, distance, base)
             end
             emit_slot_unscaled(slot)
+          end
+
+          # The address of the slot +node+ reads or writes, when its index is a number written in the
+          # program below the capacity of a list of fixed length (#lists_of_fixed_length): the index can
+          # never be past the end, so the slot is one load or store at an address known here, as a
+          # variable is, with no check and nothing scaled. Nil otherwise.
+          def fixed_slot_address(node)
+            return unless @lists_of_fixed_length.include?(node.name.to_sym) && !@lists_dropped_from_front.include?(node.name)
+
+            list = @lists.fetch(node.name)
+            index = folded(node.index)
+            return unless index&.between?(0, list.capacity - 1)
+
+            first_slot_at(list) + (index * slot_place(list).stride)
           end
 
           # A link kept as the slot times the stride (PoolLayout.strided_place), two bytes with NONE as
@@ -942,6 +958,13 @@ module VBlank
               @asm.move(:v1, :v0)
               emit_slot_scaled(slot)
               return @asm.store(Runtime::Lists::STORES.fetch(slot.width), :v1, *held_field_operand(node))
+            end
+            if (address = fixed_slot_address(node))
+              emit_value(node.value)
+              kept = slot.scale > 1 ? :v1 : :v0
+              @asm.move(:v1, :v0) if slot.scale > 1
+              emit_slot_scaled(slot)
+              return @asm.store(Runtime::Lists::STORES.fetch(slot.width), kept, *base_and_distance(address))
             end
             if simple?(node.value)
               emit_value(node.index)
@@ -1107,6 +1130,41 @@ module VBlank
           # copies a table into it, and it is made before anything can read or write it
           # (LoweringPlan#lists_made_before_use): one read before then stops the interpreter's game (the
           # list is not made yet), and must stop this one's, which the length read from RAM, nought, does.
+          # The most bytes of lists kept in the scratchpad beside the variables (#place_list): a few
+          # small ones, so the variables keep the room they had.
+          SCRATCHPAD_LIST_BYTES = 256
+
+          # Where list +name+, of +bytes+ with its header, is kept: in main RAM, or in the scratchpad
+          # where the game reads and writes it only at slots written in the program and it is small.
+          # Each such read is then one load from the scratchpad, as a variable's is (#base_and_distance),
+          # where main RAM has no cache and makes the processor wait on every load (psx-spx, "Memory
+          # Map": the scratchpad is the data cache used as fast RAM). Only a list nothing but those reads
+          # and writes and its making names: the scratchpad cannot be reached by DMA.
+          def place_list(name, bytes)
+            label = "the list #{name.inspect}"
+            @scratchpad_list_bytes ||= 0
+            unless scratchpad_lists.include?(name) && @scratchpad_list_bytes + bytes <= SCRATCHPAD_LIST_BYTES
+              return @memory.reserve(label, bytes)
+            end
+
+            @scratchpad_list_bytes += bytes
+            @memory.reserve_scratchpad(label, bytes)
+          end
+
+          # The lists the program names only where it makes them and where it reads or writes a slot
+          # named by a number written in the program.
+          def scratchpad_lists
+            @scratchpad_lists ||= begin
+              written = ->(node) { %i[list_get list_set].include?(node.kind) && !folded(node.index).nil? }
+              naming = Hash.new { |names, name| names[name] = [] }
+              @program.walk do |node|
+                node.attrs.each_value { |held| Array(held).grep(Symbol).each { |name| naming[name] << node } }
+              end
+              candidates = @program.walk.filter_map { |node| node.name if written.call(node) }.uniq
+              candidates.select { |name| naming[name].all? { |node| node.kind == :list_new || written.call(node) } }
+            end
+          end
+
           def lists_of_fixed_length(program)
             changed = program.walk.filter_map { |node| node.name if %i[list_push list_drop list_copy].include?(node.kind) }
             made = program.walk.select { |node| node.kind == :list_new }.group_by(&:name)
@@ -1738,15 +1796,30 @@ module VBlank
 
           # Whether +node+ can be put in a register without working anything out: a number written in the
           # program or a variable.
-          def simple?(node) = !folded(node).nil? || !variable_named(node).nil? || node.is_a?(LabelAddress)
+          def simple?(node) = !folded(node).nil? || !variable_named(node).nil? || node.is_a?(LabelAddress) || fixed_slot_read?(node)
+
+          # Whether +node+ reads a slot at an address known here (#fixed_slot_address) kept as it is,
+          # one load into any register, as a variable is.
+          def fixed_slot_read?(node)
+            return false unless node.is_a?(Node) && node.kind == :list_get && !fixed_slot_address(node).nil?
+
+            slot_place(@lists.fetch(node.name)).scale == 1
+          end
 
           # +node+, which is #simple?, into +register+.
           def emit_load_simple(node, register)
             known = folded(node)
             return emit_load_constant(known, register) if known
             return @asm.la(register, node.label) if node.is_a?(LabelAddress)
+            return emit_fixed_slot_load(node, register) if fixed_slot_read?(node)
 
             emit_load_variable(variable_named(node), register)
+          end
+
+          # +register+ = the slot +node+ reads (#fixed_slot_read?), at its width.
+          def emit_fixed_slot_load(node, register)
+            width = slot_place(@lists.fetch(node.name)).width
+            @asm.load(Runtime::Lists::LOADS.fetch(width), register, *base_and_distance(fixed_slot_address(node)))
           end
 
           # The left side worked out into v0 and the right side into v1, then the block: the right side
