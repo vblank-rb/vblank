@@ -282,9 +282,13 @@ class TestSaveDataFast < Minitest::Test
     end
   end
 
+  # A pile that leaves room for all three, and still has a slot for each pass the measurement plays:
+  # a full pile stops the game, and a game stopped on its second pass has no game loop worth keeping.
+  ROOMY_PILE = 2000
+
   # Where there is room for all of them, all of them are kept.
   def test_a_record_with_room_beside_the_game_loop_and_the_music_keeps_all_three
-    kept = kept_in_quick_memory(game_crowding_its_loop(true, pile_size: 1), profile: true)
+    kept = kept_in_quick_memory(game_crowding_its_loop(true, pile_size: ROOMY_PILE), profile: true)
 
     assert_empty %i[__frame __interrupt] - kept
     assert_empty routines(:step, :scan) - kept
