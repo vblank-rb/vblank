@@ -65,14 +65,26 @@ module VBlank
             end
 
             scratch = emit_index_fill_word(node.color)
+            return emit_shown_rows_filled(scratch, first: :hidden_page) if @layout.fills_shown_rows_alone?(1)
+
             load_var(ACC, BACKBUF) # to the hidden page, wherever it is this frame
             count = SCREEN_WIDTH * @layout.shown_rows / 4 # 32-bit words, 4 indices each
             emit_start_copy_engine(from: scratch, to: in_register(ACC), control: @framebuffer.dma_fill_control(count))
           end
 
+          # The shown part of every row of a page, a row at a time (Framebuffer#emit_shown_rows_filled).
+          def emit_shown_rows_filled(scratch, first:)
+            @framebuffer.emit_shown_rows_filled(scratch, first: first, rows: @layout.shown_rows,
+                                                         row_bytes: @layout.shown_columns, stride: SCREEN_WIDTH)
+          end
+
           # Both pages in +color+, for a tear-free screen arriving over what another screen left.
           def emit_both_pages_filled(color)
             scratch = emit_index_fill_word(color)
+            if @layout.fills_shown_rows_alone?(1)
+              return [PAGE0, PAGE1].each { |page| emit_shown_rows_filled(scratch, first: page) }
+            end
+
             count = SCREEN_WIDTH * @layout.shown_rows / 4
             [PAGE0, PAGE1].each do |page|
               emit_start_copy_engine(from: scratch, to: page, control: @framebuffer.dma_fill_control(count))

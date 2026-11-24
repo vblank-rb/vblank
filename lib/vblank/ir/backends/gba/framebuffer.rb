@@ -95,6 +95,31 @@ module VBlank
             count | DMA_ENABLE | DMA_32BIT | DMA_SRC_FIXED
           end
 
+          # Fill the shown part of the painted screen's memory in the colour word held at +scratch+, a
+          # row at a time: +rows+ rows of +row_bytes+ bytes each, the first at +first+ (an address, or
+          # :hidden_page for the page of a tear-free screen drawn on this frame), each +stride+ bytes after
+          # the one before. A game of big pixels shows only the top left of the memory's rows, so a fill of
+          # whole rows writes what is never seen; this writes only the part the display reads, at the price
+          # of starting the copying engine once a row. Must be used only where +row_bytes+ is a whole
+          # number of words.
+          def emit_shown_rows_filled(scratch, first:, rows:, row_bytes:, stride:)
+            at = 4
+            left = 5
+            again = @emitter.gensym
+            if first == :hidden_page
+              @primitives.load_var(at, BACKBUF)
+            else
+              @emitter.emit_number(at, first)
+            end
+            @emitter.emit_number(left, rows)
+            @emitter.place_label(again)
+            @primitives.emit_start_copy_engine(from: scratch, to: Primitives::InRegister.new(at),
+                                               control: dma_fill_control(row_bytes / 4))
+            @primitives.emit_add_const(at, at, stride, SPARE)
+            @emitter.emit(ASM.subs_imm(left, left, 1))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
+          end
+
           # The same fill, one pixel per transfer instead of two.
           #
           # DMA moves whole units and quietly rounds the destination address DOWN to

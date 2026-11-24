@@ -125,6 +125,14 @@ module VBlank
             # leaves the rows under them, which are never shown.
             def shown_rows = SCREEN_HEIGHT / pixel_size
 
+            # ...and how many of each row's columns, the same share.
+            def shown_columns = SCREEN_WIDTH / pixel_size
+
+            # Does a whole-screen fill leave out part of each row it fills, which the display never
+            # reads? Only in a game of big pixels, and only where the shown part of a row of
+            # +pixel_bytes+ bytes a pixel is a whole number of words.
+            def fills_shown_rows_alone?(pixel_bytes) = pixel_size > 1 && ((shown_columns * pixel_bytes) % 4).zero?
+
             # Does the game switch layers off to send them something, and wait for frames, so that
             # a sending can hold them for a picture (BackgroundDrawing::LAYERS_HELD)?
             def holds_layers? = waits_for_frames && screen.layers_off_while_sending?
@@ -1386,6 +1394,12 @@ module VBlank
             scratch = var_addr(Primitives::FILL_SCRATCH)
 
             store_word_immediate(word, scratch) # hold the fill word in IWRAM
+            if @layout.fills_shown_rows_alone?(2)
+              return @framebuffer.emit_shown_rows_filled(scratch, first: VRAM_START, rows: @layout.shown_rows,
+                                                                  row_bytes: @layout.shown_columns * 2,
+                                                                  stride: SCREEN_WIDTH * 2)
+            end
+
             # From that one fixed word, to the screen.
             emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
           end
