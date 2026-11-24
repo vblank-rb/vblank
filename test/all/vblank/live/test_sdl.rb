@@ -558,6 +558,31 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A line about the match goes after the window's own title, the caption it opened with, and over the
+  # picture, where a player in fullscreen sees it. A second line takes the first's place, and after
+  # NOTICE_SECONDS the window says only its own title again.
+  def test_a_notice_is_shown_in_the_title_and_over_the_picture_for_a_while
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", caption: "TEST (watched)", scale: 1)
+    clock = window.now
+    window.define_singleton_method(:now) { clock }
+
+    window.notice("Player 2 left the match.")
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_equal "TEST (watched) - Player 2 left the match.", window.window_title
+    assert_equal "Player 2 left the match.", window.notice_shown
+
+    window.notice("Player 3 left the match.")
+    assert_equal "TEST (watched) - Player 3 left the match.", window.window_title
+
+    clock += SDL::NOTICE_SECONDS
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_nil window.notice_shown
+    assert_equal "TEST (watched)", window.window_title
+  ensure
+    window&.close
+  end
+
   # A box too big for the window makes the window bigger, a whole number of times the picture, as the
   # desktop build's does: a Color game's window at the least scale is its 160 by 144 screen, too small
   # for what is wrong with a settings file. Answered, the window goes back to the player's size.

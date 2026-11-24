@@ -280,6 +280,14 @@ class TestMenu < Minitest::Test
     assert_equal ["60 fps", "PAUSED"], status.grep(WindowMenu::Words).map(&:text)
   end
 
+  # A line about the match (a player left) is said in the corner too, under what the window is doing,
+  # so a player in fullscreen, who sees no title bar, reads it.
+  def test_a_notice_is_said_in_the_corner_under_the_status
+    status = Menu.new.drawing(width: 720, height: 480, density: 1, frame_rate: 60, notice: "Player 2 left the match.")
+
+    assert_equal ["60 fps", "Player 2 left the match."], status.grep(WindowMenu::Words).map(&:text)
+  end
+
   def test_fast_forward_is_said_in_the_corner_with_its_speed
     status = Menu.new.drawing(width: 720, height: 480, density: 1, fast_forward: 4)
 

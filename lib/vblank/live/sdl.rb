@@ -117,6 +117,9 @@ module VBlank
       # the speaker may still be playing what it took last, and silence put in then is a gap.
       SOUND_BEHIND_FRAMES = 6
 
+      # How long a line for the player (#notice) is shown, in seconds: long enough to read twice.
+      NOTICE_SECONDS = 5
+
       # Keys are SDL's scancodes, which name a place on the keyboard rather than a letter, so the
       # layout of the keyboard does not move them. Which key is each console button, and which is
       # each of the window's own (pause, fast forward, the menu...), is the player's settings
@@ -274,8 +277,10 @@ module VBlank
         @work_this_second = 0.0 # seconds of the game's own work in the passes of this second
         @worked_this_second = 0 # ...and how many passes those were
         @frame_work = nil # the game's work a pass over the last whole second, in milliseconds, as words
+        @caption = caption || title
+        @notice = nil # the line #notice shows, until @notice_ends on #now's clock
         begin
-          open_window(caption || title, scale)
+          open_window(@caption, scale)
         rescue Failed
           close
           raise
@@ -492,9 +497,28 @@ module VBlank
         @sdl.SDL_GetAudioStreamQueued(@speaker) / MOMENT_BYTES / @speaker_rate.to_f
       end
 
-      # A line about the match (a player left) goes in the window's title, after the game's own, where it is
-      # seen without anything drawn over the picture.
-      def notice(words) = @sdl.SDL_SetWindowTitle(@window, "#{@title} - #{words}")
+      # A line for the player (a player left the match, a state saved) goes after the window's own title, and
+      # in the corner over the picture, where a player in fullscreen sees it, who has no title bar. It stays
+      # NOTICE_SECONDS, and a second line takes the first's place.
+      def notice(words)
+        @notice = words
+        @notice_ends = now + NOTICE_SECONDS
+        @sdl.SDL_SetWindowTitle(@window, "#{@caption} - #{words}")
+      end
+
+      # The line #notice is showing, or nil once its time is up. The window says only its own title again
+      # then.
+      def notice_shown
+        return nil unless @notice
+        return @notice if now < @notice_ends
+
+        @notice = nil
+        @sdl.SDL_SetWindowTitle(@window, @caption)
+        nil
+      end
+
+      # What the title bar says now, as SDL reports it.
+      def window_title = @sdl.SDL_GetWindowTitle(@window).to_s
 
       # What a shell tells the player (a file that is no copy the game reads), in a box at the foot of
       # the window until a button is pressed, as the desktop build shows it.
@@ -685,6 +709,7 @@ module VBlank
           extern "void* SDL_CreateWindow(const char*, int, int, unsigned long long)"
           extern "void SDL_DestroyWindow(void*)"
           extern "char SDL_SetWindowTitle(void*, const char*)"
+          extern "const char* SDL_GetWindowTitle(void*)"
           extern "char SDL_SetWindowSize(void*, int, int)"
           extern "char SDL_SyncWindow(void*)"
           extern "char SDL_GetWindowSize(void*, void*, void*)"
@@ -952,14 +977,15 @@ module VBlank
       # game's own size (the logical presentation, which scales it by a whole number with bars where
       # the window is the wrong shape), which is put aside while the menu draws and put back after.
       def draw_menu_and_status
+        notice = notice_shown
         return unless held? || @fast_forward || @settings.frame_rate || @settings.frame_time || @menu.variables_open? ||
-                      @menu.messages_shown?
+                      @menu.messages_shown? || notice
 
         width, height = output_size
         drawing = @menu.drawing(width: width, height: height, density: pixel_density, held: held?,
                                 fast_forward: (@settings.fast_forward_speed if @fast_forward && !held?),
                                 frame_rate: (@frame_rate if @settings.frame_rate),
-                                frame_work: (@frame_work if @settings.frame_time), variables: game_variables)
+                                frame_work: (@frame_work if @settings.frame_time), variables: game_variables, notice: notice)
         upload_menu_letters
         @sdl.SDL_SetRenderLogicalPresentation(@renderer, 0, 0, LOGICAL_PRESENTATION_DISABLED)
         begin

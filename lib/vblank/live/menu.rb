@@ -190,14 +190,16 @@ module VBlank
       # PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as fast.
       # +width+ and +height+ are the window's in pixels, and +density+ how many pixels a point is (two
       # on a Retina screen). Gives WindowMenu::Box and WindowMenu::Words, back to front.
+      #
+      # +notice+ is a line for the player (a player left the match), said in the corner under the rest.
       def drawing(width:, height:, density:, held: false, fast_forward: nil, frame_rate: nil, frame_work: nil, variables: [],
-                  variables_dropped: 0)
+                  variables_dropped: 0, notice: nil)
         @out = []
         @density = density
         @font = Graphics::MenuFont.load
         top = @open ? size(:bar) : 0
         draw_variables(top, variables, variables_dropped) if @variables_open
-        draw_status(width, top, held, fast_forward, frame_rate, frame_work)
+        draw_status(width, top, held, fast_forward, frame_rate, frame_work, notice)
         draw_message(@told_title, [@told], width, told_width(width)) { |high| height - size(:message_gap) - high } if @told
         if @problems
           draw_message("The settings file", problems_texts, width, problems_width(width)) { |high| (height - high) / 2 }
@@ -558,13 +560,14 @@ module VBlank
 
       # What the window is doing, in a see-through box in the top right corner, under the bar when
       # the menu is open.
-      def draw_status(width, top, held, fast_forward, frame_rate, frame_work)
+      def draw_status(width, top, held, fast_forward, frame_rate, frame_work, notice)
         said = []
         said << ["#{frame_rate} fps", :text] if frame_rate
         said << ["#{frame_work} ms of work a frame", :text] if frame_work
         if held then said << ["PAUSED", :paused]
         elsif fast_forward then said << ["FAST FORWARD #{fast_forward}x", :fast]
         end
+        said << [notice, :text] if notice
         return if said.empty?
 
         pad = size(:status_pad)
