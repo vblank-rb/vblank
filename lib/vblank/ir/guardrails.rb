@@ -333,7 +333,7 @@ require_relative "guardrails/song_words" # shared by the music checks below
 require_relative "guardrails/channel_conflict"
 require_relative "guardrails/song_needs_frames"
 require_relative "guardrails/song_instrument_unknown"
-require_relative "guardrails/effect_tick_too_short"
+require_relative "guardrails/effect_timer_too_fast"
 require_relative "guardrails/effect_on_timer_this_frame"
 require_relative "guardrails/song_too_many_parts"
 require_relative "guardrails/square_note_too_low"
@@ -396,7 +396,7 @@ module VBlank
         Checks::ChannelConflict.new,
         Checks::SongNeedsFrames.new,
         Checks::SongInstrumentUnknown.new,
-        Checks::EffectTickTooShort.new,
+        Checks::EffectTimerTooFast.new,
         Checks::EffectOnTimerThisFrame.new,
         Checks::SongTooManyParts.new,
         Checks::SquareNoteTooLow.new,

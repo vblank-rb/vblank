@@ -725,30 +725,36 @@ end
 
 def rg_effects_by_rank = RG_EFFECT_ROWS + (rg_effect_count * RG_NUMBERS_PER_EFFECT)
 
-# The sound effects' timer (rg_music.c's step_effect_clock): true when the frame has a tick.
+# The sound effects' timer (rg_music.c's step_effect_clock): how many ticks the frame has.
 def rg_step_effect_clock
-  return true if rg_effect_clock_step.zero?
+  return 1 if rg_effect_clock_step.zero?
 
   @rg_effect_clock += rg_effect_clock_step
-  ticked = @rg_effect_clock >= 0x10000
+  ticks = @rg_effect_clock >> 16
   @rg_effect_clock &= 0xFFFF
-  ticked
+  ticks
+end
+
+# Each effect asked for since the last tick, taken up for the tick playing now.
+def rg_take_asked_effects
+  rg_effect_count.times do |effect|
+    @rg_effect_asked_now[effect] = @rg_effect_asked[effect]
+    @rg_effect_asked[effect] = false
+  end
 end
 
 # The player's frame: the tune caught up with, then every effect that outranks the tune, the tune,
-# and the effects below it. On a frame the effects' timer has no tick, the effects do nothing.
+# and the effects below it. On a frame the effects' timer has no tick, the effects do nothing; a
+# frame of several ticks plays its later ones after the song (IR::Tunes, "Several ticks in one frame").
 def rg_music_sound_frame
   @rg_level = rg_full_level if @rg_level < 0
   rg_refuse_too_many_effects
   rg_switch_to_wanted_song
-  ticked = rg_step_effect_clock
-  (ticked ? rg_effect_count : 0).times do |effect|
-    @rg_effect_asked_now[effect] = @rg_effect_asked[effect]
-    @rg_effect_asked[effect] = false
-  end
+  ticks = rg_step_effect_clock
+  rg_take_asked_effects if ticks.positive?
   tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
   by_rank = rg_effects_by_rank
-  at = ticked ? 0 : rg_effect_count
+  at = ticks.positive? ? 0 : rg_effect_count
   while at < rg_effect_count && rg_effect_field(@rg_game_effects[by_rank + at], RG_EFFECT_RANK) > tune
     rg_play_effect_frame(@rg_game_effects[by_rank + at])
     at += 1
@@ -757,6 +763,10 @@ def rg_music_sound_frame
   while at < rg_effect_count
     rg_play_effect_frame(@rg_game_effects[by_rank + at])
     at += 1
+  end
+  (ticks - 1).times do
+    rg_take_asked_effects
+    rg_effect_count.times { |place| rg_play_effect_frame(@rg_game_effects[by_rank + place]) }
   end
   rg_step_swells
   rg_step_wobbles

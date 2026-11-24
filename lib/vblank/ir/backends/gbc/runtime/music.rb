@@ -752,23 +752,36 @@ module VBlank
               asm.jump("rt_music_quiet")
             end
 
-            # The sound effects' timer moved on a frame: +step+ added to its count (EFFECT_CLOCK), and
-            # EFFECT_TICKED set from the carry, nought or $FF; A holds it too, and the zero flag is set for
-            # a frame with no tick.
+            # The sound effects' timer moved on a frame: +step+'s low 16 bits added to its count
+            # (EFFECT_CLOCK), and EFFECT_TICKED the ticks, the step's whole counts and the carry; A
+            # holds them too, and the zero flag is set for a frame with no tick.
             def emit_step_effect_clock(asm, memory, step)
               asm.load(:a, [memory[EFFECT_CLOCK]])
               asm.load(:l, :a)
               asm.load(:a, [memory[EFFECT_CLOCK] + 1])
               asm.load(:h, :a)
-              asm.load(:de, step)
+              asm.load(:de, step & 0xFFFF)
               asm.add_hl(:de)
               asm.load(:a, :l)
               asm.load([memory[EFFECT_CLOCK]], :a)
               asm.load(:a, :h)
               asm.load([memory[EFFECT_CLOCK] + 1], :a)
-              asm.sbc_a(:a) # nought, less the carry: $FF for a tick
+              asm.load(:a, step >> 16)
+              asm.adc_a(0)
               asm.load([memory[EFFECT_TICKED]], :a)
               asm.and_a(:a)
+            end
+
+            # Each later tick of a frame the effects' timer ticks more than once on, after the first's
+            # rt_sfx_below: both passes again (IR::Tunes, "Several ticks in one frame").
+            def emit_later_ticks(asm, memory)
+              asm.label("rt_sfx_later_tick")
+              asm.load(:hl, memory[EFFECT_TICKED])
+              asm.dec([:hl])
+              asm.ret(:z)
+              asm.call("rt_sfx_above")
+              asm.call("rt_sfx_below")
+              asm.jump("rt_sfx_later_tick")
             end
 
             def emit_no_songs(asm)
@@ -811,7 +824,12 @@ module VBlank
                   asm.call("rt_sfx_above")
                   asm.call("rt_music_song_frame")
                 end
-                asm.jump("rt_sfx_below")
+                if clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
+                  asm.call("rt_sfx_below")
+                  emit_later_ticks(asm, memory)
+                else
+                  asm.jump("rt_sfx_below")
+                end
                 asm.label("rt_music_switch")
               end
               asm.load(:a, [memory[START]])

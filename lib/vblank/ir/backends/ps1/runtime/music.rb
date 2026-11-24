@@ -684,6 +684,7 @@ module VBlank
               asm.jal("rt_music_song_frame")
               asm.label("rt_music_frame_played")
               emit_effect_pass(asm, at, "rt_sfx_below", clock_step) if sharing
+              emit_later_ticks(asm, at) if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
               asm.jal("rt_music_swells") if swells?(memory)
               asm.jal("rt_music_slides") if slides?(memory)
               asm.jal("rt_music_wobbles") if wobbles?(memory)
@@ -691,7 +692,24 @@ module VBlank
               leave(asm)
             end
 
-            # The sound effects' timer moved on a frame, inline (EFFECT_CLOCK, EFFECT_TICKED).
+            # Each later tick of a frame the effects' timer ticks more than once on, inline after the
+            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame").
+            def emit_later_ticks(asm, at)
+              asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.beq(:t0, :zero, "rt_sfx_later_ticks_done")
+              asm.label("rt_sfx_later_tick")
+              asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.addiu(:t0, :t0, -1)
+              asm.sw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.beq(:t0, :zero, "rt_sfx_later_ticks_done")
+              asm.jal("rt_sfx_above")
+              asm.jal("rt_sfx_below")
+              asm.b("rt_sfx_later_tick")
+              asm.label("rt_sfx_later_ticks_done")
+            end
+
+            # The sound effects' timer moved on a frame, inline (EFFECT_CLOCK, EFFECT_TICKED: how many
+            # ticks the frame has).
             def emit_step_effect_clock(asm, at, step)
               asm.lw(:t0, at.call(EFFECT_CLOCK), :gp)
               asm.li(:t1, step)

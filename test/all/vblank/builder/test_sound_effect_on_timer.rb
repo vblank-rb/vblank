@@ -70,15 +70,16 @@ class TestSoundEffectOnTimer < Minitest::Test
     VBlank::Testing.console ? VBlank::Console.described(VBlank::Testing.console) : program.described_console
   end
 
-  # The frames from power-on, counted from 1, that hold a tick of the timer on +console+.
+  # The frame from power-on, counted from 1, of each tick of the timer on +console+: a frame that
+  # holds several ticks is named once for each.
   private def ticking_frames(program, console, through:)
     step = VBlank::IR::Tunes.effect_clock_step(program, console)
     count = 0
-    (1..through).select do
+    (1..through).flat_map do |frame|
       count += step
-      ticked = count >= VBlank::IR::Tunes::CLOCK_MODULUS
+      ticks = count / VBlank::IR::Tunes::CLOCK_MODULUS
       count %= VBlank::IR::Tunes::CLOCK_MODULUS
-      ticked
+      [frame] * ticks
     end
   end
 
@@ -114,6 +115,20 @@ class TestSoundEffectOnTimer < Minitest::Test
 
     assert_equal starts, started
     assert_equal struck, notes
+  end
+
+  # Faster than the frames: 90 ticks a second is a frame of one tick, then one of two; 120 is two
+  # a frame, with a frame of three now and then on a console a little slower than sixty; 240 is four
+  # or five. Every tick's note sounds on its own frame, two or more on one frame in order.
+  def test_a_timer_faster_than_the_frames_plays_every_tick
+    { 90 => [225, 24], 120 => [150, 48], 240 => [150, 96] }.each do |rate, (tempo, ticks_per_beat)|
+      program, started, notes = played(effect(tempo: tempo, ticks_per_beat: ticks_per_beat), asked_on: 3)
+      starts, struck = expected(program, asked_on: 3)
+
+      assert_operator starts.size, :>=, FRAMES / ASKED_EVERY - 1, "#{rate} a second"
+      assert_equal starts, started, "#{rate} a second"
+      assert_equal struck, notes, "#{rate} a second"
+    end
   end
 
   def test_an_effect_not_on_the_timer_counts_frames

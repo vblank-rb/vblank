@@ -13,12 +13,14 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
 
   VOICE = VBlank::Console::Hardware::REG_SOUND1CNT_H
   FRAMES = 60
+  VOLUMES = [15, 13, 11, 9, 7].freeze
 
-  # Five strikes three and two ticks apart, at 50 ticks a second, each at a volume of its own so the
-  # voice says which it is on.
-  private def program
-    effect = Score.new(tempo: 125, ticks_per_beat: 24, length: 20, plays_once: true, on_timer: true,
-                       parts: [Part.new(notes: [15, 13, 11, 9, 7].zip([0, 3, 5, 8, 10]).map { |volume, at| Note.new(at: at, key: :A5, volume: volume) })])
+  # Five strikes three and two ticks apart, each at a volume of its own so the voice says which it
+  # is on: at 50 ticks a second by default.
+  private def program(tempo: 125, ticks_per_beat: 24)
+    notes = VOLUMES.zip([0, 3, 5, 8, 10]).map { |volume, at| Note.new(at: at, key: :A5, volume: volume) }
+    effect = Score.new(tempo: tempo, ticks_per_beat: ticks_per_beat, length: 20, plays_once: true, on_timer: true,
+                       parts: [Part.new(notes: notes)])
     b = Builder.new
     # Nothing to paint as it sets up, so its first pass takes one frame on the cartridge as on the
     # interpreter, and the timer, which counts from power-on, is at the same place on both.
@@ -37,40 +39,57 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
     b.program
   end
 
-  # The frames apart the voice's volume changes, in the emulator.
-  private def cartridge_gaps(game)
+  # The volume the voice is left at as each frame ends, from the frame it first sounds: in the
+  # emulator...
+  private def cartridge_volumes(game)
     Dir.mktmpdir do |dir|
       path = File.join(dir, "timer.gba")
       assemble_rom(game, name: "TIMER").write(path)
       probe = VBlank::Diagnostics::Emulator.probe(path)
-      pitches = Array.new(FRAMES) do
+      volumes = Array.new(FRAMES) do
         probe.step(1)
         (probe.read32(VOICE) & 0xFFFF) >> 12
       end
       probe.close
-      changes = pitches.each_cons(2).each_with_index.filter_map { |(a, b), frame| frame if a != b && b.positive? }
-      changes.each_cons(2).map { |a, b| b - a }
+      volumes.drop_while(&:zero?)
     end
   end
 
-  # ...and on the interpreter, from its log.
-  private def interpreter_gaps(game)
-    frames = []
+  # ...and on the interpreter, from the last of each frame's settings of the voice in its log.
+  private def interpreter_volumes(game)
+    volumes = []
     logged = 0
     run = Reference.new
-    run.each_vblank do |frame|
-      frames << frame if run.audio.drop(logged).any? { |entry| entry.first == :note && entry[1] == :"sfx.chime" && entry[2].positive? }
+    run.each_vblank do
+      set = run.audio.drop(logged).select { |entry| entry.first == :voice && entry[2] == :"sfx.chime" }
+      volumes << (set.empty? ? volumes.last || 0 : set.last[4])
       logged = run.audio.size
     end
     run.run(game, frames: FRAMES)
-    frames.each_cons(2).map { |a, b| b - a }
+    volumes.drop_while(&:zero?)
+  end
+
+  # Where the voice's volume changes to a note's, as [frames since the last change, the volume].
+  private def changes(volumes)
+    volumes.each_with_index.chunk_while { |(a, _), (b, _)| a == b }.map { |run| [run.first.last, run.first.first] }
+           .each_cons(2).map { |(was, _), (now, volume)| [now - was, volume] }.select { |_, volume| volume.positive? }
   end
 
   def test_the_notes_are_as_many_frames_apart_as_on_the_interpreter
     game = program
-    gaps = interpreter_gaps(game)
+    heard = changes(interpreter_volumes(game))
 
-    assert_equal 4, gaps.size
-    assert_equal gaps, cartridge_gaps(game)
+    assert_equal 4, heard.size
+    assert_equal heard, changes(cartridge_volumes(game))
+  end
+
+  # At 240 ticks a second a frame holds four or five ticks, and two notes can fall in one: the voice
+  # is left at the second, as on the interpreter.
+  def test_a_timer_faster_than_the_frames_leaves_the_voice_where_the_interpreter_does
+    game = program(tempo: 150, ticks_per_beat: 96)
+    heard = changes(interpreter_volumes(game))
+
+    assert_operator heard.size, :<, VOLUMES.size - 1, "two notes share a frame"
+    assert_equal heard, changes(cartridge_volumes(game))
   end
 end

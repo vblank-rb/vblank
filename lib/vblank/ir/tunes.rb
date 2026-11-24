@@ -415,10 +415,9 @@ module VBlank
       # their rate, running from power-on, as a cartridge's own sound engine counts them on a timer
       # of its sound chip's. Every player keeps the timer the same way, once a frame from the first,
       # as the frame's sound effects are about to play: it adds this step to a count of 16 bits, and
-      # the frame has a tick when the count goes past the top and comes round. On a frame with no
-      # tick the sound effects do nothing at all, and what was asked for waits; on one with a tick
-      # each plays one tick, as it plays a frame in a game with no timer. A tick is always longer
-      # than a frame, so a frame never holds two.
+      # the frame has a tick each time the count goes past the top and comes round. On a frame with
+      # no tick the sound effects do nothing at all, and what was asked for waits; on one with a
+      # tick each plays one tick, as it plays a frame in a game with no timer.
       #
       # The step is the part of a tick a frame is, in 65536ths, rounded down: the console's own
       # frame (Console::Description#frame_seconds), not a round sixty a second, since the timer
@@ -426,9 +425,21 @@ module VBlank
       # whole numbers, so the interpreter and every build agree to the frame. Nil for a game whose
       # effects are not on a timer.
       #
-      # A tick of a frame or shorter cannot be kept this way, and the build says so (Guardrails::
-      # Checks::EffectTickTooShort): the step would be the whole count or more, and a frame could
-      # hold more than one tick.
+      # ### Several ticks in one frame
+      #
+      # A timer faster than the frames (60, 120 and 240 ticks a second are common rates for a sound
+      # driver) has a step of a whole count or more, and a frame then holds one tick for each time
+      # the count comes round. Every player plays such a frame the same way, in this order:
+      #
+      # 1. The first tick around the song's frame, as a frame of one tick plays: the effects that
+      #    outrank the tune, the song's frame, then the rest. What was asked for starts here.
+      # 2. Each later tick after that, the effects that outrank the tune first, then the rest.
+      #
+      # A part whose notes fall on two ticks of one frame plays both, in order, so its voice is left
+      # sounding the second, and both are logged. A console that strikes a note inside the frame at
+      # its tick's own time (the Super Nintendo's sound unit, the PlayStation's root counter) logs
+      # and claims voices in this order too; only the moment the chip is told differs. A frame
+      # holds MOST_TICKS_A_FRAME at most (Guardrails::Checks::EffectTimerTooFast).
       def effect_clock_step(program, console)
         rate = effect_timer_rate(program) or return nil
         (rate * console.frame_seconds * CLOCK_MODULUS).floor
@@ -446,6 +457,14 @@ module VBlank
 
       # The count the sound effects' timer keeps comes round at this: 16 bits.
       CLOCK_MODULUS = 1 << 16
+
+      # The most ticks of the sound effects' timer one frame can hold: a little under 480 a second
+      # at sixty frames. Each tick's notes are a pass over the effects, and on a console that
+      # strikes them inside the frame, a short list its sound unit keeps until their time comes.
+      MOST_TICKS_A_FRAME = 8
+
+      # How many ticks the frames hold at most with +step+ (#effect_clock_step).
+      def most_ticks_a_frame(step) = (step + CLOCK_MODULUS - 1) / CLOCK_MODULUS
 
       # ...and their song nodes, with every song the program plays: all it can sound.
       def playable_songs(program)

@@ -954,33 +954,43 @@ static void play_song_frame(void);
  * count comes round, and on a frame with none the effects do nothing (Reference::Player#advance). */
 static int32_t effect_clock;
 
-static bool step_effect_clock(void) {
-  if (EFFECT_CLOCK_STEP == 0) return true;
+static int32_t step_effect_clock(void) {
+  if (EFFECT_CLOCK_STEP == 0) return 1;
   effect_clock += EFFECT_CLOCK_STEP;
-  bool ticked = effect_clock >= 0x10000;
+  int32_t ticks = effect_clock >> 16;
   effect_clock &= 0xFFFF;
-  return ticked;
+  return ticks;
+}
+
+/* Each effect asked for since the last tick, taken up for the tick playing now. */
+static void take_asked_effects(void) {
+  for (int32_t effect = 0; effect < EFFECT_COUNT; effect++) {
+    effect_asked_now[effect] = effect_asked[effect];
+    effect_asked[effect] = 0;
+  }
 }
 
 /* Sound effects play around the song, highest rank first (IR::Tunes.effects_by_rank): the effects
  * that outrank the tune before its parts, the rest after. So a note that loses its voice to one
  * due on the same frame is never written at all — whoever writes a voice first on a frame keeps
- * it. */
+ * it. A frame of several ticks of the effects' timer plays its later ticks after the song, each
+ * highest rank first (IR::Tunes, "Several ticks in one frame"). */
 static void rg_music_sound_frame(void) {
   if (level < 0) level = FULL_LEVEL;
   refuse_too_many_effects();
   switch_to_wanted_song();
-  bool ticked = step_effect_clock();
-  for (int32_t effect = 0; ticked && effect < EFFECT_COUNT; effect++) {
-    effect_asked_now[effect] = effect_asked[effect];
-    effect_asked[effect] = 0;
-  }
+  int32_t ticks = step_effect_clock();
+  if (ticks > 0) take_asked_effects();
   int32_t tune = playing >= 0 ? song[3] : -1;
   const int32_t *by_rank = &rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT)];
   int32_t at = 0;
-  while (ticked && at < EFFECT_COUNT && effect_row(by_rank[at])[EFFECT_RANK] > tune) play_effect_frame(by_rank[at++]);
+  while (ticks > 0 && at < EFFECT_COUNT && effect_row(by_rank[at])[EFFECT_RANK] > tune) play_effect_frame(by_rank[at++]);
   if (playing >= 0) play_song_frame();
-  while (ticked && at < EFFECT_COUNT) play_effect_frame(by_rank[at++]);
+  while (ticks > 0 && at < EFFECT_COUNT) play_effect_frame(by_rank[at++]);
+  for (int32_t tick = 1; tick < ticks; tick++) {
+    take_asked_effects();
+    for (at = 0; at < EFFECT_COUNT; at++) play_effect_frame(by_rank[at]);
+  }
   step_swells();
   step_wobbles();
   step_shapes();

@@ -188,19 +188,21 @@ module VBlank
           # and then covered — whoever writes a voice first on a frame is whoever keeps it.
           #
           # In a game whose sound effects are on a timer (IR::Tunes.effect_clock_step), they play only
-          # on a frame the timer ticks, each as far as one tick: on any other frame they do nothing,
-          # and an effect asked for waits for the tick, as one of its group to be cut off does.
+          # on the timer's ticks, each tick as far as one tick: on a frame with none they do nothing,
+          # and an effect asked for waits for the tick, as one of its group to be cut off does. A
+          # frame with several ticks plays them in order (IR::Tunes, "Several ticks in one frame").
           def advance(level: nil)
             switch_to_wanted_song
-            ticked = step_effect_clock
+            ticks = step_effect_clock
             asked = @asked.uniq
             @asked.clear
-            @asked.concat(asked) unless ticked
+            @asked.concat(asked) if ticks.zero?
             tune = @playing ? IR::Tunes.song_rank(@songs[@playing]) : -1
             above, below = ranked_effects.partition { |_, rank| rank > tune }
-            above.each { |name, rank| play_effect_frame(name, rank, asked) } if ticked
+            above.each { |name, rank| play_effect_frame(name, rank, asked) } if ticks.positive?
             play_song_frame(level) if @playing
-            below.each { |name, rank| play_effect_frame(name, rank, asked) } if ticked
+            below.each { |name, rank| play_effect_frame(name, rank, asked) } if ticks.positive?
+            (ticks - 1).times { (above + below).each { |name, rank| play_effect_frame(name, rank, []) } }
             step_swells
             step_wobbles
             step_shapes
@@ -209,15 +211,15 @@ module VBlank
 
           private
 
-          # The sound effects' timer moved on a frame: true when the frame has a tick, which every
-          # frame has in a game whose effects count frames.
+          # The sound effects' timer moved on a frame: how many ticks the frame has, one on every frame
+          # in a game whose effects count frames.
           def step_effect_clock
-            return true unless @effect_clock_step
+            return 1 unless @effect_clock_step
 
             @effect_clock += @effect_clock_step
-            ticked = @effect_clock >= IR::Tunes::CLOCK_MODULUS
+            ticks = @effect_clock / IR::Tunes::CLOCK_MODULUS
             @effect_clock %= IR::Tunes::CLOCK_MODULUS
-            ticked
+            ticks
           end
 
           def play_song_frame(level)

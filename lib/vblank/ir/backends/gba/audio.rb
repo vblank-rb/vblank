@@ -391,10 +391,10 @@ module VBlank
           EFFECTS_BUSY = :__effects_busy
 
           # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
-          # its count, kept in the top half of a word so that adding the step there sets the carry
-          # as the count comes round, and whether the frame playing now has a tick (1) or not (0).
-          # On a frame with no tick the walk of the effects is skipped, leaving EFFECTS_BUSY and
-          # every effect's state as they are, so what was asked for waits for the tick.
+          # its count, 16 bits, and how many ticks the frame playing now has, which the walks of its
+          # later ticks count down (#emit_later_ticks). On a frame with no tick the walk of the
+          # effects is skipped, leaving EFFECTS_BUSY and every effect's state as they are, so what
+          # was asked for waits for the tick.
           EFFECT_CLOCK = :__effect_clock
           EFFECT_TICKED = :__effect_ticked
 
@@ -1126,21 +1126,46 @@ module VBlank
               @emitter.emit_branch(:bl, SOUND_EFFECTS)
             end
             @emitter.place_label(finished)
+            emit_later_ticks if effects
             emit_step_swells if in_interrupt && @swells.any?
             emit_step_wobbles if in_interrupt && @wobbles
             emit_step_shapes if in_interrupt && @shape_steps
           end
 
           # The sound effects' timer moved on a frame (EFFECT_CLOCK), in two free registers: the step
-          # added to the count's top half, and EFFECT_TICKED set from the carry.
-          def emit_step_effect_clock(count, ticked)
+          # added to the count, EFFECT_TICKED the ticks that took it past the count's 16 bits, and
+          # the count kept to those 16 bits.
+          def emit_step_effect_clock(count, ticks)
             @primitives.load_var(count, EFFECT_CLOCK)
-            @emitter.emit(ASM.load_immediate(ticked, @effect_clock_step << 16))
-            @emitter.emit(ASM.adds_reg(count, count, ticked))
-            @emitter.emit(ASM.mov_imm_cond(:hs, ticked, 1))
-            @emitter.emit(ASM.mov_imm_cond(:lo, ticked, 0))
+            @emitter.emit(ASM.load_immediate(ticks, @effect_clock_step))
+            @emitter.emit(ASM.add_reg(count, count, ticks))
+            @emitter.emit(ASM.lsr_imm(ticks, count, 16))
+            @emitter.emit(ASM.lsl_imm(count, count, 16))
+            @emitter.emit(ASM.lsr_imm(count, count, 16))
             @primitives.store_var(count, EFFECT_CLOCK)
-            @primitives.store_var(ticked, EFFECT_TICKED)
+            @primitives.store_var(ticks, EFFECT_TICKED)
+          end
+
+          # Each later tick of a frame the effects' timer ticks more than once on: a walk of every
+          # effect, highest rank first, after the tune (IR::Tunes, "Several ticks in one frame").
+          # Emitted only where a frame can hold more than one.
+          def emit_later_ticks
+            return unless @effect_clock_step && IR::Tunes.most_ticks_a_frame(@effect_clock_step) > 1
+
+            again = @emitter.gensym
+            over = @emitter.gensym
+            @emitter.place_label(again)
+            @primitives.load_var(ACC, EFFECT_TICKED)
+            @emitter.emit(ASM.cmp_imm(ACC, 1))
+            @emitter.emit_branch(:bcond, over, cond: :ls)
+            @emitter.emit(ASM.sub_imm(ACC, ACC, 1))
+            @primitives.store_var(ACC, EFFECT_TICKED)
+            @emitter.emit_load_data_address(TUNE_REGS.first, MUSIC_SCORE)
+            @emitter.emit(ASM.load_immediate(EFFECT_OUTRANKS, 0))
+            emit_point_at_busy_effects
+            @emitter.emit_branch(:bl, SOUND_EFFECTS)
+            @emitter.emit_branch(:b, again)
+            @emitter.place_label(over)
           end
 
           # The registers a frame of the player works in: the score, an entry or a row in it, the
