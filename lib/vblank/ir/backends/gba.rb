@@ -934,6 +934,7 @@ module VBlank
           # still needs its pixels in the cartridge. Wanted before the assets are registered.
           @stretched_columns = StretchedColumns.new(program, emitter: @emit)
           @framebuffer.stretched_columns = @stretched_columns
+          @framebuffer.pixel_size = program.described_console.pixel_size
           @statements.unread_indexes = LoopForm.unread_indexes(program)
           @statements.lists = @lists
           @statements.program = program

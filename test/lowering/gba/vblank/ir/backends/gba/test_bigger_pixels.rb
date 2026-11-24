@@ -29,6 +29,36 @@ class TestBiggerPixels < Minitest::Test
 
   private def at(picture, x, y) = picture[(y * 240) + x]
 
+  # A red picture hanging off the small screen's bottom right corner, drawn as far as the edge and
+  # cut there (GBA::Framebuffer#clip_right, Drawing#emit_rect_row_dma).
+  private def corner_picture(tear_free:)
+    rom = VBlank.game("BIGEDGE", consoles: %i[gba]) do
+      screen :bitmap, tear_free: tear_free, pixel_size: 2
+      image(:box, "#" => :red) { (["#" * 16] * 16).join("\n") }
+      game_loop do
+        clear_screen :blue
+        blit :box, 112, 72
+      end
+    end.build_rom(out: nil, err: nil, profile: false)
+    require_emulator!
+    VBlank::Diagnostics::Verifier.new(rom, frames: 12).frame_gba
+  end
+
+  def test_a_picture_past_the_edge_is_drawn_up_to_it
+    [false, true].each do |tear_free|
+      shown = corner_picture(tear_free: tear_free)
+      red = Color.resolve(:red)
+      blue = Color.resolve(:blue)
+
+      [[224, 144], [239, 159], [224, 159], [239, 144]].each do |x, y|
+        assert_equal red, at(shown, x, y), "inside the picture at (#{x}, #{y}), tear_free #{tear_free}"
+      end
+      [[223, 150], [230, 143]].each do |x, y|
+        assert_equal blue, at(shown, x, y), "beside the picture at (#{x}, #{y}), tear_free #{tear_free}"
+      end
+    end
+  end
+
   def test_each_pixel_is_shown_as_a_square_of_four
     [false, true].each do |tear_free|
       shown = picture(tear_free: tear_free)

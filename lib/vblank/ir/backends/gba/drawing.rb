@@ -1828,7 +1828,7 @@ module VBlank
               @primitives.emit_add_const(9, y_reg, row, 2)          # r9 = screen_y
               @emitter.emit(ASM.cmp_imm(9, 0))
               @emitter.emit_branch(:bcond, skip, cond: :lt)
-              @emitter.emit(ASM.cmp_imm(9, SCREEN_HEIGHT))
+              @emitter.emit(ASM.cmp_imm(9, @layout.shown_rows))
               @emitter.emit_branch(:bcond, skip, cond: :ge)
 
               # visible_left = max(x, 0)  -> r10
@@ -1839,12 +1839,12 @@ module VBlank
               @emitter.emit_number(10, 0)
               @emitter.place_label(keep_left)
 
-              # visible_right = min(x + width, SCREEN_WIDTH)  -> r11
+              # visible_right = min(x + width, the shown width)  -> r11
               @primitives.emit_add_const(11, x_reg, width, 2)
-              @emitter.emit(ASM.cmp_imm(11, SCREEN_WIDTH))
+              @emitter.emit(ASM.cmp_imm(11, @layout.shown_columns))
               keep_right = @emitter.gensym
               @emitter.emit_branch(:bcond, keep_right, cond: :le)
-              @emitter.emit_number(11, SCREEN_WIDTH)
+              @emitter.emit_number(11, @layout.shown_columns)
               @emitter.place_label(keep_right)
 
               # visible_width = visible_right - visible_left  -> r4; if <= 0 the row
@@ -1910,7 +1910,7 @@ module VBlank
               @primitives.emit_add_const(4, y_reg, row, 5)          # r4 = screen_y
               @emitter.emit(ASM.cmp_imm(4, 0))
               @emitter.emit_branch(:bcond, skip_row, cond: :lt)
-              @emitter.emit(ASM.cmp_imm(4, SCREEN_HEIGHT))
+              @emitter.emit(ASM.cmp_imm(4, @layout.shown_rows))
               @emitter.emit_branch(:bcond, skip_row, cond: :ge)
               @emitter.emit_number(5, SCREEN_WIDTH)
               @emitter.emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base)
@@ -1922,7 +1922,7 @@ module VBlank
                 @primitives.emit_add_const(7, x_reg, col, 8)        # r7 = screen_x
                 @emitter.emit(ASM.cmp_imm(7, 0))
                 @emitter.emit_branch(:bcond, skip_px, cond: :lt)
-                @emitter.emit(ASM.cmp_imm(7, SCREEN_WIDTH))
+                @emitter.emit(ASM.cmp_imm(7, @layout.shown_columns))
                 @emitter.emit_branch(:bcond, skip_px, cond: :ge)
 
                 @emitter.emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x

@@ -58,6 +58,7 @@ module VBlank
             @lowering = lowering
             @divide = divide
             @stretched_columns = nil
+            @pixel_size = 1
           end
 
           # The pictures a stretched column draws, and where each of their columns holds
@@ -65,12 +66,19 @@ module VBlank
           # what decides which pictures those are.
           attr_writer :stretched_columns
 
-          # Where drawing may land. The whole screen, unless an `inside` sets otherwise
-          # — and then these four are what every shape cuts itself against.
+          # How many of the screen's pixels each of the game's covers across and down (`screen
+          # :bitmap, pixel_size: 2`), handed over with the program (see GBA#lower). The display shows
+          # only the top left of the painted memory then, the game's small picture, so drawing is
+          # cut at that picture's edge and nothing is written that is never seen.
+          attr_writer :pixel_size
+
+          # Where drawing may land. The whole screen, or the part a game of big pixels shows,
+          # unless an `inside` sets otherwise — and then these four are what every shape cuts
+          # itself against.
           def clip_left = (area = @lowering.draw_area) ? area[0] : 0
           def clip_top = (area = @lowering.draw_area) ? area[1] : 0
-          def clip_right = (area = @lowering.draw_area) ? area[0] + area[2] : SCREEN_WIDTH
-          def clip_bottom = (area = @lowering.draw_area) ? area[1] + area[3] : SCREEN_HEIGHT
+          def clip_right = (area = @lowering.draw_area) ? area[0] + area[2] : SCREEN_WIDTH / @pixel_size
+          def clip_bottom = (area = @lowering.draw_area) ? area[1] + area[3] : SCREEN_HEIGHT / @pixel_size
           def clipping? = !@lowering.draw_area.nil?
 
           # Is this cell one drawing may land on? The screen, held further to whatever
