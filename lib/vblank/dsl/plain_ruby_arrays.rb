@@ -21,7 +21,8 @@ module VBlank
       module Arrays
         # The Array verbs that change the Array they are called on. Game code calling one on a local
         # makes that local's Array a list; DSL::List refuses by name those it has no meaning for.
-        CHANGING_VERBS = %i[<< push append unshift prepend insert concat shift pop []= clear fill replace
+        # `copy_from` is List's own, not Ruby's: an Array it is called on can only mean a list.
+        CHANGING_VERBS = %i[<< push append unshift prepend insert concat shift pop []= clear fill copy_from replace
                             delete delete_at delete_if keep_if slice! select! filter! reject! map! collect!
                             sort! sort_by! reverse! rotate! shuffle! uniq! compact! flatten!].freeze
 

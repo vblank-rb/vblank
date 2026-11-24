@@ -126,6 +126,22 @@ class TestPlainRubyArrays < Minitest::Test
     assert_equal [3, 3, 4], player.list(:marks)
   end
 
+  # `copy_from` is the only change game code makes to `shown`, a run of a table copied in at once
+  # (List#copy_from), so that is what makes it a list: the second pass copies entries 4 to 7.
+  def test_an_array_game_code_copies_a_table_into_is_a_list
+    player = played(frames: 2) do
+      letters = table :letters, [1, 0, 1, 1, 1, 1, 0, 1]
+      shown = Array.new(4, 0, width: :half)
+      which = 0
+      game_loop do
+        shown.copy_from letters, at: which * 4, count: 4
+        which = 1 - which
+      end
+    end
+
+    assert_equal [1, 1, 0, 1], player.list(:shown)
+  end
+
   # `shift` and `pop` hand back the item they drop, as Ruby's do; `first`, `last` and `empty?`
   # ask what is left.
   def test_shift_and_pop_hand_back_the_item_they_drop

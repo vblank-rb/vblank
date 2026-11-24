@@ -307,7 +307,8 @@ instance variables.
 An Array that game code changes is a list the game keeps (`lists.md`), named after its local. Ruby's
 own Array verbs work on it as Ruby says: `<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `+=` on
 an item, `size`, `length`, `empty?`, `first`, `last`, `each`, `each_with_index`, `sum`, `min`, `max`
-and `include?`. `sum`, `min`, `max` and `include?` walk the items as the game plays and keep the
+and `include?`, and `copy_from`, which is VBlank's (`lists.md`) and makes an Array a list as Ruby's
+changing verbs do. `sum`, `min`, `max` and `include?` walk the items as the game plays and keep the
 answer in a hidden variable; `min` and `max` of an empty list are 0, as Ruby's nil reads.
 
 ```ruby

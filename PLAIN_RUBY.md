@@ -194,6 +194,7 @@ What an Array the game keeps can do:
 | `first`, `last` | Reads the first or the last item |
 | `size`, `length`, `empty?` | Tells how many items it holds |
 | `fill` | Sets every item to one number |
+| `copy_from` | VBlank's, not Ruby's: copies a run of a `table` in at once |
 | `each`, `each_with_index` | A loop over the items, run as the game plays |
 | `sum`, `min`, `max`, `include?` | Looks at every item; `min` and `max` of none are 0 |
 | `sort!`, `sort_by!`, `reverse!` | Puts the items in order (see below) |
