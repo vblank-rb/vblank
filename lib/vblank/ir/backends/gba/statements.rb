@@ -534,14 +534,49 @@ module VBlank
           # written back to its memory once on the way out, so anything after the loop sees
           # the value it would have seen anyway.
           def emit_repeat_in_registers(node)
-            steps = held_steps(node)
+            copies = counts_down?(node) ? 1 : LoopForm.unrolled_copies(node)
+            bodies = copies > 1 ? (0...copies).map { |offset| LoopForm.copy_of_body(node, offset) } : [node.children]
+            bodies = [node.children] if bodies.any?(&:nil?)
+            steps = held_steps(node, bodies.flatten)
             return emit_repeat_loop(node) { node.children.each { |stmt| @lowering.statement(stmt) } } if steps.empty?
 
             @emitter.emit(ASM.push(*steps.values))
-            emit_repeat_loop(node, steps: steps) do
-              @primitives.with_products_in_registers(node.index, steps) { node.children.each { |stmt| @lowering.statement(stmt) } }
+            @primitives.with_products_in_registers(node.index, steps) do
+              if bodies.size > 1
+                emit_unrolled_loop(node, bodies, steps)
+              else
+                emit_repeat_loop(node, steps: steps) { node.children.each { |stmt| @lowering.statement(stmt) } }
+              end
             end
             @emitter.emit(ASM.pop(*steps.values))
+          end
+
+          # A held loop whose turn runs +bodies+, copies of its body each reading the count a round
+          # further on (LoopForm.unrolled_copies, LoopForm.copy_of_body), the count stepped by as
+          # many each turn and each held number by its factor times as many. The count is written
+          # in the program, so the turns are known while building: the limit is the last whole
+          # turn's end, and the rounds left past it are copies after the loop, which read the count
+          # and the held numbers where the last turn left them.
+          def emit_unrolled_loop(node, bodies, steps)
+            copies = bodies.size
+            rounds = node.count.value
+            left = rounds % copies
+            top = @emitter.gensym
+
+            @emitter.emit_number(LoopForm::COUNTER, 0)
+            @emitter.emit_number(LoopForm::LIMIT, rounds - left)
+            steps.each_value { |reg| @emitter.emit_number(reg, 0) }
+            @primitives.with_var_in_register(node.index, LoopForm::COUNTER) do
+              @emitter.place_label(top)
+              bodies.each { |body| body.each { |stmt| @lowering.statement(stmt) } }
+              emit_steps_on(steps, times: copies)
+              @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, copies))
+              @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
+              @emitter.emit_branch(:bcond, top, cond: :lt)
+              (0...left).each { |offset| LoopForm.copy_of_body(node, offset).each { |stmt| @lowering.statement(stmt) } }
+            end
+            @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, left)) if left.positive?
+            @primitives.store_var(LoopForm::COUNTER, node.index)
           end
 
           # The numbers a held loop keeps stepped, each factor with its register
@@ -562,10 +597,10 @@ module VBlank
           # because code around the loop may keep something of its own in them. Only where every
           # kind in the body leaves them alone (LoopForm.keeps_step_registers?), and at most as
           # many factors as there are registers, the first read first.
-          def held_steps(node)
+          def held_steps(node, statements)
             return {} if counts_down?(node) || !LoopForm.keeps_step_registers?(node)
 
-            reads = node.children.flat_map { |stmt| stmt.walk.filter_map { |inner| stepped_factor(inner, node.index) } }.tally
+            reads = statements.flat_map { |stmt| stmt.walk.filter_map { |inner| stepped_factor(inner, node.index) } }.tally
             held = reads.select { |factor, count| count > 1 || !Expressions.one_instruction_factor?(factor) }.keys
             held.first(LoopForm::STEP_REGISTERS.size).zip(LoopForm::STEP_REGISTERS).to_h
           end
@@ -578,13 +613,14 @@ module VBlank
             node.rhs.value
           end
 
-          # Each held number's register stepped on by its factor, as a turn ends.
-          def emit_steps_on(steps)
+          # Each held number's register stepped on by its factor, +times+ over, as a turn ends.
+          def emit_steps_on(steps, times: 1)
             steps.each do |factor, reg|
-              if ASM.encode_rotated_immediate(factor) then @emitter.emit(ASM.add_imm(reg, reg, factor))
-              elsif ASM.encode_rotated_immediate(-factor) then @emitter.emit(ASM.sub_imm(reg, reg, -factor))
+              step = IR::Int32.wrap(factor * times)
+              if ASM.encode_rotated_immediate(step) then @emitter.emit(ASM.add_imm(reg, reg, step))
+              elsif ASM.encode_rotated_immediate(-step) then @emitter.emit(ASM.sub_imm(reg, reg, -step))
               else
-                @emitter.emit_number(TMP, factor)
+                @emitter.emit_number(TMP, step)
                 @emitter.emit(ASM.add_reg(reg, reg, TMP))
               end
             end

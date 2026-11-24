@@ -279,7 +279,8 @@ class TestLoopForm < Minitest::Test
   # Each body is a held loop alone in a routine of its own, and the routine's instructions are
   # read for any that writes r4 to r8 or reaches other code (a write of the link register). A
   # rectangle drawn at a place the game works out, which keeps its corners in r4 to r7, is read
-  # too, to show the reading finds one.
+  # too, to show the reading finds one. No body multiplies the count, so no loop here keeps a
+  # number of its own in them.
   def test_the_kinds_that_keep_step_registers_write_none_of_them
     bodies = step_sweep_bodies
     rom = VBlank.build("STEPSWEEP", console: :gba, err: StringIO.new, out: StringIO.new) do
@@ -302,7 +303,7 @@ class TestLoopForm < Minitest::Test
         clamp: ->(_i) { n.clamp! 0, 9 },
         approach: ->(_i) { n.approach! 4, 1 },
         branch: ->(_i) { if n > 2 then n = 1 else n = 8 end },
-        arithmetic: ->(i) { n = ((other * 3) + (i * 5) - (n * other)) ^ (i << 2) },
+        arithmetic: ->(i) { n = ((other * 3) + (n * 5) - (n * other)) ^ (i << 2) },
         bits: ->(i) { n = ~other & ((i | 3) >> 1) },
         negative: ->(_i) { n = -other },
         divides: ->(i) { n = (other / 4) + (i % 8) + (other / 3) + (n % 5) },
@@ -600,15 +601,16 @@ class TestLoopForm < Minitest::Test
   # A body reading its index times a number the processor cannot multiply by in one instruction,
   # `i * 12 + 3`, would load the twelve and multiply every pass. The loop keeps i * 12 in a
   # register of its own instead, adding twelve as each pass ends, so the read is one ADD of the
-  # three. Written out, the stand-in variable is loaded, the twelve loaded, multiplied and added
-  # to: four instructions where the loop's read is one. The loop's add of twelve, its add,
-  # compare and branch, and the body finding the variable memory again are the other five.
-  # Multiplying from the count instead is four instructions, as written out, and the pass four
-  # more than written out rather than two.
+  # three (or 15, 27, 39: a turn runs four copies of the body, LoopForm.unrolled_copies). Written
+  # out, the stand-in variable is loaded, the twelve loaded, multiplied and added to: four
+  # instructions where the loop's read is one. A turn's add of 48, its add, compare and branch,
+  # and the first copy finding the variable memory again are five shared by four passes, so a
+  # pass is a quarter of five less three: -1.75. One copy a turn it was two more than written
+  # out, and multiplying from the count four.
   def test_a_held_pass_that_reads_its_index_times_twelve_adds_twelve_as_it_ends
     overhead = loop_overhead { |_b, counted, index| counted[:n] = (index * 12) + 3 }
 
-    assert_equal 2, overhead
+    assert_in_delta(-1.75, overhead)
   end
 
   # ...and what such a loop works out is what the interpreter works out: two numbers stepped in
@@ -641,6 +643,48 @@ class TestLoopForm < Minitest::Test
     assert_equal (0...10).reject { |i| i == 4 }.sum { |i| 1000 - (i * 7) }, read_var(rom, :falling)
     assert_equal (3...10).reject { |i| i == 4 }.sum { |i| i * 19 }, read_var(rom, :twice)
     assert_equal 9, read_var(rom, :last)
+  end
+
+  # A held loop of a count written in the program runs four copies of its body a turn, each
+  # reading the count a round further on, and the two rounds past the last whole turn of ten after
+  # it. Every way a body reads its count reads what that round's count gives: alone, plus and
+  # less a number, a number less it, times a number, and as a list's index; and the count is ten
+  # once the loop is done.
+  def test_a_loop_run_four_rounds_a_turn_reads_each_rounds_count
+    rom = VBlank.build("LOOPCOPIES", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      xs = list :xs, capacity: 10
+      10.times { |i| xs << (i * i) }
+      plain = 0
+      shifted = 0
+      falling = 0
+      stepped = 0
+      listed = 0
+      after = 0
+      b = self
+      game_loop do
+        plain = 0
+        shifted = 0
+        falling = 0
+        stepped = 0
+        listed = 0
+        b.repeat(10) do |i|
+          plain += i
+          shifted += (i + 5) * (i - 1)
+          falling += 1000 - i
+          stepped += (i * 12) + 3 + (i * 6)
+          listed += xs[i]
+          after = i
+        end
+      end
+    end
+
+    assert_equal 45, read_var(rom, :plain)
+    assert_equal (0...10).sum { |i| (i + 5) * (i - 1) }, read_var(rom, :shifted)
+    assert_equal (0...10).sum { |i| 1000 - i }, read_var(rom, :falling)
+    assert_equal (0...10).sum { |i| (i * 18) + 3 }, read_var(rom, :stepped)
+    assert_equal (0...10).sum { |i| i * i }, read_var(rom, :listed)
+    assert_equal 9, read_var(rom, :after)
   end
 
   # ...and the same around a call, where the index is also written out to its variable before

@@ -83,6 +83,83 @@ module VBlank
             node.children.all? { |statement| statement.walk.all? { |inner| KEEPS_STEP_REGISTERS.include?(inner.kind) } }
           end
 
+          # How many copies of its body a turn of a held loop may run, the most first
+          # (#unrolled_copies).
+          UNROLLED_COPIES = [4, 2].freeze
+
+          # The most IR nodes a held loop's copies of its body, and the rounds left over after its
+          # last whole turn, may hold together: four copies of a body of four sums worked out
+          # from the count, a statement each. The copies and the rounds left over are always fewer
+          # than the rounds, since a loop is copied only when it has twice the copies or more, so
+          # the loop stays smaller than its rounds written out.
+          UNROLLED_NODES_MOST = 128
+
+          # How many copies of its body each turn of this held loop runs: 4 or 2 where that much
+          # fits, else 1.
+          #
+          # A turn's add, compare and branch back cost the same however many rounds it does, and
+          # so does stepping each number held in a register (Statements#held_steps), so a turn of
+          # several rounds takes that cost off all but one of them, as the console's own games
+          # lay out a hot loop. Copy j reads the count as count + j, folded into the numbers the
+          # body adds (#copy_of_body), so `k * 12 + 4` in the third copy is the held register
+          # plus 28, the one instruction it was in the first. The rounds left past the last whole
+          # turn are copies after the loop.
+          #
+          # Only for a count written in the program, twice the copies or more, and a body with no
+          # `break` or `next` (a `next` in one copy would skip the copies after it) that leaves
+          # the step registers alone (#keeps_step_registers?).
+          def unrolled_copies(node)
+            return 1 unless node.count.kind == :int && !IR::LoopJumps.jumps_in?(node) && keeps_step_registers?(node)
+
+            rounds = node.count.value
+            size = node.children.sum { |statement| statement.walk.count }
+            UNROLLED_COPIES.find { |copies| rounds >= 2 * copies && (copies + (rounds % copies)) * size <= UNROLLED_NODES_MOST } || 1
+          end
+
+          # The loop's body as copy +offset+ runs it, the count read as count + offset, each number
+          # worked out from the count with the offset folded into the number it adds (#fold_offset):
+          # `k * m + c` becomes `k * m + (c + m * offset)`, `c - k` becomes `(c - offset) - k`.
+          # New statements, so each copy is its own place in the program. nil where the count is
+          # read somewhere a copy cannot change.
+          def copy_of_body(node, offset)
+            node.children.map do |statement|
+              copy = statement.copy
+              next copy if offset.zero?
+
+              reads = copy.walk.select { |inner| inner.kind == :var_ref && inner.name == node.index }
+              return nil unless reads.all? { |read| read.parent&.replace_operand(read, Build.binop(:+, Build.var_ref(node.index), Build.int(offset))) }
+
+              copy.walk.select { |inner| inner.kind == :binop }.reverse_each do |sum|
+                folded = fold_offset(sum)
+                sum.parent.replace_operand(sum, folded) unless folded.equal?(sum)
+              end
+              copy
+            end
+          end
+
+          # +sum+ with a number added to one of its sides moved outward, where the number it
+          # meets is added to it while building: (x + a) * m is x * m + a * m, (x + a) + c is
+          # x + (a + c), (x + a) - c is x + (a - c), c - (x + a) is (c - a) - x. Each holds in
+          # 32-bit wrapping arithmetic (IR::Int32). Any other sum is itself.
+          def fold_offset(sum)
+            inner = sum.lhs
+            if sum.rhs.kind == :int && inner.kind == :binop && inner.op == :+ && inner.rhs.kind == :int
+              a = inner.rhs.value
+              c = sum.rhs.value
+              case sum.op
+              when :* then return Build.binop(:+, Build.binop(:*, inner.lhs, Build.int(c)), Build.int(IR::Int32.wrap(a * c)))
+              when :+ then return Build.binop(:+, inner.lhs, Build.int(IR::Int32.wrap(a + c)))
+              when :- then return Build.binop(:+, inner.lhs, Build.int(IR::Int32.wrap(a - c)))
+              end
+            end
+            right = sum.rhs
+            if sum.op == :- && inner.kind == :int && right.kind == :binop && right.op == :+ && right.rhs.kind == :int
+              return Build.binop(:-, Build.int(IR::Int32.wrap(inner.value - right.rhs.value)), right.lhs)
+            end
+
+            sum
+          end
+
           # How many statements are worth bracketing before giving up the registers is cheaper.
           # A bracket is the count written out to its variable, then the registers saved and
           # restored around the statement — three instructions, or two for a loop counting down,

@@ -32,12 +32,15 @@ class TestGBALoopCost < Minitest::Test
   def test_a_turn_of_while_next_costs_under_50_cycles = assert_turn_under(:while_next, 50)
 
   # A Ruby `times` folded into one loop, working four numbers out from its count each turn
-  # (`k * 3 + 1`, `k * 5 + 2`, `k + 7`, `100 - k`). Measured: 38 a turn, each number read straight
-  # from the count's register in one instruction with the number added (ADD with a shifted register,
-  # RSB from a number); the same rounds written out cost 19 a round, a load, an add of a number and
-  # a store each. The gap is the working out from the count, which a running number kept in a
-  # register beside it would close.
-  def test_a_turn_of_folded_steps_costs_under_42_cycles = assert_turn_under(:steps, 42)
+  # (`k * 3 + 1`, `k * 5 + 2`, `k + 7`, `100 - k`). Measured: 32 a turn, the loop running four
+  # copies of its body a turn (LoopForm.unrolled_copies) with k * 3 and k * 5 stepped in registers of
+  # their own (Statements#held_steps), so every number is one instruction from a register, as
+  # written out it is one from the instruction itself; 38 while each was worked out from the count
+  # every round. Written out, the same rounds measure 19 a round here. The profile reads a turn by
+  # sampling, which reads straight-line code low: counted exactly, in the cycles the processor was
+  # busy a frame, a round is 30 folded and 27 written out, a turn's add, compare, branch and steps
+  # shared by four rounds.
+  def test_a_turn_of_folded_steps_costs_under_34_cycles = assert_turn_under(:steps, 34)
 
   private def assert_turn_under(loop, bound)
     cost = LoopCostGames.cycles_a_turn(:gba, loop, FRAME_CYCLES)
