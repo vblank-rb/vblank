@@ -78,6 +78,7 @@ module VBlank
             @copies = false
             @near_places = {}
             @written_slot_lists = Set.new
+            @lists_of_varying_capacity = Set.new
             @measured_near_bases = nil # the real build's (#follow_measured_near_lists)
           end
 
@@ -110,7 +111,7 @@ module VBlank
             @emitter.emit_branch(:bcond, skip, cond: :lt)           # starts before the list
             # r12 is the address register, borrowed here for a count: the emitter forgets the
             # address it held the moment anything writes it.
-            @emitter.emit_number(12, info[:capacity])
+            emit_capacity(12, node.name, info)
             @emitter.emit(ASM.sub_reg(12, 12, ACC))                 # r12 = items from +from+ to the end
             @emitter.emit(ASM.cmp_reg(2, 12))
             @emitter.emit(ASM.mov_reg_cond(:gt, 2, 12))             # stop at the end
@@ -504,6 +505,7 @@ module VBlank
             @lists[name] = { capacity: capacity, ring: ring, mask: slots - 1, base: base,
                              width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast }
             counters = ring ? [head_var(name), length_var(name)] : [length_var(name)] # a plain array's head can never move
+            counters << capacity_var(name) if @lists_of_varying_capacity.include?(name)
             counters.each do |counter|
               @counter_owners[counter] = name
               @primitives.var_addr(counter)
@@ -830,6 +832,24 @@ module VBlank
             DerivedNames.join(name, "__len")
           end
 
+          # The capacity a list declared with several capacities holds now, set by each declaration
+          # (#emit_list_new). A list declared one way holds the one it was built with.
+          def capacity_var(name)
+            DerivedNames.join(name, "__cap")
+          end
+
+          # The lists declared with more than one capacity (LoweringPlan#list_capacities), set before
+          # any list is placed. Each keeps room for the most of them and its capacity now in
+          # #capacity_var, since each declaration makes the list anew at its own (Reference#exec_list_new).
+          attr_writer :lists_of_varying_capacity
+
+          # +reg+ = the capacity list +name+ holds now.
+          def emit_capacity(reg, name, info)
+            return @primitives.load_var(reg, capacity_var(name)) if @lists_of_varying_capacity.include?(name)
+
+            @emitter.emit_number(reg, info[:capacity])
+          end
+
           # list_new: reset the list to empty. Its storage is already reserved (see
           # register_list); this just zeroes head and length. The slot contents are
           # left as-is — nothing reads them until a push makes them live.
@@ -845,29 +865,34 @@ module VBlank
             emit_shown_start(shown) if shown
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, head_var(node.name)) if info[:ring]
+            if @lists_of_varying_capacity.include?(node.name)
+              @emitter.emit_number(ACC, node.capacity)
+              @primitives.store_var(ACC, capacity_var(node.name))
+              @emitter.emit_number(ACC, 0)
+            end
             if node.full_of
-              @emitter.emit_number(ACC, info[:capacity])
+              @emitter.emit_number(ACC, node.capacity)
               @primitives.store_var(ACC, length_var(node.name))
               slot = slot_place(node.name, info)
               if slot.stride == slot.width && slot.scale == 1
-                emit_fill_from_first_slot(info, node.full_of)
+                emit_fill_from_first_slot(info, node.full_of, node.capacity)
               else
-                emit_fill_at_stride(info, slot, node.full_of)
+                emit_fill_at_stride(info, slot, node.full_of, node.capacity)
               end
             else
               @primitives.store_var(ACC, length_var(node.name))
             end
           end
 
-          # Every one of a list's +capacity+ slots, from its first, set to the whole number
-          # +value+ by the shared fill routine.
-          def emit_fill_from_first_slot(info, value)
+          # The first +capacity+ of a list's slots set to the whole number +value+ by the shared
+          # fill routine.
+          def emit_fill_from_first_slot(info, value, capacity)
             @fills = true
             @primitives.emit_list_base(info[:base])
             @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))              # r1 = the first slot
             @emitter.emit_number(3, value)
             emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
-            @emitter.emit_number(2, info[:capacity] * info[:bytes]) # r2 = bytes to write
+            @emitter.emit_number(2, capacity * info[:bytes]) # r2 = bytes to write
             @placement.emit_call_cold_routine(FILL_ROUTINE)
           end
 
@@ -878,10 +903,10 @@ module VBlank
           # Four slots are written a turn, so a pool made full at power-on costs little more than a
           # word written a slot (the loop's count and branch spread over four stores), and the slots
           # left over after the last whole four are written after it.
-          def emit_fill_at_stride(info, slot, value)
+          def emit_fill_at_stride(info, slot, value, capacity)
             again = @emitter.gensym
             number = value.negative? ? value : value * slot.scale
-            turns, left = info[:capacity].divmod(FILL_SLOTS_A_TURN)
+            turns, left = capacity.divmod(FILL_SLOTS_A_TURN)
             @primitives.emit_list_base(info[:base])
             @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))              # r1 = the first slot
             @emitter.emit_number(3, number)
@@ -927,7 +952,7 @@ module VBlank
             length = length_var(node.name)
 
             @primitives.load_var(ACC, length)            # r0 = length (the tail offset)
-            @emitter.emit_number(TMP, info[:capacity])
+            emit_capacity(TMP, node.name, info)
             @emitter.emit(ASM.cmp_reg(ACC, TMP))                  # length - capacity
             skip = @emitter.gensym
             @emitter.emit_branch(:bcond, skip, cond: :ge)         # full => drop the push

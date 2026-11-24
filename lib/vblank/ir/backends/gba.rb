@@ -1780,9 +1780,15 @@ module VBlank
           end
           @lists.reserve_pool_areas(program, @lists_to_roomy)
           @lists.written_slot_lists = Lists.lists_read_at_written_slots(program)
+          # A list scenes declare with different capacities is made anew at each one
+          # (Reference#exec_list_new): it keeps room for the most, and the one it holds now in a
+          # number of its own (Lists#capacity_var).
+          capacities = declarations.group_by { |node, _ring| node.name }
+                                   .transform_values { |made| made.map { |node, _ring| node.capacity }.uniq }
+          @lists.lists_of_varying_capacity = capacities.select { |_name, held| held.length > 1 }.keys.to_set
           ranked.each do |node, ring|
             at = var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
-            @lists.register_list(node.name, node.capacity, ring: ring, width: node.width || :word,
+            @lists.register_list(node.name, capacities.fetch(node.name).max, ring: ring, width: node.width || :word,
                                                            fast: node.fast, roomy: @lists_to_roomy.include?(node.name), at: at)
           end
           @lists.place_pools(program)

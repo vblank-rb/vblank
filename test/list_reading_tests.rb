@@ -61,6 +61,29 @@ module ListReadingTests
     assert_includes got.pool(:guards, :x), nil, "a free slot"
   end
 
+  # Two scenes declare one list with different capacities, and the list holds what the declaration
+  # run last made: four items, though its place has room for eight.
+  def test_a_list_declared_again_reads_at_the_last_declarations_capacity
+    built = VBlank.build("LISTAGAIN", console: console, out: nil, err: nil) do
+      screen :bitmap
+      n = 0
+      scene(:big) do
+        list :marks, capacity: 8, full_of: 0
+        n = 1
+      end
+      scene(:small) do
+        marks = list :marks, capacity: 4, full_of: 0
+        marks[1] = -5
+        n = 2
+      end
+      game_loop { call({ 0 => :big, 1 => :small }, number: :n) }
+    end
+    got = cartridge(built)
+
+    assert_equal [0, -5, 0, 0], got.list(:marks)
+    assert_equal interpreter(built).list(:marks), got.list(:marks)
+  end
+
   def test_a_name_the_game_does_not_have_says_what_it_has
     error = assert_raises(ArgumentError) { cartridge.list(:queues) }
 
