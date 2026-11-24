@@ -539,9 +539,29 @@ module VBlank
           # multiply instruction, so there is nothing to improve on.
           def emit_constant_multiply(lhs, factor)
             bits = power_of_two_bits(factor)
-            return false unless bits
+            return emit_multiply_by_power_of_two(lhs, bits) if bits
 
-            emit_multiply_by_power_of_two(lhs, bits)
+            emit_multiply_by_shifted_sum(lhs, factor)
+          end
+
+          # x * -1, x * (2**k + 1) and x * (2**k - 1) in one instruction, the barrel shifter adding
+          # or taking the number shifted up from itself (GBATEK, "ARM Opcodes: Data Processing"):
+          # what `i * 3` and `100 - i` come to where a counted loop works a number out from its count
+          # (PlainRuby::Counts::KnownRounds). A MUL by a number in a register is two instructions,
+          # the number loaded first, and a cycle or more of its own. Any other factor is not handled.
+          def emit_multiply_by_shifted_sum(lhs, factor)
+            above = power_of_two_bits(factor - 1)
+            below = power_of_two_bits(factor + 1)
+            step =
+              if factor == -1 then ASM.rsb_imm(ACC, ACC, 0)
+              elsif above&.positive? then ASM.add_reg_lsl(ACC, ACC, ACC, above)
+              elsif below && below >= 2 then ASM.rsb_reg_lsl(ACC, ACC, ACC, below)
+              end
+            return false unless step
+
+            @lowering.value(lhs)
+            @emitter.emit(step)
+            true
           end
 
           # x / 2**bits, truncating toward zero — the meaning `/` has everywhere else

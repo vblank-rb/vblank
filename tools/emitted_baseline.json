@@ -54,7 +54,7 @@
       "data": 0
     },
     "cube3d": {
-      "code": 37036,
+      "code": 37028,
       "data": 0
     },
     "cube3d@ps1": {
@@ -134,7 +134,7 @@
       "data": 555
     },
     "hero": {
-      "code": 81500,
+      "code": 81484,
       "data": 0
     },
     "hero@snes": {
@@ -166,7 +166,7 @@
       "data": 3977
     },
     "lit_corridor": {
-      "code": 40464,
+      "code": 40452,
       "data": 0
     },
     "lit_corridor@ps1": {
@@ -190,7 +190,7 @@
       "data": 0
     },
     "pacman": {
-      "code": 14384,
+      "code": 14364,
       "data": 0
     },
     "pacman@gbc": {
@@ -310,7 +310,7 @@
       "data": 0
     },
     "sparks": {
-      "code": 3148,
+      "code": 3144,
       "data": 0
     },
     "sparks@snes": {
@@ -358,7 +358,7 @@
       "data": 8091
     },
     "two_rooms": {
-      "code": 36834,
+      "code": 36826,
       "data": 0
     },
     "two_rooms@ps1": {

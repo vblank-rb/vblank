@@ -269,6 +269,14 @@ module VBlank
             [0xE0800000 | (rn << 16) | (rd << 12) | (shift << 7) | rm].pack("V")
           end
 
+          # RSB rd, rn, rm, LSL #shift — a register shifted up, less another: (rm << shift) - rn, so
+          # seven times a number is one instruction, its eight times less itself.
+          def rsb_reg_lsl(rd, rn, rm, shift)
+            raise ArgumentError, "shift must be 0-31" unless (0..31).cover?(shift)
+
+            [0xE0600000 | (rn << 16) | (rd << 12) | (shift << 7) | rm].pack("V")
+          end
+
           # CMP rn, rm, ASR #shift — compare against a register shifted down keeping its sign, so
           # "is this more than a sixteenth of that?" is one instruction.
           def cmp_reg_asr(rn, rm, shift)

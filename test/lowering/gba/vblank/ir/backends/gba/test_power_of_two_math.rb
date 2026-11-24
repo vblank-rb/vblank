@@ -80,6 +80,36 @@ class TestPowerOfTwoMath < Minitest::Test
     assert_answer(24) { var(:n, 3) * 8 }
   end
 
+  # One more or one less than a power of two, and -1, are a shift and an add or a subtract in one
+  # instruction: what a counted loop's worked-out numbers multiply by (`i * 3 + 1`, `100 - i`).
+  def test_multiplying_by_one_more_or_one_less_than_a_power_of_two
+    assert_answer(-15) { var(:n, -5) * 3 }
+    assert_answer(45) { var(:n, 9) * 5 }
+    assert_answer(-49) { var(:n, -7) * 7 }
+    assert_answer(62) { var(:n, 2) * 31 }
+    assert_answer(-9) { var(:n, 9) * -1 }
+  end
+
+  def test_a_multiply_by_one_more_than_a_power_of_two_emits_less_than_a_computed_one
+    fixed = emitted_bytes do
+      screen :bitmap
+      n = var :n, 100
+      out = var(:out, 0)
+      out = n * 5
+      halt
+    end
+    computed = emitted_bytes do
+      screen :bitmap
+      n = var :n, 100
+      d = var :d, 5
+      out = var(:out, 0)
+      out = n * d
+      halt
+    end
+
+    assert_operator fixed, :<, computed
+  end
+
   # --- wrapping ---
 
   # The reason `%` exists: an angle that stepped below zero belongs near a full turn,
