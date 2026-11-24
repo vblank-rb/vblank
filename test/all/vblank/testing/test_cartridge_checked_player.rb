@@ -5,7 +5,7 @@ require "test_helper"
 # A part a console's build does not make yet is a skip naming the part, on every console whose
 # cartridge a run plays (Testing::CartridgeCheckedPlayer), so a run's count of skips by reason says
 # what is left to make: the Color's the same as the Super Nintendo's. A refusal of anything else is
-# a fault, and fails.
+# a fault, and fails, and so does a cartridge stuck in a pass.
 class TestCartridgeCheckedPlayer < Minitest::Test
   Testing = VBlank::Testing
   Backends = VBlank::IR::Backends
@@ -38,6 +38,17 @@ class TestCartridgeCheckedPlayer < Minitest::Test
       error = backend::LoweringError.new("broken")
 
       assert_raises(backend::LoweringError) { player_refusing(console, error).new.run(program) }
+    end
+  end
+
+  # A cartridge stuck in a pass is a fault of the lowering, and fails the test with the run's words.
+  def test_a_cartridge_stuck_in_a_pass_fails_and_does_not_skip
+    BACKENDS.each_key do |console|
+      error = Backends::RunComparison::StuckPass.new("stuck in pass 4")
+      failure = assert_raises(Minitest::Assertion) { player_refusing(console, error).new.run(program) }
+
+      refute_kind_of Minitest::Skip, failure, console.to_s
+      assert_equal "stuck in pass 4", failure.message
     end
   end
 

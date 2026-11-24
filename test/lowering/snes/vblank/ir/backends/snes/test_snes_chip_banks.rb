@@ -75,11 +75,9 @@ class TestSNESChipBanks < Minitest::Test
 
   # Each pass runs the rectangles' program, the routine, the pictures' program and the routine
   # again: a bank left set from the run before runs the wrong bank's code, and the picture or the
-  # numbers part from the interpreter's, or the chip never stops. Played by the lowering's own
-  # checked run rather than game_player, whose run takes a cartridge that never ends its pass for
-  # a question it cannot answer yet and skips.
+  # numbers part from the interpreter's, or the chip never stops and the pass never ends.
   def test_chip_code_in_two_banks_plays_as_on_the_interpreter
-    run = SNES::CheckedRun.new.run(self.class.two_banks.program(console: :snes, variant: :superfx), frames: 30)
+    run = game_player.run(self.class.two_banks.program(console: :snes, variant: :superfx), frames: 30)
 
     refute_equal 1, run[:a], "the routines in the other bank ran"
     refute_equal run.screen.pixel(239, 159), run.screen.pixel(((run[:n] - 1) & 7) + 2, 10),

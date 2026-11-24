@@ -50,6 +50,11 @@ module VBlank
         # the lowering has a gap to fill, or that one test wants its lowering's skip.
         class CannotAnswer < StandardError; end
 
+        # Raised when a cartridge does not end a pass in the frames any pass may take: the console
+        # is stuck in it, where the interpreter ends every pass. That is a fault of the lowering,
+        # never a part it does not make yet, so a test fails on it rather than skipping.
+        class StuckPass < StandardError; end
+
         # Raised for a question only the interpreter has an answer to, now and later: its step
         # budget, its count of steps, a pass told to take several frames. No lowered run keeps
         # them. So a test that asks one is a test of the interpreter, and on a checked run it

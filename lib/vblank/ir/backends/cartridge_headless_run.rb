@@ -262,7 +262,7 @@ module VBlank
             play_frame
             write_last_pass(frames)
             waited += 1
-            refuse_stuck_game! if waited > LONGEST_PASS_FRAMES
+            refuse_stuck_game!(last_read + 1) if waited > LONGEST_PASS_FRAMES
             if pending && shown_pass == pending.first && moment_ready?(pending.first, frames)
               pass, variables, lists, @sprites, sounds, camera, drawn = pending
               pending = nil
@@ -487,9 +487,11 @@ module VBlank
         def list_names = @declared_lists | @lists.keys
         def variables_now = @vars
 
-        def refuse_stuck_game!
-          raise CannotAnswer, "the #{kit.title} cartridge had not reached the end of a pass in " \
-                              "#{LONGEST_PASS_FRAMES} frames, and was stopped"
+        # +pass+ is the pass the cartridge had not ended, counted from 1.
+        def refuse_stuck_game!(pass)
+          raise RunComparison::StuckPass, "The #{kit.title} cartridge did not end pass #{pass} in " \
+                                          "#{LONGEST_PASS_FRAMES} frames. The game is stuck in that pass, " \
+                                          "so the run stopped it."
         end
 
         # The game went wrong: the interpreter's words for what went wrong, from what the runtime

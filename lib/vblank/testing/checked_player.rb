@@ -3,11 +3,12 @@
 module VBlank
   module Testing
     # A checked run's disagreement with the interpreter reported as a failed test rather than as
-    # an error, the way every other check in a suite fails.
+    # an error, the way every other check in a suite fails; and so is a cartridge stuck in a pass
+    # the interpreter ends (RunComparison::StuckPass).
     module DisagreementFailsTest
       def run(program, max_steps: nil, frames: nil)
         super
-      rescue IR::Backends::RunComparison::Disagreement => e
+      rescue IR::Backends::RunComparison::Disagreement, IR::Backends::RunComparison::StuckPass => e
         raise Minitest::Assertion, e.message
       end
     end
@@ -211,7 +212,8 @@ module VBlank
     # repository). What its build does not make yet is a skip naming the part (the picture, the
     # sound), when the lowering says so (IR::Backends::NotMadeYet), so the run's count of skips by
     # reason says what is left to make; any other refusal fails, since it is a fault. What the run
-    # cannot answer of the cartridge is a skip too.
+    # cannot answer of the cartridge is a skip too. A cartridge stuck in a pass is not one of those:
+    # it fails the test, naming the pass.
     module CartridgeCheckedPlayer
       include DisagreementFailsTest
 
