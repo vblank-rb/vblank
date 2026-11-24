@@ -385,23 +385,35 @@ module VBlank
       # reached; the held item goes in the gap. Only an item strictly after it moves, so level
       # items keep their order.
       def insertion_sort_nodes(descending)
-        held, from, at, settled, turns = %i[sort_held sort_from sort_at sort_settled sort_turns]
-                                         .map { |why| @builder.hidden_variable(why).name }
+        held, from, at, settled, turns, before = %i[sort_held sort_from sort_at sort_settled sort_turns sort_before]
+                                                 .map { |why| @builder.hidden_variable(why).name }
         var = ->(name) { Build.var_ref(name) }
         item_at = ->(name) { Build.list_get(@name, var.call(name)) }
+        after_from = Build.binop(:+, var.call(from), Build.int(1))
         goes_after = Build.binop(descending ? :< : :>, item_at.call(at), var.call(held))
         step = Build.if_(goes_after, Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), item_at.call(at)),
                          Build.sub(at, Build.int(1)))
         step.else = Build.else_(Build.set(settled, Build.int(1)))
         moving = Build.repeat(Build.binop(:+, var.call(from), Build.int(1)), turns, step,
                               stop_when: Build.binop(:==, var.call(settled), Build.int(1)))
+        # The item before the one being placed is kept in a number, so an item already in its place,
+        # which is nearly every item of a list sorted again each frame, costs one read and one compare.
+        # An item out of place is walked back past the bigger ones, and the item before the next one is
+        # then read again, since the one just placed is the biggest of the items so far.
+        out_of_place = Build.binop(descending ? :< : :>, var.call(before), var.call(held))
+        placed = Build.if_(out_of_place,
+                           Build.set(at, var.call(from)),
+                           Build.set(settled, Build.int(0)),
+                           moving,
+                           Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), var.call(held)),
+                           Build.set(before, Build.list_get(@name, after_from.copy)))
+        placed.else = Build.else_(Build.set(before, var.call(held)))
         each_item = Build.repeat(Build.binop(:-, Build.list_len(@name), Build.int(1)), from,
-                                 Build.set(held, Build.list_get(@name, Build.binop(:+, var.call(from), Build.int(1)))),
-                                 Build.set(at, var.call(from)),
-                                 Build.set(settled, Build.int(0)),
-                                 moving,
-                                 Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), var.call(held)))
-        [Build.if_(Build.binop(:>, Build.list_len(@name), Build.int(1)), each_item)]
+                                 Build.set(held, Build.list_get(@name, after_from)),
+                                 placed)
+        [Build.if_(Build.binop(:>, Build.list_len(@name), Build.int(1)),
+                   Build.set(before, Build.list_get(@name, Build.int(0))),
+                   each_item)]
       end
 
       # A hidden number that starts at +start+ (a node) and is changed once for each item, front to
