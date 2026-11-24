@@ -613,8 +613,16 @@ class TestLoopForm < Minitest::Test
     looped = [PASSES, PASSES * 2].map do |passes|
       instructions_a_frame(pass_rom("LOOPED") { |b, n, _stand_in| b.repeat(passes) { |i| instance_exec(b, n, i, &body) } })
     end
+    # Written out by a `while` Ruby runs while building: a `times` with a count known while building
+    # can be made a loop of its own (PlainRuby::Counts::KnownRounds).
     inline = [PASSES, PASSES * 2].map do |passes|
-      instructions_a_frame(pass_rom("INLINE") { |b, n, stand_in| passes.times { instance_exec(b, n, stand_in, &body) } })
+      instructions_a_frame(pass_rom("INLINE") do |b, n, stand_in|
+        written = 0
+        while written < passes
+          instance_exec(b, n, stand_in, &body)
+          written += 1
+        end
+      end)
     end
     ((looped.last - looped.first) - (inline.last - inline.first)) / PASSES
   end
