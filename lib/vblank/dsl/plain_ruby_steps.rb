@@ -190,9 +190,27 @@ module VBlank
                             "`things.each do |thing|`.")
         end
 
+        # `value.is_a?(kind)`, `kind_of?` or `instance_of?` in game code. An Array the game keeps
+        # (a list, a pool, an Array of Structs) is an Array to these, as Ruby's would be, though the
+        # object holding it in the build is not one; anything else answers for itself.
+        def kind_question(value, question, kind)
+          if kept_array?(value)
+            return question == :instance_of? ? kind == Array : Array <= kind || value.is_a?(kind)
+          end
+
+          case question
+          when :instance_of? then value.instance_of?(kind)
+          else value.is_a?(kind)
+          end
+        end
+
+        # Is +value+ an Array the game keeps, held in the build by an object of the DSL's?
+        def kept_array?(value) = value.is_a?(List) || value.is_a?(Pool) || value.is_a?(StructArray)
+
         # One `when`: does +subject+ match any of +choices+? A plain subject is Ruby's to answer. A
         # number the game keeps becomes a test, one choice at a time.
         def when_test(subject, *choices)
+          return choices.any? { |choice| kind_question(subject, :kind_of?, choice) } if kept_array?(subject) && choices.all?(Module)
           return choices.any? { |choice| choice === subject } unless subject.is_a?(Value) || subject.is_a?(Condition) # rubocop:disable Style/CaseEquality
 
           refuse_game_code!("`case` cannot ask about a test the game makes. To fix this, write `if`.") if subject.is_a?(Condition)

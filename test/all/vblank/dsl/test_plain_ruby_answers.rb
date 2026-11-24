@@ -595,6 +595,54 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # An Array the game keeps is an Array to Ruby's questions about its kind, whatever it is kept as.
+  def test_a_kept_array_is_an_array
+    agrees("flock.dots.is_a?(Array), kind_of?, instance_of? and case/when Array", reads: %i[a b c d e], passes: 2) do
+      flock = AnswerFlock.new
+      flock.add(3)
+      a = b = c = d = e = 0
+      game_loop do
+        flock.dots.each { |dot| dot.x += 1 }
+        a = flock.dots.is_a?(Array) ? 1 : 2
+        b = flock.dots.kind_of?(Enumerable) ? 1 : 2
+        c = flock.dots.instance_of?(Array) ? 1 : 2
+        d = case flock.dots
+            when Hash then 3
+            when Array then 1
+            else 2
+            end
+        e = flock.dots.is_a?(Hash) ? 1 : 2
+      end
+    end
+    agrees("dots.is_a?(Array) and case/when Array on an Array of Structs the game fills", reads: %i[a b], passes: 2) do
+      dots = Array.new(capacity: 4)
+      a = b = 0
+      game_loop do
+        dots.shift if dots.size == 4
+        dots << AnswerPoint.new(1, 0, 0)
+        a = dots.kind_of?(Array) ? 1 : 2
+        b = case dots
+            when Array then 1
+            else 2
+            end
+      end
+    end
+    agrees("trail.is_a?(Array) and case/when Array on an Array of numbers the game changes",
+           reads: %i[a b], passes: 2) do
+      trail = Array.new(capacity: 4)
+      a = b = 0
+      game_loop do
+        trail.shift if trail.size == 4
+        trail << 1
+        a = trail.is_a?(Array) ? 1 : 2
+        b = case trail
+            when Array then 1
+            else 2
+            end
+      end
+    end
+  end
+
   # A game built after one that reads `counts` at a worked-out place builds as it does alone.
   def test_a_game_built_after_another_builds_as_it_does_alone
     alone = proc do

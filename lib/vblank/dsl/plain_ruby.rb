@@ -700,6 +700,7 @@ module VBlank
           return game_variables_text(node) if game_variables_call?(node)
           return "#{ARRAYS}.ruby_array#{copied_text(node, from: node.message_loc.end_offset)}" if ruby_array_with_room?(node)
           return item_question_text(node) if item_question?(node)
+          return kind_question_text(node) if kind_question?(node)
           if node.name == :<=> && node.receiver && node.arguments
             return "#{STEPS}.compare(#{argument(node.receiver)}, #{rewritten_text(node.arguments)})"
           end
@@ -794,6 +795,19 @@ module VBlank
           given += ", #{rewritten_text(node.block)}" if node.block.is_a?(Prism::BlockArgumentNode)
           block = node.block.is_a?(Prism::BlockNode) ? " #{rewritten_text(node.block)}" : ""
           "::VBlank::DSL::PlainRuby::ItemQuestions.ask(#{argument(node.receiver)}, :#{node.name}#{given})#{block}"
+        end
+
+        # `trail.is_a?(Array)`: what kind the receiver is, which Steps.kind_question answers as
+        # Ruby would for an Array the game keeps. VBlank's own files are left as they are.
+        def kind_question?(node)
+          @follows_instance_variables && !node.receiver.nil? && KIND_QUESTIONS.include?(node.name) &&
+            node.arguments&.arguments&.length == 1 && node.block.nil? && !node.safe_navigation?
+        end
+
+        KIND_QUESTIONS = %i[is_a? kind_of? instance_of?].freeze
+
+        def kind_question_text(node)
+          "#{STEPS}.kind_question(#{argument(node.receiver)}, :#{node.name}, #{rewritten_text(node.arguments)})"
         end
 
         # `Array.new(capacity: 4)` that game code never changes, so it stays Ruby's (a game's own is
