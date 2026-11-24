@@ -166,17 +166,25 @@ module VBlank
 
             # --- where the music works out when ---
 
-            # As a frame of the music begins, inline: BASE, the line the blank before it began on, less a
-            # frame for each frame the pass took still to play after this one; and REMAINING, what the
+            # As a frame of the music begins, inline: BASE, the line the blank before it began on, and a
+            # frame more for each frame of the pass played before this one; and REMAINING, what the
             # effects' count (+clock+) has to go to its first tick, before it moves on.
+            #
+            # A pass that took several frames plays their music one after another as its wait ends,
+            # after the lines those frames began on have gone by. Counted back from the blank, every
+            # note of them would be due already and struck at once, so the frames are counted on from
+            # it instead: the first starts at the blank, and each after it a frame later. Their notes
+            # are struck their ticks apart from when they are listed, as late as all else such a game
+            # shows, and the next pass's blank comes after the last of them.
             def emit_set_frame_base(asm, at, clock)
               asm.lw(:t0, at.call(Frame::BLANK_LINE), :gp)
-              asm.lw(:t1, at.call(Sound::TICKS_LEFT), :gp)
-              asm.addiu(:t1, :t1, -1)
+              asm.lw(:t1, at.call(Frame::FRAMES_TAKEN), :gp)
+              asm.lw(:t2, at.call(Sound::TICKS_LEFT), :gp)
+              asm.subu(:t1, :t1, :t2)
               asm.li(:t2, h::LINES_A_FRAME)
               asm.multu(:t1, :t2)
               asm.mflo(:t1)
-              asm.subu(:t0, :t0, :t1)
+              asm.addu(:t0, :t0, :t1)
               asm.andi(:t0, :t0, 0xFFFF)
               asm.sw(:t0, at.call(BASE), :gp)
               asm.lw(:t0, at.call(clock), :gp)
