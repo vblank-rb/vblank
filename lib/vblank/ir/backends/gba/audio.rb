@@ -2269,9 +2269,20 @@ module VBlank
             end
             [[4, regs[:reg_a]], [6, regs[:reg_b]]].each do |offset, addr|
               @emitter.emit(ASM.load_halfword_offset(ACC, at, offset))
-              next emit_listed_write(addr) if listing?
+              emit_voice_write(addr)
+            end
+          end
 
-              @emitter.emit(ASM.load_immediate(TMP, addr))
+          # The halfword in ACC written to the voice's register at +address+: listed in a tick's pass;
+          # for the tune's note in a game that strikes, after what the list holds of the voice
+          # (EffectStrikes::AFTER_VOICE); otherwise now.
+          def emit_voice_write(address)
+            return emit_listed_write(address) if listing?
+
+            @emitter.emit(ASM.load_immediate(TMP, address))
+            if striking?
+              emit_call_interrupt_routine(EffectStrikes::AFTER_VOICE)
+            else
               @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
           end
@@ -2280,10 +2291,7 @@ module VBlank
           def emit_clear_sweep(regs)
             regs[:const].each do |addr, value|
               @emitter.emit(ASM.load_immediate(ACC, value))
-              next emit_listed_write(addr) if listing?
-
-              @emitter.emit(ASM.load_immediate(TMP, addr))
-              @emitter.emit(ASM.store_halfword(ACC, TMP))
+              emit_voice_write(addr)
             end
           end
 

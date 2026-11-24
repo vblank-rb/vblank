@@ -94,4 +94,63 @@ module EffectStrikesHeard
                     "the game's #{sound} first heard at frame #{struck.onset.to_f.round(3)}, at the frame's start #{at_start.onset.to_f.round(3)}"
     assert struck.held_to_frame_end, "the game's #{sound} cut off before its frame's end"
   end
+
+  # ### The tune taking back a voice the effect lets go
+  #
+  # An effect ranked above the tune holds the tune's second square voice with a high note for
+  # RELEASED_AFTER ticks and ends; the tune plays a low note on that voice every frame. On the frame the
+  # effect lets the voice go, the tune's note takes it back (Reference::Player), so the low note is heard
+  # on without a break. Written ahead of the effect's listed release, the tune's note is silenced at the
+  # release's line until its next note, a frame later: a run of samples on one side of nought far longer
+  # than the low note's half wave.
+  RELEASED_AFTER = 12
+  RELEASE_RATE = 50
+  RELEASE_ASKED_ON = 20
+  RELEASE_FRAMES = 50
+  RELEASE_HEARD_FROM = 24
+
+  # The longest run of the left speaker's samples on one side of nought, from RELEASE_HEARD_FROM on,
+  # with the effect on the timer or (+on_timer+ false) at the frame's start.
+  def longest_run_after_release(console:, on_timer:)
+    reader = VBlank::Diagnostics::Verifier.new(release_cartridge(console, on_timer), frames: 0)
+    samples = []
+    RELEASE_FRAMES.times do |frame|
+      reader.step(1)
+      samples.concat(reader.last_frame_samples.each_slice(2).map(&:first)) if frame >= RELEASE_HEARD_FROM
+    end
+    samples.chunk_while { |was, now| (was >= 0) == (now >= 0) }.map(&:size).max
+  ensure
+    reader&.close
+  end
+
+  private def release_cartridge(console, on_timer)
+    effect = Score.new(tempo: RELEASE_RATE, ticks_per_beat: 60, length: RELEASED_AFTER, plays_once: true, on_timer: on_timer,
+                       priority: 100, parts: [Part.new(notes: [Note.new(at: 0, key: :C3, length: RELEASED_AFTER, volume: 0)]),
+                                              Part.new(notes: [Note.new(at: 0, key: :C6, length: RELEASED_AFTER, volume: 15)])])
+    tune = Score.new(tempo: 150, ticks_per_beat: 24, length: 240, priority: 0,
+                     parts: [Part.new(notes: [Note.new(at: 0, key: :C3, length: 240, volume: 0)]),
+                             Part.new(notes: (0...240).map { |n| Note.new(at: n, key: :C3, length: 1, volume: 15) })])
+    VBlank.build("RELEASE", console: console, out: nil, err: nil) do
+      enable_sound
+      music = songs :music, [tune]
+      sfx = sound_effects :sfx, { chime: effect }
+      started = var :started, 0
+      game_loop do
+        music.play 0
+        if started == 0 && frames_since_power_on >= RELEASE_ASKED_ON
+          started = 1
+          sfx.play :chime
+        end
+      end
+    end
+  end
+
+  # No run on one side of nought after the effect lets go longer than a fifth more than the longest with
+  # the effect at the frame's start.
+  def assert_tune_heard_after_effect_lets_go(console)
+    at_start = longest_run_after_release(console: console, on_timer: false)
+    struck = longest_run_after_release(console: console, on_timer: true)
+
+    assert_operator struck, :<=, at_start * 6 / 5, "the tune's note silenced after the effect let its voice go"
+  end
 end

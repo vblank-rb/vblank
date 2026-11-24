@@ -67,6 +67,7 @@ module VBlank
           FOLD_SHAPE = :__strikes_fold_shape # r0 a control register's low byte, r1 the register
           FOLD_SPEAKERS = :__strikes_fold_speakers # r0 speaker switches to clear above the ones to set
           DROP_VOICE = :__strikes_drop_voice # r0 a voice's first register's distance, r1 its speaker switches
+          AFTER_VOICE = :__strikes_after_voice # r0 the value, r1 the register's address: after what the voice has listed
 
           DUE_LINE = :__strikes_due_line # The line, from the start of the blank, a tick's writes are due on
           REMAINING = :__strikes_remaining # The 65536ths of a tick the effects' count had to go to the tick playing
@@ -211,6 +212,7 @@ module VBlank
             emit_fold
             emit_fold_speakers
             emit_drop_voice
+            emit_after_voice
           end
 
           # The registers of a voice, as distances from the I/O registers' start: SOUND1CNT_L to
@@ -272,6 +274,64 @@ module VBlank
               @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
             @emitter.emit_branch(:b, DUE)
+          end
+
+          # AFTER_VOICE (r0 the value, r1 a voice's register's address), for the tune's note outside a
+          # tick's pass: listed after the latest listed write of the same voice, due on that write's
+          # line, where the list holds one; otherwise written now. A tune taking back a voice an effect
+          # let go of in this frame then starts its note after the effect's listed release, not before
+          # it, where the release would silence the tune's note until its next (IR::Tunes, "The game's
+          # own sound against a listed strike"). Written now, too, when the list is full. Keeps every
+          # register but r0, r1 and r12.
+          def emit_after_voice
+            e = @emitter
+            look, other, looked, now, done = Array.new(5) { e.gensym }
+            e.place_label(AFTER_VOICE)
+            e.emit(ASM.push(2, 3, 4, 5, 7, LR))
+            e.emit(ASM.load_immediate(5, 0)) # where the latest of the voice is, once found
+            e.emit(ASM.lsl_imm(4, TMP, 16))
+            e.emit(ASM.lsr_imm(4, 4, 19)) # the voice's eight registers, as one number
+            @primitives.load_var(2, HEAD)
+            @primitives.load_var(3, TAIL)
+            e.place_label(look)
+            e.emit(ASM.cmp_reg(2, 3))
+            e.emit_branch(:bcond, looked, cond: :eq)
+            e.emit(ASM.load_immediate(7, @list))
+            e.emit(ASM.add_reg(7, 7, 2))
+            e.emit(ASM.ldr(LR, 7))
+            e.emit(ASM.lsl_imm(LR, LR, 16))
+            e.emit(ASM.cmp_reg_lsr(4, LR, 19))
+            e.emit_branch(:bcond, other, cond: :ne)
+            e.emit(ASM.mov_reg(5, 7))
+            e.place_label(other)
+            e.emit(ASM.add_imm(2, 2, ENTRY_BYTES))
+            emit_wrap(2)
+            e.emit_branch(:b, look)
+
+            e.place_label(looked)
+            e.emit(ASM.cmp_imm(5, 0))
+            e.emit_branch(:bcond, now, cond: :eq)
+            e.emit(ASM.ldr(3, 5))
+            e.emit(ASM.lsr_imm(3, 3, 16)) # its line
+            @primitives.load_var(2, TAIL)
+            e.emit(ASM.add_imm(4, 2, ENTRY_BYTES))
+            emit_wrap(4)
+            @primitives.load_var(5, HEAD)
+            e.emit(ASM.cmp_reg(4, 5))
+            e.emit_branch(:bcond, now, cond: :eq)
+            @primitives.store_var(4, TAIL)
+            e.emit(ASM.load_immediate(7, @list))
+            e.emit(ASM.add_reg(7, 7, 2))
+            e.emit(ASM.lsl_imm(TMP, TMP, 16))
+            e.emit(ASM.lsr_imm(TMP, TMP, 16)) # the register's distance
+            e.emit(ASM.orr_reg_lsl(TMP, TMP, 3, 16))
+            e.emit(ASM.str(TMP, 7))
+            e.emit(ASM.str_offset(ACC, 7, 4))
+            e.emit_branch(:b, done)
+            e.place_label(now)
+            e.emit(ASM.store_halfword(ACC, TMP))
+            e.place_label(done)
+            e.emit(ASM.pop(2, 3, 4, 5, 7, PC))
           end
 
           # +reg+, a place in the list one entry on, kept inside the list.
