@@ -58,8 +58,8 @@ module VBlank
           # +bookkeeping+ is a checked build's count of the passes (PassBookkeeping), nil for a
           # cartridge for a player.
           def initialize(emitter:, primitives:, lowering:, mixer:, memory:, sounds:, songs:, frames:, expressions:,
-                          raster:, drawing:, uses_pressed:, any_buffered:, end_of_pass:, boundary_calls:,
-                          bookkeeping: nil)
+                          raster:, placement:, clock_chip:, mix_waits_for_gap:, uses_pressed:, any_buffered:, end_of_pass:,
+                          boundary_calls:, bookkeeping: nil)
             @bookkeeping = bookkeeping
             @emitter = emitter
             @primitives = primitives
@@ -73,7 +73,9 @@ module VBlank
             @expressions = expressions
             @raster = raster
             @boundary_calls = boundary_calls # Handlers and bends run as the game wakes (FrameBoundaryCalls)
-            @drawing = drawing
+            @placement = placement # calls a routine of the cartridge from wherever the code is
+            @clock_chip = clock_chip
+            @mix_waits_for_gap = mix_waits_for_gap
             @uses_pressed = uses_pressed
             @any_buffered = any_buffered
             @end_of_pass = end_of_pass # what has to happen before the console sleeps (see #emit_wait_vblank)
@@ -81,6 +83,10 @@ module VBlank
             @lanes = []        # the hardware the player drives (see Lane)
             @effects = []      # every sound effect, highest rank first (see #prepare_sound_effects)
           end
+
+          # The screen's drawing, which the wait at the end of a pass flips the page of and ends the
+          # held-off first picture with. Made after this, so it is handed over once it exists.
+          attr_writer :drawing
 
           def emit_register_writes(writes)
             writes.each do |address, value|
@@ -728,7 +734,7 @@ module VBlank
           # interrupt; the address of its place in the table in ACC.
           START_EFFECT_HERE = :__start_effect_here
 
-          def emit_call_start_effect_here = @drawing.emit_call_irq_routine(START_EFFECT_HERE)
+          def emit_call_start_effect_here = @placement.emit_call_irq_routine(START_EFFECT_HERE)
 
           # Each routine some recorded part called to start a note (see #emit_recorded_note),
           # emitted once inside the screen's interrupt, after everything that calls them.
@@ -962,7 +968,7 @@ module VBlank
           end
 
           # `this_frame: true`: the tune just named starts here (see #emit_start_song_here_routine).
-          def emit_call_start_song_here = @drawing.emit_call_irq_routine(START_SONG_HERE)
+          def emit_call_start_song_here = @placement.emit_call_irq_routine(START_SONG_HERE)
 
           # Name song +which+ of a list as the tune playing now: the list's first number plus
           # +which+, into the same one variable `play_song` writes. A number the game works out is
@@ -1422,7 +1428,7 @@ module VBlank
             e.emit(ASM.ldr_offset(ACC, slot, EFFECT_STATE))
             e.emit(ASM.cmp_imm(ACC, 0))
             e.emit_branch(:bcond, onward, cond: :eq)           # neither asked for nor sounding
-            @drawing.emit_call_cold_routine(SOUND_EFFECT_STEP)
+            @placement.emit_call_cold_routine(SOUND_EFFECT_STEP)
             e.emit(ASM.ldr_offset(ACC, slot, EFFECT_STATE))
             e.emit(ASM.cmp_imm(ACC, 0))
             e.emit_branch(:bcond, onward, cond: :eq)           # done with this frame
@@ -1492,7 +1498,7 @@ module VBlank
           # in the cartridge: Placement#emit_call_irq_routine makes each call a plain jump or one
           # through a register, by where the interrupt's routine landed.
           def calling_interrupt_routines_from_cartridge(&)
-            @call_interrupt_routine = ->(label) { @drawing.emit_call_irq_routine(label) }
+            @call_interrupt_routine = ->(label) { @placement.emit_call_irq_routine(label) }
             @mixer.calling_voice_routines_through(@call_interrupt_routine, &)
           ensure
             @call_interrupt_routine = nil
@@ -1757,7 +1763,7 @@ module VBlank
             @emitter.place_label(shown_late)
             # The gap's writes start, and the mix at the first line waits for them (see
             # Mixer::GAP_WRITES_RUNNING).
-            @drawing.emit_gap_writes_started
+            @mixer.emit_gap_writes_started if @mix_waits_for_gap.call
             @bookkeeping&.emit_frames_taken
 
             # How many frames the pass that just ended really took. First thing after the wait,
@@ -1806,7 +1812,7 @@ module VBlank
             @boundary_calls.with_bend_state_saved { @raster.emit_fill_row_bend_tables } if @raster.row_bend_tables?
 
             # The cartridge's clock is to be read again by the pass to come, if it asks (see ClockChip).
-            @drawing.emit_mark_clock_copy_old
+            @clock_chip.emit_mark_copy_old
             @bookkeeping&.emit_pass_shown
           end
 

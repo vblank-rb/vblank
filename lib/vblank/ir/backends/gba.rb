@@ -339,18 +339,13 @@ module VBlank
         # A test reads a voice's/the mix buffers' state back (see {Mixer}).
         def bitmaps = @bitmaps
         def blob_codecs = @blob_codecs
-        # Reached via `drawing: self` by Audio (still, until Drawing exists a few lines
-        # into #initialize) and by PaletteTint/LayerBlend (Drawing isn't their own
-        # object's collaborator name — this instance stands in), so these have to be
-        # public: an explicit-receiver call ignores privacy on the defining class, not
-        # on whatever the receiver happens to evaluate to.
-        def emit_flip_if_buffered = @drawing.emit_flip_if_buffered
-        def emit_skip_wait_for_late_page(shown) = @drawing.emit_skip_wait_for_late_page(shown)
-        def emit_end_forced_blank = @drawing.emit_end_forced_blank
-        # The game woke from its wait and starts its writes in the gap (Audio), or has written its
-        # sprite table and ended them (SpriteDrawing, through `placement: self`). Nothing for a
-        # game whose mix does not wait for them (see #mix_waits_for_gap?).
-        def emit_gap_writes_started = (@mixer.emit_gap_writes_started if mix_waits_for_gap?)
+        # Reached via `drawing: self` by PaletteTint and LayerBlend (Drawing isn't their own
+        # object's collaborator name — this instance stands in), so these have to be public: an
+        # explicit-receiver call ignores privacy on the defining class, not on whatever the
+        # receiver happens to evaluate to.
+        # The game has written its sprite table and ends the gap's writes (SpriteDrawing, through
+        # `placement: self`). Nothing for a game whose mix does not wait for them (see
+        # #mix_waits_for_gap?).
         def emit_gap_writes_ended = (@mixer.emit_gap_writes_ended if mix_waits_for_gap?)
         # Where the game loop starts (see Frames#emit_reset_frame_mark), and only where the
         # screen's interrupt counts frames at all. The buttons start here too: a tap made while
@@ -362,8 +357,6 @@ module VBlank
           @expressions.emit_forget_presses if @uses_pressed
         end
 
-        # The cartridge's clock read again by the first reading after each wait (see ClockChip).
-        def emit_mark_clock_copy_old = @clock_chip.emit_mark_copy_old
         def fade_steps_value(amount) = @effects.fade_steps_value(amount)
         def emit_clamp_blend_steps(most = Console::Hardware::BLD_MAX) = @effects.emit_clamp_blend_steps(most)
         def emit_blend_weights_from_acc = @effects.emit_blend_weights_from_acc
@@ -492,7 +485,8 @@ module VBlank
           @mixer = Mixer.new(emitter: @emit, memory: @memory, timers: @timers, primitives: @primitives)
           @audio = Audio.new(emitter: @emit, primitives: @primitives, lowering: @lowering, mixer: @mixer,
                              memory: @memory, sounds: @defined_sounds, songs: @songs,
-                             frames: @frames, expressions: @expressions, raster: @raster, drawing: self,
+                             frames: @frames, expressions: @expressions, raster: @raster, placement: self,
+                             clock_chip: @clock_chip, mix_waits_for_gap: -> { mix_waits_for_gap? },
                              bookkeeping: @bookkeeping, boundary_calls: @boundary_calls,
                              uses_pressed: -> { @uses_pressed }, any_buffered: -> { @modes.any_buffered? },
                              # an EEPROM's last block of the pass is written back before the console sleeps
@@ -527,6 +521,7 @@ module VBlank
                                  uploads: @uploads, sprite_drawing: @sprite_drawing,
                                  background_drawing: @background_drawing, lists: @lists,
                                  placement: self, frames: @frames)
+          @audio.drawing = @drawing
           @picture_group_copying = PictureGroupCopying.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                            scene_entry: @drawing.scene_entry)
           @sprite_drawing.picture_group_copying = @picture_group_copying
