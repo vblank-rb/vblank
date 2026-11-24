@@ -240,9 +240,12 @@ module VBlank
             emit_branch_unless_held(run, none)
             emit_run_keys_set(run, kept)
             @primitives.load_var(ACC, run.count_var)
+            # Must lift a count below the lowest rank to that rank before the subtraction: a count
+            # near the bottom of the 32-bit range would wrap to a large positive number if it were
+            # taken from the rank first. Where the lowest rank is nought the count is only held at 0.
+            e.emit(ASM.cmp_imm(ACC, run.lowest_rank))
+            e.emit(ASM.mov_imm_cond(:lt, ACC, run.lowest_rank))
             e.emit(ASM.sub_imm(ACC, ACC, run.lowest_rank)) if run.lowest_rank.positive?
-            e.emit(ASM.cmp_imm(ACC, 0))
-            e.emit(ASM.mov_imm_cond(:lt, ACC, 0))
             e.emit(ASM.cmp_imm(ACC, run.length))
             e.emit(ASM.mov_imm_cond(:gt, ACC, run.length))
             e.emit_branch(:b, counted)
