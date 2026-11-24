@@ -39,7 +39,6 @@ module VBlank
           end
 
           include Console::Hardware
-          include EmitterCalls
           include MapStreaming
           include HeldTiles
 
@@ -128,8 +127,8 @@ module VBlank
             # round the place the view was left, a scene coming back showed that place's
             # cells at the corner for a frame.
             if bg.stream
-              emit_number(ACC, 0)
-              store_var(ACC, IR::Nodes::Background.stream_vars(node.name).first)
+              @emitter.emit_number(ACC, 0)
+              @primitives.store_var(ACC, IR::Nodes::Background.stream_vars(node.name).first)
               # A map the game changes goes up as declared, copied again (MapStreaming#emit_kept_map_source).
               emit_kept_map_forgotten(bg.stream) if bg.stream.kept
               emit_stream_fill(bg, at_corner: true)
@@ -137,7 +136,7 @@ module VBlank
               @uploads.emit_dma_blob(bg.map, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES), bg.map_units)
             end
             depth = bg.small ? 0 : BG_256_COLOR # a small layer's tiles each name their own bank
-            write_reg16(BG_CNT_REGS[bg.bg], bg.priority | bg.in_blocks | depth | (bg.char_base << CHAR_BASE_SHIFT) |
+            @emitter.write_reg16(BG_CNT_REGS[bg.bg], bg.priority | bg.in_blocks | depth | (bg.char_base << CHAR_BASE_SHIFT) |
                                             (bg.screen_block << 8) | bg.size)
             # Start unscrolled. A bent one's sideways place is its table's on every line, so its
             # rows are put back to the corner there instead.
@@ -146,9 +145,9 @@ module VBlank
             if @raster.bent_from_table?(node.name)
               @raster.emit_bend_put_up(node.name)
             else
-              write_reg16(BG_HOFS_REGS[bg.bg], unscrolled(:x))
+              @emitter.write_reg16(BG_HOFS_REGS[bg.bg], unscrolled(:x))
             end
-            write_reg16(BG_VOFS_REGS[bg.bg], unscrolled(:y))
+            @emitter.write_reg16(BG_VOFS_REGS[bg.bg], unscrolled(:y))
             # ...and a status bar starts at the row it was declared with, until the gap after
             # this pass places it where the game sets (Reference#bar_top_shown).
             emit_bar_registers(bg, top: node.bar_top) if node.bar?
@@ -167,14 +166,14 @@ module VBlank
           end
 
           def emit_bar_top(node, bg)
-            known = const_int(node.top)
+            known = @primitives.const_int(node.top)
             return emit_bar_registers(bg, top: known) if known
 
             @lowering.value(node.top)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit(ASM.mov_imm_cond(:lt, ACC, 0))
-            emit(ASM.cmp_imm(ACC, bar_screen_height))
-            emit(ASM.mov_imm_cond(:gt, ACC, bar_screen_height))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit(ASM.mov_imm_cond(:lt, ACC, 0))
+            @emitter.emit(ASM.cmp_imm(ACC, bar_screen_height))
+            @emitter.emit(ASM.mov_imm_cond(:gt, ACC, bar_screen_height))
             emit_bar_registers(bg, top: nil)
           end
 
@@ -186,14 +185,14 @@ module VBlank
           # sprite across the bar's top shows its part above.
           def emit_bar_covers(bg, covers)
             @lowering.value(covers)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit(ASM.mov_imm_cond(:ne, ACC, 0))
-            emit(ASM.mov_imm_cond(:eq, ACC, WIN_OBJ))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit(ASM.mov_imm_cond(:ne, ACC, 0))
+            @emitter.emit(ASM.mov_imm_cond(:eq, ACC, WIN_OBJ))
             return @layout.border.emit_bar_covers(bg.bg) if @layout.border
 
-            emit(ASM.orr_imm(ACC, ACC, (1 << bg.bg) | WIN_EFFECT))
-            emit(ASM.lsl_imm(ACC, ACC, WIN1_SHIFT))
-            store_halfword_acc(REG_WININ)
+            @emitter.emit(ASM.orr_imm(ACC, ACC, (1 << bg.bg) | WIN_EFFECT))
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, WIN1_SHIFT))
+            @primitives.store_halfword_acc(REG_WININ)
           end
 
           # A status bar on the Advance is one of its background layers, read from its own map's
@@ -219,22 +218,22 @@ module VBlank
 
             top = top.clamp(0, SCREEN_HEIGHT) if top
             if top
-              write_reg16(BG_VOFS_REGS[bg.bg], -top & 0x1FF)
-              write_reg16(REG_WIN1V, (top << 8) | SCREEN_HEIGHT)
+              @emitter.write_reg16(BG_VOFS_REGS[bg.bg], -top & 0x1FF)
+              @emitter.write_reg16(REG_WIN1V, (top << 8) | SCREEN_HEIGHT)
             else
-              emit(ASM.rsb_imm(BAR_ROW, ACC, 0)) # the map's top row is drawn at the bar's top row
-              emit_number(TMP, BG_VOFS_REGS[bg.bg])
-              emit(ASM.store_halfword(BAR_ROW, TMP))
-              emit(ASM.lsl_imm(ACC, ACC, 8))
-              emit(ASM.orr_imm(ACC, ACC, SCREEN_HEIGHT))
-              store_halfword_acc(REG_WIN1V)
+              @emitter.emit(ASM.rsb_imm(BAR_ROW, ACC, 0)) # the map's top row is drawn at the bar's top row
+              @emitter.emit_number(TMP, BG_VOFS_REGS[bg.bg])
+              @emitter.emit(ASM.store_halfword(BAR_ROW, TMP))
+              @emitter.emit(ASM.lsl_imm(ACC, ACC, 8))
+              @emitter.emit(ASM.orr_imm(ACC, ACC, SCREEN_HEIGHT))
+              @primitives.store_halfword_acc(REG_WIN1V)
             end
             # Every write from here loads its own number, so these come after ACC is done with.
-            write_reg16(BG_HOFS_REGS[bg.bg], 0)
-            write_reg16(REG_WIN1H, SCREEN_WIDTH) # from the left edge to the right
+            @emitter.write_reg16(BG_HOFS_REGS[bg.bg], 0)
+            @emitter.write_reg16(REG_WIN1H, SCREEN_WIDTH) # from the left edge to the right
             bar_layer = 1 << bg.bg
-            write_reg16(REG_WININ, (bar_layer | WIN_OBJ | WIN_EFFECT) << WIN1_SHIFT)
-            write_reg16(REG_WINOUT, (WIN_ALL_LAYERS & ~bar_layer) | WIN_EFFECT)
+            @emitter.write_reg16(REG_WININ, (bar_layer | WIN_OBJ | WIN_EFFECT) << WIN1_SHIFT)
+            @emitter.write_reg16(REG_WINOUT, (WIN_ALL_LAYERS & ~bar_layer) | WIN_EFFECT)
           end
 
           # A background held to a BOX (Reference#exec_box_background) is the display's second window.
@@ -266,49 +265,49 @@ module VBlank
             return unless @layout.screen.boxes_backgrounds?
 
             outside = (WIN_ALL_LAYERS & ~(1 << bg.bg)) | WIN_EFFECT
-            everywhere = gensym
-            empty = gensym
-            done = gensym
+            everywhere = @emitter.gensym
+            empty = @emitter.gensym
+            done = @emitter.gensym
             @lowering.value(node.held)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, everywhere, cond: :eq)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, everywhere, cond: :eq)
             [[node.x, BOX_LEFT], [node.y, BOX_TOP], [node.width, BOX_RIGHT], [node.height, BOX_BOTTOM]].each do |value, reg|
               @lowering.value(value)
-              emit(ASM.mov_reg(reg, ACC))
+              @emitter.emit(ASM.mov_reg(reg, ACC))
             end
             # A width or height of nought or less holds nothing; otherwise the far edges are the
             # near ones and the size, and then all four are kept to the screen.
             [BOX_RIGHT, BOX_BOTTOM].each do |size|
-              emit(ASM.cmp_imm(size, 0))
-              emit_branch(:bcond, empty, cond: :le)
+              @emitter.emit(ASM.cmp_imm(size, 0))
+              @emitter.emit_branch(:bcond, empty, cond: :le)
             end
-            emit(ASM.add_reg(BOX_RIGHT, BOX_LEFT, BOX_RIGHT))
-            emit(ASM.add_reg(BOX_BOTTOM, BOX_TOP, BOX_BOTTOM))
+            @emitter.emit(ASM.add_reg(BOX_RIGHT, BOX_LEFT, BOX_RIGHT))
+            @emitter.emit(ASM.add_reg(BOX_BOTTOM, BOX_TOP, BOX_BOTTOM))
             [[BOX_LEFT, SCREEN_WIDTH], [BOX_RIGHT, SCREEN_WIDTH], [BOX_TOP, SCREEN_HEIGHT], [BOX_BOTTOM, SCREEN_HEIGHT]].each do |reg, edge|
-              emit(ASM.cmp_imm(reg, 0))
-              emit(ASM.mov_imm_cond(:lt, reg, 0))
-              emit(ASM.cmp_imm(reg, edge))
-              emit(ASM.mov_imm_cond(:gt, reg, edge))
+              @emitter.emit(ASM.cmp_imm(reg, 0))
+              @emitter.emit(ASM.mov_imm_cond(:lt, reg, 0))
+              @emitter.emit(ASM.cmp_imm(reg, edge))
+              @emitter.emit(ASM.mov_imm_cond(:gt, reg, edge))
             end
             # ...and a box wholly off the screen has nothing left once it is.
-            emit(ASM.cmp_reg(BOX_RIGHT, BOX_LEFT))
-            emit_branch(:bcond, empty, cond: :le)
-            emit(ASM.cmp_reg(BOX_BOTTOM, BOX_TOP))
-            emit_branch(:bcond, empty, cond: :le)
-            emit(ASM.orr_reg_lsl(ACC, BOX_RIGHT, BOX_LEFT, 8))
-            store_halfword_acc(REG_WIN1H)
-            emit(ASM.orr_reg_lsl(ACC, BOX_BOTTOM, BOX_TOP, 8))
-            store_halfword_acc(REG_WIN1V)
-            write_reg16(REG_WINOUT, outside)
-            emit_branch(:b, done)
-            place_label(empty)
-            write_reg16(REG_WIN1H, 0)
-            write_reg16(REG_WIN1V, 0)
-            write_reg16(REG_WINOUT, outside)
-            emit_branch(:b, done)
-            place_label(everywhere)
-            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
-            place_label(done)
+            @emitter.emit(ASM.cmp_reg(BOX_RIGHT, BOX_LEFT))
+            @emitter.emit_branch(:bcond, empty, cond: :le)
+            @emitter.emit(ASM.cmp_reg(BOX_BOTTOM, BOX_TOP))
+            @emitter.emit_branch(:bcond, empty, cond: :le)
+            @emitter.emit(ASM.orr_reg_lsl(ACC, BOX_RIGHT, BOX_LEFT, 8))
+            @primitives.store_halfword_acc(REG_WIN1H)
+            @emitter.emit(ASM.orr_reg_lsl(ACC, BOX_BOTTOM, BOX_TOP, 8))
+            @primitives.store_halfword_acc(REG_WIN1V)
+            @emitter.write_reg16(REG_WINOUT, outside)
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(empty)
+            @emitter.write_reg16(REG_WIN1H, 0)
+            @emitter.write_reg16(REG_WIN1V, 0)
+            @emitter.write_reg16(REG_WINOUT, outside)
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(everywhere)
+            @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
+            @emitter.place_label(done)
           end
 
           # WINDOW 1 FOR A GAME THAT HOLDS A BACKGROUND TO A BOX, set at boot: every layer and the
@@ -319,10 +318,10 @@ module VBlank
           def emit_boot_box_window
             return unless @layout.screen.boxes_backgrounds?
 
-            write_reg16(REG_WIN1H, 0)
-            write_reg16(REG_WIN1V, 0)
-            write_reg16(REG_WININ, (WIN_ALL_LAYERS | WIN_EFFECT) << WIN1_SHIFT)
-            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
+            @emitter.write_reg16(REG_WIN1H, 0)
+            @emitter.write_reg16(REG_WIN1V, 0)
+            @emitter.write_reg16(REG_WININ, (WIN_ALL_LAYERS | WIN_EFFECT) << WIN1_SHIFT)
+            @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
           end
 
           # A scene putting its backgrounds up shows them everywhere: the last scene's box is set
@@ -331,16 +330,16 @@ module VBlank
           # switches its layers on as its sending ends, and a background every scene shows keeps
           # its switch.
           def emit_box_set_aside(scenery = [])
-            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT) if @layout.screen.boxes_backgrounds?
+            @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT) if @layout.screen.boxes_backgrounds?
             return unless @layout.screen.hides_layers?
 
             bits = scenery.filter_map { |node| @layout.screen.backgrounds[node.name] }
                           .reduce(0) { |all, bg| all | layer_switch_bit(bg) }
             return if bits.zero?
 
-            load_var(ACC, LAYERS_SWITCHED_OFF)
-            emit(ASM.bic_imm(ACC, ACC, bits))
-            store_var(ACC, LAYERS_SWITCHED_OFF)
+            @primitives.load_var(ACC, LAYERS_SWITCHED_OFF)
+            @emitter.emit(ASM.bic_imm(ACC, ACC, bits))
+            @primitives.store_var(ACC, LAYERS_SWITCHED_OFF)
           end
 
           # A background hidden whole (Nodes::BoxBackground#whole, `hide`) is its layer switched
@@ -371,30 +370,30 @@ module VBlank
 
           def emit_layer_switch(node, bg)
             bit = layer_switch_bit(bg)
-            shown = gensym
-            done = gensym
+            shown = @emitter.gensym
+            done = @emitter.gensym
             @lowering.value(node.held)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, shown, cond: :eq)
-            load_var(ACC, LAYERS_SWITCHED_OFF)
-            emit(ASM.orr_imm(ACC, ACC, bit))
-            store_var(ACC, LAYERS_SWITCHED_OFF)
-            emit_display_control_changed { emit(ASM.bic_imm(ACC, ACC, bit)) }
-            emit_branch(:b, done)
-            place_label(shown)
-            load_var(ACC, LAYERS_SWITCHED_OFF)
-            emit(ASM.and_imm(TMP, ACC, bit))
-            emit(ASM.cmp_imm(TMP, 0))
-            emit_branch(:bcond, done, cond: :eq)
-            emit(ASM.bic_imm(ACC, ACC, bit))
-            store_var(ACC, LAYERS_SWITCHED_OFF)
-            emit_display_control_changed { emit(ASM.orr_imm(ACC, ACC, bit)) }
-            place_label(done)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, shown, cond: :eq)
+            @primitives.load_var(ACC, LAYERS_SWITCHED_OFF)
+            @emitter.emit(ASM.orr_imm(ACC, ACC, bit))
+            @primitives.store_var(ACC, LAYERS_SWITCHED_OFF)
+            emit_display_control_changed { @emitter.emit(ASM.bic_imm(ACC, ACC, bit)) }
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(shown)
+            @primitives.load_var(ACC, LAYERS_SWITCHED_OFF)
+            @emitter.emit(ASM.and_imm(TMP, ACC, bit))
+            @emitter.emit(ASM.cmp_imm(TMP, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
+            @emitter.emit(ASM.bic_imm(ACC, ACC, bit))
+            @primitives.store_var(ACC, LAYERS_SWITCHED_OFF)
+            emit_display_control_changed { @emitter.emit(ASM.orr_imm(ACC, ACC, bit)) }
+            @emitter.place_label(done)
           end
 
           # At power-on no layer is switched off, whatever the memory held.
           def emit_no_layers_switched_off
-            store_word_immediate(0, var_addr(LAYERS_SWITCHED_OFF)) if @layout&.screen&.hides_layers?
+            @primitives.store_word_immediate(0, @primitives.var_addr(LAYERS_SWITCHED_OFF)) if @layout&.screen&.hides_layers?
           end
 
           # Write the whole of the display's settings, +value+, as a screen drawn from tiles is
@@ -404,12 +403,12 @@ module VBlank
           # So the note is cleared only at power-on and as a scene puts its own scenery up
           # (#emit_box_set_aside). A game that hides none writes +value+ as it is.
           def emit_display_control_written(value)
-            return write_reg16(REG_DISPCNT, value) unless @layout&.screen&.hides_layers?
+            return @emitter.write_reg16(REG_DISPCNT, value) unless @layout&.screen&.hides_layers?
 
-            emit_number(ACC, value)
+            @emitter.emit_number(ACC, value)
             emit_without_switched_off_layers(ACC)
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
           # Clear from +reg+, the display's settings about to be written, the layers the game has
@@ -417,8 +416,8 @@ module VBlank
           def emit_without_switched_off_layers(reg, scratch: TMP)
             return unless @layout&.screen&.hides_layers?
 
-            load_var(scratch, LAYERS_SWITCHED_OFF)
-            emit(ASM.bic_reg(reg, reg, scratch))
+            @primitives.load_var(scratch, LAYERS_SWITCHED_OFF)
+            @emitter.emit(ASM.bic_reg(reg, reg, scratch))
           end
 
           # Read the display's settings into ACC, let the block change them, write them back. Where
@@ -426,10 +425,10 @@ module VBlank
           # write (#with_interrupts_held_off). Uses ACC and TMP.
           def emit_display_control_changed
             write = lambda do
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.load_halfword(ACC, TMP))
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
               yield
-              emit(ASM.store_halfword(ACC, TMP))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
             holds_layers? ? with_interrupts_held_off(&write) : write.call
           end
@@ -483,7 +482,7 @@ module VBlank
               # A tile only another scene's declaration of this name has, from a line written
               # for that scene: this declaration's part of the line writes nothing.
               entry = grid.cells[node.tile] or next
-              fixed = [const_int(node.col), const_int(node.row)]
+              fixed = [@primitives.const_int(node.col), @primitives.const_int(node.row)]
               next emit_fixed_tile_write(node, bg, grid, entry, *fixed) if fixed.all?
 
               emit_computed_tile_write(node, bg, grid, entry)
@@ -517,7 +516,7 @@ module VBlank
             return emit_fixed_tile_held(bg, grid, entry, col, row) if node.held
             return unless grid.holds?(col, row)
 
-            write_reg16(map_cell_address(bg, grid, col, row), entry)
+            @emitter.write_reg16(map_cell_address(bg, grid, col, row), entry)
           end
 
           # The address of one cell, and why it is not simply row times width.
@@ -542,54 +541,54 @@ module VBlank
 
           def emit_computed_tile_write(node, bg, grid, entry)
             @lowering.value(node.col)
-            emit(ASM.mov_reg(TILE_COL, ACC))
+            @emitter.emit(ASM.mov_reg(TILE_COL, ACC))
             @lowering.value(node.row)
-            emit(ASM.mov_reg(TILE_ROW, ACC))
+            @emitter.emit(ASM.mov_reg(TILE_ROW, ACC))
 
-            done = gensym
+            done = @emitter.gensym
             # One unsigned compare catches both ends: a negative coordinate reads as a
             # very large number, so anything outside 0...size fails the same test.
-            emit(ASM.cmp_imm(TILE_COL, grid.cols))
-            emit_branch(:bcond, done, cond: :hs)
-            emit(ASM.cmp_imm(TILE_ROW, grid.rows))
-            emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.cmp_imm(TILE_COL, grid.cols))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.cmp_imm(TILE_ROW, grid.rows))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
 
             emit_cell_index(grid)
             if node.held
               emit_computed_tile_held(bg, entry)
-              return place_label(done)
+              return @emitter.place_label(done)
             end
 
-            emit_number(TMP, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
-            emit(ASM.lsl_imm(TILE_ADDR, TILE_ADDR, 1)) # two bytes a cell
-            emit(ASM.add_reg(TILE_ADDR, TMP, TILE_ADDR))
-            emit_number(ACC, entry)
-            emit(ASM.store_halfword(ACC, TILE_ADDR))
-            place_label(done)
+            @emitter.emit_number(TMP, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
+            @emitter.emit(ASM.lsl_imm(TILE_ADDR, TILE_ADDR, 1)) # two bytes a cell
+            @emitter.emit(ASM.add_reg(TILE_ADDR, TMP, TILE_ADDR))
+            @emitter.emit_number(ACC, entry)
+            @emitter.emit(ASM.store_halfword(ACC, TILE_ADDR))
+            @emitter.place_label(done)
           end
 
           # The cell's index within the whole map, built from the column and row into
           # TILE_ADDR. Which quarter of the map it is in rides in bits 10 and up; a map
           # that fits one square has no quarters and needs neither shift.
           def emit_cell_index(grid)
-            emit(ASM.and_imm(TILE_ADDR, TILE_ROW, MAP_CELLS - 1))
-            emit(ASM.lsl_imm(TILE_ADDR, TILE_ADDR, 5))
-            emit(ASM.and_imm(TMP, TILE_COL, MAP_CELLS - 1))
-            emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
+            @emitter.emit(ASM.and_imm(TILE_ADDR, TILE_ROW, MAP_CELLS - 1))
+            @emitter.emit(ASM.lsl_imm(TILE_ADDR, TILE_ADDR, 5))
+            @emitter.emit(ASM.and_imm(TMP, TILE_COL, MAP_CELLS - 1))
+            @emitter.emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
             return if grid.cols == MAP_CELLS && grid.rows == MAP_CELLS
 
             unless grid.rows == MAP_CELLS
               # The bottom half of a tall map is a whole square further on — two of them
               # when the map is also wide, since a row of squares comes first.
-              emit(ASM.lsr_imm(TMP, TILE_ROW, 5))
-              emit(ASM.lsl_imm(TMP, TMP, grid.cols == MAP_CELLS ? 10 : 11))
-              emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
+              @emitter.emit(ASM.lsr_imm(TMP, TILE_ROW, 5))
+              @emitter.emit(ASM.lsl_imm(TMP, TMP, grid.cols == MAP_CELLS ? 10 : 11))
+              @emitter.emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
             end
             return if grid.cols == MAP_CELLS
 
-            emit(ASM.lsr_imm(TMP, TILE_COL, 5))
-            emit(ASM.lsl_imm(TMP, TMP, 10))
-            emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
+            @emitter.emit(ASM.lsr_imm(TMP, TILE_COL, 5))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 10))
+            @emitter.emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
           end
 
           # Hand a background a whole different map.
@@ -621,10 +620,10 @@ module VBlank
             emit_for_each_declaration(node.name) do |bg|
               next if bg.nil? || bg.map_count < 2 # no tiled layer, or nothing else to show
 
-              done = gensym
+              done = @emitter.gensym
               emit_call_set_swap_if_changing(node, bg, done) if bg.sets
               emit_map_copy(node, bg, done)
-              place_label(done)
+              @emitter.place_label(done)
             end
           end
 
@@ -633,7 +632,7 @@ module VBlank
 
             emit_map_source(bg, node.which, done) # from that map in the cartridge
             @emitter.note_video_copy("handing background :#{node.name} another map", bg.map_units * 2)
-            emit_start_copy_engine(from: in_register(ACC), to: map_vram_address(bg),
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: map_vram_address(bg),
                                    control: bg.map_units | DMA_ENABLE) # 16-bit, both ends advancing
           end
 
@@ -666,20 +665,20 @@ module VBlank
           # of a game that walks between areas, once for each background that does — code that
           # took the quick memory from routines every frame of play runs.
           def emit_call_set_swap_if_changing(node, bg, done)
-            same = gensym
+            same = @emitter.gensym
             @lowering.value(node.which)
-            emit(ASM.cmp_imm(ACC, bg.map_count))
-            emit_branch(:bcond, done, cond: :hs) # a number naming no map changes nothing
-            emit_load_data_address(TMP, bg.sets.sets_of_maps)
-            emit(ASM.ldrb_reg(SET_PICKED, TMP, ACC)) # the set that map draws from
-            load_var(TMP, bg.sets.var)
-            emit(ASM.cmp_reg(SET_PICKED, TMP))
-            emit_branch(:bcond, same, cond: :eq)
+            @emitter.emit(ASM.cmp_imm(ACC, bg.map_count))
+            @emitter.emit_branch(:bcond, done, cond: :hs) # a number naming no map changes nothing
+            @emitter.emit_load_data_address(TMP, bg.sets.sets_of_maps)
+            @emitter.emit(ASM.ldrb_reg(SET_PICKED, TMP, ACC)) # the set that map draws from
+            @primitives.load_var(TMP, bg.sets.var)
+            @emitter.emit(ASM.cmp_reg(SET_PICKED, TMP))
+            @emitter.emit_branch(:bcond, same, cond: :eq)
             # The routine is handed the map's number and its set, in the registers that hold
             # them here already.
             emit_call_cold_routine(set_swap_routine_label(node.name, bg))
-            emit_branch(:b, done)
-            place_label(same)
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(same)
           end
 
           # The routine that brings one of background +name+'s sets in, named for the
@@ -721,22 +720,22 @@ module VBlank
           # one at a time.
           def emit_set_swap_routines
             (@pending_set_swaps || {}).each do |label, (name, bg)|
-              emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
-              place_label(label)
-              emit(ASM.push(14))
+              @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+              @emitter.place_label(label)
+              @emitter.emit(ASM.push(14))
               emit_bring_set_in(name, bg)
-              emit(ASM.pop(15))
+              @emitter.emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can name it (see
               # GBA#lowered_routine_addresses).
-              place_label(DerivedNames.routine_end(label))
+              @emitter.place_label(DerivedNames.routine_end(label))
             end
             (@pending_walking_colors || {}).each do |label, bg|
-              emit(ASM.loop_forever)
-              place_label(label)
-              emit(ASM.push(14))
+              @emitter.emit(ASM.loop_forever)
+              @emitter.place_label(label)
+              @emitter.emit(ASM.push(14))
               emit_walking_colors_send(bg)
-              emit(ASM.pop(15))
-              place_label(DerivedNames.routine_end(label))
+              @emitter.emit(ASM.pop(15))
+              @emitter.place_label(DerivedNames.routine_end(label))
             end
           end
 
@@ -745,11 +744,11 @@ module VBlank
           # so the test the map copy below makes of it again never fails here.
           def emit_bring_set_in(name, bg)
             swap = bg.sets
-            store_var(ACC, SET_SWAP_MAP)
-            emit(ASM.mov_reg(ACC, SET_PICKED))
-            store_var(ACC, swap.var)
-            emit_number(ACC, 1)
-            store_var(ACC, SET_CAME_IN)
+            @primitives.store_var(ACC, SET_SWAP_MAP)
+            @emitter.emit(ASM.mov_reg(ACC, SET_PICKED))
+            @primitives.store_var(ACC, swap.var)
+            @emitter.emit_number(ACC, 1)
+            @primitives.store_var(ACC, SET_CAME_IN)
 
             emit_layers_off_for_sending(SET_SWAP_DISPLAY)
 
@@ -757,13 +756,13 @@ module VBlank
             emit_set_char_base(bg, swap) if swap.char_base_table
             emit_walking_runs_again(swap)
 
-            layers_back_on = gensym
+            layers_back_on = @emitter.gensym
             emit_map_copy(Build.show_map(name, which: Build.var_ref(SET_SWAP_MAP)), bg, layers_back_on)
             emit_stream_fill(bg) if bg.stream # ...the view of it, while the layers are still off
             emit_point_colors_at_area(name, bg)
             emit_area_colors_unless_up(name, bg)
-            place_label(layers_back_on)
-            load_var(ACC, SET_SWAP_DISPLAY)
+            @emitter.place_label(layers_back_on)
+            @primitives.load_var(ACC, SET_SWAP_DISPLAY)
             emit_layers_back_on_or_held(ACC)
           end
 
@@ -834,24 +833,24 @@ module VBlank
           # and ADDR.
           def emit_layers_off_for_sending(saved)
             unless holds_layers?
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.load_halfword(ACC, TMP))
-              store_var(ACC, saved)
-              emit(ASM.bic_imm(ACC, ACC, BG_LAYER_BITS))
-              return emit(ASM.store_halfword(ACC, TMP))
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
+              @primitives.store_var(ACC, saved)
+              @emitter.emit(ASM.bic_imm(ACC, ACC, BG_LAYER_BITS))
+              return @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
 
             # The hold is read before it is cleared, and the display after: an interrupt between
             # any two of them leaves the held bits in ACC or on the display, never lost.
-            load_var(ACC, LAYERS_HELD)
-            emit_number(TMP, 0)
-            store_var(TMP, LAYERS_HELD)
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ADDR, TMP))
-            emit(ASM.orr_reg(ACC, ACC, ADDR))
-            store_var(ACC, saved)
-            emit(ASM.bic_imm(ACC, ACC, held_layer_bits))
-            emit(ASM.store_halfword(ACC, TMP))
+            @primitives.load_var(ACC, LAYERS_HELD)
+            @emitter.emit_number(TMP, 0)
+            @primitives.store_var(TMP, LAYERS_HELD)
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.load_halfword(ADDR, TMP))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, ADDR))
+            @primitives.store_var(ACC, saved)
+            @emitter.emit(ASM.bic_imm(ACC, ACC, held_layer_bits))
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
           # After sending: write +reg+, the display's settings with the layers wanted back on: as
@@ -863,26 +862,26 @@ module VBlank
           def emit_layers_back_on_or_held(reg, held: false)
             emit_without_switched_off_layers(reg) # ...save the ones the game hid
             unless holds_layers?
-              emit_number(TMP, REG_DISPCNT)
-              return emit(ASM.store_halfword(reg, TMP))
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              return @emitter.emit(ASM.store_halfword(reg, TMP))
             end
 
             with_interrupts_held_off do
-              write = gensym
+              write = @emitter.gensym
               unless held
-                held_label = gensym
+                held_label = @emitter.gensym
                 emit_branch_unless_in_pass_gap(held_label)
-                emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
-                store_var(TMP, LAYERS_HELD)
-                emit_branch(:b, write)
-                place_label(held_label)
+                @emitter.emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
+                @primitives.store_var(TMP, LAYERS_HELD)
+                @emitter.emit_branch(:b, write)
+                @emitter.place_label(held_label)
               end
-              emit(ASM.and_imm(TMP, reg, held_layer_bits))
-              store_var(TMP, LAYERS_HELD)
-              emit(ASM.bic_imm(reg, reg, held_layer_bits))
-              place_label(write)
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.store_halfword(reg, TMP))
+              @emitter.emit(ASM.and_imm(TMP, reg, held_layer_bits))
+              @primitives.store_var(TMP, LAYERS_HELD)
+              @emitter.emit(ASM.bic_imm(reg, reg, held_layer_bits))
+              @emitter.place_label(write)
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.store_halfword(reg, TMP))
             end
           end
 
@@ -905,18 +904,18 @@ module VBlank
           # and the interrupt that wakes it switches them on. Jumps to +held+ unless the layers may
           # come on. Interrupts must be held off. Uses TMP and ADDR.
           def emit_branch_unless_in_pass_gap(held)
-            emit_number(TMP, REG_VCOUNT)
-            emit(ASM.load_halfword(TMP, TMP))
-            emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
-            emit_branch(:bcond, held, cond: :lo)
-            emit_number(TMP, REG_IF)
-            emit(ASM.load_halfword(TMP, TMP))
-            emit(ASM.tst_imm(TMP, IRQ_VBLANK))
-            emit_branch(:bcond, held, cond: :ne)
-            load_var(TMP, IR::Frames::COUNT)
-            load_var(ADDR, IR::Frames::SEEN)
-            emit(ASM.cmp_reg(TMP, ADDR))
-            emit_branch(:bcond, held, cond: :ne)
+            @emitter.emit_number(TMP, REG_VCOUNT)
+            @emitter.emit(ASM.load_halfword(TMP, TMP))
+            @emitter.emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            @emitter.emit_branch(:bcond, held, cond: :lo)
+            @emitter.emit_number(TMP, REG_IF)
+            @emitter.emit(ASM.load_halfword(TMP, TMP))
+            @emitter.emit(ASM.tst_imm(TMP, IRQ_VBLANK))
+            @emitter.emit_branch(:bcond, held, cond: :ne)
+            @primitives.load_var(TMP, IR::Frames::COUNT)
+            @primitives.load_var(ADDR, IR::Frames::SEEN)
+            @emitter.emit(ASM.cmp_reg(TMP, ADDR))
+            @emitter.emit_branch(:bcond, held, cond: :ne)
           end
 
           # The hold and the display's settings are written as a pair (Primitives
@@ -933,16 +932,16 @@ module VBlank
           # (#with_interrupts_held_off). Uses TMP.
           def emit_display_control_keeping_held_off(reg)
             with_interrupts_held_off do
-              none = gensym
-              load_var(TMP, LAYERS_HELD)
-              emit(ASM.cmp_imm(TMP, 0))
-              emit_branch(:bcond, none, cond: :eq)
-              emit(ASM.and_imm(TMP, reg, held_layer_bits))
-              store_var(TMP, LAYERS_HELD)
-              emit(ASM.bic_imm(reg, reg, held_layer_bits))
-              place_label(none)
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.store_halfword(reg, TMP))
+              none = @emitter.gensym
+              @primitives.load_var(TMP, LAYERS_HELD)
+              @emitter.emit(ASM.cmp_imm(TMP, 0))
+              @emitter.emit_branch(:bcond, none, cond: :eq)
+              @emitter.emit(ASM.and_imm(TMP, reg, held_layer_bits))
+              @primitives.store_var(TMP, LAYERS_HELD)
+              @emitter.emit(ASM.bic_imm(reg, reg, held_layer_bits))
+              @emitter.place_label(none)
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.store_halfword(reg, TMP))
             end
           end
 
@@ -953,17 +952,17 @@ module VBlank
           def emit_held_layers_on
             return unless holds_layers?
 
-            none = gensym
-            load_var(ACC, LAYERS_HELD)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, none, cond: :eq)
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ADDR, TMP)) # the variables' scratch register: free until the store below
-            emit(ASM.orr_reg(ADDR, ADDR, ACC))
-            emit(ASM.store_halfword(ADDR, TMP))
-            emit_number(ACC, 0)
-            store_var(ACC, LAYERS_HELD)
-            place_label(none)
+            none = @emitter.gensym
+            @primitives.load_var(ACC, LAYERS_HELD)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, none, cond: :eq)
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.load_halfword(ADDR, TMP)) # the variables' scratch register: free until the store below
+            @emitter.emit(ASM.orr_reg(ADDR, ADDR, ACC))
+            @emitter.emit(ASM.store_halfword(ADDR, TMP))
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, LAYERS_HELD)
+            @emitter.place_label(none)
           end
 
           # Copy the tiles of the set in SET_PICKED over the stretch of tile memory every set of
@@ -978,12 +977,12 @@ module VBlank
           def emit_copy_set_tiles(swap)
             return if swap.stride.zero?
 
-            emit_number(TMP, swap.stride)
-            emit(ASM.mul(ACC, SET_PICKED, TMP)) # r0 = how far along the blob that set starts
-            emit_load_data_address(TMP, swap.tiles)
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.emit_number(TMP, swap.stride)
+            @emitter.emit(ASM.mul(ACC, SET_PICKED, TMP)) # r0 = how far along the blob that set starts
+            @emitter.emit_load_data_address(TMP, swap.tiles)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
             @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(swap.routine), swap.stride)
-            emit_start_copy_engine(from: in_register(ACC), to: VRAM_START + swap.at,
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: VRAM_START + swap.at,
                                    control: (swap.stride / 4) | DMA_ENABLE | DMA_32BIT)
           end
 
@@ -998,8 +997,8 @@ module VBlank
               bg = @layout.screen.declared_background(node)
               emit_point_colors_at_area(node.name, bg, first: true) if bg&.sets
             end
-            emit_number(ACC, walking.sets.areas.first)
-            store_var(ACC, ScreenLayout::AREA_COLORS_UP)
+            @emitter.emit_number(ACC, walking.sets.areas.first)
+            @primitives.store_var(ACC, ScreenLayout::AREA_COLORS_UP)
             emit_area_colors(walking.sets, up: up)
           end
 
@@ -1012,25 +1011,25 @@ module VBlank
           # with, which the first left alone.
           def emit_area_colors_unless_up(name, bg)
             swap = bg.sets
-            walk = gensym
-            sent = gensym
-            load_var(TMP, swap.var)
-            emit_load_data_address(ACC, swap.area_numbers)
-            emit(ASM.ldrb_reg(ACC, ACC, TMP)) # the area that set is of
-            load_var(TMP, ScreenLayout::AREA_COLORS_UP)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, walk, cond: :ne)
+            walk = @emitter.gensym
+            sent = @emitter.gensym
+            @primitives.load_var(TMP, swap.var)
+            @emitter.emit_load_data_address(ACC, swap.area_numbers)
+            @emitter.emit(ASM.ldrb_reg(ACC, ACC, TMP)) # the area that set is of
+            @primitives.load_var(TMP, ScreenLayout::AREA_COLORS_UP)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, walk, cond: :ne)
             if bg.colors&.area_bytes
-              load_var(ACC, bg.colors.at)
-              emit(ASM.cmp_imm(ACC, 0)) # told nothing: the area's own colours are right
-              emit_branch(:bcond, sent, cond: :eq)
+              @primitives.load_var(ACC, bg.colors.at)
+              @emitter.emit(ASM.cmp_imm(ACC, 0)) # told nothing: the area's own colours are right
+              @emitter.emit_branch(:bcond, sent, cond: :eq)
               emit_call_cold_routine(walking_colors_routine_label(name, bg))
             end
-            emit_branch(:b, sent)
-            place_label(walk)
-            store_var(ACC, ScreenLayout::AREA_COLORS_UP)
+            @emitter.emit_branch(:b, sent)
+            @emitter.place_label(walk)
+            @primitives.store_var(ACC, ScreenLayout::AREA_COLORS_UP)
             emit_area_colors(swap, from_var: true)
-            place_label(sent)
+            @emitter.place_label(sent)
           end
 
           # A walking layer told `draw_with` keeps a version of its lists for each area (see
@@ -1044,14 +1043,14 @@ module VBlank
             lists = bg.colors
             return unless lists&.area_bytes
 
-            told_nothing = gensym
-            load_var(ACC, lists.at)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, told_nothing, cond: :eq)
-            load_var(ACC, IR::Nodes::Background.live_colors_var(name))
+            told_nothing = @emitter.gensym
+            @primitives.load_var(ACC, lists.at)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, told_nothing, cond: :eq)
+            @primitives.load_var(ACC, IR::Nodes::Background.live_colors_var(name))
             emit_version_address(bg, lists, first: first)
-            store_var(ACC, lists.at)
-            place_label(told_nothing)
+            @primitives.store_var(ACC, lists.at)
+            @emitter.place_label(told_nothing)
           end
 
           # Send in the colours of the area a walking background's set belongs to: the set
@@ -1059,12 +1058,12 @@ module VBlank
           # background put up as declared starts in. +up+ is the scene taking over, where this
           # is part of it doing so (see PaletteTint#emit_recolored_banks).
           def emit_area_colors(swap, from_var: false, up: :unknown)
-            emit_load_data_address(ACC, swap.colors)
+            @emitter.emit_load_data_address(ACC, swap.colors)
             if from_var
-              load_var(TMP, swap.var)
-              emit_number(SET_STRIDE, swap.color_units * 2)
-              emit(ASM.mul(TMP, SET_STRIDE, TMP)) # how far along the blob that set's table is
-              emit(ASM.add_reg(ACC, ACC, TMP))
+              @primitives.load_var(TMP, swap.var)
+              @emitter.emit_number(SET_STRIDE, swap.color_units * 2)
+              @emitter.emit(ASM.mul(TMP, SET_STRIDE, TMP)) # how far along the blob that set's table is
+              @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
             end
             @palette_tint.emit_send_bg_colors(swap.color_units, up: up)
           end
@@ -1072,14 +1071,14 @@ module VBlank
           # Point the layer at where the set now in place (r3) counts its tiles from, for sets
           # that start counting from different places.
           def emit_set_char_base(bg, swap)
-            emit_load_data_address(TMP, swap.char_base_table)
-            emit(ASM.ldrb_reg(ACC, TMP, SET_PICKED))
-            emit(ASM.lsl_imm(ACC, ACC, CHAR_BASE_SHIFT))
+            @emitter.emit_load_data_address(TMP, swap.char_base_table)
+            @emitter.emit(ASM.ldrb_reg(ACC, TMP, SET_PICKED))
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, CHAR_BASE_SHIFT))
             depth = bg.small ? 0 : BG_256_COLOR
-            emit_number(TMP, bg.priority | bg.in_blocks | depth | (bg.screen_block << 8) | bg.size)
-            emit(ASM.orr_reg(ACC, ACC, TMP))
-            emit_number(TMP, BG_CNT_REGS[bg.bg])
-            emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, bg.priority | bg.in_blocks | depth | (bg.screen_block << 8) | bg.size)
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
+            @emitter.emit_number(TMP, BG_CNT_REGS[bg.bg])
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
           # Paint a run of tiles from its list: one copy, from the list straight into the video
@@ -1115,29 +1114,29 @@ module VBlank
             bounds = LoweringPlan.sprite_tile_load_bounds(node, table_bytes: table.count * table.elem_bytes, set_count: count)
             return unless bounds
 
-            done = gensym
+            done = @emitter.gensym
             # The first number waits on the stack while the second is worked out, since working out
             # a value may use any register.
             @lowering.value(node.at)
-            emit(ASM.push(ACC))
+            @emitter.emit(ASM.push(ACC))
             @lowering.value(node.to)
-            emit(ASM.mov_reg(LOAD_TO, ACC))
-            emit(ASM.pop(LOAD_FROM))
+            @emitter.emit(ASM.mov_reg(LOAD_TO, ACC))
+            @emitter.emit(ASM.pop(LOAD_FROM))
             [LOAD_FROM, LOAD_TO].zip(bounds) do |register, (_, most)|
-              emit_number(TMP, most + 1)
-              emit(ASM.cmp_reg(register, TMP))
-              emit_branch(:bcond, done, cond: :hs)
+              @emitter.emit_number(TMP, most + 1)
+              @emitter.emit(ASM.cmp_reg(register, TMP))
+              @emitter.emit_branch(:bcond, done, cond: :hs)
             end
-            emit(ASM.lsl_imm(LOAD_FROM, LOAD_FROM, 5)) # 32 bytes a tile
-            emit_load_data_address(TMP, node.table)
-            emit(ASM.add_reg(LOAD_FROM, TMP, LOAD_FROM))
-            emit(ASM.lsl_imm(LOAD_TO, LOAD_TO, 5))
-            emit_number(TMP, VRAM_START + room)
-            emit(ASM.add_reg(LOAD_TO, TMP, LOAD_TO))
+            @emitter.emit(ASM.lsl_imm(LOAD_FROM, LOAD_FROM, 5)) # 32 bytes a tile
+            @emitter.emit_load_data_address(TMP, node.table)
+            @emitter.emit(ASM.add_reg(LOAD_FROM, TMP, LOAD_FROM))
+            @emitter.emit(ASM.lsl_imm(LOAD_TO, LOAD_TO, 5))
+            @emitter.emit_number(TMP, VRAM_START + room)
+            @emitter.emit(ASM.add_reg(LOAD_TO, TMP, LOAD_TO))
             @emitter.note_video_copy("loading sprite_tiles :#{node.name}", node.count * 32)
-            emit_start_copy_engine(from: in_register(LOAD_FROM), to: in_register(LOAD_TO),
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(LOAD_FROM), to: Primitives::InRegister.new(LOAD_TO),
                                    control: (node.count * 8) | DMA_ENABLE | DMA_32BIT)
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # The set just brought in holds its painted tiles blank, and the game's list holds what
@@ -1152,12 +1151,12 @@ module VBlank
           # tiles in place (see ScreenLayout::WalkingRun), or 0 on a screen that does not show it.
           def emit_walking_run_place(name, run, shown: true)
             place = ScreenLayout::PaintedRun.place_var(name)
-            return @primitives.store_word_immediate(0, var_addr(place)) unless shown
+            return @primitives.store_word_immediate(0, @primitives.var_addr(place)) unless shown
 
-            load_var(TMP, run.walk.var)
-            emit_load_data_address(ACC, run.walk.table)
-            emit(ASM.ldr_reg_lsl(ACC, ACC, TMP, 2))
-            store_var(ACC, place)
+            @primitives.load_var(TMP, run.walk.var)
+            @emitter.emit_load_data_address(ACC, run.walk.table)
+            @emitter.emit(ASM.ldr_reg_lsl(ACC, ACC, TMP, 2))
+            @primitives.store_var(ACC, place)
           end
 
           def emit_copy_painted_run(name, run)
@@ -1165,18 +1164,18 @@ module VBlank
 
             emit_walking_run_place(name, run) if run.walk
             if run.moves?
-              done = gensym
+              done = @emitter.gensym
               emit_load_painted_run_place(ScreenLayout::PaintedRun.place_var(name), done)
             end
             @emitter.note_video_copy("painting #{run.what} :#{name}", run.bytes)
             from = list[:base]
             if held_tile_run?(run)
-              load_var(2, ScreenLayout::PaintedRun.held_var(name))
-              from = in_register(2)
+              @primitives.load_var(2, ScreenLayout::PaintedRun.held_var(name))
+              from = Primitives::InRegister.new(2)
             end
-            emit_start_copy_engine(from: from, to: run.moves? ? in_register(ACC) : VRAM_START + run.at,
+            @primitives.emit_start_copy_engine(from: from, to: run.moves? ? Primitives::InRegister.new(ACC) : VRAM_START + run.at,
                                    control: (run.bytes / 4) | DMA_ENABLE | DMA_32BIT)
-            place_label(done) if done
+            @emitter.place_label(done) if done
           end
 
           # Is +run+ a group of `tile_pictures`, shown from the cartridge?
@@ -1206,76 +1205,76 @@ module VBlank
             rows = owed_copy_rows(node)
             return if rows.empty?
 
-            table = gensym
-            loop_top = gensym
-            direct = gensym
-            step = gensym
-            after = gensym
+            table = @emitter.gensym
+            loop_top = @emitter.gensym
+            direct = @emitter.gensym
+            step = @emitter.gensym
+            after = @emitter.gensym
             # Interrupts are held off for the walk: a timer's handler can use the same copying
             # engine, and one landing between a row's setup writes would start this copy with
             # the handler's addresses. r2 and r3 hold the walk; this step is only ever the body
             # of the routine that copies, whose callers expect it to use them.
-            emit_number(TMP, REG_IME)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.push(ACC))
-            emit_number(ACC, 0)
-            emit(ASM.store_halfword(ACC, TMP))
-            emit_load_label_address(2, table)
-            emit_number(3, rows.size)
-            place_label(loop_top)
-            emit(ASM.ldr_offset(ACC, 2, 0))
-            emit(ASM.ldr(ACC, ACC))                 # its pending bits
-            emit(ASM.ldr_offset(TMP, 2, 4))
-            emit(ASM.and_reg(ACC, ACC, TMP))
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, step, cond: :eq)    # not owed a copy
-            emit(ASM.ldr_offset(ACC, 2, 12))        # where it goes
-            emit(ASM.tst_imm(ACC, 1))
-            emit_branch(:bcond, direct, cond: :eq)
-            emit(ASM.bic_imm(ACC, ACC, 1))
-            emit(ASM.ldr(ACC, ACC))                 # ...read from the variable this screen set
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, step, cond: :eq)    # nowhere on this screen
-            place_label(direct)
+            @emitter.emit_number(TMP, REG_IME)
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit(ASM.push(ACC))
+            @emitter.emit_number(ACC, 0)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit_load_label_address(2, table)
+            @emitter.emit_number(3, rows.size)
+            @emitter.place_label(loop_top)
+            @emitter.emit(ASM.ldr_offset(ACC, 2, 0))
+            @emitter.emit(ASM.ldr(ACC, ACC))                 # its pending bits
+            @emitter.emit(ASM.ldr_offset(TMP, 2, 4))
+            @emitter.emit(ASM.and_reg(ACC, ACC, TMP))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, step, cond: :eq)    # not owed a copy
+            @emitter.emit(ASM.ldr_offset(ACC, 2, 12))        # where it goes
+            @emitter.emit(ASM.tst_imm(ACC, 1))
+            @emitter.emit_branch(:bcond, direct, cond: :eq)
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 1))
+            @emitter.emit(ASM.ldr(ACC, ACC))                 # ...read from the variable this screen set
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, step, cond: :eq)    # nowhere on this screen
+            @emitter.place_label(direct)
             # The engine's three registers, written by hand rather than through
             # Primitives#emit_start_copy_engine: the write that starts the copy is each run's
             # own instruction, further down, and that call makes all three in one place.
-            emit_number(ADDR, REG_DMA3SAD)
-            emit(ASM.ldr_offset(TMP, 2, 8))
+            @emitter.emit_number(ADDR, REG_DMA3SAD)
+            @emitter.emit(ASM.ldr_offset(TMP, 2, 8))
             if rows.any? { |row| row[:held] } # a group of `tile_pictures`: the place in the cartridge is in a variable
-              from_list = gensym
-              emit(ASM.tst_imm(TMP, 1))
-              emit_branch(:bcond, from_list, cond: :eq)
-              emit(ASM.bic_imm(TMP, TMP, 1))
-              emit(ASM.ldr(TMP, TMP))
-              place_label(from_list)
+              from_list = @emitter.gensym
+              @emitter.emit(ASM.tst_imm(TMP, 1))
+              @emitter.emit_branch(:bcond, from_list, cond: :eq)
+              @emitter.emit(ASM.bic_imm(TMP, TMP, 1))
+              @emitter.emit(ASM.ldr(TMP, TMP))
+              @emitter.place_label(from_list)
             end
-            emit(ASM.str_offset(TMP, ADDR, 0))                        # from its list
-            emit(ASM.str_offset(ACC, ADDR, Primitives::COPY_TO_STEP)) # to its place
-            emit(ASM.ldr_offset(TMP, 2, 16))        # how much, and go
-            emit(ASM.ldr_offset(ACC, 2, 20))
+            @emitter.emit(ASM.str_offset(TMP, ADDR, 0))                        # from its list
+            @emitter.emit(ASM.str_offset(ACC, ADDR, Primitives::COPY_TO_STEP)) # to its place
+            @emitter.emit(ASM.ldr_offset(TMP, 2, 16))        # how much, and go
+            @emitter.emit(ASM.ldr_offset(ACC, 2, 20))
             # Into the run's own step: the processor reads pc as two instructions on, which is
             # the first step, so the filler between is never run.
-            emit(ASM.add_reg(15, 15, ACC))
-            emit(ASM.nop)
+            @emitter.emit(ASM.add_reg(15, 15, ACC))
+            @emitter.emit(ASM.nop)
             rows.each do |row|
               @emitter.note_video_copy("painting #{row[:what]} :#{row[:name]}", row[:bytes])
-              emit(ASM.str_offset(TMP, ADDR, Primitives::COPY_START_STEP))
-              emit_branch(:b, step)
+              @emitter.emit(ASM.str_offset(TMP, ADDR, Primitives::COPY_START_STEP))
+              @emitter.emit_branch(:b, step)
             end
-            place_label(step)
-            emit(ASM.add_imm(2, 2, COPY_ROW_BYTES))
-            emit(ASM.subs_imm(3, 3, 1))
-            emit_branch(:bcond, loop_top, cond: :ne)
-            emit(ASM.pop(ACC))
-            emit_number(TMP, REG_IME)
-            emit(ASM.store_halfword(ACC, TMP))      # the interrupt switch as it was
-            emit_branch(:b, after)
-            place_label(table)
+            @emitter.place_label(step)
+            @emitter.emit(ASM.add_imm(2, 2, COPY_ROW_BYTES))
+            @emitter.emit(ASM.subs_imm(3, 3, 1))
+            @emitter.emit_branch(:bcond, loop_top, cond: :ne)
+            @emitter.emit(ASM.pop(ACC))
+            @emitter.emit_number(TMP, REG_IME)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))      # the interrupt switch as it was
+            @emitter.emit_branch(:b, after)
+            @emitter.place_label(table)
             rows.each_with_index do |row, i|
-              (row[:words] + [i * 8]).each { |word| emit([word].pack("V")) } # its step is the i-th, 8 bytes each
+              (row[:words] + [i * 8]).each { |word| @emitter.emit([word].pack("V")) } # its step is the i-th, 8 bytes each
             end
-            place_label(after)
+            @emitter.place_label(after)
           end
 
           # One table row per run a background or a sprite on some screen shows, in the shape
@@ -1287,12 +1286,12 @@ module VBlank
               next if run.nil?
 
               list = painted_run_list(name, run)
-              place = run.moves? ? var_addr(ScreenLayout::PaintedRun.place_var(name)) | 1 : VRAM_START + run.at
+              place = run.moves? ? @primitives.var_addr(ScreenLayout::PaintedRun.place_var(name)) | 1 : VRAM_START + run.at
               held = held_tile_run?(run)
-              from = held ? var_addr(ScreenLayout::PaintedRun.held_var(name)) | 1 : list[:base]
+              from = held ? @primitives.var_addr(ScreenLayout::PaintedRun.held_var(name)) | 1 : list[:base]
               Primitives.refuse_copy_of_nothing!(run.bytes / 4) # the walk writes this control word by hand
               { name: name, what: run.what, bytes: run.bytes, held: held,
-                words: [var_addr(node.masks.fetch(i / per)), 1 << (i % per), from, place,
+                words: [@primitives.var_addr(node.masks.fetch(i / per)), 1 << (i % per), from, place,
                         (run.bytes / 4) | DMA_ENABLE | DMA_32BIT] }
             end
           end
@@ -1314,35 +1313,35 @@ module VBlank
           # memory at any fixed place would be some other picture's. Leaves that place in ACC.
           def emit_load_painted_run_place(var, done)
             @primitives.load_var(ACC, var)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, done, cond: :eq)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
           end
 
           # ACC = where the map numbered +which+ starts, or a jump to +done+ if it names no
           # map. A number settled while the program was written is worked out here, in Ruby;
           # one the game works out is checked and multiplied by the stride at run time.
           def emit_map_source(bg, which, done)
-            fixed = const_int(which)
+            fixed = @primitives.const_int(which)
             return emit_fixed_map_source(bg, fixed, done) if fixed
 
             @lowering.value(which)
             # One unsigned compare catches both ends: a negative number reads as a very
             # large one, so anything outside 0...count fails the same test.
-            emit(ASM.cmp_imm(ACC, bg.map_count))
-            emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.cmp_imm(ACC, bg.map_count))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
             emit_map_stride(bg)
-            emit_load_data_address(ACC, bg.map)
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.emit_load_data_address(ACC, bg.map)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
           end
 
           def emit_fixed_map_source(bg, fixed, done)
-            return emit_branch(:b, done) unless fixed >= 0 && fixed < bg.map_count
+            return @emitter.emit_branch(:b, done) unless fixed >= 0 && fixed < bg.map_count
 
-            emit_load_data_address(ACC, bg.map)
+            @emitter.emit_load_data_address(ACC, bg.map)
             return if fixed.zero?
 
-            emit_number(TMP, fixed * bg.map_bytes)
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.emit_number(TMP, fixed * bg.map_bytes)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
           end
 
           # TMP = how far along the blob this map starts. The stride is a power of two for
@@ -1351,10 +1350,10 @@ module VBlank
           def emit_map_stride(bg)
             shift = Math.log2(bg.map_bytes).to_i
             if 2**shift == bg.map_bytes
-              emit(ASM.lsl_imm(TMP, ACC, shift))
+              @emitter.emit(ASM.lsl_imm(TMP, ACC, shift))
             else
-              emit_number(TMP, bg.map_bytes)
-              emit(ASM.mul(TMP, ACC, TMP))
+              @emitter.emit_number(TMP, bg.map_bytes)
+              @emitter.emit(ASM.mul(TMP, ACC, TMP))
             end
           end
 
@@ -1397,7 +1396,7 @@ module VBlank
             # Remembered as well as written, because a tint walks the whole table from the
             # cartridge and would otherwise put the colours the tiles were drawn in back over
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
-            store_var(ACC, lists.at)
+            @primitives.store_var(ACC, lists.at)
             if lists.area_bytes
               emit_call_cold_routine(walking_colors_routine_label(node.name, bg))
             else
@@ -1427,13 +1426,13 @@ module VBlank
             lists.banks.each_with_index do |groups, set|
               next if groups.empty?
 
-              other_area = gensym
-              load_var(TMP, bg.sets.var)
-              emit(ASM.cmp_imm(TMP, set))
-              emit_branch(:bcond, other_area, cond: :ne)
-              load_var(ACC, lists.at)
+              other_area = @emitter.gensym
+              @primitives.load_var(TMP, bg.sets.var)
+              @emitter.emit(ASM.cmp_imm(TMP, set))
+              @emitter.emit_branch(:bcond, other_area, cond: :ne)
+              @primitives.load_var(ACC, lists.at)
               emit_groups_send(lists, groups)
-              place_label(other_area)
+              @emitter.place_label(other_area)
             end
           end
 
@@ -1444,13 +1443,13 @@ module VBlank
           # would be its own colours written again over the same colours on every tint, for the
           # rest of the game.
           def emit_forget_own_version(node, lists)
-            borrowed = gensym
+            borrowed = @emitter.gensym
             @lowering.value(node.which)
-            emit(ASM.cmp_imm(ACC, lists.count)) # unsigned, as #emit_version_address reads it
-            emit_branch(:bcond, borrowed, cond: :lo)
-            emit_number(ACC, 0)
-            store_var(ACC, lists.at)
-            place_label(borrowed)
+            @emitter.emit(ASM.cmp_imm(ACC, lists.count)) # unsigned, as #emit_version_address reads it
+            @emitter.emit_branch(:bcond, borrowed, cond: :lo)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, lists.at)
+            @emitter.place_label(borrowed)
           end
 
           # One list into each of +groups+, side by side in the version that ACC and +lists+'s
@@ -1459,8 +1458,8 @@ module VBlank
           def emit_groups_send(lists, groups)
             groups.each_with_index do |bank, at|
               unless at.zero?
-                load_var(ACC, lists.at)
-                emit(ASM.add_imm(ACC, ACC, at * COLOR_LIST_BYTES))
+                @primitives.load_var(ACC, lists.at)
+                @emitter.emit(ASM.add_imm(ACC, ACC, at * COLOR_LIST_BYTES))
               end
               @palette_tint.emit_colors_into_bank(BG_PALETTE + (bank * COLOR_LIST_BYTES), COLOR_LIST_UNITS)
             end
@@ -1472,17 +1471,17 @@ module VBlank
           # A walking layer's versions are the area's, a multiply along (see
           # ScreenLayout#walking_color_lists): the area its set names, or its first with +first+.
           def emit_version_address(bg, lists, first: false)
-            emit(ASM.cmp_imm(ACC, lists.count))
-            emit(ASM.mov_imm_cond(:hs, ACC, lists.count))
-            emit(ASM.lsl_imm(TMP, ACC, lists.shift))
+            @emitter.emit(ASM.cmp_imm(ACC, lists.count))
+            @emitter.emit(ASM.mov_imm_cond(:hs, ACC, lists.count))
+            @emitter.emit(ASM.lsl_imm(TMP, ACC, lists.shift))
             if lists.area_bytes && !first
-              load_var(ACC, bg.sets.var)
-              emit_number(SET_STRIDE, lists.area_bytes)
-              emit(ASM.mul(ACC, SET_STRIDE, ACC))
-              emit(ASM.add_reg(TMP, TMP, ACC))
+              @primitives.load_var(ACC, bg.sets.var)
+              @emitter.emit_number(SET_STRIDE, lists.area_bytes)
+              @emitter.emit(ASM.mul(ACC, SET_STRIDE, ACC))
+              @emitter.emit(ASM.add_reg(TMP, TMP, ACC))
             end
-            emit_load_data_address(ACC, lists.blob)
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.emit_load_data_address(ACC, lists.blob)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
           end
 
           # A group is sixteen colours, and a colour is two bytes — so a list is 32 bytes and
@@ -1521,12 +1520,12 @@ module VBlank
           # otherwise stomp a growing rotate/scale right back to "no transform" before
           # the console ever shows it.
           def reset_bg2_affine_matrix
-            write_reg16(REG_BG2PA, FIXED_ONE)
-            write_reg16(REG_BG2PB, 0)
-            write_reg16(REG_BG2PC, 0)
-            write_reg16(REG_BG2PD, FIXED_ONE)
-            store_word_immediate(0, REG_BG2X)
-            store_word_immediate(0, REG_BG2Y)
+            @emitter.write_reg16(REG_BG2PA, FIXED_ONE)
+            @emitter.write_reg16(REG_BG2PB, 0)
+            @emitter.write_reg16(REG_BG2PC, 0)
+            @emitter.write_reg16(REG_BG2PD, FIXED_ONE)
+            @primitives.store_word_immediate(0, REG_BG2X)
+            @primitives.store_word_immediate(0, REG_BG2Y)
             forget_told_turns
           end
 
@@ -1539,7 +1538,7 @@ module VBlank
             @layout.screen.backgrounds.each do |name, background|
               next unless background.affine
 
-              store_word_immediate(0, var_addr(Messages::MadeNames.make(:told_turn, background: name, part: :size)))
+              @primitives.store_word_immediate(0, @primitives.var_addr(Messages::MadeNames.make(:told_turn, background: name, part: :size)))
             end
           end
 
@@ -1555,7 +1554,7 @@ module VBlank
           # boot for a single-mode program — see Drawing#emit_screen).
           def emit_affine_background_hardware(bg)
             @uploads.emit_dma_blob(bg.map, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES), bg.map_units)
-            write_reg16(REG_BG2CNT,
+            @emitter.write_reg16(REG_BG2CNT,
                         bg.priority | bg.in_blocks | BG_256_COLOR | (bg.char_base << CHAR_BASE_SHIFT) |
                         (bg.screen_block << 8) | AFFINE_WRAP | bg.size)
           end
@@ -1605,24 +1604,28 @@ module VBlank
           def emit_bg_affine_matrix(node)
             emit_bg_affine_scale_reciprocal(node.scale)
             @lowering.value(node.angle)                       # r0 = angle in degrees (0..359)
-            emit_load_data_address(TMP, OBJ_SINE_BLOB)   # r1 = sine table base
-            emit(ASM.lsl_imm(2, ACC, 1))                 # r2 = angle * 2 (halfword offset)
-            emit(ASM.add_reg(ADDR, TMP, 2))
-            emit(ASM.ldrsh(2, ADDR))                     # r2 = sin(angle)
-            emit(ASM.add_imm(3, ACC, 90))                # r3 = angle + 90
-            emit(ASM.lsl_imm(3, 3, 1))
-            emit(ASM.add_reg(ADDR, TMP, 3))
-            emit(ASM.ldrsh(3, ADDR))                     # r3 = sin(angle + 90) = cos(angle)
+            @emitter.emit_load_data_address(TMP, OBJ_SINE_BLOB)   # r1 = sine table base
+            @emitter.emit(ASM.lsl_imm(2, ACC, 1))                 # r2 = angle * 2 (halfword offset)
+            @emitter.emit(ASM.add_reg(ADDR, TMP, 2))
+            @emitter.emit(ASM.ldrsh(2, ADDR))                     # r2 = sin(angle)
+            @emitter.emit(ASM.add_imm(3, ACC, 90))                # r3 = angle + 90
+            @emitter.emit(ASM.lsl_imm(3, 3, 1))
+            @emitter.emit(ASM.add_reg(ADDR, TMP, 3))
+            @emitter.emit(ASM.ldrsh(3, ADDR))                     # r3 = sin(angle + 90) = cos(angle)
             emit_bg_scale_sine_and_cosine
-            emit(ASM.rsb_imm(ACC, 2, 0))                 # r0 = -sin(angle)
-            store_halfword_reg(3, REG_BG2PA)
-            store_var(3, BG_AFFINE_PA)
-            store_halfword_reg(2, REG_BG2PB)
-            store_var(2, BG_AFFINE_PB)
-            store_halfword_reg(ACC, REG_BG2PC)
-            store_var(ACC, BG_AFFINE_PC)
-            store_halfword_reg(3, REG_BG2PD)
-            store_var(3, BG_AFFINE_PD)
+            @emitter.emit(ASM.rsb_imm(ACC, 2, 0))                 # r0 = -sin(angle)
+            @emitter.emit_number(TMP, REG_BG2PA)
+            @emitter.emit(ASM.store_halfword(3, TMP))
+            @primitives.store_var(3, BG_AFFINE_PA)
+            @emitter.emit_number(TMP, REG_BG2PB)
+            @emitter.emit(ASM.store_halfword(2, TMP))
+            @primitives.store_var(2, BG_AFFINE_PB)
+            @emitter.emit_number(TMP, REG_BG2PC)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
+            @primitives.store_var(ACC, BG_AFFINE_PC)
+            @emitter.emit_number(TMP, REG_BG2PD)
+            @emitter.emit(ASM.store_halfword(3, TMP))
+            @primitives.store_var(3, BG_AFFINE_PD)
           end
 
           # One over this frame's size, the same divide a resizing sprite does (see
@@ -1631,24 +1634,24 @@ module VBlank
           # variables), so this runs every frame rather than only when scale is in play.
           def emit_bg_affine_scale_reciprocal(scale)
             @lowering.value(scale)                                    # r0 = size, in SCALE_ONE-ths
-            emit(ASM.cmp_imm(ACC, Affine::MIN_SCALE))
-            emit(ASM.mov_imm_cond(:lt, ACC, Affine::MIN_SCALE))
-            emit_number(Divide::DIV_NUM, Build::SCALE_ONE * Affine::ONE_TH)
-            emit_call_divide_routine
-            emit_number(TMP, Affine::MAX)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit(ASM.mov_reg_cond(:gt, ACC, TMP))
-            store_var(ACC, BG_AFFINE_SCALE_RECIP)
+            @emitter.emit(ASM.cmp_imm(ACC, Affine::MIN_SCALE))
+            @emitter.emit(ASM.mov_imm_cond(:lt, ACC, Affine::MIN_SCALE))
+            @emitter.emit_number(Divide::DIV_NUM, Build::SCALE_ONE * Affine::ONE_TH)
+            @divide.emit_call_divide_routine
+            @emitter.emit_number(TMP, Affine::MAX)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit(ASM.mov_reg_cond(:gt, ACC, TMP))
+            @primitives.store_var(ACC, BG_AFFINE_SCALE_RECIP)
           end
 
           # Scale the sine and cosine in r2/r3 by the reciprocal above, back down into
           # 256ths — the background's own copy of SpriteDrawing#emit_scale_sine_and_cosine.
           def emit_bg_scale_sine_and_cosine
-            load_var(4, BG_AFFINE_SCALE_RECIP)
-            emit(ASM.mul(5, 2, 4))
-            emit(ASM.asr_imm(2, 5, 8))
-            emit(ASM.mul(5, 3, 4))
-            emit(ASM.asr_imm(3, 5, 8))
+            @primitives.load_var(4, BG_AFFINE_SCALE_RECIP)
+            @emitter.emit(ASM.mul(5, 2, 4))
+            @emitter.emit(ASM.asr_imm(2, 5, 8))
+            @emitter.emit(ASM.mul(5, 3, 4))
+            @emitter.emit(ASM.asr_imm(3, 5, 8))
           end
 
           # The matrix pivots on the layer's own top-left corner by itself — turn or
@@ -1674,27 +1677,27 @@ module VBlank
           # (Nodes::AffineBackground). It is the "pivot's texture position" above, a number
           # written in the cartridge either way, so naming one costs no instruction.
           def emit_bg_affine_reference_point(px, py, map_x, map_y)
-            load_var(2, BG_AFFINE_PA)
-            emit_number(3, px)
-            emit(ASM.mul(4, 2, 3))                       # r4 = PA * px
-            load_var(2, BG_AFFINE_PB)
-            emit_number(3, py)
-            emit(ASM.mul(5, 2, 3))                       # r5 = PB * py
-            emit(ASM.add_reg(4, 4, 5))                   # r4 = PA*px + PB*py
-            emit_number(ACC, map_x * Affine::ONE_TH)
-            emit(ASM.sub_reg(ACC, ACC, 4))
-            store_word_acc(REG_BG2X)
+            @primitives.load_var(2, BG_AFFINE_PA)
+            @emitter.emit_number(3, px)
+            @emitter.emit(ASM.mul(4, 2, 3))                       # r4 = PA * px
+            @primitives.load_var(2, BG_AFFINE_PB)
+            @emitter.emit_number(3, py)
+            @emitter.emit(ASM.mul(5, 2, 3))                       # r5 = PB * py
+            @emitter.emit(ASM.add_reg(4, 4, 5))                   # r4 = PA*px + PB*py
+            @emitter.emit_number(ACC, map_x * Affine::ONE_TH)
+            @emitter.emit(ASM.sub_reg(ACC, ACC, 4))
+            @primitives.store_word_acc(REG_BG2X)
 
-            load_var(2, BG_AFFINE_PC)
-            emit_number(3, px)
-            emit(ASM.mul(4, 2, 3))                       # r4 = PC * px
-            load_var(2, BG_AFFINE_PD)
-            emit_number(3, py)
-            emit(ASM.mul(5, 2, 3))                       # r5 = PD * py
-            emit(ASM.add_reg(4, 4, 5))                   # r4 = PC*px + PD*py
-            emit_number(ACC, map_y * Affine::ONE_TH)
-            emit(ASM.sub_reg(ACC, ACC, 4))
-            store_word_acc(REG_BG2Y)
+            @primitives.load_var(2, BG_AFFINE_PC)
+            @emitter.emit_number(3, px)
+            @emitter.emit(ASM.mul(4, 2, 3))                       # r4 = PC * px
+            @primitives.load_var(2, BG_AFFINE_PD)
+            @emitter.emit_number(3, py)
+            @emitter.emit(ASM.mul(5, 2, 3))                       # r5 = PD * py
+            @emitter.emit(ASM.add_reg(4, 4, 5))                   # r4 = PC*px + PD*py
+            @emitter.emit_number(ACC, map_y * Affine::ONE_TH)
+            @emitter.emit(ASM.sub_reg(ACC, ACC, 4))
+            @primitives.store_word_acc(REG_BG2Y)
           end
 
           # Scroll one layer: write the window's top-left offset into that layer's scroll
@@ -1717,11 +1720,11 @@ module VBlank
             unless @raster.row_bends.key?(node.name)
               @lowering.value(node.x)        # r0 = scroll x (pixels)
               border&.emit_corner_off_scroll(:x) # ...less the corner of a game's screen in a border
-              store_halfword_acc(BG_HOFS_REGS[bg_num])
+              @primitives.store_halfword_acc(BG_HOFS_REGS[bg_num])
             end
             @lowering.value(node.y)          # r0 = scroll y
             border&.emit_corner_off_scroll(:y)
-            store_halfword_acc(BG_VOFS_REGS[bg_num])
+            @primitives.store_halfword_acc(BG_VOFS_REGS[bg_num])
           end
 
           # What a layer's scroll register holds for the map's corner at the screen's: nought, or in a

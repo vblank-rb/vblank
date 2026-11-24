@@ -143,62 +143,62 @@ module VBlank
           # dozen instructions and a copy or two a row, in a gap the layers are switched off for.
           def emit_stream_view_routine(bg)
             name = bg.stream.name
-            refill = gensym
-            columns_left = gensym
-            rows_down = gensym
-            rows_up = gensym
-            done = gensym
-            strip = gensym
-            piece = gensym
+            refill = @emitter.gensym
+            columns_left = @emitter.gensym
+            rows_down = @emitter.gensym
+            rows_up = @emitter.gensym
+            done = @emitter.gensym
+            strip = @emitter.gensym
+            piece = @emitter.gensym
 
             emit_stream_source(bg)
 
             filled = IR::Nodes::Background.stream_vars(name).last
-            load_var(ACC, filled)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, refill, cond: :eq) # a new map, or a scene that just took over
+            @primitives.load_var(ACC, filled)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, refill, cond: :eq) # a new map, or a scene that just took over
             emit_far_move_check(stream_var(name, :col), stream_var(name, :want_col), refill)
             emit_far_move_check(stream_var(name, :row), stream_var(name, :want_row), refill)
 
             # Columns coming in on the right: the one just past the right edge of what is held.
             emit_strip_steps(name, :col, :want_col, toward: :up, strip: strip, done: columns_left) do |at|
-              emit(ASM.add_imm(STRIP_COL, at, VIEW_COLS))
-              load_var(STRIP_ROW, stream_var(name, :row))
+              @emitter.emit(ASM.add_imm(STRIP_COL, at, VIEW_COLS))
+              @primitives.load_var(STRIP_ROW, stream_var(name, :row))
               emit_column_strip
             end
-            place_label(columns_left)
+            @emitter.place_label(columns_left)
             emit_strip_steps(name, :col, :want_col, toward: :down, strip: strip, done: rows_down) do |at|
-              emit(ASM.mov_reg(STRIP_COL, at))
-              load_var(STRIP_ROW, stream_var(name, :row))
+              @emitter.emit(ASM.mov_reg(STRIP_COL, at))
+              @primitives.load_var(STRIP_ROW, stream_var(name, :row))
               emit_column_strip
             end
-            place_label(rows_down)
+            @emitter.place_label(rows_down)
             emit_strip_steps(name, :row, :want_row, toward: :up, strip: strip, done: rows_up) do |at|
-              emit(ASM.add_imm(STRIP_ROW, at, VIEW_ROWS))
-              load_var(STRIP_COL, stream_var(name, :col))
+              @emitter.emit(ASM.add_imm(STRIP_ROW, at, VIEW_ROWS))
+              @primitives.load_var(STRIP_COL, stream_var(name, :col))
               emit_row_strip
             end
-            place_label(rows_up)
+            @emitter.place_label(rows_up)
             emit_strip_steps(name, :row, :want_row, toward: :down, strip: strip, done: done) do |at|
-              emit(ASM.mov_reg(STRIP_ROW, at))
-              load_var(STRIP_COL, stream_var(name, :col))
+              @emitter.emit(ASM.mov_reg(STRIP_ROW, at))
+              @primitives.load_var(STRIP_COL, stream_var(name, :col))
               emit_row_strip
             end
-            emit_branch(:b, done)
+            @emitter.emit_branch(:b, done)
 
-            place_label(refill)
+            @emitter.place_label(refill)
             emit_view_fill(bg.stream.routine, name, filled, piece)
 
             # The copy of one strip and of one piece of a row, called from the places above.
             # They sit here, jumped over, so they move wherever the routine around them is put.
-            place_label(done)
-            after = gensym
-            emit_branch(:b, after)
-            place_label(strip)
+            @emitter.place_label(done)
+            after = @emitter.gensym
+            @emitter.emit_branch(:b, after)
+            @emitter.place_label(strip)
             emit_strip_routine(bg.stream.routine)
-            place_label(piece)
+            @emitter.place_label(piece)
             emit_row_piece_routine
-            place_label(after)
+            @emitter.place_label(after)
           end
 
           # Fill the whole view now, from the place the background's view is at and the map it
@@ -211,8 +211,8 @@ module VBlank
           # is being put up and whose scroll is put back there with it.
           def emit_stream_fill(bg, at_corner: false)
             name = bg.stream.name
-            emit_number(ACC, 0)
-            store_var(ACC, IR::Nodes::Background.stream_vars(name).last)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, IR::Nodes::Background.stream_vars(name).last)
             x, y = at_corner ? [Build.int(0), Build.int(0)] : IR::Nodes::Background.scroll_vars(name).map { |var| Build.var_ref(var) }
             emit_stream_view(bg.stream, x, y)
           end
@@ -225,13 +225,13 @@ module VBlank
           def emit_stream_map_change(node, bg, done)
             streamed, filled = IR::Nodes::Background.stream_vars(node.name)
             @lowering.value(node.which)
-            emit(ASM.cmp_imm(ACC, bg.map_count))
-            emit_branch(:bcond, done, cond: :hs)
-            store_var(ACC, streamed)
-            emit_number(ACC, 0)
-            store_var(ACC, filled)
+            @emitter.emit(ASM.cmp_imm(ACC, bg.map_count))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @primitives.store_var(ACC, streamed)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, filled)
             # A map the game changes is copied again, as declared, even the one already showing.
-            store_var(ACC, stream_var(node.name, :copied)) if bg.stream.kept
+            @primitives.store_var(ACC, stream_var(node.name, :copied)) if bg.stream.kept
           end
 
           private
@@ -241,8 +241,8 @@ module VBlank
           # cell the view starts in.
           def emit_view_cell(value, var)
             @lowering.value(value)
-            emit(ASM.asr_imm(ACC, ACC, 3))
-            store_var(ACC, var)
+            @emitter.emit(ASM.asr_imm(ACC, ACC, 3))
+            @primitives.store_var(ACC, var)
           end
 
           # The map the strips come from: where it starts in the cartridge, its size and its
@@ -252,18 +252,18 @@ module VBlank
           def emit_stream_source(bg)
             stream = bg.stream
             streamed, = IR::Nodes::Background.stream_vars(stream.name)
-            load_var(ACC, streamed)
-            emit(ASM.lsl_imm(ACC, ACC, MAP_ROW_SHIFT))
-            emit_load_data_address(TMP, stream.table)
-            emit(ASM.add_reg(TMP, TMP, ACC))
-            emit(ASM.ldr_offset(STREAM_SOURCE, TMP, 0))
-            emit(ASM.ldr_offset(STREAM_COLS, TMP, 4))
-            emit(ASM.ldr_offset(STREAM_ROWS, TMP, 8))
-            emit(ASM.ldr_offset(STREAM_BLANK, TMP, 12))
-            emit_load_data_address(TMP, stream.maps)
-            emit(ASM.add_reg(STREAM_SOURCE, STREAM_SOURCE, TMP))
+            @primitives.load_var(ACC, streamed)
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, MAP_ROW_SHIFT))
+            @emitter.emit_load_data_address(TMP, stream.table)
+            @emitter.emit(ASM.add_reg(TMP, TMP, ACC))
+            @emitter.emit(ASM.ldr_offset(STREAM_SOURCE, TMP, 0))
+            @emitter.emit(ASM.ldr_offset(STREAM_COLS, TMP, 4))
+            @emitter.emit(ASM.ldr_offset(STREAM_ROWS, TMP, 8))
+            @emitter.emit(ASM.ldr_offset(STREAM_BLANK, TMP, 12))
+            @emitter.emit_load_data_address(TMP, stream.maps)
+            @emitter.emit(ASM.add_reg(STREAM_SOURCE, STREAM_SOURCE, TMP))
             emit_kept_map_source(stream) if stream.kept
-            emit_number(STREAM_GRID, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
+            @emitter.emit_number(STREAM_GRID, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
           end
 
           # A map the game changes (`set_tile`) is kept in the roomy memory while it is showing, and
@@ -287,61 +287,61 @@ module VBlank
           def emit_kept_map_source(stream)
             streamed, = IR::Nodes::Background.stream_vars(stream.name)
             copied = stream_var(stream.name, :copied)
-            have = gensym
-            load_var(ACC, streamed)
-            emit(ASM.add_imm(ACC, ACC, 1)) # the copy notes its map's number and one, so nought is none
-            load_var(TMP, copied)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, have, cond: :eq)
-            store_var(ACC, copied)
+            have = @emitter.gensym
+            @primitives.load_var(ACC, streamed)
+            @emitter.emit(ASM.add_imm(ACC, ACC, 1)) # the copy notes its map's number and one, so nought is none
+            @primitives.load_var(TMP, copied)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, have, cond: :eq)
+            @primitives.store_var(ACC, copied)
             if stream.kept_bytes / 2 > KEPT_COPY_PIECE_CELLS
               emit_kept_map_copy_in_pieces(stream)
             else
-              emit_number(STRIP_COL, REG_DMA3SAD)
+              @emitter.emit_number(STRIP_COL, REG_DMA3SAD)
               @primitives.with_copy_setup_held(engine: STRIP_COL, spare: TMP) do
-                emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
-                emit_number(ACC, kept_map_address(stream))
-                emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
-                emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
-                emit_number(TMP, DMA_ENABLE | DMA_16BIT)
-                emit(ASM.orr_reg(ACC, ACC, TMP))
-                emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
+                @emitter.emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
+                @emitter.emit_number(ACC, kept_map_address(stream))
+                @emitter.emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
+                @emitter.emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
+                @emitter.emit_number(TMP, DMA_ENABLE | DMA_16BIT)
+                @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
+                @emitter.emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
               end
             end
-            place_label(have)
-            emit_number(STREAM_SOURCE, kept_map_address(stream))
+            @emitter.place_label(have)
+            @emitter.emit_number(STREAM_SOURCE, kept_map_address(stream))
           end
 
           # The copy of #emit_kept_map_source for a background whose biggest map is more than one
           # piece: KEPT_COPY_PIECE_CELLS cells a piece, the last piece what is left. Works in the
           # strip registers, which the strips and the cell write set again after.
           def emit_kept_map_copy_in_pieces(stream)
-            again = gensym
+            again = @emitter.gensym
             from = STRIP_ROW
             to = STRIP_COUNT
             piece = STRIP_ACROSS
             control = STRIP_DOWN
-            emit_number(STRIP_COL, REG_DMA3SAD)
-            emit(ASM.mov_reg(from, STREAM_SOURCE))
-            emit_number(to, kept_map_address(stream))
-            emit_number(piece, KEPT_COPY_PIECE_CELLS)
-            emit_number(control, DMA_ENABLE | DMA_16BIT)
-            emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS)) # the cells left to copy
-            place_label(again)
-            emit(ASM.cmp_reg(ACC, piece))
-            emit(ASM.mov_reg(TMP, ACC))
-            emit(ASM.mov_reg_cond(:gt, TMP, piece)) # this piece: what is left, no more than a piece
+            @emitter.emit_number(STRIP_COL, REG_DMA3SAD)
+            @emitter.emit(ASM.mov_reg(from, STREAM_SOURCE))
+            @emitter.emit_number(to, kept_map_address(stream))
+            @emitter.emit_number(piece, KEPT_COPY_PIECE_CELLS)
+            @emitter.emit_number(control, DMA_ENABLE | DMA_16BIT)
+            @emitter.emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS)) # the cells left to copy
+            @emitter.place_label(again)
+            @emitter.emit(ASM.cmp_reg(ACC, piece))
+            @emitter.emit(ASM.mov_reg(TMP, ACC))
+            @emitter.emit(ASM.mov_reg_cond(:gt, TMP, piece)) # this piece: what is left, no more than a piece
             # Held a piece at a time, so an interrupt still waits no longer than one piece.
             @primitives.with_copy_setup_held(engine: STRIP_COL, spare: STRIP_SCRATCH) do
-              emit(ASM.str_offset(from, STRIP_COL, 0))
-              emit(ASM.str_offset(to, STRIP_COL, Primitives::COPY_TO_STEP))
-              emit(ASM.orr_reg(STRIP_SCRATCH, TMP, control))
-              emit(ASM.str_offset(STRIP_SCRATCH, STRIP_COL, Primitives::COPY_START_STEP))
+              @emitter.emit(ASM.str_offset(from, STRIP_COL, 0))
+              @emitter.emit(ASM.str_offset(to, STRIP_COL, Primitives::COPY_TO_STEP))
+              @emitter.emit(ASM.orr_reg(STRIP_SCRATCH, TMP, control))
+              @emitter.emit(ASM.str_offset(STRIP_SCRATCH, STRIP_COL, Primitives::COPY_START_STEP))
             end
-            emit(ASM.add_reg_lsl(from, from, TMP, 1)) # two bytes a cell
-            emit(ASM.add_reg_lsl(to, to, TMP, 1))
-            emit(ASM.subs_reg(ACC, ACC, TMP))
-            emit_branch(:bcond, again, cond: :ne)
+            @emitter.emit(ASM.add_reg_lsl(from, from, TMP, 1)) # two bytes a cell
+            @emitter.emit(ASM.add_reg_lsl(to, to, TMP, 1))
+            @emitter.emit(ASM.subs_reg(ACC, ACC, TMP))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
           end
 
           # Where the copy of a map the game changes is kept: room in the roomy memory for the
@@ -382,42 +382,42 @@ module VBlank
           # counting the loop in memory would cost every pass of every loop that writes a cell.
           def emit_map_cell_write_routine(bg)
             name = bg.stream.name
-            done = gensym
-            emit(ASM.push(LoopForm::COUNTER, LoopForm::LIMIT))
+            done = @emitter.gensym
+            @emitter.emit(ASM.push(LoopForm::COUNTER, LoopForm::LIMIT))
             emit_stream_source(bg)
-            load_var(STRIP_COL, stream_var(name, :write_col))
-            load_var(STRIP_ROW, stream_var(name, :write_row))
+            @primitives.load_var(STRIP_COL, stream_var(name, :write_col))
+            @primitives.load_var(STRIP_ROW, stream_var(name, :write_row))
             # One unsigned compare catches both ends, as in the strip copy.
-            emit(ASM.cmp_reg(STRIP_COL, STREAM_COLS))
-            emit_branch(:bcond, done, cond: :hs)
-            emit(ASM.cmp_reg(STRIP_ROW, STREAM_ROWS))
-            emit_branch(:bcond, done, cond: :hs)
-            load_var(STRIP_COUNT, stream_var(name, :write_cell))
-            emit(ASM.mul(TMP, STRIP_ROW, STREAM_COLS))
-            emit(ASM.add_reg(TMP, TMP, STRIP_COL))
-            emit(ASM.add_reg_lsl(TMP, STREAM_SOURCE, TMP, 1)) # two bytes a cell
-            emit(ASM.store_halfword(STRIP_COUNT, TMP))
+            @emitter.emit(ASM.cmp_reg(STRIP_COL, STREAM_COLS))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.cmp_reg(STRIP_ROW, STREAM_ROWS))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @primitives.load_var(STRIP_COUNT, stream_var(name, :write_cell))
+            @emitter.emit(ASM.mul(TMP, STRIP_ROW, STREAM_COLS))
+            @emitter.emit(ASM.add_reg(TMP, TMP, STRIP_COL))
+            @emitter.emit(ASM.add_reg_lsl(TMP, STREAM_SOURCE, TMP, 1)) # two bytes a cell
+            @emitter.emit(ASM.store_halfword(STRIP_COUNT, TMP))
             # The grid holds VIEW_COLS columns and VIEW_ROWS rows from the place it was last
             # filled for, once it has been filled for this map.
-            load_var(ACC, IR::Nodes::Background.stream_vars(name).last)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, done, cond: :eq)
-            load_var(ACC, stream_var(name, :col))
-            emit(ASM.sub_reg(ACC, STRIP_COL, ACC))
-            emit(ASM.cmp_imm(ACC, VIEW_COLS))
-            emit_branch(:bcond, done, cond: :hs)
-            load_var(ACC, stream_var(name, :row))
-            emit(ASM.sub_reg(ACC, STRIP_ROW, ACC))
-            emit(ASM.cmp_imm(ACC, VIEW_ROWS))
-            emit_branch(:bcond, done, cond: :hs)
-            emit(ASM.and_imm(TMP, STRIP_ROW, STREAM_CELLS - 1))
-            emit(ASM.lsl_imm(TMP, TMP, 5))
-            emit(ASM.and_imm(STRIP_SCRATCH, STRIP_COL, STREAM_CELLS - 1))
-            emit(ASM.orr_reg(TMP, TMP, STRIP_SCRATCH))
-            emit(ASM.add_reg_lsl(TMP, STREAM_GRID, TMP, 1))
-            emit(ASM.store_halfword(STRIP_COUNT, TMP))
-            place_label(done)
-            emit(ASM.pop(LoopForm::COUNTER, LoopForm::LIMIT))
+            @primitives.load_var(ACC, IR::Nodes::Background.stream_vars(name).last)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
+            @primitives.load_var(ACC, stream_var(name, :col))
+            @emitter.emit(ASM.sub_reg(ACC, STRIP_COL, ACC))
+            @emitter.emit(ASM.cmp_imm(ACC, VIEW_COLS))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @primitives.load_var(ACC, stream_var(name, :row))
+            @emitter.emit(ASM.sub_reg(ACC, STRIP_ROW, ACC))
+            @emitter.emit(ASM.cmp_imm(ACC, VIEW_ROWS))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.and_imm(TMP, STRIP_ROW, STREAM_CELLS - 1))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 5))
+            @emitter.emit(ASM.and_imm(STRIP_SCRATCH, STRIP_COL, STREAM_CELLS - 1))
+            @emitter.emit(ASM.orr_reg(TMP, TMP, STRIP_SCRATCH))
+            @emitter.emit(ASM.add_reg_lsl(TMP, STREAM_GRID, TMP, 1))
+            @emitter.emit(ASM.store_halfword(STRIP_COUNT, TMP))
+            @emitter.place_label(done)
+            @emitter.emit(ASM.pop(LoopForm::COUNTER, LoopForm::LIMIT))
           end
 
           # One cell of a map brought in a strip at a time changed (`set_tile`): its column, row and
@@ -426,19 +426,19 @@ module VBlank
           def emit_streamed_tile_write(node, bg, entry)
             name = bg.stream.name
             @lowering.value(node.col)
-            store_var(ACC, stream_var(name, :write_col))
+            @primitives.store_var(ACC, stream_var(name, :write_col))
             @lowering.value(node.row)
-            store_var(ACC, stream_var(name, :write_row))
-            emit_number(ACC, entry)
-            store_var(ACC, stream_var(name, :write_cell))
+            @primitives.store_var(ACC, stream_var(name, :write_row))
+            @emitter.emit_number(ACC, entry)
+            @primitives.store_var(ACC, stream_var(name, :write_cell))
             @lowering.statement(Build.call(bg.stream.writer))
           end
 
           # The copy of a map the game changes is made again once something asks for it: after
           # show_map, and as the background goes up, when nothing is known to be copied yet.
           def emit_kept_map_forgotten(stream)
-            emit_number(ACC, 0)
-            store_var(ACC, stream_var(stream.name, :copied))
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, stream_var(stream.name, :copied))
           end
 
           private
@@ -448,12 +448,12 @@ module VBlank
           # inside 0..2*MOST_STRIPS for a short move either way, and anything else, a negative
           # number included, reads as more.
           def emit_far_move_check(held, want, refill)
-            load_var(ACC, want)
-            load_var(TMP, held)
-            emit(ASM.sub_reg(ACC, ACC, TMP))
-            emit(ASM.add_imm(ACC, ACC, MOST_STRIPS))
-            emit(ASM.cmp_imm(ACC, (2 * MOST_STRIPS) + 1))
-            emit_branch(:bcond, refill, cond: :hs)
+            @primitives.load_var(ACC, want)
+            @primitives.load_var(TMP, held)
+            @emitter.emit(ASM.sub_reg(ACC, ACC, TMP))
+            @emitter.emit(ASM.add_imm(ACC, ACC, MOST_STRIPS))
+            @emitter.emit(ASM.cmp_imm(ACC, (2 * MOST_STRIPS) + 1))
+            @emitter.emit_branch(:bcond, refill, cond: :hs)
           end
 
           # Move the place the grid holds one cell at a time toward where the view is, copying
@@ -463,36 +463,36 @@ module VBlank
           def emit_strip_steps(name, held_what, want_what, toward:, strip:, done:)
             held = stream_var(name, held_what)
             want = stream_var(name, want_what)
-            again = gensym
-            place_label(again)
-            load_var(ACC, held)
-            load_var(TMP, want)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, done, cond: toward == :up ? :ge : :le)
+            again = @emitter.gensym
+            @emitter.place_label(again)
+            @primitives.load_var(ACC, held)
+            @primitives.load_var(TMP, want)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, done, cond: toward == :up ? :ge : :le)
             if toward == :up
-              emit(ASM.add_imm(TMP, ACC, 1)) # the grid's place moves on; ACC keeps where it was
-              store_var(TMP, held)
+              @emitter.emit(ASM.add_imm(TMP, ACC, 1)) # the grid's place moves on; ACC keeps where it was
+              @primitives.store_var(TMP, held)
             else
-              emit(ASM.sub_imm(ACC, ACC, 1))
-              store_var(ACC, held)
+              @emitter.emit(ASM.sub_imm(ACC, ACC, 1))
+              @primitives.store_var(ACC, held)
             end
             yield ACC
-            emit_branch(:bl, strip)
-            emit_branch(:b, again)
+            @emitter.emit_branch(:bl, strip)
+            @emitter.emit_branch(:b, again)
           end
 
           # A strip down one column: VIEW_ROWS cells, each a row further down.
           def emit_column_strip
-            emit_number(STRIP_COUNT, VIEW_ROWS)
-            emit_number(STRIP_ACROSS, 0)
-            emit_number(STRIP_DOWN, 1)
+            @emitter.emit_number(STRIP_COUNT, VIEW_ROWS)
+            @emitter.emit_number(STRIP_ACROSS, 0)
+            @emitter.emit_number(STRIP_DOWN, 1)
           end
 
           # A strip along one row: VIEW_COLS cells, each a column further right.
           def emit_row_strip
-            emit_number(STRIP_COUNT, VIEW_COLS)
-            emit_number(STRIP_ACROSS, 1)
-            emit_number(STRIP_DOWN, 0)
+            @emitter.emit_number(STRIP_COUNT, VIEW_COLS)
+            @emitter.emit_number(STRIP_ACROSS, 1)
+            @emitter.emit_number(STRIP_DOWN, 0)
           end
 
           # Fill the whole view, a row at a time, for the place the view is at now, and mark that the
@@ -517,84 +517,84 @@ module VBlank
           # at fixed places from the top, so the switch as it was cannot be pushed there for each
           # row: it gets a slot of its own below them, FILL_IME, set aside only in such a game.
           def emit_view_fill(routine, name, filled, piece)
-            again = gensym
-            map_cells = gensym
-            blank_rest = gensym
-            next_row = gensym
-            load_var(ACC, stream_var(name, :want_col))
-            store_var(ACC, stream_var(name, :col))
-            load_var(TMP, stream_var(name, :want_row))
-            store_var(TMP, stream_var(name, :row))
-            emit(ASM.mov_reg(FILL_ROW, TMP))
-            emit(ASM.add_imm(TMP, TMP, VIEW_ROWS))
+            again = @emitter.gensym
+            map_cells = @emitter.gensym
+            blank_rest = @emitter.gensym
+            next_row = @emitter.gensym
+            @primitives.load_var(ACC, stream_var(name, :want_col))
+            @primitives.store_var(ACC, stream_var(name, :col))
+            @primitives.load_var(TMP, stream_var(name, :want_row))
+            @primitives.store_var(TMP, stream_var(name, :row))
+            @emitter.emit(ASM.mov_reg(FILL_ROW, TMP))
+            @emitter.emit(ASM.add_imm(TMP, TMP, VIEW_ROWS))
             # Kept on the stack for the whole fill, since the registers are all taken: the view's
             # first column, the row past its last, and the blank cell.
             held = @primitives.interrupts_copy?
-            emit(ASM.sub_imm(STACK_POINTER, STACK_POINTER, 4)) if held # FILL_IME
-            emit(ASM.push(ACC, TMP, STREAM_BLANK))
-            emit_number(FILL_COPIER, REG_DMA3SAD)
+            @emitter.emit(ASM.sub_imm(STACK_POINTER, STACK_POINTER, 4)) if held # FILL_IME
+            @emitter.emit(ASM.push(ACC, TMP, STREAM_BLANK))
+            @emitter.emit_number(FILL_COPIER, REG_DMA3SAD)
 
-            place_label(again)
+            @emitter.place_label(again)
             # Every row of the view writes VIEW_COLS cells, in whichever runs.
             @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(routine), VIEW_COLS * 2)
             @primitives.emit_copies_held(engine: FILL_COPIER, spare: ACC, saved_at: FILL_IME)
-            emit(ASM.and_imm(FILL_GRID_ROW, FILL_ROW, STREAM_CELLS - 1))
-            emit(ASM.add_reg_lsl(FILL_GRID_ROW, STREAM_GRID, FILL_GRID_ROW, 6)) # 64 bytes a grid row
-            emit(ASM.ldr_offset(PIECE_COL, STACK_POINTER, FILL_FIRST_COL))
-            emit_number(PIECE_COUNT, VIEW_COLS)
+            @emitter.emit(ASM.and_imm(FILL_GRID_ROW, FILL_ROW, STREAM_CELLS - 1))
+            @emitter.emit(ASM.add_reg_lsl(FILL_GRID_ROW, STREAM_GRID, FILL_GRID_ROW, 6)) # 64 bytes a grid row
+            @emitter.emit(ASM.ldr_offset(PIECE_COL, STACK_POINTER, FILL_FIRST_COL))
+            @emitter.emit_number(PIECE_COUNT, VIEW_COLS)
             emit_blank_piece_source
             # Above or below the map, the whole row is blank. One unsigned test, as in the strip.
-            emit(ASM.cmp_reg(FILL_ROW, STREAM_ROWS))
-            emit_branch(:bcond, blank_rest, cond: :hs)
-            emit(ASM.cmp_imm(PIECE_COL, 0))
-            emit_branch(:bcond, map_cells, cond: :ge)
-            emit(ASM.rsb_imm(PIECE_COUNT, PIECE_COL, 0)) # the cells left of the map...
-            emit(ASM.cmp_imm(PIECE_COUNT, VIEW_COLS))
-            emit(ASM.mov_imm_cond(:gt, PIECE_COUNT, VIEW_COLS)) # ...no more than the row holds
-            emit_branch(:bl, piece)
+            @emitter.emit(ASM.cmp_reg(FILL_ROW, STREAM_ROWS))
+            @emitter.emit_branch(:bcond, blank_rest, cond: :hs)
+            @emitter.emit(ASM.cmp_imm(PIECE_COL, 0))
+            @emitter.emit_branch(:bcond, map_cells, cond: :ge)
+            @emitter.emit(ASM.rsb_imm(PIECE_COUNT, PIECE_COL, 0)) # the cells left of the map...
+            @emitter.emit(ASM.cmp_imm(PIECE_COUNT, VIEW_COLS))
+            @emitter.emit(ASM.mov_imm_cond(:gt, PIECE_COUNT, VIEW_COLS)) # ...no more than the row holds
+            @emitter.emit_branch(:bl, piece)
 
-            place_label(map_cells)
+            @emitter.place_label(map_cells)
             emit_cells_left_in_row(next_row)
-            emit(ASM.cmp_reg(PIECE_COL, STREAM_COLS))
-            emit_branch(:bcond, blank_rest, cond: :ge) # the row is past the map's right edge
-            emit(ASM.sub_reg(ACC, STREAM_COLS, PIECE_COL))
-            emit(ASM.cmp_reg(PIECE_COUNT, ACC))
-            emit(ASM.mov_reg_cond(:gt, PIECE_COUNT, ACC)) # no further than the map's right edge
-            emit(ASM.mul(ACC, FILL_ROW, STREAM_COLS))
-            emit(ASM.add_reg(ACC, ACC, PIECE_COL))
-            emit(ASM.add_reg_lsl(PIECE_SOURCE, STREAM_SOURCE, ACC, 1)) # two bytes a cell
-            emit_number(PIECE_CONTROL, DMA_ENABLE | DMA_16BIT)
-            emit_branch(:bl, piece)
+            @emitter.emit(ASM.cmp_reg(PIECE_COL, STREAM_COLS))
+            @emitter.emit_branch(:bcond, blank_rest, cond: :ge) # the row is past the map's right edge
+            @emitter.emit(ASM.sub_reg(ACC, STREAM_COLS, PIECE_COL))
+            @emitter.emit(ASM.cmp_reg(PIECE_COUNT, ACC))
+            @emitter.emit(ASM.mov_reg_cond(:gt, PIECE_COUNT, ACC)) # no further than the map's right edge
+            @emitter.emit(ASM.mul(ACC, FILL_ROW, STREAM_COLS))
+            @emitter.emit(ASM.add_reg(ACC, ACC, PIECE_COL))
+            @emitter.emit(ASM.add_reg_lsl(PIECE_SOURCE, STREAM_SOURCE, ACC, 1)) # two bytes a cell
+            @emitter.emit_number(PIECE_CONTROL, DMA_ENABLE | DMA_16BIT)
+            @emitter.emit_branch(:bl, piece)
             emit_cells_left_in_row(next_row)
             emit_blank_piece_source
-            place_label(blank_rest)
-            emit_branch(:bl, piece)
+            @emitter.place_label(blank_rest)
+            @emitter.emit_branch(:bl, piece)
 
-            place_label(next_row)
+            @emitter.place_label(next_row)
             @primitives.emit_copies_let_through(engine: FILL_COPIER, spare: ACC, saved_at: FILL_IME)
-            emit(ASM.add_imm(FILL_ROW, FILL_ROW, 1))
-            emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_END_ROW))
-            emit(ASM.cmp_reg(FILL_ROW, ACC))
-            emit_branch(:bcond, again, cond: :lt)
-            emit(ASM.pop(ACC, TMP, STREAM_BLANK))
-            emit(ASM.add_imm(STACK_POINTER, STACK_POINTER, 4)) if held
-            emit_number(ACC, 1)
-            store_var(ACC, filled)
+            @emitter.emit(ASM.add_imm(FILL_ROW, FILL_ROW, 1))
+            @emitter.emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_END_ROW))
+            @emitter.emit(ASM.cmp_reg(FILL_ROW, ACC))
+            @emitter.emit_branch(:bcond, again, cond: :lt)
+            @emitter.emit(ASM.pop(ACC, TMP, STREAM_BLANK))
+            @emitter.emit(ASM.add_imm(STACK_POINTER, STACK_POINTER, 4)) if held
+            @emitter.emit_number(ACC, 1)
+            @primitives.store_var(ACC, filled)
           end
 
           # PIECE_COUNT = the cells of the row still to write, from PIECE_COL to the view's right
           # edge, or a jump to +next_row+ when there are none.
           def emit_cells_left_in_row(next_row)
-            emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_FIRST_COL))
-            emit(ASM.add_imm(ACC, ACC, VIEW_COLS))
-            emit(ASM.subs_reg(PIECE_COUNT, ACC, PIECE_COL))
-            emit_branch(:bcond, next_row, cond: :eq)
+            @emitter.emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_FIRST_COL))
+            @emitter.emit(ASM.add_imm(ACC, ACC, VIEW_COLS))
+            @emitter.emit(ASM.subs_reg(PIECE_COUNT, ACC, PIECE_COL))
+            @emitter.emit_branch(:bcond, next_row, cond: :eq)
           end
 
           # The next piece copies the blank cell kept on the stack, the same halfword each time.
           def emit_blank_piece_source
-            emit_number(PIECE_CONTROL, DMA_ENABLE | DMA_16BIT | DMA_SRC_FIXED)
-            emit(ASM.add_imm(PIECE_SOURCE, STACK_POINTER, FILL_BLANK))
+            @emitter.emit_number(PIECE_CONTROL, DMA_ENABLE | DMA_16BIT | DMA_SRC_FIXED)
+            @emitter.emit(ASM.add_imm(PIECE_SOURCE, STACK_POINTER, FILL_BLANK))
           end
 
           # Copy one run of a row into the grid: PIECE_COUNT cells (one or more) from
@@ -609,30 +609,30 @@ module VBlank
           # GBATEK, "DMA Transfers": the engine starts as the control word is written and the
           # processor waits until it is done, so the next copy can be set up straight after.
           def emit_row_piece_routine
-            done = gensym
-            emit(ASM.and_imm(ACC, PIECE_COL, STREAM_CELLS - 1))
-            emit(ASM.rsb_imm(TMP, ACC, STREAM_CELLS)) # cells before the grid's right edge
-            emit(ASM.cmp_reg(PIECE_COUNT, TMP))
-            emit(ASM.mov_reg_cond(:lt, TMP, PIECE_COUNT))
-            emit(ASM.add_reg_lsl(ACC, FILL_GRID_ROW, ACC, 1))
-            emit(ASM.str_offset(PIECE_SOURCE, FILL_COPIER, 0))
-            emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_TO_STEP))
-            emit(ASM.orr_reg(ACC, PIECE_CONTROL, TMP))
-            emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_START_STEP))
-            emit(ASM.add_reg(PIECE_COL, PIECE_COL, TMP))
-            emit(ASM.subs_reg(PIECE_COUNT, PIECE_COUNT, TMP))
-            emit_branch(:bcond, done, cond: :eq)
+            done = @emitter.gensym
+            @emitter.emit(ASM.and_imm(ACC, PIECE_COL, STREAM_CELLS - 1))
+            @emitter.emit(ASM.rsb_imm(TMP, ACC, STREAM_CELLS)) # cells before the grid's right edge
+            @emitter.emit(ASM.cmp_reg(PIECE_COUNT, TMP))
+            @emitter.emit(ASM.mov_reg_cond(:lt, TMP, PIECE_COUNT))
+            @emitter.emit(ASM.add_reg_lsl(ACC, FILL_GRID_ROW, ACC, 1))
+            @emitter.emit(ASM.str_offset(PIECE_SOURCE, FILL_COPIER, 0))
+            @emitter.emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_TO_STEP))
+            @emitter.emit(ASM.orr_reg(ACC, PIECE_CONTROL, TMP))
+            @emitter.emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_START_STEP))
+            @emitter.emit(ASM.add_reg(PIECE_COL, PIECE_COL, TMP))
+            @emitter.emit(ASM.subs_reg(PIECE_COUNT, PIECE_COUNT, TMP))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
             # The rest, from the grid row's first cell.
-            emit(ASM.tst_imm(PIECE_CONTROL, DMA_SRC_FIXED))
-            emit(ASM.lsl_imm(TMP, TMP, 1))
-            emit(ASM.add_reg_cond(:eq, PIECE_SOURCE, PIECE_SOURCE, TMP))
-            emit(ASM.str_offset(PIECE_SOURCE, FILL_COPIER, 0))
-            emit(ASM.str_offset(FILL_GRID_ROW, FILL_COPIER, Primitives::COPY_TO_STEP))
-            emit(ASM.orr_reg(ACC, PIECE_CONTROL, PIECE_COUNT))
-            emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_START_STEP))
-            emit(ASM.add_reg(PIECE_COL, PIECE_COL, PIECE_COUNT))
-            place_label(done)
-            emit(ASM.return)
+            @emitter.emit(ASM.tst_imm(PIECE_CONTROL, DMA_SRC_FIXED))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))
+            @emitter.emit(ASM.add_reg_cond(:eq, PIECE_SOURCE, PIECE_SOURCE, TMP))
+            @emitter.emit(ASM.str_offset(PIECE_SOURCE, FILL_COPIER, 0))
+            @emitter.emit(ASM.str_offset(FILL_GRID_ROW, FILL_COPIER, Primitives::COPY_TO_STEP))
+            @emitter.emit(ASM.orr_reg(ACC, PIECE_CONTROL, PIECE_COUNT))
+            @emitter.emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_START_STEP))
+            @emitter.emit(ASM.add_reg(PIECE_COL, PIECE_COL, PIECE_COUNT))
+            @emitter.place_label(done)
+            @emitter.emit(ASM.return)
           end
 
           # Copy one strip of cells from the map into the grid, as described in the strip
@@ -640,35 +640,35 @@ module VBlank
           # its column and row each taken round 32, which is what lets the grid come round again
           # under the view.
           def emit_strip_routine(routine)
-            again = gensym
-            blank = gensym
+            again = @emitter.gensym
+            blank = @emitter.gensym
             @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(routine), 2)
-            place_label(again)
-            emit(ASM.mov_reg(ACC, STREAM_BLANK))
+            @emitter.place_label(again)
+            @emitter.emit(ASM.mov_reg(ACC, STREAM_BLANK))
             # One unsigned compare catches both ends: a negative column or row reads as a very
             # large number, so anything outside 0...size fails the same test.
-            emit(ASM.cmp_reg(STRIP_COL, STREAM_COLS))
-            emit_branch(:bcond, blank, cond: :hs)
-            emit(ASM.cmp_reg(STRIP_ROW, STREAM_ROWS))
-            emit_branch(:bcond, blank, cond: :hs)
-            emit(ASM.mul(TMP, STRIP_ROW, STREAM_COLS))
-            emit(ASM.add_reg(TMP, TMP, STRIP_COL))
-            emit(ASM.lsl_imm(TMP, TMP, 1)) # two bytes a cell
-            emit(ASM.add_reg(TMP, TMP, STREAM_SOURCE))
-            emit(ASM.load_halfword(ACC, TMP))
-            place_label(blank)
-            emit(ASM.and_imm(TMP, STRIP_ROW, STREAM_CELLS - 1))
-            emit(ASM.lsl_imm(TMP, TMP, 5))
-            emit(ASM.and_imm(STRIP_SCRATCH, STRIP_COL, STREAM_CELLS - 1))
-            emit(ASM.orr_reg(TMP, TMP, STRIP_SCRATCH))
-            emit(ASM.lsl_imm(TMP, TMP, 1))
-            emit(ASM.add_reg(TMP, TMP, STREAM_GRID))
-            emit(ASM.store_halfword(ACC, TMP))
-            emit(ASM.add_reg(STRIP_COL, STRIP_COL, STRIP_ACROSS))
-            emit(ASM.add_reg(STRIP_ROW, STRIP_ROW, STRIP_DOWN))
-            emit(ASM.subs_imm(STRIP_COUNT, STRIP_COUNT, 1))
-            emit_branch(:bcond, again, cond: :ne)
-            emit(ASM.return)
+            @emitter.emit(ASM.cmp_reg(STRIP_COL, STREAM_COLS))
+            @emitter.emit_branch(:bcond, blank, cond: :hs)
+            @emitter.emit(ASM.cmp_reg(STRIP_ROW, STREAM_ROWS))
+            @emitter.emit_branch(:bcond, blank, cond: :hs)
+            @emitter.emit(ASM.mul(TMP, STRIP_ROW, STREAM_COLS))
+            @emitter.emit(ASM.add_reg(TMP, TMP, STRIP_COL))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1)) # two bytes a cell
+            @emitter.emit(ASM.add_reg(TMP, TMP, STREAM_SOURCE))
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.place_label(blank)
+            @emitter.emit(ASM.and_imm(TMP, STRIP_ROW, STREAM_CELLS - 1))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 5))
+            @emitter.emit(ASM.and_imm(STRIP_SCRATCH, STRIP_COL, STREAM_CELLS - 1))
+            @emitter.emit(ASM.orr_reg(TMP, TMP, STRIP_SCRATCH))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))
+            @emitter.emit(ASM.add_reg(TMP, TMP, STREAM_GRID))
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit(ASM.add_reg(STRIP_COL, STRIP_COL, STRIP_ACROSS))
+            @emitter.emit(ASM.add_reg(STRIP_ROW, STRIP_ROW, STRIP_DOWN))
+            @emitter.emit(ASM.subs_imm(STRIP_COUNT, STRIP_COUNT, 1))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
+            @emitter.emit(ASM.return)
           end
         end
       end
