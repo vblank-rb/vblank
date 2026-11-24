@@ -1069,6 +1069,68 @@ module VBlank
             place_label(past)
           end
 
+          # Stamp a tile at a place known while building, leaving the pixels of +see_through+ (a tile
+          # with the see-through pixels marked, Image#with_tile_see_through_marked) as they are. A row
+          # copy cannot skip a pixel, so each row is written a pair of pixels at a time, the unit
+          # video memory takes: a pair both drawn is copied across whole, a pair with one drawn pixel
+          # has that half spliced in, and a pair with none is not touched. Pixels outside the draw
+          # area are left out the same way, so nothing is written past the end of a line.
+          #
+          # Must only be asked of a tile #stamp_in_pairs? accepts. A tile whose pixels all draw is
+          # blitted whole instead (#emit_blit_buffered).
+          def emit_stamp_tile_buffered(node, see_through)
+            x = const_int(node.x)
+            y = const_int(node.y)
+            emit_load_data_address(BLIT_SRC, @framebuffer.indexed_blob(node.name))
+            load_var(BLIT_TO, BACKBUF)
+            see_through.height.times do |row|
+              next unless (@framebuffer.clip_top...@framebuffer.clip_bottom).cover?(y + row)
+
+              emit_stamp_row_in_pairs(see_through, row, x, y + row)
+            end
+          end
+
+          # Whether +picture+ (a tile with its see-through pixels marked) at the constant place +node+
+          # has to be, and can be, stamped by #emit_stamp_tile_buffered: some pixel of it is not
+          # drawn, it starts on an even column, and its row reaches by a halfword's short offset.
+          def stamp_in_pairs?(node, picture)
+            x = const_int(node.x)
+            y = const_int(node.y)
+            return false unless x && y && x.even? && picture.width.even? && picture.width <= 254
+
+            (0...(picture.width * picture.height)).any? { |at| !picture.drawn_at?(at) }
+          end
+
+          def emit_stamp_row_in_pairs(picture, row, x, screen_row)
+            pairs = (0...(picture.width / 2)).filter_map do |pair|
+              low = stamped_pixel?(picture, row, pair * 2, x)
+              high = stamped_pixel?(picture, row, (pair * 2) + 1, x)
+              [pair * 2, low, high] if low || high
+            end
+            return if pairs.empty?
+
+            emit_add_const(BLIT_FROM, BLIT_SRC, row * picture.width, SPARE)
+            emit_add_const(BLIT_LEFT, BLIT_TO, (screen_row * SCREEN_WIDTH) + x, SPARE)
+            pairs.each do |column, low, high|
+              if low && high
+                emit(ASM.load_halfword_offset(ACC, BLIT_FROM, column))
+                emit(ASM.store_halfword_offset(ACC, BLIT_LEFT, column))
+              else
+                emit(ASM.ldrb_offset(ACC, BLIT_FROM, column + (low ? 0 : 1)))
+                emit(ASM.load_halfword_offset(SPARE, BLIT_LEFT, column))
+                emit_splice_index_reg(SPARE, ACC, !low)
+                emit(ASM.store_halfword_offset(SPARE, BLIT_LEFT, column))
+              end
+            end
+          end
+
+          # Whether the pixel at +column+ of a tile's +row+ is drawn, with the tile at +x+: it draws
+          # something and sits inside the draw area.
+          def stamped_pixel?(picture, row, column, x)
+            picture.drawn_at?((row * picture.width) + column) &&
+              (@framebuffer.clip_left...@framebuffer.clip_right).cover?(x + column)
+          end
+
           # Draw a whole picture on the hidden page.
           #
           # The picture is shipped a second time as one number a pixel (see

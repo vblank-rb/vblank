@@ -1722,7 +1722,13 @@ module VBlank
                 picture = @layout.bitmaps.fetch(tiles[index]) do
                   raise LoweringError, "blit of undefined image #{tiles[index].inspect}"
                 end
-                emit_blit_of(Build.blit(tiles[index], c * tile_w, r * tile_h), picture.with_tile_see_through_marked)
+                stamp = Build.blit(tiles[index], c * tile_w, r * tile_h)
+                marked = picture.with_tile_see_through_marked
+                if @lowering.mode == :buffered && @buffered.stamp_in_pairs?(stamp, marked)
+                  @buffered.emit_stamp_tile_buffered(stamp, marked)
+                else
+                  emit_blit_of(stamp, marked)
+                end
               end
             end
           end
