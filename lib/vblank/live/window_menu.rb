@@ -25,6 +25,11 @@ module VBlank
       # A save or load: +action+ is :save or :load, and +slot+ is QUICK_SLOT or one of STATE_SLOTS.
       StateRequest = Data.define(:action, :slot)
 
+      # A match asked for under the Match heading: +does+ is what its line does (MATCH_LINES), +text+
+      # the address or room code typed for a join (nil for a host), and +players+ how many a host waits
+      # for (nil for a join, where the host decides).
+      MatchRequest = Data.define(:does, :text, :players)
+
       # A heading on the bar and the lines under it. A heading of states is one a window offers
       # only where states can be kept: not in a match with other players.
       Heading = Data.define(:name, :lines) do
@@ -44,24 +49,31 @@ module VBlank
       #   slot, which is also +place+: 0 for the quick state, 1 to 10 for the others). A line with a
       #   +shortcut+ shows that at its right; one without shows whether the slot holds a state, and when
       #   it was taken.
+      # - :match asks for a match (a MatchRequest doing +does+): at once for a host, and for a join once
+      #   what +asks+ names (:address or :code) is typed on the line and Enter pressed.
       # +shortcut+ is the key that does the same outside the menu, written dim at the right.
       # +line_before+ draws a line across the box above it, to set it apart.
-      Line = Data.define(:label, :kind, :does, :setting, :range, :step, :written, :shortcut, :line_before, :place, :request) do
+      # A slider's +written+ is :count too, the number alone ("4"), and its +setting+ may be one the
+      # menu keeps for itself rather than a Settings one (Menu::OWN_SETTINGS).
+      Line = Data.define(:label, :kind, :does, :setting, :range, :step, :written, :shortcut, :line_before, :place, :request,
+                         :asks) do
         def self.action(label, does, shortcut: nil, line_before: false)
-          new(label, :action, does, nil, nil, nil, nil, shortcut, line_before, 0, nil)
+          new(label, :action, does, nil, nil, nil, nil, shortcut, line_before, 0, nil, nil)
         end
 
         def self.slider(label, setting, range, step, written)
-          new(label, :slider, nil, setting, range, step, written, nil, false, 0, nil)
+          new(label, :slider, nil, setting, range, step, written, nil, false, 0, nil, nil)
         end
 
-        def self.check(label, setting, shortcut: nil) = new(label, :check, nil, setting, nil, nil, nil, shortcut, false, 0, nil)
-        def self.button(label, place) = new(label, :button, nil, nil, nil, nil, nil, nil, false, place, nil)
-        def self.hotkey(label, place) = new(label, :hotkey, nil, nil, nil, nil, nil, nil, false, place, nil)
+        def self.check(label, setting, shortcut: nil) = new(label, :check, nil, setting, nil, nil, nil, shortcut, false, 0, nil, nil)
+        def self.button(label, place) = new(label, :button, nil, nil, nil, nil, nil, nil, false, place, nil, nil)
+        def self.hotkey(label, place) = new(label, :hotkey, nil, nil, nil, nil, nil, nil, false, place, nil, nil)
 
         def self.state(label, action, slot, shortcut: nil)
-          new(label, :state, nil, nil, nil, nil, nil, shortcut, false, slot, StateRequest.new(action: action, slot: slot))
+          new(label, :state, nil, nil, nil, nil, nil, shortcut, false, slot, StateRequest.new(action: action, slot: slot), nil)
         end
+
+        def self.match(label, does, asks: nil) = new(label, :match, does, nil, nil, nil, nil, nil, false, 0, nil, asks)
 
         # Whether the line saves or loads a state.
         def state? = kind == :state
@@ -106,6 +118,50 @@ module VBlank
         Heading.new(DEVELOPER, [Line.action("Game variables", :variables), Line.check("Show frame time", :frame_time)])
       ])
 
+      # The heading that starts a match with players on other computers, which a window shows over a game
+      # for several players when it can play one (Menu#match_players=), and never inside a match. The
+      # game sees none of it: the match starts the game again, every player's at once, and the game
+      # sees only its players arriving. A host waits for as many players as Players says, from two to
+      # the most the game takes; MATCH_PLAYERS is the most any game takes.
+      #
+      # "By address" is a direct connection: the host's computer listens, and the others type its
+      # address (Network::DirectPlay). "With a room code" meets on the relay (Network::RelayPlay): the
+      # host is told a code, and the others type it.
+      MATCH = "Match"
+      MATCH_PLAYERS = (2..16)
+      MATCH_HEADING = Ractor.make_shareable(
+        Heading.new(MATCH, [Line.slider("Players", :match_players, MATCH_PLAYERS, 1, :count),
+                            Line.match("Host by address", :host),
+                            Line.match("Host with a room code", :host_code),
+                            Line.match("Join by address", :join_address, asks: :address),
+                            Line.match("Join by room code", :join_code, asks: :code)])
+      )
+
+      # The most characters typed for an address or a room code.
+      TYPED_MOST = 64
+
+      # The keys an address has besides letters and digits, by SDL's scancodes: the full stop, and the
+      # key with the semicolon on it, which types the colon before the port (an address has no
+      # semicolon, and the colon needs Shift).
+      PERIOD_KEY = 55
+      SEMICOLON_KEY = 51
+      MINUS_KEY = 45
+
+      # The character key +key+ types for what a match line +asks+: an address takes letters, digits,
+      # dots, a colon and hyphens; a room code takes letters, in capitals, and digits. Nil for a key that
+      # types none there.
+      def self.typed_for_match(key, asks)
+        typed = case key
+                when PERIOD_KEY then "."
+                when SEMICOLON_KEY then ":"
+                when MINUS_KEY then "-"
+                when LETTER_KEYS, DIGIT_KEYS then typed_letter(key)
+                end
+        return typed if asks == :address
+
+        typed&.upcase if typed&.match?(/\A[a-z0-9]\z/)
+      end
+
       # The window of the game's variables, which Developer, Game variables opens over the game as it
       # plays: a line for each variable and its value, VARIABLE_ROWS at a time under a heading that
       # stays put, scrolled with up and down. Letters typed find the variables whose names have them
@@ -138,10 +194,12 @@ module VBlank
       # The headings a window shows: Keys has a line for each of the console's +buttons+ (by their
       # names in IR::Buttons::NAMES), so a Genesis game's window lists C and no Select, and +states+
       # false leaves out Save and Load. +developer+ false leaves out Developer, for a frontend that
-      # has no window of the game's variables yet. A line keeps its +place+ among every button's.
-      def self.headings(states: true, buttons: ADVANCE_BUTTONS, developer: true)
+      # has no window of the game's variables yet. +match+ true puts MATCH_HEADING after Game. A line
+      # keeps its +place+ among every button's.
+      def self.headings(states: true, buttons: ADVANCE_BUTTONS, developer: true, match: false)
         shown = states ? HEADINGS : HEADINGS.reject(&:states?)
         shown = shown.reject { |heading| heading.name == DEVELOPER } unless developer
+        shown = [shown.first, MATCH_HEADING, *shown.drop(1)] if match
         shown.map do |heading|
           lines = heading.lines.select { |line| line.kind != :button || buttons.include?(IR::Buttons::NAMES.fetch(line.place)) }
           lines.length == heading.lines.length ? heading : heading.with(lines: lines)

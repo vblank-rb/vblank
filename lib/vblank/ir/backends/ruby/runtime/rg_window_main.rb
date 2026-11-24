@@ -51,7 +51,10 @@ module VBlankWindow
 
     played = window
     window = nil # VBlankScript.play closes it
-    VBlankScript.play(written, options.merge(state_folder: launch["state_folder"]), window: played, network: network)
+    menu_match = launch["menu_match"]&.transform_keys(&:to_sym) unless match
+    from_menu = ->(request, shown) { match_from_menu(written, menu_match, request, shown) } if menu_match
+    VBlankScript.play(written, options.merge(state_folder: launch["state_folder"]), window: played, network: network,
+                                                                                    match_from_menu: from_menu)
   rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, ArgumentError => e
     warn e.message
     exit 1
@@ -93,17 +96,50 @@ module VBlankWindow
     lockstep
   end
 
-  # Lockstep#begin_match, which waits on the others; a window keeps showing +line+ meanwhile, and a
+  # Lockstep#begin_match, which waits on the others; a window keeps showing +lines+ meanwhile, and a
   # window closed while it waits stops the wait.
-  def self.begin_while_waiting(lockstep, window, line)
+  def self.begin_while_waiting(lockstep, window, *lines)
     return lockstep.begin_match unless window
 
     began = Thread.new { lockstep.begin_match }
     until began.join(VBlank::Live::BuildWatch::FRAME_SECONDS)
-      window.show_waiting([line])
+      window.show_waiting(lines)
       raise Interrupt if window.stop?
     end
     began.value
+  end
+
+  # The match a player chose in the window's menu (+request+, a Live::WindowMenu::MatchRequest), met as
+  # vblank run's flags meet one (Live::MatchPlay.meeting_for) and begun, or nil where it could not be:
+  # why is said in the window and on the terminal, and the game plays again on its own. What a host is
+  # told to pass on (its address, or its room code) is shown in the window while it waits, for a player
+  # with no terminal to read. +menu_match+ is what vblank run said of it (CLI#menu_match_launch): the
+  # network's files, loaded the first time, the game's file and the consoles' names.
+  def self.match_from_menu(written, menu_match, request, window)
+    menu_match.fetch(:parts).each { |part| require part }
+    VBlank::Network::Refused.console_titles = menu_match.fetch(:console_titles)
+    said = []
+    say = lambda do |line|
+      puts line
+      said << line
+    end
+    meeting = VBlank::Live::MatchPlay.meeting_for(request)
+    play = VBlank::Live::MatchPlay.new(VBlank::Live::MatchPlay.facts_from_plain(written.match), game_file: menu_match.fetch(:game_file),
+                                                                                              say: say, **meeting.to_h)
+    lockstep = play.open
+    begin
+      begin_while_waiting(lockstep, window, *said, play.waiting_line || "Joining the match")
+    rescue Interrupt
+      lockstep.leave
+      raise
+    end
+    puts "The match has begun. You are player #{lockstep.player}."
+    lockstep
+  rescue *match_failures => e
+    words = VBlank::Live::MatchPlay.failure_message(e)
+    warn words
+    window.tell_in_box(words)
+    nil
   end
 
   # A match played with no window: this computer's player holds the keys +match+ names, every

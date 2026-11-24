@@ -510,7 +510,125 @@ class TestMenu < Minitest::Test
     refute menu.messages_shown?
   end
 
+  # A menu over a game for several players offers a match, under a heading after Game: how many
+  # players a host waits for, and the four ways to start one. A menu told nothing of a match (a game
+  # for one player, a match already begun, the desktop build and the web page) has none.
+  def test_a_menu_offers_a_match_only_when_told_how_many_players_it_can_take
+    refute_includes headings_of(opened), WindowMenu::MATCH
+
+    menu = opened(match_players: 4)
+    assert_equal ["Game", WindowMenu::MATCH], headings_of(menu).first(2)
+    menu.press(:right)
+    assert_equal ["Players", "Host by address", "Host with a room code", "Join by address", "Join by room code"],
+                 lines_under(menu)
+
+    menu.match_players = nil
+    refute_includes headings_of(menu), WindowMenu::MATCH
+  end
+
+  # Players is a slider from two to the most the game takes, and the host waits for that many.
+  def test_host_asks_for_a_match_of_the_players_chosen_and_closes_the_menu
+    menu = on_match_line(5, "Players")
+    5.times { menu.press(:right) }
+    assert_includes drawn_words(menu).map(&:text), "5"
+    menu.press(:down)
+    menu.press(:enter)
+
+    assert_equal WindowMenu::MatchRequest.new(does: :host, text: nil, players: 5), menu.take_match_request
+    refute menu.open?
+    assert_nil menu.take_match_request, "asked once"
+  end
+
+  def test_a_room_code_host_asks_for_the_relay
+    menu = on_match_line(4, "Host with a room code")
+    menu.press(:enter)
+
+    assert_equal WindowMenu::MatchRequest.new(does: :host_code, text: nil, players: 2), menu.take_match_request
+  end
+
+  # Join by address waits for the address to be typed, shown on its line as it is typed, and Enter
+  # asks to join it. The key with the semicolon on it types the colon an address has before its port.
+  def test_join_by_address_takes_the_address_typed_then_enter
+    menu = on_match_line(4, "Join by address")
+    menu.press(:enter)
+    assert menu.typing?
+
+    "127.0.0.1;7777".each_char { |char| menu.type_key(scancode_of(char)) }
+    menu.type_key(scancode_of("8"))
+    menu.type_key(WindowMenu::BACKSPACE_KEY)
+    assert_includes drawn_words(menu).map(&:text), "127.0.0.1:7777_"
+    assert_nil menu.take_match_request, "nothing is asked before Enter"
+    menu.press(:enter)
+
+    assert_equal WindowMenu::MatchRequest.new(does: :join_address, text: "127.0.0.1:7777", players: nil), menu.take_match_request
+    refute menu.typing?
+    refute menu.open?
+  end
+
+  # A room code is written in capitals, as the relay makes it, whatever is typed.
+  def test_join_by_room_code_writes_the_code_in_capitals
+    menu = on_match_line(4, "Join by room code")
+    menu.press(:enter)
+    "ab12".each_char { |char| menu.type_key(scancode_of(char)) }
+    menu.type_key(scancode_of(".")) # a code has no dot
+    menu.press(:enter)
+
+    assert_equal WindowMenu::MatchRequest.new(does: :join_code, text: "AB12", players: nil), menu.take_match_request
+  end
+
+  # Enter with nothing typed asks for nothing, and closing gives up the typing and keeps the menu open.
+  def test_typing_is_given_up_by_closing_and_asks_nothing_when_empty
+    menu = on_match_line(4, "Join by address")
+    menu.press(:enter)
+    menu.press(:enter)
+    assert_nil menu.take_match_request
+
+    assert menu.cancel_typing
+    refute menu.typing?
+    assert menu.open?
+    refute menu.cancel_typing, "nothing left to give up"
+  end
+
   private
+
+  def headings_of(menu)
+    names = []
+    menu.toggle unless menu.open?
+    first = menu.open_heading
+    loop do
+      names << menu.open_heading
+      menu.press(:right)
+      break if menu.open_heading == first
+    end
+    names
+  end
+
+  def lines_under(menu)
+    menu.press(:down)
+    lines = [menu.chosen_line]
+    lines << menu.tap { menu.press(:down) }.chosen_line until menu.chosen_line == lines.first && lines.size > 1
+    lines[0...-1]
+  end
+
+  # An open menu offering a match for up to +most+ players, on the line called +label+ under Match.
+  def on_match_line(most, label)
+    menu = opened(match_players: most)
+    menu.press(:right)
+    menu.press(:down)
+    menu.press(:down) until menu.chosen_line == label
+    menu
+  end
+
+  # SDL's scancode for the key that types +char+ (the semicolon's key for a colon).
+  def scancode_of(char)
+    case char
+    when "a".."z" then WindowMenu::LETTER_KEYS.min + char.ord - "a".ord
+    when "1".."9" then WindowMenu::DIGIT_KEYS.min + char.to_i - 1
+    when "0" then WindowMenu::DIGIT_KEYS.max
+    when "." then WindowMenu::PERIOD_KEY
+    when ";" then WindowMenu::SEMICOLON_KEY
+    end
+  end
 
   def opened(**options)
     menu = Menu.new(**options)

@@ -23,6 +23,10 @@ module VBlank
       MATCH_PARTS = %w[vblank/logger.rb vblank/playthroughs/tape.rb vblank/network.rb vblank/live/headless.rb
                        vblank/live/match_play.rb].freeze
 
+      # MATCH_PARTS as the paths of the library's files, for a window that loads them only once its menu
+      # starts a match (rg_window_main.rb's match_from_menu).
+      def self.match_part_paths = MATCH_PARTS.map { |part| VBlank.root.join("lib", part).to_s }
+
       # Becomes the window's process: +launch+ is what rg_window_main.rb reads (its comment lists
       # it), and +helper_pipe+ the end of the pipe the helper says what it is doing on, kept open
       # across, or nil when no helper builds (the game is written already). +zjit+ starts the new

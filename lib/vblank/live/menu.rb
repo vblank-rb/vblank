@@ -43,11 +43,18 @@ module VBlank
       # taken, or that it is empty); a menu given none has no Save or Load heading, which is how a
       # match with other players has none. +developer+ false leaves out the Developer heading, as a
       # frontend with no window of the game's variables does (WindowMenu.headings).
+      #
+      # +match_players+ is the most players the game takes, for a window that can start a match from
+      # its menu (WindowMenu::MATCH_HEADING); nil for none.
       def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES,
-                     controls: Settings.new(key_names: NumberedKeys.new), states: nil, developer: true)
+                     controls: Settings.new(key_names: NumberedKeys.new), states: nil, developer: true, match_players: nil)
         @scales = scales
         @controls = controls
         @developer = developer
+        @match_most = match_players
+        @match_players = WindowMenu::MATCH_PLAYERS.min # how many a host waits for, the Players line's
+        @match_request = nil
+        @typing = nil # the match line being typed into, and what is typed: [line, text]
         self.states = states
         self.settings = settings
         @picture = picture
@@ -64,11 +71,39 @@ module VBlank
       # has them once its game does. The menu starts again on its first heading.
       def states=(states)
         @states = states
-        @headings = WindowMenu.headings(states: states ? true : false, developer: @developer,
-                                        buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
         @state_request = nil
-        @heading = 0
-        @row = -1
+        show_headings
+      end
+
+      # The most players the game takes, which offers a match from the menu (WindowMenu::MATCH_HEADING),
+      # or nil, which takes the offer away: inside a match, or once one is asked for. The menu starts
+      # again on its first heading.
+      def match_players=(most)
+        @match_most = most
+        @match_players = @match_players.clamp(WindowMenu::MATCH_PLAYERS.min, most) if most
+        @typing = nil
+        show_headings
+      end
+
+      # The match the player asked for (a WindowMenu::MatchRequest), once, or nil. The window ends the
+      # game being played and starts the match.
+      def take_match_request
+        request = @match_request
+        @match_request = nil
+        request
+      end
+
+      def match_request_pending? = !@match_request.nil?
+
+      # Whether an address or a room code is being typed on a match line: the window hands the menu the
+      # keys that type (#type_key), and Escape gives it up (#cancel_typing) rather than closing the window.
+      def typing? = !@typing.nil?
+
+      # Gives up what is being typed, and keeps the menu open. Gives whether anything was.
+      def cancel_typing
+        was = typing?
+        @typing = nil
+        was
       end
 
       # What the player asked to save or load (a WindowMenu::StateRequest), once, or nil. The window
@@ -102,6 +137,7 @@ module VBlank
         @open = !@open
         @heading = 0
         @row = -1
+        @typing = nil
         @controls.capture_cancel
       end
 
@@ -113,8 +149,12 @@ module VBlank
 
       # One of :up, :down, :left, :right, :enter or :close, pressed while the menu is open.
       def press(key)
+        return cancel_typing if key == :close && typing?
         return toggle if key == :close
         return press_on_bar(key) if @row.negative?
+        return ask_typed_match if key == :enter && typing?
+
+        @typing = nil # moving off the line gives up what was typed on it
 
         line = lines[@row]
         case key
@@ -169,7 +209,11 @@ module VBlank
       # Key +key+ (SDL's scancode) pressed while the window of variables is open and the menu is not: a
       # letter, digit or underscore goes on the end of what the window finds, and Backspace takes the
       # last off. Gives whether the key was the window's.
+      #
+      # While a match line is being typed into (#typing?), the key types the address or room code there
+      # instead (WindowMenu.typed_for_match).
       def type_key(key)
+        return type_for_match(key) if typing? && @open
         return false unless @variables_open && !@open
 
         if key == WindowMenu::BACKSPACE_KEY
@@ -280,6 +324,51 @@ module VBlank
 
       def lines = @headings[@heading].lines
 
+      # The headings shown, for the states, the console's buttons and the match offered now, from the
+      # first heading.
+      def show_headings
+        @headings = WindowMenu.headings(states: @states ? true : false, developer: @developer, match: !@match_most.nil?,
+                                        buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
+        @heading = 0
+        @row = -1
+      end
+
+      # The settings a slider moves that the menu keeps for itself, not the player's Settings, which the
+      # settings file keeps: they last as long as the window.
+      OWN_SETTINGS = %i[match_players].freeze
+
+      # A slider's number now.
+      def slider_value(line) = OWN_SETTINGS.include?(line.setting) ? @match_players : @settings.setting(line.setting)
+
+      # A key typed on a match line: a character it takes, or Backspace taking the last off. Gives whether
+      # the key was the line's.
+      def type_for_match(key)
+        line, text = @typing
+        if key == WindowMenu::BACKSPACE_KEY
+          @typing = [line, text[0...-1]]
+          return true
+        end
+        typed = WindowMenu.typed_for_match(key, line.asks) or return false
+        @typing = [line, text + typed] if text.length < WindowMenu::TYPED_MOST
+        true
+      end
+
+      # Enter on a match line being typed into: the match asked for with what is typed, unless nothing is.
+      def ask_typed_match
+        line, text = @typing
+        return if text.empty?
+
+        ask_match_and_close(line, text)
+      end
+
+      # A match asked for from +line+, and the menu closed, as the window ends the game to start it.
+      def ask_match_and_close(line, text)
+        @match_request = WindowMenu::MatchRequest.new(does: line.does, text: text,
+                                                      players: (@match_players if text.nil?))
+        @typing = nil
+        @open = false
+      end
+
       def press_on_bar(key)
         case key
         when :left, :right then move_heading(key)
@@ -294,13 +383,17 @@ module VBlank
 
       def slide(line, direction)
         least, most = limits(line)
-        now = @settings.setting(line.setting)
-        @settings = @settings.with(line.setting => (now + (direction * line.step)).clamp(least, most))
+        moved = (slider_value(line) + (direction * line.step)).clamp(least, most)
+        return @match_players = moved if line.setting == :match_players
+
+        @settings = @settings.with(line.setting => moved)
       end
 
-      # How far a slider goes: the window's size no further than the frontend allows.
+      # How far a slider goes: the window's size no further than the frontend allows, and a match's
+      # players no more than the game takes.
       def limits(line)
         return [[line.range.min, @scales.min].max, [line.range.max, @scales.max].min] if line.setting == :scale
+        return [line.range.min, [line.range.max, @match_most].min] if line.setting == :match_players
 
         [line.range.min, line.range.max]
       end
@@ -311,6 +404,7 @@ module VBlank
         when :button then @controls.capture_for_button(line.place)
         when :hotkey then @controls.capture_for_hotkey(line.place)
         when :state then ask_state_and_close(line.request)
+        when :match then line.asks ? @typing = [line, +""] : ask_match_and_close(line, nil)
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
@@ -513,8 +607,18 @@ module VBlank
         when :check then size(:check)
         when :button, :hotkey then width_of(@controls.text_for(line))
         when :state then width_of(state_line_words(line))
+        when :match then [width_of(match_line_words(line)), *(width_of("W" * 16) if line.asks)].max
         else line.shortcut ? width_of(line.shortcut) : 0
         end
+      end
+
+      # What a match line shows at its right: what is typed on it, with a mark where the next letter goes,
+      # or what to do to begin typing.
+      def match_line_words(line)
+        return "" unless line.asks
+        return "#{@typing.last}_" if @typing&.first == line
+
+        "Enter, then type"
       end
 
       # What a state line shows at its right: its key, or when its slot's state was taken.
@@ -533,6 +637,9 @@ module VBlank
         when :state
           text = state_line_words(line)
           add_words_in_row(text, right - width_of(text), y, row, :dim)
+        when :match
+          text = match_line_words(line)
+          add_words_in_row(text, right - width_of(text), y, row, @typing&.first == line ? :fast : :dim) unless text.empty?
         end
       end
 
@@ -542,7 +649,7 @@ module VBlank
         add_box(x, y, wide, high, size(:frame_corner), :frame)
         inset = pixels(2)
         least, most = limits(line)
-        value = @settings.setting(line.setting)
+        value = slider_value(line)
         travel = wide - size(:grab) - (2 * inset)
         along = most > least ? travel * (value - least) / (most - least) : 0
         add_box(x + inset + along, y + inset, size(:grab), high - (2 * inset), pixels(2), :grab)
@@ -554,6 +661,7 @@ module VBlank
         case line.written
         when :times then "#{value}x"
         when :percent then "#{value}%"
+        when :count then value.to_s
         when :window then "#{value}x  (#{@picture[0] * value} × #{@picture[1] * value})"
         end
       end

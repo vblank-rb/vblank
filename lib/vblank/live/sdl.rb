@@ -565,7 +565,7 @@ module VBlank
       # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
       # picture before it asks). Escape's press is read, not whether it is down now: Escape giving up
       # a choice is still down as the next picture is shown, and must not stop the play then.
-      def stop? = @closed || (!@picture_limit.nil? && @pictures_shown >= @picture_limit)
+      def stop? = @closed || @menu.match_request_pending? || (!@picture_limit.nil? && @pictures_shown >= @picture_limit)
 
       # The most pictures a play shows (vblank run's --pictures), nil for no limit, told by the Session as
       # it begins, and the count started again. A picture drawn while the game is held (paused, or the
@@ -575,6 +575,16 @@ module VBlank
         @picture_limit = most
         @pictures_shown = 0
       end
+
+      # Offers a match from the menu, for a game that takes up to +most_players+ (WindowMenu::MATCH_HEADING);
+      # nil takes the offer away, as inside a match.
+      def offer_match(most_players)
+        @menu.match_players = most_players
+      end
+
+      # The match the player chose in the menu (a WindowMenu::MatchRequest), once, or nil. While one is
+      # waiting to be taken the play stops (#stop?), so the game can start again as the match.
+      def take_match_request = @menu.take_match_request
 
       # The speed the menu sets while Tab is held, as SDL last heard it (#show reads what SDL has
       # heard), and 1 while it is not, whichever pass it is asked for.
@@ -1297,6 +1307,7 @@ module VBlank
           @kept_from_game << scancode
           return write_settings_soon
         end
+        return if read_typed_key(scancode, repeat)
         return @closed = true if scancode == ESCAPE && !repeat
         return if read_variables_key(scancode, repeat)
 
@@ -1329,6 +1340,19 @@ module VBlank
       def read_variables_key(scancode, repeat)
         moves = MENU_KEYS[scancode]
         taken = if %i[up down].include?(moves) then @menu.press_on_variables(moves)
+                elsif !repeat || scancode == WindowMenu::BACKSPACE_KEY then @menu.type_key(scancode)
+                end
+        @kept_from_game << scancode if taken
+        taken
+      end
+
+      # While an address or room code is typed in the menu (Menu#typing?), the keys that type it are the
+      # menu's, held Backspace too, and Escape gives up the typing rather than closing the window. The
+      # arrows and Enter still work the menu. Gives whether the key was taken.
+      def read_typed_key(scancode, repeat)
+        return false unless @menu.typing?
+
+        taken = if scancode == ESCAPE then !repeat && @menu.cancel_typing
                 elsif !repeat || scancode == WindowMenu::BACKSPACE_KEY then @menu.type_key(scancode)
                 end
         @kept_from_game << scancode if taken

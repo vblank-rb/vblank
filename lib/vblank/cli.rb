@@ -796,6 +796,11 @@ module VBlank
       one computer is slow, every computer waits for it, and the game does not
       change. A game with no `players:` for a computer cannot be hosted.
 
+      You can also start a match from the window's menu (F1), under Match: host by
+      address or with a room code, or join by address or by room code. The game
+      starts again as the match. A game with `menu: false` has no menu, so use
+      --host and --join for it.
+
       With --browser, serve the game as a web page instead, and print its address.
       Open it in a browser to play. Change the game file and reload the page: the
       page is built again from the file, and if the build stops, the page says
@@ -1359,9 +1364,11 @@ module VBlank
                                        .slot(game_file: game_file, console: console, settings: given_settings, shell: shell)
       library = VBlank::Live::WrittenGames.library_key
       match = !match_launch(game_file).nil?
-      unless slot.current?(console: console, settings: given_settings, library: library, match: match)
+      # A game whose menu can start a match is written with what a match needs to know of it too.
+      facts = match || !menu_match_launch(game_file, game).nil?
+      unless slot.current?(console: console, settings: given_settings, library: library, match: facts)
         pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
-                                                    slot: slot, library: library, match: match, shell: shell)
+                                                    slot: slot, library: library, match: facts, shell: shell)
       end
       VBlank::Live::WindowProcess.become(window_launch(game_file, game, console, slot.script_path, pid), helper_pipe: pipe,
                                                                                                       zjit: zjit_on?, match: match, shell: shell)
@@ -1384,7 +1391,7 @@ module VBlank
       match = match_launch(game_file)
       { title: game.title, width: width, height: height, pixel_size: described.pixel_size, menu: game.menu?,
         buttons: described.buttons, state_folder: state_folder_name(game, match), written_path: written,
-        helper_pid: pid, yjit: options[:yjit], match: match, shell: options[:shell],
+        helper_pid: pid, yjit: options[:yjit], match: match, shell: options[:shell], menu_match: menu_match_launch(game_file, game),
         options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
                    "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
                    "config-dir": options[:config_dir], "record-sound": options[:record_sound],
@@ -1407,6 +1414,18 @@ module VBlank
 
       { game_file: game_file, host: options[:host], join: options[:join], relay: options[:relay], players: options[:players],
         input_delay: options[:input_delay], window: options[:window] != false, keys: options[:keys] || [],
+        console_titles: VBlank::Console.kits.to_h { |kit| [kit.name.to_s, kit.title] } }
+    end
+
+    # What the window's process is told so its menu can start a match (WindowMenu::MATCH_HEADING): the
+    # network's files, which it loads only when a match is chosen (Live::WindowProcess.match_part_paths),
+    # the game's file for the line the others join with, and the consoles' names; nil where the menu
+    # offers none: a match given by flags, a shell, no window, or a game with no menu. Whether the game
+    # is for several players is known once it is built, and the window asks that itself.
+    def menu_match_launch(game_file, game)
+      return nil if options[:host] || options[:join] || options[:shell] || options[:window] == false || !game.menu?
+
+      { game_file: game_file, parts: VBlank::Live::WindowProcess.match_part_paths,
         console_titles: VBlank::Console.kits.to_h { |kit| [kit.name.to_s, kit.title] } }
     end
 

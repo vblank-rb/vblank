@@ -597,6 +597,45 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A match chosen in the menu ends the play, so the window can start the game again as the match,
+  # and is handed over once.
+  def test_a_match_chosen_in_the_menu_stops_the_play_and_is_handed_over_once
+    window = open_window
+    window.offer_match(4)
+    [SDL::MENU, SDL::KEY_CODES[:right], SDL::KEY_CODES[:down], SDL::KEY_CODES[:down], SDL::KEY_CODES[:enter]].each do |key|
+      press_key(key)
+      press_key(key, down: false)
+    end
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert window.stop?
+    assert_equal VBlank::Live::WindowMenu::MatchRequest.new(does: :host, text: nil, players: 2), window.take_match_request
+    refute window.stop?
+  ensure
+    window&.close
+  end
+
+  # Escape while an address is typed gives up the typing, not the play; the letters typed are the
+  # menu's, never the game's.
+  def test_escape_while_typing_an_address_gives_up_the_typing
+    window = open_window
+    window.offer_match(4)
+    [SDL::MENU, SDL::KEY_CODES[:right], *[SDL::KEY_CODES[:down]] * 4, SDL::KEY_CODES[:enter], 4].each do |key|
+      press_key(key)
+      press_key(key, down: false) unless key == 4
+    end
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_empty window.held_buttons(1), "the letter typed is not the game's"
+
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    refute window.stop?
+    assert_nil window.take_match_request
+  ensure
+    window&.close
+  end
+
   # A box too big for the window makes the window bigger, a whole number of times the picture, as the
   # desktop build's does: a Color game's window at the least scale is its 160 by 144 screen, too small
   # for what is wrong with a settings file. Answered, the window goes back to the player's size.

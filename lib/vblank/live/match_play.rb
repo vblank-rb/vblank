@@ -28,6 +28,23 @@ module VBlank
       # MatchFacts from their plain values (WrittenGame#match).
       def self.facts_from_plain(plain) = MatchFacts.new(**plain.transform_keys(&:to_sym))
 
+      # How a match is met, as #initialize takes it: the port to host on or true, the address or room
+      # code to join, whether it is on the relay, and how many players a host waits for.
+      Meeting = Data.define(:host, :join, :relay, :players)
+
+      # The Meeting a match chosen in the window's menu asks for (a WindowMenu::MatchRequest): a host by
+      # address listens on Network::DirectPlay::DEFAULT_PORT, a host with a room code makes a room on
+      # the usual relay, and a join goes to the address or room code typed.
+      def self.meeting_for(request)
+        players = request.players
+        case request.does
+        when :host then Meeting.new(host: Network::DirectPlay::DEFAULT_PORT.to_s, join: nil, relay: nil, players: players)
+        when :host_code then Meeting.new(host: true, join: nil, relay: true, players: players)
+        when :join_address then Meeting.new(host: nil, join: request.text, relay: nil, players: nil)
+        when :join_code then Meeting.new(host: nil, join: request.text, relay: true, players: nil)
+        end
+      end
+
       # What stops a match, each already in plain words.
       FAILURES = [Network::Refused, Network::Desync, Network::ConnectionLost, Network::MatchCutOff, Network::ConnectionFailed,
                   Network::VersionMismatch, Network::RoomRefused, Network::BadMessage].freeze

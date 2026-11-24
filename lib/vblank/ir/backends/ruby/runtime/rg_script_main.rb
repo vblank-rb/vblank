@@ -66,7 +66,12 @@ module VBlankScript
   #
   # A shell's window offers save states only while its game plays, never its menu or its unpacking
   # (Original::Shell::Part#keeps_states?), so a window opened for one is opened with none.
-  def self.play(written, options, window: nil, network: nil)
+  #
+  # +match_from_menu+, where the window can start a match from its menu (only vblank run's can), is
+  # called with the match the player chose there (a Live::WindowMenu::MatchRequest) and the window,
+  # and gives back the match begun, or nil where none could be. The game being played ends, and
+  # starts again as the match, with no Save or Load and no Match heading while it lasts.
+  def self.play(written, options, window: nil, network: nil, match_from_menu: nil)
     game = written.live_game
     states = options.fetch(:state_folder, written.state_folder)
     if window
@@ -92,7 +97,15 @@ module VBlankScript
     ensure
       window.withdraw_states if written.shell
     end
+    most_players = match_from_menu && !written.shell && players_for_menu_match(written)
+    window.offer_match(most_players) if most_players && !network
     rate = written.shell ? play_shell(written, window, options, play_game) : play_game.call(game)
+    while most_players && (request = window.take_match_request)
+      network = match_from_menu.call(request, window)
+      window.offer_match(network ? nil : most_players)
+      network ? window.withdraw_states : window.offer_states(states)
+      rate = play_game.call(written.live_game) # the match, or the game again where none began
+    end
     say_rate(written.title, rate, game.frame_seconds) if rate
     VBlank::Live::MatchPlay.summary_lines(network).each { |line| puts line } if network
   rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError,
@@ -104,6 +117,16 @@ module VBlankScript
   ensure
     window&.close
     write_recorded_sound(recording, options[:"record-sound"]) if recording # a play that went wrong is the one most worth hearing
+  end
+
+  # The most players a match chosen in the menu can hold, for a game written with what a match needs to
+  # know of it (WrittenGame#match) and built for several players; nil for any other, whose menu offers no
+  # match. A game that names no most is offered the most any game takes.
+  def self.players_for_menu_match(written)
+    facts = written.match
+    return nil unless facts && facts["several_players"]
+
+    facts["max_players"] || VBlank::Live::WindowMenu::MATCH_PLAYERS.max
   end
 
   # What +recording+ kept, written to +path+, as vblank run says it.
