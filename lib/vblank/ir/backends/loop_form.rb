@@ -139,12 +139,12 @@ module VBlank
           [below.lhs.name, below.rhs]
         end
 
-        # Whether +node+ names any of +names+ but by reading it in a value.
+        # Whether +node+ writes any of +names+. A read is a var_ref, and what else writes a variable
+        # is listed in Reach::VARIABLES_OF, which a test holds to what the interpreter writes.
         def names_any?(node, names)
           return false if node.kind == :var_ref
 
-          written = Reach::VARIABLES_OF[node.kind]&.call(node) || []
-          (written + node.operand_nodes.grep(Symbol)).intersect?(names)
+          (Reach::VARIABLES_OF[node.kind]&.call(node) || []).intersect?(names)
         end
 
         # The number the statement just before +node+ sets +variable+ to, or nil.
