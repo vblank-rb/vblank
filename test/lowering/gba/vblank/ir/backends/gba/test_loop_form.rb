@@ -545,6 +545,50 @@ class TestLoopForm < Minitest::Test
     assert_includes rom.buffer, VBlank::IR::Backends::GBA::ASM.pop(LoopForm::COUNTER), "and put back"
   end
 
+  # A timer's handler runs from the interrupt, which can land anywhere in the loop. A count held
+  # in a register would show the handler an `i` the loop has not written back, and the handler's
+  # own write to `i` or `n` would be overwritten as the loop ends. So a counted while the handler
+  # (or a routine it calls) names keeps its count in memory.
+  private def counted_while_shape(handler: nil)
+    rom = VBlank.build("WHILEIRQ", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      i = var :i, 0
+      n = var :n, 6
+      total = var :total, 0
+      seen = var :seen, 0
+      func(:note_the_count) { seen = i }
+      func(:cut_the_limit) { n = 3 }
+      tick = timer :tick, per_second: 1000
+      case handler
+      when :reads then tick.on_tick { seen = i }
+      when :reads_through_a_routine then tick.on_tick { call :note_the_count }
+      when :writes_the_limit then tick.on_tick { n = 3 }
+      when :writes_through_a_routine then tick.on_tick { call :cut_the_limit }
+      when :other then tick.on_tick { seen += 1 }
+      end
+      game_loop do
+        i = 0
+        total = 0
+        while i < n
+          total += i
+          i += 1
+        end
+      end
+    end
+    rom.loop_shapes.values.first.shape
+  end
+
+  def test_a_counted_while_no_timer_handler_names_keeps_its_count_in_a_register
+    assert_equal :registers, counted_while_shape
+    assert_equal :registers, counted_while_shape(handler: :other)
+  end
+
+  def test_a_counted_while_a_timer_handler_reads_or_writes_keeps_its_count_in_memory
+    %i[reads reads_through_a_routine writes_the_limit writes_through_a_routine].each do |handler|
+      assert_equal :memory, counted_while_shape(handler: handler), "a handler that #{handler.to_s.tr('_', ' ')}"
+    end
+  end
+
   # --- what a pass of the loop itself costs ---
   #
   # A body that never reads its index does not care which way the count runs, and counting

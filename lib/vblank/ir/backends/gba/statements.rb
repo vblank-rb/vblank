@@ -296,8 +296,28 @@ module VBlank
 
           # Whether nothing in a counted while's body but its one more needs the fast shape's two
           # registers (LoopForm.needs_loop_registers?).
+          #
+          # Nor where a timer's handler names the loop's variable or its limit. The handler runs from
+          # the interrupt, which can land between any two instructions of the loop: with the count in
+          # a register it would read a number the loop has not stored, and what it wrote would be
+          # overwritten when the loop stores the count at its end.
           def counted_while_in_registers?(node, counted)
-            node.children[0...-1].none? { |child| LoopForm.first_blocker_in_statement(child, counted.variable) }
+            node.children[0...-1].none? { |child| LoopForm.first_blocker_in_statement(child, counted.variable) } &&
+              !timer_handlers_name?([counted.variable, (counted.limit.name if counted.limit.kind == :var_ref)].compact)
+          end
+
+          # Whether a timer's handler, or a routine it calls however deep, reads or writes any of +names+.
+          def timer_handlers_name?(names)
+            @handler_names ||= {}
+            @handler_names[@program.object_id] ||= begin
+              handlers = Nodes::OnTimer.of(@program).values
+              called = Reach.routines_called_from(@program, handlers)
+              routines = @program.walk.select { |each| each.kind == :func && called.include?(each.name) }
+              Reach.statements_from(*handlers, *routines).flat_map do |each|
+                [*(each.name if each.kind == :var_ref), *Reach::VARIABLES_OF[each.kind]&.call(each)]
+              end.to_set
+            end
+            @handler_names[@program.object_id].intersect?(names)
           end
 
           def emit_counted_while_in_registers(node, counted, sure, top, done)
