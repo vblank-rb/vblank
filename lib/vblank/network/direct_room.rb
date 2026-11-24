@@ -23,8 +23,11 @@ module VBlank
       Peer = Data.define(:channel, :connection)
 
       # +listener+ is a TCPServer to accept machines from, or nil to give machines one at a time with #add_client.
-      def initialize(listener: nil)
+      # +line_timing+ is handed to each machine's LineChannel: a test gives short times (silent_seconds:,
+      # beat_seconds:), so a machine that goes silent is found at once.
+      def initialize(listener: nil, **line_timing)
         @listener = listener
+        @line_timing = line_timing
         @relay = StandInRelay.new(codes: [CODE].each)
         @peers = []
       end
@@ -35,7 +38,7 @@ module VBlank
 
       # Puts the machine on +socket+ in the room, as one that connected.
       def add_client(socket)
-        @peers << Peer.new(channel: LineChannel.new(socket), connection: @relay.connect)
+        @peers << Peer.new(channel: LineChannel.new(socket, **@line_timing), connection: @relay.connect)
       end
 
       # Moves what is waiting between the sockets and the room, and accepts the machines waiting to connect.
@@ -49,11 +52,15 @@ module VBlank
       end
 
       # Sleeps until a socket has something for the room, then pumps. A line a channel has already read
-      # off its socket is something too: the socket is empty then, and would never wake the sleep.
+      # off its socket is something too: the socket is empty then, and would never wake the sleep. The
+      # sleep ends too when a machine could have gone silent for too long (LineChannel), so the pump finds
+      # it gone and the room tells the others.
       def wait_for_traffic
         sockets = @peers.map { |peer| peer.channel.io }.reject(&:closed?)
         sockets << @listener if @listener
-        IO.select(sockets) unless sockets.empty? || @peers.any? { |peer| peer.channel.ready? }
+        unless sockets.empty? || @peers.any? { |peer| peer.channel.ready? }
+          IO.select(sockets, nil, nil, @peers.map { |peer| peer.channel.seconds_until_silent }.min)
+        end
         pump
       end
 
