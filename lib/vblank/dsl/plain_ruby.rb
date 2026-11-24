@@ -637,11 +637,11 @@ module VBlank
                   else []
                   end
           unnamed = node.is_a?(Prism::BlockNode) ? unnamed_parameter_names(node.parameters) : []
-          return "(#{INSTANCE_VARIABLES}.follow_unnamed_parameters([#{unnamed.join(', ')}]); #{text}\n)" if unnamed.any?
+          return "(#{INSTANCE_VARIABLES}.follow_unnamed_parameters([#{unnamed.join(', ')}]); #{text})" if unnamed.any?
           return text if names.empty?
 
           listed = names.join(", ")
-          "(#{listed}, = #{INSTANCE_VARIABLES}.follow_objects_in([#{listed}]); #{text}\n)"
+          "(#{listed}, = #{INSTANCE_VARIABLES}.follow_objects_in([#{listed}]); #{text})"
         end
 
         # `it`, or `_1` up to the highest a block reads.
