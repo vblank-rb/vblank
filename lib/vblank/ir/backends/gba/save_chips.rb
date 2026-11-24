@@ -38,7 +38,7 @@ module VBlank
           # cartridge from wherever the code is (see Placement#emit_call_cold_routine).
           def self.for(memory, emitter:, lowering:, placement:, roomy_bytes:)
             parts = { emitter: emitter, lowering: lowering, placement: placement }
-            return EepromChip.new(area: roomy_bytes.call(roomy_bytes_of(memory)), **parts) if memory.eeprom?
+            return EepromChip.new(area: roomy_bytes.call(roomy_bytes_of(memory)), address_bits: memory.address_bits, **parts) if memory.eeprom?
             return BatteryChip.new(**parts) unless memory.flash?
             return FlashChip.new(**parts) unless banked?(memory)
 
@@ -460,14 +460,15 @@ module VBlank
           # which every cartridge this builds is.
           EEPROM_AT = 0x0D000000
 
-          # The block number takes 14 bits on the 8K chip, though only the low ten count.
-          ADDRESS_BITS = 14
+          # The block number takes 14 bits on the 8K chip, though only the low ten count, and 6 on the
+          # 512-byte one, where all six do (GBATEK, "GBA Cart EEPROM"). The area kept in the roomy memory
+          # is made for the longer.
+          LONGEST_ADDRESS_BITS = 14
           BLOCK_BITS = 64
 
-          # The bits each of the three moves carries.
-          READ_REQUEST = 2 + ADDRESS_BITS + 1
+          # The bits each of the three moves carries on the 8K chip, the most there is.
           READ_REPLY = 4 + BLOCK_BITS
-          WRITE_REQUEST = 2 + ADDRESS_BITS + BLOCK_BITS + 1
+          LONGEST_WRITE_REQUEST = 2 + LONGEST_ADDRESS_BITS + BLOCK_BITS + 1
 
           # The two copies and what is known about them, in the roomy memory: for the one a save
           # writes into, which block it holds (-1 for none), whether it differs from the chip
@@ -479,7 +480,7 @@ module VBlank
           READ_HELD_AT = BYTES_AT + IR::SaveLayout::EEPROM_BLOCK
           READ_BYTES_AT = READ_HELD_AT + 4
           BITS_AT = READ_BYTES_AT + IR::SaveLayout::EEPROM_BLOCK
-          AREA_BYTES = BITS_AT + (2 * WRITE_REQUEST) + 2
+          AREA_BYTES = BITS_AT + (2 * LONGEST_WRITE_REQUEST) + 2
 
           # A copying-engine transfer of halfwords that starts as it is written: the enable bit,
           # every other choice the plain one. In the top half, where the count's register ends.
@@ -499,9 +500,11 @@ module VBlank
           FETCH_FOR_READING_LABEL = :save_eeprom_fetch_for_reading
           WRITE_BACK_LABEL = :save_eeprom_write_back
 
-          def initialize(area:, **)
+          # +address_bits+ is how many bits the chip numbers a block in (SaveLayout::Memory#address_bits).
+          def initialize(area:, address_bits:, **)
             super(**)
             @area = area
+            @address_bits = address_bits
           end
 
           def signature = SIGNATURE
@@ -637,7 +640,7 @@ module VBlank
             emit_block_number                                          # r12 still the block
             @emitter.emit(ASM.load_immediate(0, 0))
             @emitter.emit(ASM.store_halfword(0, 1))                    # the request's last bit
-            emit_copy(from: :bits, to: :chip, count: READ_REQUEST)
+            emit_copy(from: :bits, to: :chip, count: 2 + @address_bits + 1)
             emit_copy(from: :chip, to: :bits, count: READ_REPLY)
             # The 64 bits after the first four, eight to a byte, highest first.
             @emitter.emit(ASM.load_immediate(2, @area))
@@ -699,7 +702,7 @@ module VBlank
             @emitter.emit_branch(:bcond, byte, cond: :ne)
             @emitter.emit(ASM.load_immediate(0, 0))
             @emitter.emit(ASM.store_halfword(0, 1))                    # the request's last bit
-            emit_copy(from: :bits, to: :chip, count: WRITE_REQUEST)
+            emit_copy(from: :bits, to: :chip, count: 2 + @address_bits + BLOCK_BITS + 1)
             # Ask the chip until it has settled, or it has been asked ASKS times.
             @emitter.emit(ASM.load_immediate(1, EEPROM_AT))
             @emitter.emit(ASM.load_immediate(3, ASKS))
@@ -736,11 +739,11 @@ module VBlank
             @emitter.emit(ASM.store_halfword_post(0, 1, 2))
           end
 
-          # Block r12's number in ADDRESS_BITS bits, highest first, at r1, which moves on past
+          # Block r12's number in the chip's address bits, highest first, at r1, which moves on past
           # them. Spends r0 and r3.
           def emit_block_number
             bit = @emitter.gensym
-            @emitter.emit(ASM.load_immediate(3, ADDRESS_BITS - 1))
+            @emitter.emit(ASM.load_immediate(3, @address_bits - 1))
             @emitter.place_label(bit)
             @emitter.emit(ASM.mov_reg_lsr_reg(0, ADDR, 3))
             @emitter.emit(ASM.and_imm(0, 0, 1))

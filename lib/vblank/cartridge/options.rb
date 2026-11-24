@@ -82,7 +82,7 @@ module VBlank
         end
         unless save_memory.nil? || IR::SaveLayout::NAMEABLE.include?(save_memory)
           raise ArgumentError, "save_memory: #{save_memory.inspect} is not a size of save memory. A cartridge " \
-                               "has 8, 32, 64 or 128 kilobytes. To fix this, use one of those numbers, or leave " \
+                               "has 0.5 (512 bytes), 8, 32, 64 or 128 kilobytes. To fix this, use one of those numbers, or leave " \
                                "save_memory: out and the build picks the smallest that holds the saves."
         end
 

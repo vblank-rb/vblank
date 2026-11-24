@@ -440,7 +440,7 @@ module VBlank
         memory = use.fetch(:memory)
         records = use.fetch(:records)
         kind = memory.kind_words
-        printer.puts "  save memory: #{memory.kilobytes}K of #{kind}, #{save_memory_reason(use)}"
+        printer.puts "  save memory: #{memory.small_eeprom? ? "#{memory.size} bytes" : "#{memory.kilobytes}K"} of #{kind}, #{save_memory_reason(use)}"
         printer.puts "    kept for save_var: #{format_bytes(memory.table_at)}" if memory.table_at.positive?
         printer.puts "    the table of places: #{format_bytes(memory.data_start - memory.table_at)}" if records.any?
         records.each { |record| printer.puts "    #{record_label(record, copies: true)}: #{format_bytes(record[:bytes])}" }

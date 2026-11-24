@@ -81,16 +81,25 @@ module VBlank
       # 64K or 128K. Flash keeps a save with no battery, and real cartridges shipped both sizes.
       MEMORIES = [32, 64, 128].freeze
 
-      # AN 8K EEPROM, the smallest chip a cartridge can have, which a game has to ask for. It
-      # needs no battery and was the cheapest chip to put on a cartridge, so retail games with a
-      # small save used it. It is never picked for a game, because it is by far the slowest to
-      # write: it is written eight bytes at a time, and after each eight it takes most of half
-      # a frame to settle. So on it a save is written eight bytes a pass. (The smaller EEPROM,
-      # half a kilobyte, cannot hold the table of places, so it is not one of them.)
+      # AN 8K EEPROM, which a game has to ask for. It needs no battery and was the cheapest chip to
+      # put on a cartridge, so retail games with a small save used it. It is never picked for a
+      # game, because it is by far the slowest to write: it is written eight bytes at a time, and
+      # after each eight it takes most of half a frame to settle. So on it a save is written eight
+      # bytes a pass.
       EEPROM = 8
 
+      # THE 512-BYTE EEPROM, half a kilobyte: the smaller chip, for the smallest saves. It is
+      # written the same way, eight bytes at a time, but a block is numbered in 6 bits where the 8K
+      # one's takes 14 (GBATEK, "GBA Cart EEPROM"). The table of places (below) is the same table
+      # with fewer rows, since sixteen rows and their two halves are more than the chip holds: with
+      # SMALL_EEPROM_ROWS rows the table's two halves take 208 bytes and 304 are left for records. A
+      # game with more records than rows, or with records that do not fit, is refused in the build's
+      # own words for either, which name the rows or the bytes it needs. It is never picked for a game.
+      SMALL_EEPROM = 0.5
+      SMALL_EEPROM_ROWS = 4
+
       # Every save memory a game can name with `save_memory:`.
-      NAMEABLE = [EEPROM, *MEMORIES].freeze
+      NAMEABLE = [SMALL_EEPROM, EEPROM, *MEMORIES].freeze
 
       # An EEPROM is written a block of eight bytes at a time, never a single byte.
       EEPROM_BLOCK = 8
@@ -126,7 +135,7 @@ module VBlank
       # Nintendo cartridge with a Super FX chip keeps 64K, Console::Description#save_memories).
       Memory = Data.define(:kilobytes, :chip) do
         def initialize(kilobytes:, chip: nil)
-          chip ||= if kilobytes == EEPROM then :eeprom
+          chip ||= if [SMALL_EEPROM, EEPROM].include?(kilobytes) then :eeprom
                    elsif kilobytes > MEMORIES.first then :flash
                    else :battery
                    end
@@ -143,21 +152,32 @@ module VBlank
         # Flash: a byte only once between two wipes of the 4K block it is in.
         def flash? = chip == :flash
 
-        # The EEPROM: eight bytes at a time.
+        # The EEPROM, of either size: eight bytes at a time.
         def eeprom? = chip == :eeprom
+
+        # The 512-byte EEPROM, whose blocks are numbered in 6 bits and whose table of places has
+        # SMALL_EEPROM_ROWS rows.
+        def small_eeprom? = kilobytes == SMALL_EEPROM
+
+        # How many bits a block's number takes on the chip, out of the 14 the bus carries.
+        def address_bits = small_eeprom? ? 6 : 14
+
+        # How many records the table of places has rows for on this memory, and the bytes its body takes.
+        def table_rows = small_eeprom? ? SMALL_EEPROM_ROWS : TABLE_ROWS
+        def table_body = SaveLayout.table_body(table_rows)
 
         # Whether a `save_var`'s number is written in place as it changes (battery memory), or
         # its numbers are kept in a record saved now and then (see Builder::SaveVarRecord).
         def save_vars_in_record? = !battery?
 
         # How many bytes there are.
-        def size = kilobytes * 1024
+        def size = (kilobytes * 1024).to_i
 
         # Where the table of places starts: past save_var's block, on the one memory that has it.
         def table_at = battery? ? START : 0
 
         # Where records can go: past both halves of the table.
-        def data_start = table_at + (2 * room(SaveLayout.half_bytes(TABLE_BODY)))
+        def data_start = table_at + (2 * room(SaveLayout.half_bytes(table_body)))
 
         # What a half's room is counted in: whole blocks on flash and the EEPROM, single bytes
         # in the packed 32K. Anything that rounds a half to its room — here, or in a routine that
@@ -295,7 +315,9 @@ module VBlank
 
       # How many bytes the table's body takes: each column is kept as a list, its length and
       # then a word a row.
-      TABLE_BODY = TABLE_COLUMNS.length * (4 + (TABLE_ROWS * 4))
+      def table_body(rows) = TABLE_COLUMNS.length * (4 + (rows * 4))
+
+      TABLE_BODY = table_body(TABLE_ROWS)
 
       # A record's name as a number, which is how its row in the table is found. Never 0, which
       # marks a row nothing uses.
@@ -322,9 +344,9 @@ module VBlank
         module_function
 
         # The table's own shape — it is kept the way a record keeping four lists is.
-        def shape
+        def shape(rows = TABLE_ROWS)
           SaveLayout.shape(TABLE_COLUMNS.map do |column|
-            [:list, Messages::MadeNames.make(:save_table, column: column), :word, TABLE_ROWS]
+            [:list, Messages::MadeNames.make(:save_table, column: column), :word, rows]
           end)
         end
       end

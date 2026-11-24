@@ -387,9 +387,10 @@ module VBlank
 
       def check_save_data_count!(layout)
         records = [*@save_data.each_value, layout]
-        if records.length > IR::SaveLayout::TABLE_ROWS
+        rows = (named_save_memory || IR::SaveLayout::PACKED).table_rows
+        if records.length > rows
           raise ArgumentError, "#{record_words_first(layout.name)} is record #{records.length}, and a game can have " \
-                               "#{IR::SaveLayout::TABLE_ROWS}. To fix this, keep more in fewer records."
+                               "#{rows}. To fix this, keep more in fewer records."
         end
         return unless (same = @save_data.each_value.find { |other| other.key == layout.key })
 
@@ -407,10 +408,19 @@ module VBlank
 
         records = "save_data records"
         records += ", with the record that keeps its save_var numbers," if save_vars_in_record?
+        refuse_records_over_small_eeprom!(named, records) if named.small_eeprom?
         smallest = named.eeprom? ? " #{named.kilobytes}K, the EEPROM, is the smallest save memory there is." : ""
         raise ArgumentError, "This game asks for `save_memory: #{named.kilobytes}`, and its #{records} need " \
                              "#{needed_save_memory.kilobytes}K.#{smallest} To fix this, ask for `save_memory: " \
                              "#{needed_save_memory.kilobytes}`, or keep less in each record, or use fewer copies."
+      end
+
+      # The 512-byte EEPROM is the smallest chip, so the way out is a bigger one, or less to keep.
+      def refuse_records_over_small_eeprom!(named, records)
+        raise ArgumentError, "This game asks for `save_memory: #{named.kilobytes}`, the 512-byte EEPROM. Its #{records} " \
+                             "need #{named.bytes_filled(record_halves)} bytes there, and the chip has #{named.size}. " \
+                             "To fix this, ask for `save_memory: #{IR::SaveLayout::EEPROM}`, or keep less in each " \
+                             "record, or use fewer copies."
       end
 
       # The records in the order they were declared, each with what it keeps laid out. The

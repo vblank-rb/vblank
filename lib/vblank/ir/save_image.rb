@@ -189,14 +189,14 @@ module VBlank
 
       # The table of places, written straight in as a good first half with +sequence+: what an
       # earlier build left in save memory, so a test can start a game from a table it chose.
-      # +rows+ are SaveLayout::Table::Row, at most SaveLayout::TABLE_ROWS. Returns self.
+      # +rows+ are SaveLayout::Table::Row, at most as many as the memory's table has rows. Returns self.
       def write_table(rows, sequence: 1)
         words = SaveLayout::TABLE_COLUMNS.flat_map do |column|
           values = rows.map { |row| row.to_h.fetch(column) }
-          [SaveLayout::TABLE_ROWS, *values, *Array.new(SaveLayout::TABLE_ROWS - values.size, 0)]
+          [memory.table_rows, *values, *Array.new(memory.table_rows - values.size, 0)]
         end
         body = words.flat_map { |word| le_bytes(word) }
-        header = [SaveLayout::MARKER, SaveLayout::Table.shape, sequence, SaveLayout::SAVED, SaveLayout.checksum(body)]
+        header = [SaveLayout::MARKER, SaveLayout::Table.shape(memory.table_rows), sequence, SaveLayout::SAVED, SaveLayout.checksum(body)]
         (header.flat_map { |word| le_bytes(word) } + body).each_with_index do |byte, i|
           @bytes[memory.table_at + i] = byte
         end
@@ -206,12 +206,12 @@ module VBlank
       # The rows in use in the table of places, read from its newer good half, or nil when
       # neither half is good.
       def table
-        body_bytes = SaveLayout::TABLE_BODY
+        body_bytes = memory.table_body
         second = memory.table_at + memory.room(SaveLayout.half_bytes(body_bytes))
         halves = [memory.table_at, second].filter_map do |at|
           body = read_bytes(at + SaveLayout::HEADER, body_bytes)
           good = word(at + SaveLayout::MARKER_AT) == SaveLayout::MARKER &&
-                 word(at + SaveLayout::SHAPE_AT) == SaveLayout::Table.shape &&
+                 word(at + SaveLayout::SHAPE_AT) == SaveLayout::Table.shape(memory.table_rows) &&
                  word(at + SaveLayout::CHECKSUM_AT) == SaveLayout.checksum(body)
           [word(at + SaveLayout::SEQUENCE_AT), at + SaveLayout::HEADER] if good
         end
@@ -219,10 +219,10 @@ module VBlank
         return nil unless body_at
 
         columns = SaveLayout::TABLE_COLUMNS.each_with_index.to_h do |column, c|
-          start = body_at + (c * (4 + (SaveLayout::TABLE_ROWS * 4)))
-          [column, (0...SaveLayout::TABLE_ROWS).map { |r| word(start + 4 + (r * 4)) }]
+          start = body_at + (c * (4 + (memory.table_rows * 4)))
+          [column, (0...memory.table_rows).map { |r| word(start + 4 + (r * 4)) }]
         end
-        (0...SaveLayout::TABLE_ROWS).map { |r| SaveLayout::Table::Row.new(**columns.transform_values { |values| values[r] }) }
+        (0...memory.table_rows).map { |r| SaveLayout::Table::Row.new(**columns.transform_values { |values| values[r] }) }
                                     .reject { |row| row.key.zero? }
       end
 

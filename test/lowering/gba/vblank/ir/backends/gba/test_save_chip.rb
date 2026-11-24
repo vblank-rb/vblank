@@ -231,6 +231,57 @@ class TestSaveChip < Minitest::Test
     assert_equal store.written, chip.written, "the same bytes, and no byte only one of them wrote"
   end
 
+  # --- the 512-byte EEPROM ---
+
+  def test_a_save_on_the_512_byte_eeprom_comes_back_after_the_power_goes_off
+    rom = saving_rom(0.5)
+    chip = saved_chip(rom, press: 30)
+
+    assert_equal 512, chip.memory.size
+    assert_equal 7, hearts_at_power_on(rom, chip, frames: 30)
+  end
+
+  def test_the_console_writes_the_512_byte_eeprom_the_way_the_interpreter_does
+    rom = saving_rom(0.5)
+    chip = saved_chip(rom, press: 30)
+    store = SaveImage.new(kilobytes: 0.5)
+    Reference.new(save: store).input_each_frame { |f| f == 30 ? [:a] : [] }.run(saving_game(0.5).program, frames: 46)
+
+    refute_empty store.written
+    assert_equal store.written, chip.written, "the same bytes, and no byte only one of them wrote"
+  end
+
+  # A save_var is kept in a record on this chip as on the 8K one, and the record takes its share of
+  # the 512 bytes.
+  def test_a_save_var_on_the_512_byte_eeprom_comes_back_after_the_power_goes_off
+    rom = VBlank.game("EEPROMSM", consoles: %i[gba], save_memory: 0.5) do
+      screen :bitmap
+      best = save_var :best, 3
+      game_loop { best = 7 if pressed(:a) }
+    end.build_rom(out: nil, err: nil, profile: false)
+    chip = assert_emulator_loads_rom(rom, frames: 120, keys: ->(f) { f == 30 ? KEY_A : 0 }).save_image
+
+    assert_equal 7, assert_emulator_loads_rom(rom, frames: 30, save: chip, vars: rom.var_addresses).var(:best)
+  end
+
+  def test_a_save_too_big_for_the_512_byte_eeprom_is_a_friendly_error
+    error = assert_raises(ArgumentError) do
+      VBlank.game("EEPROMBG", consoles: %i[gba], save_memory: 0.5) do
+        screen :bitmap
+        flags = list :flags, capacity: 600, width: :byte, fast: false
+        file = save_data(:file) { keep flags }
+        game_loop { file[0].save if pressed(:a) }
+      end.build_rom(out: nil, err: nil, profile: false)
+    end
+
+    assert_match(/save_memory: 0\.5/, error.message)
+    assert_match(/bytes/, error.message)
+  end
+
+  def test_a_512_byte_eeprom_cartridge_carries_its_marker
+    assert_includes saving_rom(0.5).buffer, "EEPROM_V124"
+  end
+
   # The flash chip's routines go after the cartridge's tables, and a table of one byte leaves
   # them off a word unless they are put back on one (Save#emit_save_signature): the game then
   # runs into the middle of an instruction and never reaches its loop.

@@ -2011,7 +2011,7 @@ module VBlank
         kind :save_memory
         declaration!
         category :data
-        operands kilobytes: :int, chip: :option, asked_for: :flag, records: :list
+        operands kilobytes: :quantity, chip: :option, asked_for: :flag, records: :list
       end
 
       # Wipe the block of save memory that holds +at+, so it takes any write again, and reads

@@ -4,9 +4,9 @@ require_relative "hardware"
 
 module VBlank
   module Console
-    # The save memory an Advance cartridge can carry: an 8K EEPROM, 32K of battery-backed memory,
+    # The save memory an Advance cartridge can carry: a 512-byte EEPROM, an 8K EEPROM, 32K of battery-backed memory,
     # or 64K or 128K of flash (IR::SaveLayout says what each keeps where).
-    ADVANCE_SAVE_MEMORIES = Ractor.make_shareable([[8, :eeprom], [32, :battery], [64, :flash], [128, :flash]])
+    ADVANCE_SAVE_MEMORIES = Ractor.make_shareable([[0.5, :eeprom], [8, :eeprom], [32, :battery], [64, :flash], [128, :flash]])
 
     # A plain Super Nintendo cartridge's: 32K of battery-backed RAM. One with a Super FX chip keeps
     # 64K, the whole of the second bank of the chip's RAM (Cartridge::SNESROM::SUPER_FX).

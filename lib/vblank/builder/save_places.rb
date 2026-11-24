@@ -54,8 +54,6 @@ module VBlank
     class SavePlaces
       include SaveProgram
 
-      ROWS = IR::SaveLayout::TABLE_ROWS  # :nodoc:
-
       SCRATCH = %i[changed key half copies need room found row fits probe skip cursor pick
                    low limit from to length up extra place first].freeze  # :nodoc:
 
@@ -76,8 +74,8 @@ module VBlank
         # Each column starts as a whole table of empty rows, which a good table on the chip then
         # replaces: on an empty chip the table needs no rows added one at a time.
         kept = IR::SaveLayout::TABLE_COLUMNS.map do |column|
-          at_boot(Build.list_new(table_list(column), ROWS, width: :word, full_of: 0))
-          SaveRecords::Kept.new(kind: :list, name: table_list(column), at: 0, width: :word, count: ROWS)
+          at_boot(Build.list_new(table_list(column), table_rows, width: :word, full_of: 0))
+          SaveRecords::Kept.new(kind: :list, name: table_list(column), at: 0, width: :word, count: table_rows)
         end
         @save_table = @table_record.call(kept, place: @memory.table_at)
         SCRATCH.each { |what| ensure_var(places_name(what)) }
@@ -100,6 +98,7 @@ module VBlank
 
       private
 
+      def table_rows = @memory.table_rows
       def table_list(column) = Messages::MadeNames.make(:save_table, column: column)
       def places_name(what) = Messages::MadeNames.make(:save_places, piece: what)
       def place_var(what) = sd_var(places_name(what))
@@ -192,11 +191,11 @@ module VBlank
         # A table written with fewer rows is filled out with empty ones. One never written, or
         # damaged, is not loaded at all, so its columns are still the empty rows they started as.
         IR::SaveLayout::TABLE_COLUMNS.each do |column|
-          short = sd_op(:-, sd_int(ROWS), Build.list_len(table_list(column)))
+          short = sd_op(:-, sd_int(table_rows), Build.list_len(table_list(column)))
           repeat(DSL::Value.new(handle, short)) { |_| record(Build.list_push(table_list(column), sd_int(0))) }
         end
         set_place_var(:changed, 0)
-        repeat(ROWS) { |i| save_places_reconcile_row(i.node) }
+        repeat(table_rows) { |i| save_places_reconcile_row(i.node) }
         @records.each_value.with_index do |layout, n|
           set_place_var(:key, layout.key)
           set_place_var(:half, layout.half)
@@ -282,7 +281,7 @@ module VBlank
 
       def save_places_free_row
         set_place_var(:row, -1)
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           free = sd_and(sd_eq(cell(:key, i.node), sd_int(0)), sd_eq(place_var(:row), sd_int(-1)))
           sd_when(free) { set_place_var(:row, i.node) }
         end
@@ -345,10 +344,10 @@ module VBlank
       def save_places_lift_above(row)
         set_place_var(:extra, sd_op(:-, place_var(:need), row_size(row)))
         set_place_var(:limit, sd_int(@memory.size))
-        repeat(ROWS) do
+        repeat(table_rows) do
           set_place_var(:pick, -1)
           set_place_var(:low, cell(:at, row))
-          repeat(ROWS) do |i|
+          repeat(table_rows) do |i|
             higher = sd_and(sd_and(row_in_use(i.node), sd_op(:>, cell(:at, i.node), place_var(:low))),
                             sd_op(:<, cell(:at, i.node), place_var(:limit)))
             sd_when(higher) do
@@ -372,7 +371,7 @@ module VBlank
         set_place_var(:probe, @memory.data_start)
         sp_call(:fits)
         sd_when(sd_eq(place_var(:fits), sd_int(1))) { set_place_var(:room, place_var(:probe)) }
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           candidate = sd_and(sd_and(sd_eq(place_var(:room), sd_int(-1)), row_in_use(i.node)), sd_op(:!=, i.node, place_var(:skip)))
           sd_when(candidate) do
             set_place_var(:probe, row_end(i.node))
@@ -390,7 +389,7 @@ module VBlank
         # A row nothing uses costs one test: the overlap, with its multiplications, is worked out
         # only for a row in use. Most of the table is empty, and on a slow console the overlap
         # worked out for every row was most of the time spent placing a record.
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           sd_when(row_in_use(i.node)) do
             clear = sd_op(:|, sd_op(:<=, ends, cell(:at, i.node)), sd_op(:>=, place_var(:probe), row_end(i.node)))
             sd_when(sd_and(sd_op(:!=, i.node, place_var(:skip)), sd_eq(clear, sd_int(0)))) do
@@ -402,7 +401,7 @@ module VBlank
 
       # Free the rows of records this build does not declare.
       def save_places_reclaim
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           stale = @records.each_value.reduce(row_in_use(i.node)) do |test, layout|
             sd_and(test, sd_op(:!=, cell(:key, i.node), sd_int(layout.key)))
           end
@@ -417,10 +416,10 @@ module VBlank
       # the cursor scratch to the end.
       def save_places_compact
         set_place_var(:cursor, @memory.data_start)
-        repeat(ROWS) do
+        repeat(table_rows) do
           set_place_var(:pick, -1)
           set_place_var(:low, @memory.size)
-          repeat(ROWS) do |i|
+          repeat(table_rows) do |i|
             lower = sd_and(sd_and(row_in_use(i.node), sd_op(:>=, cell(:at, i.node), place_var(:cursor))),
                            sd_op(:<, cell(:at, i.node), place_var(:low)))
             sd_when(lower) do

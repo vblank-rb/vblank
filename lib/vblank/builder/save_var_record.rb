@@ -31,7 +31,7 @@ module VBlank
     # memory). One added later starts at its default, since the save records it had no slot then.
     # The run is SLOTS words, or room for every save_var a game can have once it outgrows that.
     #
-    # The 8K EEPROM keeps its save_vars this way too. It needs no wipe, but it is written eight
+    # The EEPROMs keep their save_vars this way too (the 512-byte one with a shorter run, since it holds so little). It needs no wipe, but it is written eight
     # bytes at a time and wears out a little with each write, so a number written in place every
     # frame would cost a block written every frame — most of half a frame each time.
     #
@@ -48,6 +48,9 @@ module VBlank
 
       # How many words the record holds, the count included, for a game with fewer save_vars.
       SLOTS = 64  # :nodoc:
+
+      # ...and on the 512-byte EEPROM, which has room for far fewer: the count and fifteen save_vars.
+      SMALL_EEPROM_SLOTS = 16  # :nodoc:
 
       # What an error calls the record, which the game never named.
       SAVE_VAR_RECORD_WORDS = "the record that keeps the save_var numbers"  # :nodoc:
@@ -72,7 +75,8 @@ module VBlank
         %i[changed spacing count].each { |what| ensure_var(layout.scratch(what)) }
         word = ->(name) { SaveRecords::Kept.new(kind: :var, name: name, at: 0, width: :word, count: 1) }
         @save_data_keeping[SAVE_VAR_RECORD] = [word.call(layout.scratch(:count)), *saved_vars.map { |var| word.call(var.name) }]
-        words = saved_vars.size < SLOTS ? SLOTS : IR::SaveLayout::SAVE_VARS + 1
+        slots = memory.small_eeprom? ? SMALL_EEPROM_SLOTS : SLOTS
+        words = saved_vars.size < slots ? slots : IR::SaveLayout::SAVE_VARS + 1
         body = words * SaveRecords::WORD
         @save_data[SAVE_VAR_RECORD] = layout_with_kept(layout).with(
           body: body, half: IR::SaveLayout.half_bytes(body),
