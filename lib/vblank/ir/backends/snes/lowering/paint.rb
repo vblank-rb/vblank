@@ -534,7 +534,7 @@ module VBlank
             # The number +node+ written to the direct page at +at+: a variable's or a number's two
             # halves straight there, anything else worked out first, which leaves it in R0.
             def emit_column_number(node, at)
-              halves = operand_halves(node)
+              halves = halves_in_place(node)
               unless halves
                 value(node)
                 return if at == R0
