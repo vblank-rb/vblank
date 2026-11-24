@@ -380,6 +380,8 @@ A method's argument is a copy: changing it inside the method leaves the caller's
 
 Numbers have `abs`, `clamp` and `approach`, and `abs!`, `clamp!` and `approach!` change the number they are called on.
 
+`floor`, `ceil`, `round` and `truncate` give a whole number from a fraction as Ruby's do, and `round` takes a half away from zero (-2.5 becomes -3). `succ` and `pred` add or take away 1 from a whole number. `x**2` works where the power is written in the game, from 0 to 32. `q, r = cell.divmod(30)` gives Ruby's answer on whole numbers, negative ones too.
+
 ```ruby
 # Keep a number between 0 and 100
 screen :bitmap
@@ -702,7 +704,7 @@ game_loop do
 end
 ```
 
-Other refusals, each with its own message: a part's Array that its own class does not change, added to or turned as a whole from outside in game code (`flock.dots << Dot.new(...)`, `part.counts.rotate!`; do it in a method of its class, `def add(dot) = @dots << dot`, or above the game loop); `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable a method sets outright in game code and another routine reads, which the source does not show (write `game_variables`); `floor`, `round`, `succ`, `divmod`, `**` and the like on a game number (use `to_i` for the whole part of a fraction); in a part's method, a local changed by a game number in a lambda handed with `&` or a block a helper yields to (walk the Array by its instance variable, `@things.each`); `counts[0] &&= value` on a number in game code, or `flags[:open] ||= true` on `false` (write `counts[0] = value`, under an `if` where needed); a constant from outside the game, `system`, `eval` and the like.
+Other refusals, each with its own message: a part's Array that its own class does not change, added to or turned as a whole from outside in game code (`flock.dots << Dot.new(...)`, `part.counts.rotate!`; do it in a method of its class, `def add(dot) = @dots << dot`, or above the game loop); `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable a method sets outright in game code and another routine reads, which the source does not show (write `game_variables`); `fdiv`, a power the game works out (`2**level`), a rounding to a number of digits (`x.round(1)`), and any other number method a game's number does not answer, such as `gcd` or `digits`, each naming what it does answer; in a part's method, a local changed by a game number in a lambda handed with `&` or a block a helper yields to (walk the Array by its instance variable, `@things.each`); `counts[0] &&= value` on a number in game code, or `flags[:open] ||= true` on `false` (write `counts[0] = value`, under an `if` where needed); a constant from outside the game, `system`, `eval` and the like.
 
 ## What builds and means something else
 

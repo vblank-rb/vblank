@@ -601,6 +601,119 @@ module VBlank
         Value.new(@builder, Build.shift_right(@node, @scale.bits))
       end
 
+      # The whole number at or below this one, as Ruby's `floor`: 1.75 becomes 1, -1.25 becomes -2.
+      # It is `to_i`, one instruction. A whole number comes back as it is.
+      def floor(digits = 0)
+        refuse_rounding_digits!(:floor, digits)
+        to_i
+      end
+
+      # The whole number at or above this one, as Ruby's `ceil`: 1.25 becomes 2, -1.75 becomes -1.
+      #
+      # ```ruby
+      # rows = (height / 8.0).ceil
+      # ```
+      #--
+      # Adding all the fraction's bits before the shift carries any fraction up into the whole part.
+      #++
+      def ceil(digits = 0)
+        refuse_rounding_digits!(:ceil, digits)
+        return self unless fraction?
+
+        Value.new(@builder, Build.shift_right(Build.binop(:+, @node, Build.int(fraction_mask)), @scale.bits))
+      end
+
+      # This number with its fraction dropped, toward zero, as Ruby's `truncate`: 1.75 becomes 1,
+      # -1.75 becomes -1.
+      def truncate(digits = 0)
+        refuse_rounding_digits!(:truncate, digits)
+        return self unless fraction?
+
+        Value.new(@builder, truncated_node(@node))
+      end
+
+      # The nearest whole number, as Ruby's `round`: a half goes away from zero, so 2.5 becomes 3
+      # and -2.5 becomes -3.
+      #
+      # ```ruby
+      # column = (x / 8.0).round
+      # ```
+      #--
+      # A half is added on the side away from zero, then the fraction dropped toward zero. The
+      # half's sign comes from the number's top bit: `sign` is -1 for a negative number and 0
+      # otherwise, and `(half ^ sign) - sign` is then -half or half, with no test.
+      #++
+      def round(digits = 0, half: :up)
+        refuse_rounding_digits!(:round, digits)
+        refuse_rounding_mode!(half)
+        return self unless fraction?
+
+        sign = Build.binop(:>>, @node, Build.int(31))
+        half_away = Build.binop(:-, Build.binop(:^, Build.int(1 << (@scale.bits - 1)), sign), sign)
+        Value.new(@builder, truncated_node(Build.binop(:+, @node, half_away)))
+      end
+
+      # The next whole number up, `self + 1`, as Ruby's Integer#succ.
+      def succ
+        refuse_fraction_counting!(:succ)
+        self + 1
+      end
+
+      # The next whole number down, `self - 1`, as Ruby's Integer#pred.
+      def pred
+        refuse_fraction_counting!(:pred)
+        self - 1
+      end
+
+      # This number multiplied by itself +power+ times, as Ruby's `**`, where the power is a whole
+      # number written in the game, from 0 to 32. A number holding a fraction keeps it.
+      #
+      # ```ruby
+      # area = side**2
+      # ```
+      #--
+      # Squaring halves the multiplies a power needs: `x**8` is three.
+      #++
+      def **(power)
+        refuse_power!(power)
+        return scaled(Build.int(fraction? ? 1 << @scale.bits : 1), @scale.bits) if power.zero?
+        return self if power == 1
+
+        half = self**(power / 2)
+        squared = half * half
+        power.odd? ? squared * self : squared
+      end
+
+      # The same as `**`. A third number, Ruby's modulus, is refused.
+      def pow(power, *modulus)
+        unless modulus.empty?
+          raise ArgumentError, "`pow` with a second number is not something a game's number does. " \
+                               "To fix this, write `(x**#{power}) % n`.#{at_dsl_line}"
+        end
+
+        self**power
+      end
+
+      # The whole number of times +other+ goes into this one, rounded down, and what is left
+      # over, as Ruby's `divmod`: `-7.divmod(2)` is `[-4, 1]`. Both are whole numbers.
+      #
+      # ```ruby
+      # row, column = cell.divmod(30)
+      # ```
+      #--
+      # The remainder is Ruby's (`%`), so taking it away first leaves a number +other+ divides
+      # exactly: the divide then has nothing to round, whichever way the console's divide rounds.
+      #++
+      def divmod(other)
+        if fraction? || Fraction.bits_of(other)
+          raise ArgumentError, "`divmod` works on whole numbers in a game. To fix this, use `to_i` on " \
+                               "the numbers first.#{at_dsl_line}"
+        end
+
+        remainder = self % other
+        [(self - remainder) / other, remainder]
+      end
+
       # This whole number as one that holds a fraction, so it can be added to one or compared
       # with one. A number that already holds a fraction comes back as it is.
       #
@@ -736,7 +849,7 @@ module VBlank
 
       # Ruby's number verbs a game's numbers do not answer yet. Each is refused in plain words, for
       # the same reason.
-      UNANSWERED_NUMBER_VERBS = %i[floor ceil round truncate succ pred divmod ** pow fdiv].freeze # :nodoc:
+      UNANSWERED_NUMBER_VERBS = %i[fdiv].freeze # :nodoc:
 
       def method_missing(name, *args, &) # :nodoc:
         if UNANSWERED_NUMBER_VERBS.include?(name)
@@ -744,12 +857,67 @@ module VBlank
                 "A game's number does not answer `#{name}` yet. To keep the whole part of a fraction, use " \
                 "`to_i`. It rounds down.#{at_dsl_line}"
         end
-        return super unless unanswered_number_question?(name)
+        if unanswered_number_question?(name)
+          raise ArgumentError,
+                "A game's number does not answer `#{name}`. It answers `zero?`, `nonzero?`, `positive?`, " \
+                "`negative?`, `even?`, `odd?` and `between?`, and the comparisons `==`, `!=`, `<`, `<=`, `>` " \
+                "and `>=`.#{at_dsl_line}"
+        end
+        return super unless ruby_number_method?(name)
 
         raise ArgumentError,
-              "A game's number does not answer `#{name}`. It answers `zero?`, `nonzero?`, `positive?`, " \
-              "`negative?`, `even?`, `odd?` and `between?`, and the comparisons `==`, `!=`, `<`, `<=`, `>` " \
-              "and `>=`.#{at_dsl_line}"
+              "A game's number does not answer `#{name}`. It answers `+`, `-`, `*`, `/`, `%`, `**`, `abs`, " \
+              "`clamp`, `floor`, `ceil`, `round`, `truncate`, `to_i`, `to_f`, `succ`, `pred`, `divmod`, the " \
+              "bit operations and the comparisons.#{at_dsl_line}"
+      end
+
+      # Does Ruby's Integer or Float have +name+? A game's number that lacks one refuses it in plain
+      # words, never with Ruby's "undefined method", which names a class of the library's.
+      def ruby_number_method?(name) = 0.respond_to?(name) || 0.0.respond_to?(name) # :nodoc:
+
+      # All the bits of this number's fraction set: just under one whole.
+      def fraction_mask = (1 << @scale.bits) - 1 # :nodoc:
+
+      # +node+, a number holding this one's fraction, with the fraction dropped toward zero. A
+      # negative number has all its fraction's bits added first (`sign & mask`, with `sign` -1 for
+      # a negative number), so the shift, which rounds down, rounds it up instead.
+      def truncated_node(node) # :nodoc:
+        toward_zero = Build.binop(:&, Build.binop(:>>, node, Build.int(31)), Build.int(fraction_mask))
+        Build.shift_right(Build.binop(:+, node, toward_zero), @scale.bits)
+      end
+
+      def refuse_rounding_digits!(verb, digits) # :nodoc:
+        return if digits.is_a?(Integer) && digits.zero?
+
+        raise ArgumentError, "`#{verb}` with a number of digits is not something a game's number does. It " \
+                             "rounds to a whole number only. To fix this, write `#{verb}` with no number." \
+                             "#{at_dsl_line}"
+      end
+
+      def refuse_rounding_mode!(half) # :nodoc:
+        return if half.nil? || half == :up
+
+        raise ArgumentError, "A game's number rounds a half away from zero only. To fix this, write `round` " \
+                             "with no `half:`.#{at_dsl_line}"
+      end
+
+      def refuse_fraction_counting!(verb) # :nodoc:
+        return unless fraction?
+
+        raise ArgumentError, "This number holds a fraction, and Ruby's fractions do not answer `#{verb}`. " \
+                             "To fix this, add or take away 1.#{at_dsl_line}"
+      end
+
+      def refuse_power!(power) # :nodoc:
+        if power.is_a?(Value) || power.is_a?(Condition)
+          raise ArgumentError, "This line raises a number to a power that the game works out as it plays. " \
+                               "VBlank can only use a power written in the game, from 0 to 32, like `x**2`. " \
+                               "To fix this, multiply in a loop.#{at_dsl_line}"
+        end
+        return if power.is_a?(Integer) && power.between?(0, 32)
+
+        raise ArgumentError, "A game's number takes a power from 0 to 32, written as a whole number, like " \
+                             "`x**2`. This line gives #{power.inspect}.#{at_dsl_line}"
       end
 
       def unanswered_number_question?(name) # :nodoc:

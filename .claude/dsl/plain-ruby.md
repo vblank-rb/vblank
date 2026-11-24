@@ -604,7 +604,7 @@ Each is a friendly error naming the line.
 | a part whose numbers or Arrays change, made in a `game_loop`, a scene or a `func` (`c = Counter.new` there) | make it above the game loop, or keep it: `@counter ||= Counter.new` |
 | `@lives -= 1` in game code while `@lives` holds nil (a routine recorded later gives it its number) | a number where it is first set, `@lives = 0` in `initialize` |
 | a line that changes an instance variable's game number after Ruby used that number while building (`Array.new(part.size)`, then `@size += 1` in game code) | keep the number Ruby uses in another instance variable |
-| `floor`, `ceil`, `round`, `truncate`, `succ`, `pred`, `divmod`, `**`, `pow` or `fdiv` on a game number | `to_i` for the whole part of a fraction (it rounds down) |
+| `fdiv` on a game number, `**` or `pow` with a power the game works out or past 32, `floor`, `ceil`, `round` or `truncate` with a number of digits, `succ` or `pred` on a fraction, `divmod` on a fraction, or any other Integer or Float method (`Value#method_missing`) | `to_i` for the whole part of a fraction (it rounds down); a power written in the game |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
 | an instance variable nobody named that holds a slot's game variable (`@held = @states[0]`), given a number or changed in game code (`@held = 5`, `@held += 1`) | `game_variables :held` in the class's body: then the line copies the number |
 | a `var` line naming a variable a part already made for an instance variable (`game_variables held: :x` in a part made first, then `var :x, 0`) | a name of its own for the `var` |

@@ -2002,13 +2002,32 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
-  def test_a_fraction_asked_a_verb_a_game_number_does_not_answer_is_refused
-    refused("@x.floor after @x += 0.5", /does not answer `floor`/) do
+  def test_a_fraction_floored_in_its_class
+    agrees("@x.floor after @x += 0.5", reads: %i[w], passes: 3) do
       fraction = AnswerFraction.new
       w = 0
       game_loop do
         fraction.step
         w = fraction.whole
+      end
+    end
+  end
+
+  def test_a_number_asked_a_verb_a_game_number_does_not_answer_is_refused
+    refused("a.gcd(4)", /does not answer `gcd`/) do
+      a = 3
+      m = 0
+      game_loop do
+        a += 1
+        m = a.gcd(4)
+      end
+    end
+    refused("f.floor(1)", /`floor` with a number of digits/) do
+      f = 0.5
+      m = 0
+      game_loop do
+        f += 0.25
+        m = f.floor(1)
       end
     end
   end
@@ -2126,12 +2145,11 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   def test_succ_and_pred
-    known_gap("succ and pred", gap: "floor, round, succ, ** and divmod on a game number stop with Ruby's raw error",
-                               reads: %i[m n]) do
-      a = 3
+    agrees("succ and pred", reads: %i[m n], passes: 3) do
+      a = -2
       m = n = 0
       game_loop do
-        a += 1 if pressed(:a)
+        a += 1
         m = a.succ
         n = a.pred
       end
@@ -2163,27 +2181,63 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   def test_rounding_a_fraction
-    known_gap("floor and round", gap: "floor, round, succ, ** and divmod on a game number stop with Ruby's raw error",
-                                 reads: %i[m n]) do
+    # From 1.5 down by 0.75 a pass: 0.75, 0.0, -0.75, -1.5, -2.25, -3.0, so each sum takes in
+    # halves, negatives and whole numbers, and round meets -1.5 (away from zero, -2).
+    agrees("floor, ceil, round and truncate on a fraction", reads: %i[m n o p], passes: 6) do
       f = 1.5
-      m = n = 0
+      m = n = o = p = 0
       game_loop do
-        f += 0.25
-        m = f.floor
-        n = f.round
+        f -= 0.75
+        m += f.floor * 100 + 1000
+        n += f.ceil * 100 + 1000
+        o += f.round * 100 + 1000
+        p += f.truncate * 100 + 1000
+      end
+    end
+  end
+
+  def test_rounding_a_whole_number
+    agrees("floor, ceil, round, truncate on a whole number", reads: %i[m], passes: 2) do
+      a = -3
+      m = 0
+      game_loop do
+        a += 1
+        m = a.floor + a.ceil + a.round + a.truncate
       end
     end
   end
 
   def test_power_and_divmod
-    known_gap("** and divmod", gap: "floor, round, succ, ** and divmod on a game number stop with Ruby's raw error",
-                               reads: %i[m q r]) do
-      a = 3
-      m = q = r = 0
+    agrees("** and divmod", reads: %i[m n o q r s t], passes: 4) do
+      a = -9
+      m = n = o = q = r = s = t = 0
       game_loop do
-        a += 1 if pressed(:a)
+        a += 4
         m = a**2
-        q, r = a.divmod(2)
+        n = a**3
+        o = a.pow(0)
+        q, r = a.divmod(4)
+        s, t = a.divmod(-3)
+      end
+    end
+  end
+
+  def test_a_power_the_game_works_out_is_refused
+    refused("2**a", /power/) do
+      a = 3
+      m = 0
+      game_loop do
+        a += 1
+        m = 2**a
+      end
+    end
+    refused("a**b", /power/) do
+      a = 3
+      b = 2
+      m = 0
+      game_loop do
+        b += 1
+        m = a**b
       end
     end
   end
