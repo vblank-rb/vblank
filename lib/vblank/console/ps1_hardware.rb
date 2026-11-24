@@ -123,6 +123,11 @@ module VBlank
       TIMER1_COUNT = 0x1F80_1110
       TIMER1_MODE = 0x1F80_1114
       TIMER1_COUNTS_LINES = 0x0100
+      # ...its target, and the mode's bits that raise its interrupt each time the count reaches the
+      # target (bit 4, and bit 6 for every time rather than once), as a short pulse (bit 7 clear), the
+      # count running on past it (bit 3 clear) (psx-spx, "Timers").
+      TIMER1_TARGET = 0x1F80_1118
+      TIMER1_EVERY_TARGET = (1 << 4) | (1 << 6)
       # The third timer: its count, how it counts, and the count it raises its interrupt at. Its mode's
       # bit 9 set counts the processor's clock in eighths (psx-spx gives bits 8 and 9 as 2 or 3 for that,
       # and Beetle PSX's timer stands still at 3, so 2, bit 8 clear); bit 4 raises the interrupt at the
@@ -136,6 +141,7 @@ module VBlank
 
       # --- interrupts (I_STAT and I_MASK bits) ---
       IRQ_VBLANK = 1 << 0
+      IRQ_TIMER1 = 1 << 5 # The second timer reached its target
       IRQ_TIMER2 = 1 << 6 # The third timer reached its target
       IRQ_PAD = 1 << 7 # A pad or memory card has acknowledged a byte, or sent one back
       # The status register's bits: the hardware interrupt line (IM2, which every one of the ports'

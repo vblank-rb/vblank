@@ -12,6 +12,7 @@ require_relative "runtime/colors"
 require_relative "runtime/collide"
 require_relative "runtime/faces"
 require_relative "runtime/sound"
+require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/recordings"
 
@@ -62,6 +63,7 @@ module VBlank
             Recordings.reserve(memory, sides: recorded_pans, glides: glides) if samples
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, effect_clock_step: effect_clock_step,
                                   **notes) if songs
+            Strikes.reserve(memory) if songs && effects.positive? && effect_clock_step
           end
 
           # The runtime's sections: the entry point, then everything else, and for a game that fills faces the
@@ -107,6 +109,7 @@ module VBlank
             Colors.emit(asm, memory, backdrop: !tiled.nil?) if colors
             Collide.emit(asm) if collides
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
+            Strikes.emit(asm, memory) if Strikes.strikes?(memory)
             Recordings.emit(asm, memory) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, effect_clock_step: effect_clock_step) if songs
             emit_start(asm, sound: sound, tiles: !tiled.nil?)

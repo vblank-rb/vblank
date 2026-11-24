@@ -140,7 +140,7 @@ module VBlank
             # it has shown since power-on keeps that count (#emit_setting_up_counted), nil for any other.
             def emit(asm, memory, sound: false, tiles: false, shown_by: nil, ticks_paint_ahead: false, crosses: false, count_at: nil)
               at = ->(name) { Runtime.at(memory, name) }
-              emit_interrupt(asm, at, counting: !count_at.nil?)
+              emit_interrupt(asm, at, counting: !count_at.nil?, strikes: Strikes.strikes?(memory))
               memory.reserve(SHOW_OWED, 4) if ticks_paint_ahead
               emit_wait(asm, memory, sound, tiles, shown_by, ticks_paint_ahead)
               if ticks_paint_ahead
@@ -161,8 +161,9 @@ module VBlank
             # state the exception saved.
             #
             # +counting+ for a game that counts the frames setting up takes, in k1 while it does
-            # (Boot#emit_counting_on): the handler only counts until k1 is nought.
-            def emit_interrupt(asm, at, counting: false)
+            # (Boot#emit_counting_on): the handler only counts until k1 is nought. +strikes+ for a game whose
+            # sound effects are struck inside the frame, whose line timer's interrupt is a key due (Strikes).
+            def emit_interrupt(asm, at, counting: false, strikes: false)
               h = Console::PS1Hardware
               saved = at.call(SAVED)
               asm.label("rt_interrupt")
@@ -186,6 +187,16 @@ module VBlank
               asm.beq(:t0, :zero, "rt_interrupt_not_timer")
               asm.jal("rt_pad_timed_out")
               asm.label("rt_interrupt_not_timer")
+              if strikes
+                asm.lui(:t2, h::IO >> 16)
+                asm.lw(:t0, h::I_STAT & 0xFFFF, :t2)
+                asm.andi(:t0, :t0, h::IRQ_TIMER1)
+                asm.beq(:t0, :zero, "rt_interrupt_not_strike")
+                asm.li(:t0, ~h::IRQ_TIMER1 & 0xFFFF_FFFF)
+                asm.sw(:t0, h::I_STAT & 0xFFFF, :t2)
+                asm.jal("rt_strikes_due")
+                asm.label("rt_interrupt_not_strike")
+              end
               asm.lui(:t2, h::IO >> 16)
               asm.lw(:t0, h::I_STAT & 0xFFFF, :t2)
               asm.andi(:t0, :t0, h::IRQ_VBLANK)

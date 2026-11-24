@@ -45,7 +45,9 @@ module VBlank
               emit_instruction_cache_on(asm, h)
               asm.lui(:s1, h::IO >> 16) # s1: the ports, for the rest of the boot
               emit_interrupts_quiet(asm, h)
-              emit_port_word(asm, h::TIMER1_MODE, h::TIMER1_COUNTS_LINES) # for Frame::END_LINES
+              # For Frame::END_LINES, and, raising its interrupt at its target, for Strikes.
+              timer1 = h::TIMER1_COUNTS_LINES | (Strikes.strikes?(memory) ? h::TIMER1_EVERY_TARGET : 0)
+              emit_port_word(asm, h::TIMER1_MODE, timer1)
               emit_handler_installed(asm, h)
               emit_instruction_cache_emptied(asm, h)
               emit_counting_on(asm, h) if counted
@@ -71,7 +73,7 @@ module VBlank
               emit_drawing_settings(asm, h)
               asm.jal("rt_start")
               emit_counting_handed_over(asm, memory) if counted
-              emit_interrupts_on(asm, h, counted: counted)
+              emit_interrupts_on(asm, h, counted: counted, strikes: Strikes.strikes?(memory))
               # The game starts as a frame starts, so its first pass ends in a frame after the one the
               # program was loaded in, where a reader of the run finds it waiting. It waits for two
               # blanks: the pads' reading the second begins is the second pass's buttons (Pads), and the
@@ -312,8 +314,8 @@ module VBlank
             # processor told to take them. +counted+ keeps a blank that began while setting up handed its
             # count over waiting (#emit_counting_handed_over), so the interrupt counts it as soon as it is on,
             # and clears only the pad's, which the pad's reading while setting up left behind with no
-            # conversation of the interrupt's under way.
-            def emit_interrupts_on(asm, h, counted: false)
+            # conversation of the interrupt's under way. +strikes+ lets the line timer's through too (Strikes).
+            def emit_interrupts_on(asm, h, counted: false, strikes: false)
               asm.lui(:t1, h::IO >> 16)
               if counted
                 asm.li(:t0, ~h::IRQ_PAD & 0xFFFF_FFFF)
@@ -321,7 +323,7 @@ module VBlank
               else
                 asm.sw(:zero, h::I_STAT & 0xFFFF, :t1)
               end
-              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD | h::IRQ_TIMER2)
+              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD | h::IRQ_TIMER2 | (strikes ? h::IRQ_TIMER1 : 0))
               asm.sw(:t0, h::I_MASK & 0xFFFF, :t1)
               asm.li(:t0, h::SR_INTERRUPTS_ON)
               asm.mtc0(:t0, R3000::COP0_STATUS)

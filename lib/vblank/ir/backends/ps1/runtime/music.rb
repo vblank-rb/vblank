@@ -677,14 +677,16 @@ module VBlank
               asm.label("rt_music_frame")
               enter(asm)
               asm.jal("rt_music_switch")
+              strikes = clock_step && Strikes.strikes?(memory)
+              Strikes.emit_frame_begins(asm, at, EFFECT_CLOCK) if strikes
               emit_step_effect_clock(asm, at, clock_step) if clock_step
-              emit_effect_pass(asm, at, "rt_sfx_above", clock_step) if sharing
+              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
               asm.lw(:t0, at.call(PLAYING), :gp)
               asm.beq(:t0, :zero, "rt_music_frame_played")
               asm.jal("rt_music_song_frame")
               asm.label("rt_music_frame_played")
-              emit_effect_pass(asm, at, "rt_sfx_below", clock_step) if sharing
-              emit_later_ticks(asm, at) if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
+              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes) if sharing
+              emit_later_ticks(asm, at, clock_step, strikes) if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
               asm.jal("rt_music_swells") if swells?(memory)
               asm.jal("rt_music_slides") if slides?(memory)
               asm.jal("rt_music_wobbles") if wobbles?(memory)
@@ -693,8 +695,9 @@ module VBlank
             end
 
             # Each later tick of a frame the effects' timer ticks more than once on, inline after the
-            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame").
-            def emit_later_ticks(asm, at)
+            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame"),
+            # with +strikes+ each a tick further into the frame.
+            def emit_later_ticks(asm, at, step, strikes)
               asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
               asm.beq(:t0, :zero, "rt_sfx_later_ticks_done")
               asm.label("rt_sfx_later_tick")
@@ -702,8 +705,13 @@ module VBlank
               asm.addiu(:t0, :t0, -1)
               asm.sw(:t0, at.call(EFFECT_TICKED), :gp)
               asm.beq(:t0, :zero, "rt_sfx_later_ticks_done")
+              if strikes
+                Strikes.emit_next_tick(asm, at)
+                Strikes.emit_pass_begins(asm, at, step)
+              end
               asm.jal("rt_sfx_above")
               asm.jal("rt_sfx_below")
+              Strikes.emit_pass_ends(asm, at) if strikes
               asm.b("rt_sfx_later_tick")
               asm.label("rt_sfx_later_ticks_done")
             end
@@ -721,8 +729,9 @@ module VBlank
             end
 
             # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
-            # effects' timer has no tick, when they are on one.
-            def emit_effect_pass(asm, at, routine, clock_step)
+            # effects' timer has no tick, when they are on one. With +strikes+ its keys are struck at its
+            # tick's own line (Strikes).
+            def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jal(routine)
                 return
@@ -730,7 +739,9 @@ module VBlank
 
               asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
               asm.beq(:t0, :zero, "#{routine}_untimed")
+              Strikes.emit_pass_begins(asm, at, clock_step) if strikes
               asm.jal(routine)
+              Strikes.emit_pass_ends(asm, at) if strikes
               asm.label("#{routine}_untimed")
             end
 
