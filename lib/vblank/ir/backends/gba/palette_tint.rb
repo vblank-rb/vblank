@@ -37,10 +37,10 @@ module VBlank
         # sprite table's blob/size, and which blobs a tint must keep readable — is settled
         # by several prepare passes that run after this object exists, so it arrives late,
         # through #palette=, rather than as a constructor argument (the same shape
-        # Functions#modes= is set in). `drawing:` reaches Drawing for the fade/blend
-        # arithmetic it shares with a fade and a see-through layer — GBA builds this
-        # object before its own @drawing exists, so it hands in `self` and the call
-        # resolves once @drawing does (see gba.rb#initialize).
+        # Functions#modes= is set in). The three it calls on other parts (the copies out of the
+        # cartridge, the fade and blend arithmetic it shares with a fade and a see-through layer,
+        # and the notes saying whose scenery is up) are made after this, and arrive late the same
+        # way, through #uploads=, #effects= and #scene_entry= (see gba.rb#initialize).
         class PaletteTint
           include Console::Hardware
 
@@ -223,7 +223,7 @@ module VBlank
           # its list holds now (see #emit_recolored_obj_banks). +scene+ is the one taking over.
           def emit_send_scene_obj_palette(blob, units, scene)
             unless @palette_tint
-              @drawing.emit_plain_dma_blob(blob, OBJ_PALETTE, units)
+              @uploads.emit_plain_dma_blob(blob, OBJ_PALETTE, units)
               return emit_changed_obj_lists_again(up: scene)
             end
 
@@ -295,7 +295,7 @@ module VBlank
           def emit_changed_list_colors(list)
             return emit_list_colors_into(list.group_at, list.source_var) unless list.scene
 
-            @drawing.scene_entry.emit_if_scene_up(:art, list.scene) do
+            @scene_entry.emit_if_scene_up(:art, list.scene) do
               emit_list_colors_into(list.group_at, list.source_var)
             end
           end
@@ -313,7 +313,7 @@ module VBlank
             followed.groups.each do |group|
               next emit_list_colors_into(group.group_at, followed.source_var) unless group.scene
 
-              @drawing.scene_entry.emit_if_scene_up(:scenery, group.scene) do
+              @scene_entry.emit_if_scene_up(:scenery, group.scene) do
                 emit_list_colors_into(group.group_at, followed.source_var)
               end
             end
@@ -324,13 +324,14 @@ module VBlank
             emit_colors_into_bank(dest, COLORS_IN_A_BANK)
           end
 
-          def initialize(emitter:, primitives:, lowering:, drawing:, raster:)
+          def initialize(emitter:, primitives:, lowering:, raster:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
-            @drawing = drawing
             @raster = raster
           end
+
+          attr_writer :uploads, :effects, :scene_entry
 
           attr_writer :modes
 
@@ -611,7 +612,7 @@ module VBlank
           # left in r0 and kept in TINT_STEPS.
           def emit_tint_word(color, steps)
             @lowering.value(steps)
-            @drawing.emit_clamp_blend_steps(walk_levels)
+            @effects.emit_clamp_blend_steps(walk_levels)
             @emitter.emit(ASM.mov_reg(TINT_STEPS, ACC))                      # kept while the state is compared
             @emitter.emit_number(TMP, color << state_shift)
             @emitter.emit(ASM.orr_reg(TMP, TMP, ACC))                        # r1 = the state asked for
@@ -843,7 +844,7 @@ module VBlank
           # Tell that routine whose layers to write: the scene +up+, or with it unknown the one the
           # note names.
           def emit_recolored_scene_up(up)
-            entry = @drawing.scene_entry
+            entry = @scene_entry
             return entry.emit_marker_copy_into(RECOLORED_SCENE_UP, :scenery) if up == :unknown
 
             entry.emit_scene_number_into(RECOLORED_SCENE_UP, up)
@@ -882,7 +883,7 @@ module VBlank
               next if scene && up != :unknown && scene != up
 
               if scene && up == :unknown
-                @drawing.scene_entry.emit_if_var_names_scene(scene_up_in, scene) do
+                @scene_entry.emit_if_var_names_scene(scene_up_in, scene) do
                   emit_recolored_bank(dest, source_var, along, units, area)
                 end
               else
@@ -1036,7 +1037,7 @@ module VBlank
             # colours, or the area a game walked into — never from the one at power-on.
             taking_turns = (blob == @layout.obj_palette_blob && scene_obj_tables?) ||
                            (blob == BG_SHARED_PAL && @layout.bg_tables_take_turns?)
-            return @drawing.emit_plain_dma_blob(blob, dest, units) unless taking_turns
+            return @uploads.emit_plain_dma_blob(blob, dest, units) unless taking_turns
 
             emit_table_source(ACC, blob)
             @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: dest,

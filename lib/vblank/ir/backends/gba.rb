@@ -339,10 +339,6 @@ module VBlank
         # A test reads a voice's/the mix buffers' state back (see {Mixer}).
         def bitmaps = @bitmaps
         def blob_codecs = @blob_codecs
-        # Reached via `drawing: self` by PaletteTint and LayerBlend (Drawing isn't their own
-        # object's collaborator name — this instance stands in), so these have to be public: an
-        # explicit-receiver call ignores privacy on the defining class, not on whatever the
-        # receiver happens to evaluate to.
         # The game has written its sprite table and ends the gap's writes (SpriteDrawing, through
         # `placement: self`). Nothing for a game whose mix does not wait for them (see
         # #mix_waits_for_gap?).
@@ -357,13 +353,6 @@ module VBlank
           @expressions.emit_forget_presses if @uses_pressed
         end
 
-        def fade_steps_value(amount) = @effects.fade_steps_value(amount)
-        def emit_clamp_blend_steps(most = Console::Hardware::BLD_MAX) = @effects.emit_clamp_blend_steps(most)
-        def emit_blend_weights_from_acc = @effects.emit_blend_weights_from_acc
-        def emit_plain_dma_blob(blob_name, dest, units) = @uploads.emit_plain_dma_blob(blob_name, dest, units)
-
-        # The notes saying which scene's things are up (see SceneEntry).
-        def scene_entry = @drawing.scene_entry
         def mix_buf0 = @mixer.mix_buf0
         def mix_buf1 = @mixer.mix_buf1
         def voice_base = @mixer.voice_base
@@ -492,9 +481,9 @@ module VBlank
                              # an EEPROM's last block of the pass is written back before the console sleeps
                              end_of_pass: -> { @save.emit_chip_end_of_pass if @uses_save })
           @palette_tint = PaletteTint.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
-                                          drawing: self, raster: @raster)
+                                          raster: @raster)
           @layer_blend = LayerBlend.new(emitter: @emit, lowering: @lowering, primitives: @primitives,
-                                        drawing: self, raster: @raster)
+                                        raster: @raster)
           @buffered = Buffered.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                    framebuffer: @framebuffer, placement: self)
           @faces = Faces.new(emitter: @emit, primitives: @primitives, lowering: @lowering, divide: @divide,
@@ -522,6 +511,10 @@ module VBlank
                                  background_drawing: @background_drawing, lists: @lists,
                                  placement: self, frames: @frames)
           @audio.drawing = @drawing
+          @palette_tint.uploads = @uploads
+          @palette_tint.effects = @effects
+          @palette_tint.scene_entry = @drawing.scene_entry
+          @layer_blend.effects = @effects
           @picture_group_copying = PictureGroupCopying.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                            scene_entry: @drawing.scene_entry)
           @sprite_drawing.picture_group_copying = @picture_group_copying
@@ -986,7 +979,7 @@ module VBlank
           @blob_codecs.merge!(@screen.codecs)
           @layer_blend.screen = @screen # built here, not at construction — see LayerBlend's class comment
           @raster.register_row_bends(program) # which layers bend row by row (armed at boot, run per line)
-          @raster.prepare_row_bends(program, layers: @screen.hardware_layers, scene_entry: scene_entry,
+          @raster.prepare_row_bends(program, layers: @screen.hardware_layers, scene_entry: @drawing.scene_entry,
                                              scene_scenery: @screen.picture.scenery.select { |bg| @screen.handover.on_arrival?(bg) })
           @has_objects = program.walk.any? { |node| node.kind == :object }
           # A game laid out for a smaller screen, shown in the middle of this one with a border of

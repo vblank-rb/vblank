@@ -51,10 +51,9 @@ module VBlank
         # how much. Reads the screen's layout ({ScreenLayout}: how the scenery and sprites
         # stack, and which of the console's layers each background landed on), handed over
         # through #screen= once it exists, since it is worked out from the program after this
-        # object is built (the same shape Functions#modes= is set in). `drawing:` reaches
-        # Drawing for the fade/blend arithmetic it shares with a tint and a fade — GBA builds
-        # this object before its own @drawing exists, so it hands in `self` and the call
-        # resolves once @drawing does (see gba.rb#initialize).
+        # object is built (the same shape Functions#modes= is set in). The fade/blend arithmetic
+        # it shares with a tint and a fade is ScreenEffects', made after this, and arrives late
+        # through #effects= (see gba.rb#initialize).
         class LayerBlend
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[see_through].freeze
@@ -73,11 +72,12 @@ module VBlank
           # and a sprite cannot be both.)
           OBJ_SEMI_TRANSPARENT = 0x0400
 
-          def initialize(emitter:, lowering:, primitives:, drawing:, raster:)
+          attr_writer :effects
+
+          def initialize(emitter:, lowering:, primitives:, raster:)
             @emitter = emitter
             @lowering = lowering
             @primitives = primitives
-            @drawing = drawing
             @raster = raster
             # Nothing has a layer until the backgrounds are given their slots, and a
             # program with no tiled backgrounds never gives out any. A see-through layer of
@@ -373,9 +373,9 @@ module VBlank
           # The one-number form worked out as the game runs: what is behind is the amount's
           # share, and the layer takes what is left of a whole.
           def emit_split_amount(amount)
-            @lowering.value(@drawing.fade_steps_value(amount))
-            @drawing.emit_clamp_blend_steps
-            @drawing.emit_blend_weights_from_acc
+            @lowering.value(@effects.fade_steps_value(amount))
+            @effects.emit_clamp_blend_steps
+            @effects.emit_blend_weights_from_acc
           end
 
           # The weight pair as one halfword: how much of the layer itself survives in the
