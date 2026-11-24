@@ -1294,18 +1294,26 @@ module VBlank
 
               @emitter.write_reg16(VRAM_START + ((yi * SCREEN_WIDTH) + xi) * 2, color)
             else
+              # Video memory is the picture: row after row of 16-bit colours, so the pixel at
+              # (x, y) is the halfword at VRAM_START + (y * SCREEN_WIDTH + x) * 2.
+              #
+              #   VRAM_START ->  [ row 0: x = 0 ... SCREEN_WIDTH-1 ][ row 1 ] ... [ row y ] ...
+              #                                                          the pixel: ^ x halfwords in
+              #
+              # Working it out takes the registers below; the store at the end is the pixel
+              # appearing on the screen, nothing more is needed to draw it.
               @lowering.value(node.y)            # r0 = y
-              @emitter.emit(ASM.push(ACC))
+              @emitter.emit(ASM.push(ACC))       # the x side may use every scratch register: keep y on the stack
               @lowering.value(node.x)            # r0 = x
               @emitter.emit(ASM.pop(TMP))              # r1 = y
-              @emitter.emit_number(2, SCREEN_WIDTH)
-              @emitter.emit(ASM.mul(3, TMP, 2))        # r3 = y * width
-              @emitter.emit(ASM.add_reg(3, 3, ACC))    # r3 = y*width + x
+              @emitter.emit_number(2, SCREEN_WIDTH)    # r2 = the width of a row, in pixels
+              @emitter.emit(ASM.mul(3, TMP, 2))        # r3 = y * width: the first pixel of row y
+              @emitter.emit(ASM.add_reg(3, 3, ACC))    # r3 = y*width + x: pixels from the start
               @emitter.emit(ASM.lsl_imm(3, 3, 1))      # r3 = offset * 2 bytes
-              @emitter.emit_number(2, VRAM_START)
+              @emitter.emit_number(2, VRAM_START)      # r2 = where video memory starts
               @emitter.emit(ASM.add_reg(3, 2, 3))      # r3 = VRAM address
-              @emitter.emit_number(ACC, color)
-              @emitter.emit(ASM.store_halfword(ACC, 3))
+              @emitter.emit_number(ACC, color)         # r0 = the colour, 15 bits
+              @emitter.emit(ASM.store_halfword(ACC, 3)) # one halfword store: the pixel is drawn
             end
           end
 
@@ -1388,6 +1396,10 @@ module VBlank
 
           # The whole picture of the painted screen in +color+, a 15-bit colour.
           def emit_screen_filled(color)
+            # Two pixels share one 32-bit word, so the copy engine fills the picture two pixels at
+            # a time: +count+ words, all read from the same place.
+            #
+            #   scratch (one word: colour, colour) --x count--> video memory, filling forward
             word = (color << 16) | color
             count = SCREEN_WIDTH * @layout.shown_rows / 2
             scratch = @primitives.var_addr(Primitives::FILL_SCRATCH)
@@ -1399,7 +1411,9 @@ module VBlank
                                                                   stride: SCREEN_WIDTH * 2)
             end
 
-            # From that one fixed word, to the screen.
+            # From that one fixed word, to the screen. The control word's fill flag keeps the
+            # source from stepping, so the engine writes the same word every time (GBATEK, "DMA
+            # Transfers"); writing it starts the copy.
             @primitives.emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
           end
 
@@ -1807,6 +1821,18 @@ module VBlank
           #
           # r6 holds the buffer base and r7/r8 hold x/y across the whole copy; the
           # rest (r2–r5, r9–r11) are per-row scratch.
+          #
+          # ## One row, clipped
+          #
+          #   screen row:    0 ..................................... shown_columns
+          #   buffer row:        [x ............ x+width)          (here it hangs off the left)
+          #   copied:            [visible_left .. visible_right)
+          #                      |_ visible_width _|
+          #
+          # A row is a start in the buffer (r5), a start on the screen (r3) and a count (r4).
+          # Writing those three into the copy engine's registers, the count last with its enable
+          # bit set, starts the copy; the processor waits until it is done (GBATEK, "DMA
+          # Transfers").
           def emit_rect_row_dma(x_node, y_node, width, height, base, vram:)
             buf_reg = 6
             x_reg = 7
@@ -1825,7 +1851,7 @@ module VBlank
               skip = @emitter.gensym
 
               # screen_y = y + row; drop the whole row if it's above or below screen.
-              @primitives.emit_add_const(9, y_reg, row, 2)          # r9 = screen_y
+              @primitives.emit_add_const(9, y_reg, row, 2)          # r9 = screen_y (r2 is the helper's scratch)
               @emitter.emit(ASM.cmp_imm(9, 0))
               @emitter.emit_branch(:bcond, skip, cond: :lt)
               @emitter.emit(ASM.cmp_imm(9, @layout.shown_rows))
@@ -1867,7 +1893,9 @@ module VBlank
               @emitter.emit_number(2, VRAM_START)
               @emitter.emit(ASM.add_reg(3, 3, 2))
 
-              # control = visible_width | DMA_ENABLE (16-bit, source+dest increment).
+              # control = visible_width | DMA_ENABLE (16-bit, source+dest increment). The low
+              # bits of the control word are the count of halfwords and the enable bit is what
+              # makes the engine start once the word is written.
               @emitter.emit(ASM.orr_imm(4, 4, DMA_ENABLE))
 
               # Direction decides which span is the source: :dest sends the buffer
@@ -1891,6 +1919,18 @@ module VBlank
           #
           # r2/r3 hold x/y across the blit; r4/r6 are the per-row screen_y and row
           # base; r7/r8 are per-pixel scratch.
+          #
+          # ## What is written
+          #
+          # The picture's art is read now, while the game is built, so none of it is read as the
+          # game runs. For each row there is a guard on the row, then for each lit pixel a guard on
+          # its column and a store of its colour:
+          #
+          #   row 0:  [row guard] [px 0: guard, store] [px 3: guard, store] ...   (px 1, 2 see-through)
+          #   row 1:  [row guard] ...
+          #
+          # A store to video memory is the pixel itself, so a see-through pixel costs nothing: no
+          # code is written for it and the screen keeps what it showed.
           def emit_blit_transparent(node, bmp)
             width = bmp.width
             colors = bmp.pixels.unpack("v*")
@@ -1913,7 +1953,7 @@ module VBlank
               @emitter.emit(ASM.cmp_imm(4, @layout.shown_rows))
               @emitter.emit_branch(:bcond, skip_row, cond: :ge)
               @emitter.emit_number(5, SCREEN_WIDTH)
-              @emitter.emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base)
+              @emitter.emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base, in pixels)
 
               lit.each do |col|
                 color = colors[(row * width) + col]
@@ -1925,12 +1965,12 @@ module VBlank
                 @emitter.emit(ASM.cmp_imm(7, @layout.shown_columns))
                 @emitter.emit_branch(:bcond, skip_px, cond: :ge)
 
-                @emitter.emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x
+                @emitter.emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x (pixels from the start)
                 @emitter.emit(ASM.lsl_imm(7, 7, 1))              # * 2 bytes/pixel
                 @emitter.emit_number(8, VRAM_START)
                 @emitter.emit(ASM.add_reg(7, 7, 8))              # VRAM address
                 @emitter.emit_number(8, color)
-                @emitter.emit(ASM.store_halfword(8, 7))
+                @emitter.emit(ASM.store_halfword(8, 7))          # the store is the pixel
 
                 @emitter.place_label(skip_px)
               end
