@@ -102,11 +102,14 @@ module VBlankWindow
     return lockstep.begin_match unless window
 
     began = Thread.new { lockstep.begin_match }
+    began.report_on_exception = false # its error is raised here, by #join
     until began.join(VBlank::Live::BuildWatch::FRAME_SECONDS)
       window.show_waiting(lines)
       raise Interrupt if window.stop?
     end
     began.value
+  ensure
+    began&.kill # a wait given up stops waiting
   end
 
   # The match a player chose in the window's menu (+request+, a Live::WindowMenu::MatchRequest), met as
@@ -125,18 +128,22 @@ module VBlankWindow
     end
     meeting = VBlank::Live::MatchPlay.meeting_for(request)
     play = VBlank::Live::MatchPlay.new(VBlank::Live::MatchPlay.facts_from_plain(written.match), game_file: menu_match.fetch(:game_file),
-                                                                                              say: say, **meeting.to_h)
+                                                                                              say: say, from_menu: true, **meeting.to_h)
     lockstep = play.open
-    begin
-      begin_while_waiting(lockstep, window, *said, play.waiting_line || "Joining the match")
-    rescue Interrupt
-      lockstep.leave
-      raise
-    end
+    begin_while_waiting(lockstep, window, *said, play.waiting_line || "Joining the match. Press Escape to stop.")
     puts "The match has begun. You are player #{lockstep.player}."
     lockstep
-  rescue *match_failures => e
-    words = VBlank::Live::MatchPlay.failure_message(e)
+  rescue Interrupt
+    # Escape gives up the wait and the game plays again on its own; a window closed ends the play.
+    lockstep&.leave
+    raise unless window.take_escape
+
+    nil
+  rescue ArgumentError, *match_failures => e
+    # An address the menu let through and the network did not (WindowMenu.address_problem) is an
+    # ArgumentError; whatever went wrong, this computer leaves the room, so the host does not keep it.
+    lockstep&.leave
+    words = e.is_a?(ArgumentError) ? e.message : VBlank::Live::MatchPlay.failure_message(e)
     warn words
     window.tell_in_box(words)
     nil

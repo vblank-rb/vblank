@@ -582,6 +582,16 @@ module VBlank
         @menu.match_players = most_players
       end
 
+      # Whether the play stopped because Escape was pressed, not because the window was closed; if so, the
+      # window plays on (#stop? is false again). Escape while a match chosen in the menu is waited for gives
+      # up the wait, and the game plays again on its own.
+      def take_escape
+        return false unless @escaped && @closed
+
+        @escaped = @closed = false
+        true
+      end
+
       # The match the player chose in the menu (a WindowMenu::MatchRequest), once, or nil. While one is
       # waiting to be taken the play stops (#stop?), so the game can start again as the match.
       def take_match_request = @menu.take_match_request
@@ -1186,7 +1196,10 @@ module VBlank
       # gamepad's buttons work the menu too (#read_pad_button).
       def read_event
         type = @event[0, 4].unpack1("L")
-        @closed = true if type == EVENT_QUIT || type == EVENT_WINDOW_CLOSE_REQUESTED
+        if type == EVENT_QUIT || type == EVENT_WINDOW_CLOSE_REQUESTED
+          @closed = true
+          @escaped = false # a window closed is closed, Escape before it or not
+        end
         return open_or_close_pad(type) if type == EVENT_GAMEPAD_ADDED || type == EVENT_GAMEPAD_REMOVED
         return read_trigger if type == EVENT_PAD_AXIS
         if type == EVENT_PAD_BUTTON_DOWN || type == EVENT_PAD_BUTTON_UP
@@ -1308,7 +1321,7 @@ module VBlank
           return write_settings_soon
         end
         return if read_typed_key(scancode, repeat)
-        return @closed = true if scancode == ESCAPE && !repeat
+        return @escaped = @closed = true if scancode == ESCAPE && !repeat
         return if read_variables_key(scancode, repeat)
 
         hotkey = @player_settings.hotkey_of_key(scancode)

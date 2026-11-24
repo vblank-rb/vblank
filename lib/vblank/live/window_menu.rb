@@ -147,6 +147,17 @@ module VBlank
       SEMICOLON_KEY = 51
       MINUS_KEY = 45
 
+      # What is wrong with +text+ typed as an address, in words for the player, or nil when it is one: a
+      # host, then a colon and a port from 1 to 65535 if it has one. Network::DirectPlay::Address.parse
+      # holds the same rule; the menu checks it here, where the network is not loaded, so a typo is said
+      # on the line rather than ending the game.
+      def self.address_problem(text)
+        host, port = text.split(":", 2)
+        return nil if !host.to_s.empty? && (port.nil? || (port.match?(/\A\d+\z/) && port.to_i.between?(1, 65_535)))
+
+        "Write the address as HOST:PORT, for example 192.168.1.5:7777."
+      end
+
       # The character key +key+ types for what a match line +asks+: an address takes letters, digits,
       # dots, a colon and hyphens; a room code takes letters, in capitals, and digits. Nil for a key that
       # types none there.

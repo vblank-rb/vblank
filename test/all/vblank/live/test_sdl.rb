@@ -615,6 +615,25 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # Escape stops the play, and a waiting match chosen in the menu takes it back (#take_escape) so the
+  # game plays on; a window closed is closed whatever was pressed before.
+  def test_escape_can_be_taken_back_and_a_closed_window_cannot
+    window = open_window
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert window.stop?
+    assert window.take_escape
+    refute window.stop?
+
+    press_key(SDL::ESCAPE)
+    push_event([SDL::EVENT_QUIT].pack("L"))
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    refute window.take_escape
+    assert window.stop?
+  ensure
+    window&.close
+  end
+
   # Escape while an address is typed gives up the typing, not the play; the letters typed are the
   # menu's, never the game's.
   def test_escape_while_typing_an_address_gives_up_the_typing

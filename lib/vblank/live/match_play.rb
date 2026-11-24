@@ -45,6 +45,10 @@ module VBlank
         end
       end
 
+      # How many ports a host chosen in the menu tries, from Network::DirectPlay::DEFAULT_PORT, so a second
+      # host on one computer finds a port of its own.
+      MENU_PORTS = 10
+
       # What stops a match, each already in plain words.
       FAILURES = [Network::Refused, Network::Desync, Network::ConnectionLost, Network::MatchCutOff, Network::ConnectionFailed,
                   Network::VersionMismatch, Network::RoomRefused, Network::BadMessage].freeze
@@ -56,8 +60,15 @@ module VBlank
       # +host+ is the port to host on (or true, with +relay+), +join+ the address or room to join,
       # +relay+ the relay's URL (or true for the usual one), +players+ how many a host waits for and
       # +input_delay+ its passes of delay. +say+ is handed each line for the person.
-      def initialize(facts, game_file:, host: nil, join: nil, relay: nil, players: nil, input_delay: nil, say: ->(line) { puts line })
+      #
+      # +from_menu+ is a match chosen in the window's menu (MatchPlay.meeting_for): what is said names no command-line
+      # flag, since the player gave none, and a host by address that finds its port in use tries the next
+      # MENU_PORTS - 1 ports.
+      def initialize(facts, game_file:, host: nil, join: nil, relay: nil, players: nil, input_delay: nil, say: ->(line) { puts line },
+                     from_menu: false, environment: nil)
         @facts = facts
+        @from_menu = from_menu
+        @environment = environment # nil for ENV; where a match chosen in the menu finds the relay's address
         @game_file = game_file
         @host = host
         @join = join
@@ -79,7 +90,11 @@ module VBlank
       end
 
       # The line said while the others are waited for, for the one who hosts.
-      def waiting_line = ("Waiting for the other players. Press Ctrl-C to give up." if @host)
+      def waiting_line
+        return nil unless @host
+
+        "Waiting for the other players. Press #{@from_menu ? 'Escape' : 'Ctrl-C'} to stop."
+      end
 
       # The words for +error+, one of FAILURES. A machine whose game went another way than another
       # machine's first writes the tape of the match and the report into a new folder, which
@@ -118,7 +133,7 @@ module VBlank
 
       # A match through the relay: a host makes a room and says its code, a joiner joins one.
       def meet_on_relay(fingerprint)
-        url = Network::RelayPlay.url_from(@relay)
+        url = @from_menu ? relay_url_for_menu : Network::RelayPlay.url_from(@relay)
         unless @host
           lockstep = Network::RelayPlay.join(url, @join, fingerprint: fingerprint)
           @say.call("Joined the room #{@join}.")
@@ -126,24 +141,63 @@ module VBlank
         end
 
         lockstep, code = Network::RelayPlay.host(url, players: players_in_match, input_delay: @input_delay, fingerprint: fingerprint)
-        @say.call("Made the room #{code} on the relay. The others can join with:")
-        @say.call("  vblank run #{@game_file} --relay --join #{code}")
+        if @from_menu
+          @say.call("The room code is #{code}. Give it to the others. They choose Join by room code and type it.")
+        else
+          @say.call("Made the room #{code} on the relay. The others can join with:")
+          @say.call("  vblank run #{@game_file} --relay --join #{code}")
+        end
         lockstep
+      end
+
+      # The relay's address for a match chosen in the menu: the environment's, as a player with no command
+      # line can set no other.
+      def relay_url_for_menu
+        url = (@environment || ENV).fetch(Network::RelayPlay::RELAY_URL_VARIABLE, "")
+        return url unless url.empty?
+
+        raise Network::ConnectionFailed, "No relay is set, so this computer cannot play with a room code. To fix this, " \
+                                         "set #{Network::RelayPlay::RELAY_URL_VARIABLE} to the address of the relay, " \
+                                         "and start the game again. Or host and join by address."
       end
 
       def host_directly(fingerprint)
         players = players_in_match
-        lockstep, port = Network::DirectPlay.host(port: Integer(@host, 10), players: players, input_delay: @input_delay,
-                                                  fingerprint: fingerprint)
-        @say.call("Hosting a match for #{players} players on port #{port}. The others can join with one of:")
-        Network::DirectPlay.addresses_for(port).each { |address| @say.call("  vblank run #{@game_file} --join #{address}") }
+        lockstep, port = host_on_free_port(fingerprint, players)
+        addresses = Network::DirectPlay.addresses_for(port)
+        if @from_menu
+          @say.call("Hosting a match for #{players} players. The others choose Join by address and type one of these:")
+          addresses.each { |address| @say.call("  #{address}") }
+        else
+          @say.call("Hosting a match for #{players} players on port #{port}. The others can join with one of:")
+          addresses.each { |address| @say.call("  vblank run #{@game_file} --join #{address}") }
+        end
         lockstep
+      end
+
+      # The host's lockstep and port: the port asked for, or from the menu the first of MENU_PORTS that no
+      # other program has.
+      def host_on_free_port(fingerprint, players)
+        first = Integer(@host, 10)
+        tries = @from_menu ? MENU_PORTS : 1
+        tries.times do |index|
+          return Network::DirectPlay.host(port: first + index, players: players, input_delay: @input_delay, fingerprint: fingerprint)
+        rescue Network::PortInUse
+          raise unless @from_menu
+        end
+        raise Network::ConnectionFailed, "Ports #{first} to #{first + tries - 1} are in use on this computer, so it cannot " \
+                                         "host. To fix this, stop a program that uses one of them, and host again."
       end
 
       def join_directly(fingerprint)
         address = Network::DirectPlay::Address.parse(@join)
         @say.call("Joining the match at #{address}.")
         Network::DirectPlay.join(address, fingerprint: fingerprint)
+      rescue Network::NobodyHosting
+        raise unless @from_menu
+
+        raise Network::ConnectionFailed, "Nobody is hosting a match at #{address}. To fix this, check the address, and " \
+                                         "make sure that the other computer hosts a match."
       end
     end
   end

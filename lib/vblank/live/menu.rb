@@ -99,6 +99,9 @@ module VBlank
       # keys that type (#type_key), and Escape gives it up (#cancel_typing) rather than closing the window.
       def typing? = !@typing.nil?
 
+      # What is wrong with the address typed, said under the lines after Enter, or nil.
+      def typing_problem = (@typing_problem if typing?)
+
       # Gives up what is being typed, and keeps the menu open. Gives whether anything was.
       def cancel_typing
         was = typing?
@@ -344,6 +347,7 @@ module VBlank
       # the key was the line's.
       def type_for_match(key)
         line, text = @typing
+        @typing_problem = nil # said until the next key
         if key == WindowMenu::BACKSPACE_KEY
           @typing = [line, text[0...-1]]
           return true
@@ -353,12 +357,19 @@ module VBlank
         true
       end
 
-      # Enter on a match line being typed into: the match asked for with what is typed, unless nothing is.
+      def start_typing(line)
+        @typing = [line, +""]
+        @typing_problem = nil
+      end
+
+      # Enter on a match line being typed into: the match asked for with what is typed, unless nothing is,
+      # or an address is not one, which is said under the lines (#typing_problem) until the next key.
       def ask_typed_match
         line, text = @typing
         return if text.empty?
 
-        ask_match_and_close(line, text)
+        @typing_problem = WindowMenu.address_problem(text) if line.asks == :address
+        ask_match_and_close(line, text) unless @typing_problem
       end
 
       # A match asked for from +line+, and the menu closed, as the window ends the game to start it.
@@ -404,7 +415,7 @@ module VBlank
         when :button then @controls.capture_for_button(line.place)
         when :hotkey then @controls.capture_for_hotkey(line.place)
         when :state then ask_state_and_close(line.request)
-        when :match then line.asks ? @typing = [line, +""] : ask_match_and_close(line, nil)
+        when :match then line.asks ? start_typing(line) : ask_match_and_close(line, nil)
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
@@ -472,8 +483,8 @@ module VBlank
       def draw_lines(top)
         pad = size(:pad)
         row = size(:row)
-        notice = @controls.notice
-        inner = [lines.map { |line| width_of(line.label) + size(:label_gap) + right_width(line) }.max,
+        notice = @controls.notice || typing_problem
+        inner =[lines.map { |line| width_of(line.label) + size(:label_gap) + right_width(line) }.max,
                  size(:least_width), *(width_of(notice) if notice)].max
         wide = inner + (2 * pad)
         high = (lines.size * row) + (2 * pad) + (lines.count(&:line_before) * size(:line_before)) + (notice ? row : 0)

@@ -576,6 +576,24 @@ class TestMenu < Minitest::Test
     assert_equal WindowMenu::MatchRequest.new(does: :join_code, text: "AB12", players: nil), menu.take_match_request
   end
 
+  # An address that is not one is said under the lines when Enter is pressed, and nothing is asked: the
+  # game plays on, and the player mends it.
+  def test_an_address_that_is_not_one_is_said_on_enter_and_asks_nothing
+    menu = on_match_line(4, "Join by address")
+    menu.press(:enter)
+    "host;".each_char { |char| menu.type_key(scancode_of(char)) }
+    menu.press(:enter)
+
+    assert_nil menu.take_match_request
+    assert menu.typing?
+    assert_match(/HOST:PORT/, menu.typing_problem)
+    assert_includes drawn_words(menu).map(&:text), menu.typing_problem
+    menu.type_key(scancode_of("1"))
+    assert_nil menu.typing_problem, "said until the next key"
+    menu.press(:enter)
+    assert_equal "host:1", menu.take_match_request.text
+  end
+
   # Enter with nothing typed asks for nothing, and closing gives up the typing and keeps the menu open.
   def test_typing_is_given_up_by_closing_and_asks_nothing_when_empty
     menu = on_match_line(4, "Join by address")

@@ -44,7 +44,7 @@ module VBlank
         listener = nil # the room keeps it now
         hosting
       rescue Errno::EADDRINUSE
-        raise ConnectionFailed, "Port #{port} is in use already. To fix this, host on another port, for example " \
+        raise PortInUse, "Port #{port} is in use already. To fix this, host on another port, for example " \
                                 "--host #{port + 1}."
       rescue Errno::EACCES
         raise ConnectionFailed, "This computer does not let VBlank listen on port #{port}. To fix this, host on a port " \
@@ -62,7 +62,7 @@ module VBlank
         socket = nil # the lockstep keeps it now
         lockstep
       rescue Errno::ECONNREFUSED
-        raise ConnectionFailed, "Nobody is hosting at #{address}. To fix this, check the address, and make sure the " \
+        raise NobodyHosting, "Nobody is hosting at #{address}. To fix this, check the address, and make sure the " \
                                 "host has started with --host."
       rescue SocketError
         raise ConnectionFailed, "This computer cannot find #{address.host}. To fix this, check the address."
@@ -82,5 +82,11 @@ module VBlank
 
     # A connection that could not be made, in plain words.
     class ConnectionFailed < StandardError; end
+
+    # The port a host asked for is another program's, so the host can try another (Live::MatchPlay).
+    class PortInUse < ConnectionFailed; end
+
+    # Nothing listens at the address joined.
+    class NobodyHosting < ConnectionFailed; end
   end
 end

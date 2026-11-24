@@ -82,6 +82,30 @@ class TestMenuMatch < Minitest::Test
     end
   end
 
+  # The window's process meets the match chosen (rg_window_main.rb's match_from_menu). One that cannot be
+  # met, even an address the network refuses, is said in the window's box and gives the game back to
+  # single play, never an error that closes the window.
+  def test_a_match_that_cannot_be_met_is_said_in_a_box_and_play_goes_on
+    require File.join(VBlank::IR::Backends::Ruby::RUNTIME_DIR, "rg_window_main.rb")
+    Dir.mktmpdir do |dir|
+      written = written_game(dir, two_player_game)
+      menu_match = { game_file: "game.rb", parts: VBlank::Live::WindowProcess.match_part_paths,
+                     console_titles: VBlank::Console.kits.to_h { |kit| [kit.name.to_s, kit.title] } }
+      told = []
+      window = Object.new
+      window.define_singleton_method(:tell_in_box) { |words| told << words }
+      %w[host: 127.0.0.1:1].each do |address|
+        request = MatchRequest.new(does: :join_address, text: address, players: nil)
+        met = capture_io { assert_nil VBlankWindow.match_from_menu(written, menu_match, request, window) }
+
+        refute_nil met
+      end
+
+      assert_match(/HOST:PORT/, told.first)
+      assert_match(/Nobody is hosting a match/, told.last)
+    end
+  end
+
   # A game for one player is offered no match: Match is not on the bar, so right goes to Window and its
   # first line is its size, where Enter does nothing.
   def test_a_game_for_one_player_offers_no_match
