@@ -31,7 +31,8 @@ for a reader following a build; a game never needs it.
   whether it holds fractions is read from what goes in.
 - **The methods**: Ruby's `<<`/`push`/`append`, `pop`, `shift`, `[]`, `[]=`, `+=` on an item,
   `first`, `last`, `length`/`size`, `empty?`, `each`, `each_with_index`, `sum`, `min`, `max`,
-  `include?`, `fill`, `sort!`, `sort_by!` and `reverse!`, and `copy_from`, which is VBlank's. A Ruby
+  `include?`, `==`/`!=`/`eql?` with a Ruby Array (the length, then each pair, as a test), `fill`,
+  `sort!`, `sort_by!` and `reverse!`, and `copy_from`, which is VBlank's. A Ruby
   Array method a list has no meaning for (`unshift`, `insert`, `concat`, `rotate!`, `map`) is a
   friendly error naming the methods a list has.
 - **An Array that stays Ruby's** builds nothing: one only game code reads, one changed only while

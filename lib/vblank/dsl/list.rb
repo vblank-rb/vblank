@@ -218,6 +218,45 @@ module VBlank
         found == 1
       end
 
+      # Compared with a Ruby Array, equal only where the list holds as many items as the Array
+      # and every pair of items is equal, as Ruby's Array#== is: a test made as the game plays.
+      # Compared with anything else, it is Ruby's own answer.
+      #
+      # ```ruby
+      # call :open_door if code == [3, 1, 4]
+      # ```
+      def ==(other)
+        return super unless other.is_a?(Array) || other.is_a?(List)
+
+        items_equal_test(other)
+      end
+
+      # The same as #==, as Ruby's Array#eql? asks it: a whole number and a fraction are never
+      # eql?, so a list of fractions is never eql? to an Array of whole numbers.
+      def eql?(other)
+        return super unless other.is_a?(Array) || other.is_a?(List)
+
+        items_equal_test(other, strict: true)
+      end
+
+      # The test #== and #eql? make (PlainRuby::Steps.items_equal_test asks it too). The length
+      # is known only as the game plays, so the items are compared only once it matches, and no
+      # item past the end is read. +strict+ asks as Array#eql? does.
+      def items_equal_test(other, strict: false) # :nodoc:
+        refuse_list_compared!(other)
+        return false unless other.all? { |item| comparable_item?(item, strict) }
+
+        kept = @builder.hidden_variable(:list_answer)
+        pairs = other.each_with_index.map do |item, at|
+          Build.if_(Build.binop(:!=, Build.list_get(@name, Build.int(at)), item_node(item, "compare with")),
+                    Build.set(kept.name, Build.int(0)))
+        end
+        record(Build.set(kept.name, Build.int(0)))
+        record(Build.if_(Build.binop(:==, Build.list_len(@name), Build.int(other.length)),
+                         Build.set(kept.name, Build.int(1)), *pairs))
+        kept == 1
+      end
+
       # Drops the item at +from+ (:front or :back) and hands it back as a number, as Ruby's
       # `shift` and `pop` do. The item is kept in a hidden variable before the drop, so it costs a
       # word of memory: PlainRuby::Arrays calls this only where the line uses the item.
@@ -317,8 +356,8 @@ module VBlank
 
       # What a list does, said when a Ruby Array method it has no meaning for is called on it.
       WORKING_METHODS = "`<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `size`, `length`, `empty?`, `first`, " \
-                        "`last`, `each`, `each_with_index`, `sum`, `min`, `max`, `include?`, `sort!`, `sort_by!`, " \
-                        "`fill` and `copy_from`"
+                        "`last`, `each`, `each_with_index`, `sum`, `min`, `max`, `include?`, `==` with an Array, " \
+                        "`sort!`, `sort_by!`, `fill` and `copy_from`"
 
       # A Ruby Array method the list does not have, `sort!` or `map`, called on it: a list the game
       # keeps can only do what the console does with it as the game plays.
@@ -429,6 +468,27 @@ module VBlank
             "what it counts. Use `.to_f` on the whole number to give it a fraction, or " \
             "`.to_i` on the other one to drop its fraction."
         }
+      end
+
+      # Two lists compared would need both lengths and every item as the game plays; the game
+      # compares one with an Array of its own items instead.
+      def refuse_list_compared!(other)
+        return unless other.is_a?(List)
+
+        raise PlainRuby::Refused, "This line compares two Arrays the game keeps with `==` or `eql?`. VBlank " \
+                                  "cannot compare two of them. To fix this, compare the items one at a time, " \
+                                  "like `(a[0] == b[0]) & (a[1] == b[1])`.#{Messages::AuthorSource.at_author_line}"
+      end
+
+      # Can +item+ of an Array be equal to an item of this list? An item is a number or a name, so
+      # nil, a yes or no and a string never are; where +strict+, as Array#eql? asks, a whole
+      # number never equals a fraction either.
+      def comparable_item?(item, strict)
+        return false unless item.is_a?(Numeric) || item.is_a?(Value) || item.is_a?(Symbol)
+        return true unless strict
+
+        fraction = item.is_a?(Value) ? item.fraction? : item.is_a?(Float)
+        fraction == !@fraction_bits.nil?
       end
 
       # A value on its way into the list, checked against what the list holds. The rules are

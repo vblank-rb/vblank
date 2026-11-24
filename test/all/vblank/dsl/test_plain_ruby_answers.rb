@@ -419,6 +419,65 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A named Array of game numbers compared with an Array is equal only where the sizes match and
+  # every pair of items is equal, as Ruby's Array#== is.
+  def test_named_array_compared_with_an_array
+    agrees("sizes.counts == [...]", reads: %i[m n o p q r s t u v w], passes: 3) do
+      sizes = AnswerNamedSizes.new
+      m = n = o = p = q = r = s = t = u = v = w = 0
+      game_loop do
+        sizes.counts[0] += 1
+        m = sizes.counts == [6, 4] ? 1 : 2
+        n = sizes.counts == [5, 4] ? 1 : 2
+        o = sizes.counts == [6, 4, 5] ? 1 : 2
+        p = sizes.counts != [6, 4] ? 1 : 2
+        q = sizes.counts != [5, 4] ? 1 : 2
+        r = [6, 4] == sizes.counts ? 1 : 2
+        s = [5, 4] == sizes.counts ? 1 : 2
+        t = sizes.counts == [m + 5, 4] ? 1 : 2
+        u = sizes.counts.eql?([6, 4]) ? 1 : 2
+        v = sizes.counts.eql?([6.0, 4]) ? 1 : 2
+        w = [sizes.counts[0], 4] == [5, 4] ? 1 : 2
+      end
+    end
+  end
+
+  # The same for a part's Array the game keeps as a list, changed at an index it works out.
+  def test_kept_array_compared_with_an_array
+    agrees("tallies.counts == [...]", reads: %i[m n o p q r s], passes: 3) do
+      tallies = AnswerTallies.new
+      at = 0
+      m = n = o = p = q = r = s = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+        m = tallies.counts == [1, 1, 1] ? 1 : 2
+        n = tallies.counts == [1, 1, 0] ? 1 : 2
+        o = tallies.counts == [1, 1] ? 1 : 2
+        p = tallies.counts != [1, 1, 1] ? 1 : 2
+        q = [1, 1, 1] == tallies.counts ? 1 : 2
+        r = tallies.counts.eql?([1, 1, 1]) ? 1 : 2
+        s = tallies.counts.eql?([1.0, 1, 1]) ? 1 : 2
+      end
+    end
+  end
+
+  # Two Arrays the game keeps would both need their sizes and items as the game plays.
+  def test_two_kept_arrays_compared_are_refused
+    refused("a.counts == b.counts", /compare the items one at a time/) do
+      a = AnswerTallies.new
+      b = AnswerTallies.new
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        a.counts[at] += 1
+        b.counts[at] += 1
+        n = a.counts == b.counts ? 1 : 2
+      end
+    end
+  end
+
   # Part of a named Array would hold its game variables, where Ruby's part is a copy.
   def test_part_of_a_named_array_is_refused
     refused("c = sizes.counts[0..]; c[0] += 5", /a part of it/) do

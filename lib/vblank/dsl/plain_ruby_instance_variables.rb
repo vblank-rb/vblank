@@ -834,6 +834,23 @@ module VBlank
 
           def slice(*keys) = self[*keys]
 
+          # Compared with an Array, equal only where the sizes match and every pair of items is
+          # equal, as Ruby's Array#== is: a test the game makes (Steps.items_equal_test). Ruby's
+          # own would ask each item `==`, which a game variable answers with a test, true to Ruby
+          # whatever the numbers. `!=` is Ruby's opposite of this.
+          def ==(other)
+            return super unless other.is_a?(Array) || other.is_a?(List)
+
+            Steps.items_equal_test(self, other)
+          end
+
+          # Array#eql? the same way: a whole number and a fraction are never eql?.
+          def eql?(other)
+            return super unless other.is_a?(Array) || other.is_a?(List)
+
+            Steps.items_equal_test(self, other, strict: true)
+          end
+
           # The first or last items as a new Array are a part too; the first or last item alone is
           # one of the variables, as `counts[0]` is.
           def first(*count)

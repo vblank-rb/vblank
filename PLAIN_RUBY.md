@@ -197,6 +197,7 @@ What an Array the game keeps can do:
 | `copy_from` | VBlank's, not Ruby's: copies a run of a `table` in at once |
 | `each`, `each_with_index` | A loop over the items, run as the game plays |
 | `sum`, `min`, `max`, `include?` | Looks at every item; `min` and `max` of none are 0 |
+| `==`, `!=`, `eql?` with an Array | Compares every item, as Ruby does: equal only when the sizes match and each pair of items is equal |
 | `sort!`, `sort_by!`, `reverse!` | Puts the items in order (see below) |
 
 What it refuses, and what to write instead:
@@ -207,12 +208,13 @@ What it refuses, and what to write instead:
 | `concat`, `rotate!` | `<<` each item |
 | `sort`, `sort_by` | `sort!`, `sort_by!` |
 | `map`, `select`, `reject` | `each`, writing into a second Array |
+| `a == b`, both Arrays the game keeps | Compare the items one at a time: `(a[0] == b[0]) & (a[1] == b[1])` |
 | `Array.new(8)` | `Array.new(8, 0)`, or `Array.new(capacity: 8)` |
 
 What these cost:
 
 - `item = trail.shift` keeps the dropped item in a hidden number: one word of quick memory, and a copy each time the line runs. `trail.shift` on its own keeps nothing. To skip the cost, read `trail.first`, then `trail.shift`.
-- `sum`, `min`, `max` and `include?` cost more the more items the Array holds.
+- `sum`, `min`, `max`, `include?` and `==` with an Array cost more the more items the Array holds.
 - `rom.profile` lists every line that makes a hidden number.
 
 ```ruby
@@ -719,7 +721,6 @@ end
 - A Struct made in a `game_loop`, a scene or a `func` under an `if`, and used after that `if` or in another routine (a `func` the loop calls, too), stops with a message, since Ruby can keep the one an earlier pass made. Make it above the game loop, or keep it with `@point ||= Point.new(...)`.
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 - `h[key] += n` on a Hash of game numbers answers the number before the change where it is used as a value (`m = (h[:a] += 3)`). Write the change on its own line, then read `h[:a]`.
-- `==` between an Array of game numbers and another Array answers while building, from Ruby's numbers then. Compare the items one at a time.
 - An Array a part holds, that game code outside its class puts things into (`flock.dots << Dot.new(...)` in the game loop), stays a Ruby Array: the line puts its thing in once, while building. Put things in with a method of its class that writes `@dots << Dot.new(...)`, or put them in above the game loop.
 - An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]`, then `tally = Tally.new(src)`), and read through that local after game code changes it through the part (`tally.counts[at] += 1`, then `src[1]`), answers the number Ruby gave it while building. Read it through the part, `tally.counts[1]`, or hand the part a constant.
 - An Array a part holds, that game code adds to or turns as a whole through its reader (`part.counts << 7`, `part.counts.rotate!`), changes once, while building. Do it in a method of its class.

@@ -44,12 +44,77 @@ module VBlank
         # Ruby's own `3 == hp` is true whatever hp holds, and a loop that starts `until row == rows`
         # with row still a plain 0 would never run. So that one is asked of the game's number, the
         # other way round, which makes the test the game asks as it plays.
-        def equal_test(left, right) = plain_beside_game_number?(left, right) ? right == left : left == right
+        #
+        # Two Arrays, where either holds a number the game keeps or is a list, are compared item by
+        # item (#items_equal_test): Ruby's own Array#== would ask each pair with `==`, and a game
+        # number answers that with a test, which Ruby counts as true whatever the numbers.
+        def equal_test(left, right)
+          return items_equal_test(left, right) if game_items_pair?(left, right)
+
+          plain_beside_game_number?(left, right) ? right == left : left == right
+        end
 
         # `a != b`, the same way.
-        def unequal_test(left, right) = plain_beside_game_number?(left, right) ? right != left : left != right
+        def unequal_test(left, right)
+          return opposite(items_equal_test(left, right)) if game_items_pair?(left, right)
+
+          plain_beside_game_number?(left, right) ? right != left : left != right
+        end
 
         def plain_beside_game_number?(left, right) = game_value?(left) && right.is_a?(Value)
+
+        # Are +left+ and +right+ two Arrays (a list among them) that Ruby's Array#== cannot
+        # compare, since one holds a number the game keeps?
+        def game_items_pair?(left, right)
+          sides = [left, right]
+          sides.all? { |side| side.is_a?(Array) || side.is_a?(List) } &&
+            sides.any? { |side| side.is_a?(List) || holds_game_number?(side) }
+        end
+
+        def holds_game_number?(items) = items.any? { |item| item.is_a?(Value) || (item.is_a?(Array) && holds_game_number?(item)) }
+
+        # Ruby's Array#== (or, +strict+, Array#eql?) of two Arrays holding numbers the game keeps,
+        # or of a list and an Array: true or false where the sizes differ or a pair of plain items
+        # decides it while building, and otherwise one test the game makes, every pair of items
+        # equal. A list's size is known only as the game plays, so the list answers that itself
+        # (List#items_equal_test).
+        def items_equal_test(left, right, strict: false)
+          return left.items_equal_test(right, strict: strict) if left.is_a?(List)
+          return right.items_equal_test(left, strict: strict) if right.is_a?(List)
+          return false unless left.length == right.length
+
+          # By index: `zip` on a named Array (KeyedArray) is refused as a copy of its variables.
+          joined_tests(left.each_index.map { |at| item_equal_test(left[at], right[at], strict: strict) })
+        end
+
+        # One pair of items, as Array#== (or #eql?) asks it.
+        def item_equal_test(left, right, strict: false)
+          return items_equal_test(left, right, strict: strict) if game_items_pair?(left, right)
+          return false if strict && !same_kind_of_number?(left, right)
+          return equal_test(left, right) if left.is_a?(Value) || right.is_a?(Value)
+
+          strict ? left.eql?(right) : left == right
+        end
+
+        # Ruby's `1.eql?(1.0)` is false: a whole number and a fraction are never eql?, whatever
+        # they hold. A number the game keeps is whole or a fraction while building.
+        def same_kind_of_number?(left, right)
+          kinds = [left, right].map { |side| side.is_a?(Value) ? (side.fraction? ? Float : Integer) : side.class }
+          kinds.uniq.one? || kinds.none? { |kind| [Integer, Float].include?(kind) }
+        end
+
+        # Every answer in +answers+ (true, false, or a test the game makes) holding: false where a
+        # plain one is false, true where all are, and otherwise the tests joined with `&`.
+        def joined_tests(answers)
+          tests, plain = answers.partition { |answer| game_test?(answer) }
+          unless plain.all?
+            tests.each { |test| as_condition(test).discard! }
+            return false
+          end
+          return true if tests.empty?
+
+          tests.map { |test| as_condition(test) }.reduce(:&)
+        end
 
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
         def nil_test(value)

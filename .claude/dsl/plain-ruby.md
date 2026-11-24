@@ -316,10 +316,15 @@ instance variables.
 
 An Array that game code changes is a list the game keeps (`lists.md`), named after its local. Ruby's
 own Array verbs work on it as Ruby says: `<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `+=` on
-an item, `size`, `length`, `empty?`, `first`, `last`, `each`, `each_with_index`, `sum`, `min`, `max`
-and `include?`, and `copy_from`, which is VBlank's (`lists.md`) and makes an Array a list as Ruby's
+an item, `size`, `length`, `empty?`, `first`, `last`, `each`, `each_with_index`, `sum`, `min`, `max`,
+`include?`, and `==`, `!=` and `eql?` with a Ruby Array, and `copy_from`, which is VBlank's (`lists.md`) and makes an Array a list as Ruby's
 changing verbs do. `sum`, `min`, `max` and `include?` walk the items as the game plays and keep the
 answer in a hidden variable; `min` and `max` of an empty list are 0, as Ruby's nil reads.
+`trail == [1, 2]` is Ruby's Array#== as a test (`List#items_equal_test`, a hidden variable too):
+the length first, then each pair, so no item past the end is read. A named Array of game variables
+(`game_variables :counts`) and an Array literal holding a game number compare the same way, with
+the sizes decided while building (`Steps.items_equal_test`). Two Arrays the game keeps as lists
+compared with each other are refused.
 
 ```ruby
 trail = Array.new(capacity: 4)   # empty, with room for 4
@@ -637,7 +642,6 @@ Each is a friendly error naming the line.
   @open` is decided while building. Name it if the game sets and tests it as it plays.
 - `m = (h[:a] += 3)` on a Hash of game numbers answers the number before the change. Write the
   change on its own line.
-- `==` between an Array of game numbers and another Array answers while building.
 - `dup`, `clone` or `first(2)` of an Array of named numbers holds the same variables, so a change
   to the copy changes the Array.
 - An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]; t = Holder.new(src)`)
