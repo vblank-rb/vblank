@@ -325,8 +325,8 @@ end
 - **VBlank adds `capacity:` to `Array.new`, and two settings you can leave out.** A console sets a
   list's memory aside before the game starts, so a list cannot grow as a Ruby Array does: an Array
   that game code adds to needs `capacity:`, the most items it can hold. `Array.new(4, 0,
-  capacity: 8)` starts with 4 items and has room for 8. The two settings are `list`'s own, and
-  each is told in full in `lists.md`:
+  capacity: 8)` starts with 4 items and has room for 8. Each setting is told in full in
+  `lists.md`, with what the Array builds as:
   - `width: :byte` or `width: :half` keeps each item in less memory. A number too big for the slot
     keeps its low bits, with no error: 200 in a `:byte` reads back as -56.
   - `fast: true` or `fast: false` sets which memory the list is kept in, the quick one or the roomy
@@ -583,7 +583,7 @@ Each is a friendly error naming the line.
 | an Array game code pushes to with no `capacity:` (`trail = []`, `Array.new(4, 0)` then `trail << x`) | `Array.new(capacity: 8)`, or `Array.new(4, 0, capacity: 8)` |
 | `Array.new(capacity: n)` or `Array.new(n, 0)` with `n` a number the game works out | a number or a constant known while building |
 | `Array.new(8)` with no start, on an Array the game changes | `Array.new(8, 0)`, or `Array.new(capacity: 8)` for an empty one |
-| an Array the game changes holding Arrays or Hashes (`[[0, 0], [0, 0]]`) | an Array for each row, or a `pool` |
+| an Array the game changes holding Arrays or Hashes (`[[0, 0], [0, 0]]`) | an Array for each row, or an Array of Structs |
 | `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
 | an Array method a list has no meaning for (`rotate!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
 | a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
