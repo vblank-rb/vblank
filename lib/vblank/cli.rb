@@ -1948,12 +1948,12 @@ module VBlank
         say rom.compression.summary_line if rom.compression&.any?
         say placement_line(rom) if rom.placement&.funcs&.any?
       end
-      dump_arm_of(rom) if options[:dump_arm] && console == :gba
+      dump_arm_of(rom) if options[:dump_arm] && VBlank::Console.for(console).arm_listing?
       rom
     end
 
     def refuse_dump_arm_without_advance!(consoles)
-      return if options[:dump_arm].nil? || consoles.include?(:gba)
+      return if options[:dump_arm].nil? || consoles.any? { |console| VBlank::Console.for(console).arm_listing? }
 
       raise Thor::Error, "--dump-arm lists the code of the Game Boy Advance's cartridge. " \
                          "This build makes none. Add --console gba."

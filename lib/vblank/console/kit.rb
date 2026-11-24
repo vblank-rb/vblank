@@ -61,6 +61,7 @@ module VBlank
     #   multitap_name           that adapter's name (a Super Multitap, a Team Player), or nil
     #   dumps_ir?               whether `vblank build --format ir` can write its games
     #   routine_lister          what lists a routine of its cartridges (`dump_func`), or nil
+    #   arm_listing?            whether `vblank build --dump-arm` can list its cartridges' ARM
     #   inspector              what prints one of its cartridges' header and first instructions
     #                           (`vblank inspect`), or nil for a console with none yet
     #   words_at_any_address?   whether its processor reads a value of two or more bytes at any
@@ -97,6 +98,7 @@ module VBlank
       def title = description.title
       def measured_builds? = false
       def compared_side_by_side? = false
+      def arm_listing? = false
       def sprite_sizes_set_by_game? = false
       def inspector = nil
 
@@ -311,6 +313,7 @@ module VBlank
       def dumps_ir? = true
       def measured_builds? = true
       def compared_side_by_side? = true
+      def arm_listing? = true
       def inspector = Diagnostics::Inspector
       def original_formats = Hardware::ORIGINAL_FORMATS
 
