@@ -23,7 +23,6 @@ require_relative "gba/statements"
 require_relative "gba/shown_sort"
 require_relative "gba/lists"
 require_relative "gba/functions"
-require_relative "gba/emitter_calls" # the bare-name calls every file that writes drawing code makes
 require_relative "gba/blob_upload" # copying data out of the cartridge into video memory
 require_relative "gba/screen_effects" # the camera, fades and tints: the whole picture, not what is in it
 require_relative "gba/sprite_repeats" # which sprites are one sprite written out several times

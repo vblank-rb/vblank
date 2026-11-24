@@ -1152,7 +1152,7 @@ module VBlank
             @palette_tint.emit_tint_reset_if_tinting # the table now holds the originals again
           end
 
-          # This file's own seams, called as bare methods like the ones in {EmitterCalls}.
+          # This file's own seams, called as bare methods.
           def backing_info(name) = @lists.backing_info(name)
           def placed_fade = @layout.screen.placed_fade
           def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
