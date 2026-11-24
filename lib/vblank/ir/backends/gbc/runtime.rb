@@ -56,7 +56,7 @@ module VBlank
           # means its songs' entries are kept in a bank, and copied out as each song starts
           # (GBC::Music#entries_in_banks?). +tune_plays_once+ means a song it plays as a tune plays once
           # (GBC::Music#tune_plays_once?). +walks_colors+ means it fades or tints (Lowering#walks_colors?).
-          def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false, waves: false,
+          def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, pans: false, wobbles: false, waves: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
                       bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false, effect_clock_step: nil,
@@ -75,7 +75,7 @@ module VBlank
             Strikes.reserve(memory, line: clips, bar: bar_covers) if effect_clock_step && !effects.empty?
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
-            Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
+            Music.reserve(memory, effects: effects, slides: slides, pans: pans, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
                                   banked: banked_songs, holds: holds_music, effect_table: effect_table,
                                   entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once,
                                   effect_clock_step: effect_clock_step)

@@ -385,7 +385,7 @@ module VBlank
                                            indexes_in_banks: view.indexes_in_banks, cache: cache)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
-                                  bar_rows: lowering.bar_rows, slides: lowering.music.slides?,
+                                  bar_rows: lowering.bar_rows, slides: lowering.music.slides?, pans: lowering.music.pans?,
                                   wobbles: lowering.music.wobbles?, shapes: lowering.music.shapes?, waves: lowering.music.waves?,
                                   swells: lowering.holds_swells?, noise_swells: lowering.holds_noise_swells?,
                                   banked_songs: lowering.music.banked?, clips: lowering.clips.any?,

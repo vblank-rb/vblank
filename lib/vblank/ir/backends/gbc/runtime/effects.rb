@@ -394,7 +394,7 @@ module VBlank
               asm.load(:a, [:hli])
               asm.load(:d, :a)
               asm.load(:b, [:hl])
-              Music.emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
+              Music.emit_store_slide_speaker_vibrato(asm, memory, slides, pans, from: "rt_sfx_note")
               asm.load(:a, [memory[Music::PART]])
               asm.cp_a(Music::HELD_VOICES + 1)
               asm.jump(:nc, "rt_voice_write")

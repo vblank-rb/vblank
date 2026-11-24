@@ -201,9 +201,8 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
   # their voice's speakers on the frames the effect's notes wait for their strikes: the song's write
   # of the speakers' switches, which hold every voice's, folds into the effect's listed one, and must
   # change its own voice's switches alone. Heard as how many of the right speaker's samples are louder
-  # than the song's quiet drums while the effect plays: a few at each of its rests, which send its voice
-  # to both speakers a moment before it falls quiet (45 for these eight, measured in mGBA), and not the
-  # effect's notes themselves (1683 when the song's write took the effect's switches with it).
+  # than the song's quiet drums while the effect plays: not the effect's notes themselves (1683 when
+  # the song's write took the effect's switches with it, measured in mGBA).
   RIGHT_LOUD = 4000
   RIGHT_LOUD_MOST = 64
 
@@ -240,6 +239,43 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
     over = right_speaker_loud_samples(true)
 
     assert_operator over, :<=, alone + RIGHT_LOUD_MOST, "the right speaker's loud samples with the effect from the left: #{over}, the song alone: #{alone}"
+  end
+
+  # An effect from the left speaker alone, its notes each ended by a rest. A rest sends its voice to
+  # both speakers (a rest has no side), and must do so only once the voice is quiet: switched first,
+  # the note still sounding is heard from the right for the moment between the two writes, and on a
+  # timer the moment is as long as the list takes to reach the voice's write. Heard as how many of the
+  # right speaker's samples are loud while the effect plays, on a timer and once a frame.
+  private def right_speaker_loud_samples_of_rests(on_timer)
+    struck = (0...8).map { |n| Note.new(at: n * 3, key: :E5, length: 2, volume: 15) }
+    effect = Score.new(tempo: 50, ticks_per_beat: 60, length: 24, plays_once: true, on_timer: on_timer,
+                       parts: [Part.new(pan: :left, notes: struck)])
+    cartridge = VBlank.build("STRIKES", console: :gbc, out: nil, err: nil) do
+      enable_sound
+      sfx = sound_effects :sfx, { chime: effect }
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        sfx.play :chime if pass == PLAYED_ON
+      end
+    end
+    reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
+    right = []
+    (PLAYED_ON + 30).times do |frame|
+      reader.step(1)
+      right.concat(reader.last_frame_samples.each_slice(2).map { |pair| pair.last.abs }) if frame > PLAYED_ON - 2
+    end
+    right.count { |loudness| loudness > RIGHT_LOUD }
+  ensure
+    reader&.close
+  end
+
+  def test_a_rest_on_a_timer_moves_its_voice_to_both_speakers_after_it_is_quiet
+    assert_equal 0, right_speaker_loud_samples_of_rests(true)
+  end
+
+  def test_a_rest_once_a_frame_moves_its_voice_to_both_speakers_after_it_is_quiet
+    assert_equal 0, right_speaker_loud_samples_of_rests(false)
   end
 
   # A note struck part way through a frame on a voice still sounding the note before, the new one

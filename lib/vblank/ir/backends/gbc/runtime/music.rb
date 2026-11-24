@@ -43,6 +43,10 @@ module VBlank
             # ...and its own waveform, 1 up, or nought for its part's, in a game where a wave note
             # names one (GBC::Music.note_bytes).
             NOTE_WAVE = "rt music note wave"
+            # ...and, in a game where a note plays from one speaker, a rest's speakers, set once the
+            # voice is quiet, or 0xFF for a note, whose speakers are set before it starts.
+            REST_SPEAKER = "rt music rest speaker"
+            NOT_A_REST = 0xFF
             HELD_VOICES = 3
             # The waveform in the wave voice, 1 up, in a game with sound effects: a song's part and an
             # effect's can each sound in their own, so a note puts its own in when it is not there.
@@ -142,8 +146,8 @@ module VBlank
             EFFECT_CLOCK = "rt sfx clock"
             EFFECT_TICKED = "rt sfx ticked"
 
-            def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, waves: false, swells: false, noise_swells: false,
-                        banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false,
+            def reserve(memory, effects: [], slides: false, pans: false, wobbles: false, shapes: false, waves: false, swells: false,
+                        noise_swells: false, banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false,
                         effect_clock_step: nil)
               if effect_clock_step
                 memory.reserve(EFFECT_CLOCK, 2)
@@ -162,6 +166,7 @@ module VBlank
                 memory.reserve(WAVE_BACK, 1)
               end
               memory.reserve(NOTE_SLIDE, 1) if slides
+              memory.reserve(REST_SPEAKER, 1) if pans
               memory.reserve(WOBBLES, WOBBLE_BYTES * WOBBLE_VOICES) if wobbles
               memory.reserve(SHAPE_WALKS, SHAPE_BYTES * SHAPE_VOICES) if shapes
               memory.reserve(SWELLS, SWELL_BYTES * (noise_swells ? SWELL_VOICES.length : SQUARE_SWELLS.length)) if swells || noise_swells
@@ -307,11 +312,15 @@ module VBlank
 
             # The slide of the note whose volume is at HL, kept for rt_voice_write: the byte after the
             # volume, in a game where a note slides. In one where a note plays from one speaker, the
-            # voice's speakers set from the byte after that (rt_set_speakers). In one where a square
-            # note sets its shapes, the note's first shape and its stepping from the byte after that
-            # (rt_shape_start). And in one where a note wobbles, the voice set to wobble the note from
-            # the two after those (rt_wobble_start). Keeps B and DE.
-            def emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
+            # voice's speakers set from the byte after that (rt_set_speakers): now for a note, and for a
+            # rest kept in REST_SPEAKER for rt_voice_write to set once the voice is quiet. Switched
+            # first, the note still sounding would be heard from the other speaker until the rest's
+            # own write, a click, and longer when the writes wait on a list (Runtime::Strikes). In one
+            # where a square note sets its shapes, the note's first shape and its stepping from the
+            # byte after that (rt_shape_start). And in one where a note wobbles, the voice set to
+            # wobble the note from the two after those (rt_wobble_start). +from+ names the routine it
+            # is written in, for its labels. Keeps B and DE.
+            def emit_store_slide_speaker_vibrato(asm, memory, slides, pans, from:)
               if note_waves?(memory) # a wave note's own waveform comes first (GBC::Music.note_bytes)
                 asm.inc(:hl)
                 asm.load(:a, [:hl])
@@ -323,9 +332,16 @@ module VBlank
                 asm.load([memory[NOTE_SLIDE]], :a)
               end
               if pans
+                asm.load(:a, :d)
+                asm.and_a(:e)
+                asm.inc(:a) # nought for a rest, whose tuning is every bit set
                 asm.inc(:hl)
                 asm.load(:a, [:hl])
+                asm.jump_relative(:z, "#{from}_rest_speaker")
                 asm.call("rt_set_speakers")
+                asm.load(:a, NOT_A_REST)
+                asm.label("#{from}_rest_speaker")
+                asm.load([memory[REST_SPEAKER]], :a)
               end
               if shapes?(memory)
                 asm.inc(:hl)
@@ -1262,7 +1278,7 @@ module VBlank
               asm.load(:a, [:hli])
               asm.load(:d, :a)
               asm.load(:b, [:hl]) # its volume, times the music's level over 16
-              emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
+              emit_store_slide_speaker_vibrato(asm, memory, slides, pans, from: "rt_music_note")
               asm.load(:a, :b)
               asm.load([memory[NOTE_VOLUME]], :a)
               if level
@@ -1274,8 +1290,17 @@ module VBlank
               # note's loudness here (GBC::SoundLog).
               asm.label("rt_music_note_voice")
               asm.call("rt_music_hold")
-              # rt_voice_write: B = the volume, DE = the tuning, onto the part's voice ([PART]).
+              # rt_voice_write: B = the volume, DE = the tuning, onto the part's voice ([PART]); and a
+              # rest's speakers after it (REST_SPEAKER).
               asm.label("rt_voice_write")
+              if pans
+                asm.call("rt_voice_write_now")
+                asm.load(:a, [memory[REST_SPEAKER]])
+                asm.cp_a(NOT_A_REST)
+                asm.ret(:z)
+                asm.jump("rt_set_speakers")
+                asm.label("rt_voice_write_now")
+              end
               asm.load(:a, [part])
               asm.cp_a(GBC::Music::WAVE_VOICE)
               asm.jump_relative(:z, "rt_music_note_wave")
