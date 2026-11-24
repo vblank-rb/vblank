@@ -1315,14 +1315,14 @@ module VBlank
           # INY and CPY with the number are two and three (cycle counts in fullsnes and the SNESdev
           # wiki's 65816 reference), the way the console's own loops count. Whether the loop leaves Y
           # alone is known only once it is written (W65816#y_changes), so it is written first on copies
-          # of the lowering's state and thrown away (#y_holds_the_count_through?). The count is still nought in
+          # of the lowering's state and thrown away (#count_stays_in_y?). The count is still nought in
           # its variable from the start, and Y is written to it once, as the loop ends.
           def with_counter_held(node, counter, loaded: false, &loop)
             known = short_count_of(node, loaded)
             return yield unless known && known < 0x8000
 
             in_y = @y_counter.nil? && kept_place_of(counter) <= 0xFFFF && turns_countable_in_y_register?(node, counter, loaded) &&
-                   y_holds_the_count_through?(counter, known, loaded, &loop)
+                   count_stays_in_y?(counter, known, loaded, &loop)
             hold_short_count(counter, known, loaded, in_y, &loop)
             @asm.sty(low_half_of(counter)) if in_y
           end
@@ -1347,7 +1347,7 @@ module VBlank
           # on copies of the lowering's state and thrown away, by the very code that will write it
           # for real, so the answer cannot differ from what is written. Where something changes Y
           # the count stays in memory.
-          def y_holds_the_count_through?(counter, known, loaded, &loop)
+          def count_stays_in_y?(counter, known, loaded, &loop)
             LOWERING_STATE.on_copies(self) do
               @asm = measuring_assembler
               @routine = "measuring"
@@ -1362,7 +1362,7 @@ module VBlank
           # names it (it is the repeat's own index, or the loop has none of the game's; or, +loaded+, a
           # counted while's variable, which only its one more names), nothing in the loop can reach a
           # frame boundary or stop the game, and the body holds no part cut off a bank-sized routine.
-          # Whether anything in it changes Y is found by writing it (#y_holds_the_count_through?).
+          # Whether anything in it changes Y is found by writing it (#count_stays_in_y?).
           def turns_countable_in_y_register?(node, counter, loaded)
             return false unless loaded || node.index.nil? || node.index == counter
 
@@ -2089,7 +2089,7 @@ module VBlank
           # Whether a turn reads back the place X was stored at (ScaledCurrent#scaled): only where
           # something in the body changes X and then reaches a slot of the thing, or compares it
           # once X is gone. Written first on copies of the lowering's state and thrown away, as
-          # #y_holds_the_count_through? is. Where nothing does, X is never stored, and a walk checking each
+          # #count_stays_in_y? is. Where nothing does, X is never stored, and a walk checking each
           # thing against the one it moves saves a store on every turn.
           def scaled_current_read?(turn)
             LOWERING_STATE.on_copies(self) do
@@ -2647,7 +2647,7 @@ module VBlank
           end
 
           # Whether working out +node+'s low half, written into an assembler of its own on copies of
-          # the lowering's state as #y_holds_the_count_through? writes statements, leaves Y as it was.
+          # the lowering's state as #count_stays_in_y? writes statements, leaves Y as it was.
           def y_kept_working_out?(node, depth)
             LOWERING_STATE.on_copies(self) do
               measuring = @asm = measuring_assembler
