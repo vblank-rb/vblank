@@ -15,7 +15,6 @@ module VBlank
         # packed and how big it was before, which the build report reads.
         class BlobUpload
           include Console::Hardware
-          include EmitterCalls
 
           def initialize(emitter:, primitives:, codecs:, raw_bytes:)
             @emitter = emitter
@@ -41,9 +40,9 @@ module VBlank
           # both ends advancing — the same shape as the palette upload. Fills palette
           # and video memory at startup.
           def emit_plain_dma_blob(blob_name, dest, units)
-            emit_load_data_address(ACC, blob_name) # from the blob in the cartridge
-            emit_start_copy_engine(from: in_register(ACC), to: dest,
-                                   control: units | DMA_ENABLE) # 16-bit, both ends advancing
+            @emitter.emit_load_data_address(ACC, blob_name) # from the blob in the cartridge
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: dest,
+                                               control: units | DMA_ENABLE) # 16-bit, both ends advancing
           end
 
           # BIOS decompression routines that expand two bytes at a time. Every slot we
@@ -57,9 +56,9 @@ module VBlank
           # packed source (its 4-byte header first), r1 at the destination; the routine
           # reads the expanded size from the header, so there is no length to pass.
           def emit_bios_decompress(blob_name, dest, swi_number)
-            emit_load_data_address(0, blob_name)   # r0 = packed source in the cartridge
-            emit_number(1, dest)      # r1 = destination slot
-            emit(ASM.swi(swi_number << 16))
+            @emitter.emit_load_data_address(0, blob_name)   # r0 = packed source in the cartridge
+            @emitter.emit_number(1, dest)      # r1 = destination slot
+            @emitter.emit(ASM.swi(swi_number << 16))
           end
 
           # Pack a blob the first time we are about to upload it, and remember the
