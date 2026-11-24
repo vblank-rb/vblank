@@ -30,6 +30,20 @@ class TestSNESListReadCost < Minitest::Test
     end
   end
 
+  # A slot named by a number written in the program, `x += a[1]`, is read where it is, as a variable
+  # is (SNES::Lowering#halves_in_place). Measured: 197 master clocks a read against 175 for a variable;
+  # the difference is the long address of a list past the first 8K, a cycle more each half, where the
+  # variables have the direct page (SNES::Lowering#near_list?).
+  WRITTEN_SLOT_SLACK = 30
+
+  def test_a_read_of_a_written_slot_costs_what_a_variable_read_costs
+    written = ListReadCostGames.cycles_a_read(:snes, :written, FRAME_CLOCKS, width: :word)
+    named = ListReadCostGames.cycles_a_read(:snes, :named, FRAME_CLOCKS, width: :word)
+
+    assert_operator written, :<, named + WRITTEN_SLOT_SLACK,
+                    "a written slot costs #{written.round(1)} master clocks, a variable #{named.round(1)}"
+  end
+
   # The reads are the interpreter's on every pass.
   def test_the_reads_are_the_interpreters_on_every_pass
     ListReadCostGames::READS_A_PASS.each_key do |index|
