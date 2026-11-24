@@ -27,7 +27,8 @@
 # game in the interpreter's words; a list item is never nil, so nothing else reads as a refusal.
 
 class RgList
-  attr_reader :capacity, :width, :name, :refused_index
+  attr_reader :width, :name, :refused_index
+  attr_accessor :capacity # set again by a declaration of another capacity (rg_list_set_capacity)
   attr_accessor :front, :length
 
   # The list for the build's ListStorage: kept as bytes when +width+ is 1, and fitting each number
@@ -232,6 +233,12 @@ def rg_list_check_index(list, index)
 
   rg_fault("index #{index} is out of range: list :#{list.name} is empty") if list.length == 0
   rg_fault("index #{index} is out of range for list :#{list.name} (valid indexes are 0..#{list.length - 1})")
+end
+
+# A list declared with several capacities takes the one its declaration gives before it starts
+# again; its items have room for the most of them.
+def rg_list_set_capacity(list, capacity)
+  list.capacity = capacity
 end
 
 # A list declared where the program reaches it starts again, empty.

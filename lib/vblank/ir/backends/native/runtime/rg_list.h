@@ -71,6 +71,10 @@ static inline void rg_list_check_index(const rg_list *list, int32_t index) {
            (int)(list->length - 1));
 }
 
+/* A list declared with several capacities takes the one its declaration gives before it starts
+ * again; its items have room for the most of them. */
+static inline void rg_list_set_capacity(rg_list *list, int32_t capacity) { list->capacity = capacity; }
+
 /* A list declared where the program reaches it starts again, empty. */
 static inline void rg_list_empty(rg_list *list) {
   list->front = 0;

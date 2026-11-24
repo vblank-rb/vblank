@@ -511,7 +511,8 @@ module VBlank
           def list_storage
             @lists.values.map do |node|
               Statements::ListStorage.new(name: list(node.name), items: @names.of(:list, "#{node.name}.items"),
-                                 capacity: node.capacity, width: slot_place(node.name).width, label: node.name.to_s)
+                                 capacity: list_capacities.fetch(node.name).max, width: slot_place(node.name).width,
+                                 label: node.name.to_s)
             end
           end
 
@@ -869,8 +870,21 @@ module VBlank
 
           # --- lists (runtime/rg_list.h does the work and the checking) ---
 
+          # A list declared with several capacities (#list_capacities) takes this declaration's
+          # first; its storage has room for the most of them (#list_storage).
           def lower_list_new(node)
-            [node.full_of ? list_call("rg_list_full", node, Statements::Int.new(node.full_of)) : list_call("rg_list_empty", node)]
+            made = node.full_of ? list_call("rg_list_full", node, Statements::Int.new(node.full_of)) : list_call("rg_list_empty", node)
+            return [made] unless list_capacities.fetch(node.name).length > 1
+
+            [list_call("rg_list_set_capacity", node, Statements::Int.new(node.capacity)), made]
+          end
+
+          # The capacities each list is declared with, by name: one, or several where scenes declare a
+          # list of one name each their own way. Each declaration makes the list anew at its own
+          # capacity (Reference#exec_list_new), as LoweringPlan#list_capacities says for the cartridges.
+          def list_capacities
+            @list_capacities ||= @reachable.select { |node| node.kind == :list_new }
+                                           .group_by(&:name).transform_values { |made| made.map(&:capacity).uniq }
           end
           def lower_list_push(node) = [list_call(item_access_function("rg_list_push", node.name), node, value(node.value))]
           def lower_list_drop(node) = [list_call("rg_list_drop", node, Statements::Int.new(node.from == :front ? 1 : 0))]

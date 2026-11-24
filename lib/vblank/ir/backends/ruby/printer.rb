@@ -105,7 +105,8 @@ module VBlank
 
           # The runtime functions that change how many items a list holds, or where its first is
           # (#always_full_lists).
-          LIST_RESIZING = Ractor.make_shareable(Set["rg_list_empty", "rg_list_push", "rg_list_drop", "rg_list_copy"])
+          LIST_RESIZING = Ractor.make_shareable(Set["rg_list_empty", "rg_list_push", "rg_list_drop", "rg_list_copy",
+                                                    "rg_list_set_capacity"])
 
           # How each C type a table is kept in packs its numbers into bytes, for a big table
           # written as base64: little-endian, the width the type holds.
