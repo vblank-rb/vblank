@@ -705,6 +705,10 @@ module VBlank
         # with the room each holds there. Read off the throwaway measuring pass.
         def movable_quick_lists = @lists.movable_quick_lists
 
+        # The lists this pass kept beside the variables, and where. Read off the throwaway
+        # measuring pass, whose layout the real build repeats.
+        def near_list_places = @lists.near_list_places
+
         # How many bytes a slot of each list is, by name.
         def list_widths = @lists.list_widths
 
@@ -1318,7 +1322,9 @@ module VBlank
           over = @memory.overrun
           return unless @top.divide_at && over.positive?
 
-          message = @top.overrun_message(over: over, variables: @memory.near_bytes, kept: @memory.far_bytes)
+          lists_near = @lists.near_list_bytes # small lists kept at the variables' end (Lists#near_list?)
+          message = @top.overrun_message(over: over, variables: @memory.near_bytes - lists_near,
+                                         kept: @memory.far_bytes + lists_near)
           raise QuickMemoryOverrun.new(message, bytes: over)
         end
 

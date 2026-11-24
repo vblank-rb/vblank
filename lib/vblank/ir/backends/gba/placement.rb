@@ -830,12 +830,24 @@ module VBlank
           # measuring pass saw as one number, sharing a word of a table, need not have been.
           # Claiming them all here, in the order that pass did, makes them the same numbers.
           #
+          # The small lists kept beside the variables (Lists#near_list?) share that end of the
+          # memory, and that pass placed them before it named most variables, where this one
+          # places the lists only after this. So their room is claimed here too, each in the
+          # turn its address shows, and the lists then take it when they are placed: a list
+          # that pass did not keep there is not kept there here either.
+          #
           # A variable that pass put in the roomy memory goes there here too, and has to be told
           # so: it went there with the collection that owns it, and this pass has not placed the
           # collections yet when it gets here.
           def allocate_variables_where_measured(probe)
-            probe.var_addresses.each do |name, address|
-              quick_memory?(address) ? var_addr(name) : @primitives.claim_roomy_var(name)
+            quick, roomy = probe.var_addresses.partition { |_name, address| quick_memory?(address) }
+            roomy.each { |name, _address| @primitives.claim_roomy_var(name) }
+            @lists.follow_measured_near_lists
+            near = probe.near_list_places
+            claims = quick.map { |name, address| [address, name, nil] } +
+                     near.map { |name, place| [place.base, name, place.bytes] }
+            claims.sort_by(&:first).each do |_address, name, list_bytes|
+              list_bytes ? @lists.claim_measured_near_list(name, list_bytes) : var_addr(name)
             end
           end
 

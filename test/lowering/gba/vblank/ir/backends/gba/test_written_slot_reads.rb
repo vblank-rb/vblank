@@ -17,6 +17,25 @@ class TestWrittenSlotReads < Minitest::Test
     assert_equal named, written, "four written slots read take #{written} bytes, four variables #{named}"
   end
 
+  # The build measures its routines in a pass of its own before it lowers the game for real, and
+  # where a variable or a list lands decides what reaching it costs. So the two passes lay the
+  # quick memory out alike, the lists kept beside the variables included, or a routine can come
+  # out bigger than it was measured.
+  def test_the_measuring_pass_and_the_build_lay_out_memory_alike
+    program = ListReadCostGames.game(:gba, :written, width: :word).program(console: :gba)
+    measured = GBA.new
+    measured.lower(program, fast_funcs: Set.new)
+    built = GBA.new
+    built.lower(program)
+
+    assert_equal list_bases(measured, program), list_bases(built, program)
+    assert_equal measured.var_addresses.slice(:x, :t, :i), built.var_addresses.slice(:x, :t, :i)
+  end
+
+  private def list_bases(backend, program)
+    backend.build_record(program).lists.slice(:a, :b, :c, :d).transform_values(&:base)
+  end
+
   private def emitted_bytes(index)
     program = ListReadCostGames.game(:gba, index, width: :word).program(console: :gba)
     GBA.new.lower(program).bytesize

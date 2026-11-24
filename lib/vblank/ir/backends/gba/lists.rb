@@ -76,6 +76,8 @@ module VBlank
             @backing = {}
             @fills = false
             @copies = false
+            @near_places = {}
+            @measured_near_bases = nil # the real build's (#follow_measured_near_lists)
           end
 
           # The routine every list_fill calls, named once.
@@ -554,9 +556,41 @@ module VBlank
 
               raise LoweringError, no_room_message(name, want) if fast == false
             end
-            return [@memory.alloc_near_base(want), false] if near_list?(name, want, ring)
+            if @measured_near_bases
+              base = @measured_near_bases[name]
+              return [base, false] if base
+            elsif near_list?(name, want, ring)
+              base = @memory.alloc_near_base(want)
+              @near_places[name] = NearPlace.new(base: base, bytes: want)
+              return [base, false]
+            end
 
             [@memory.alloc(want), false]
+          end
+
+          # Where a list kept beside the variables went, and how many bytes it took there.
+          NearPlace = Data.define(:base, :bytes)
+
+          # The lists this pass kept beside the variables (#near_list?), by name: read off the
+          # measuring pass, whose layout the real build repeats (Placement#allocate_variables_where_measured).
+          def near_list_places = @near_places.dup
+
+          # How many bytes of the variables' end of the quick memory lists hold (#near_list?).
+          def near_list_bytes = @near_places.each_value.sum(&:bytes)
+
+          # The real build keeps beside the variables exactly the lists the measuring pass kept
+          # there, each claimed in turn with the variables around it (#claim_measured_near_list),
+          # so every address comes out as that pass measured it. After this, a list the measuring
+          # pass did not keep there is not kept there either.
+          def follow_measured_near_lists
+            @measured_near_bases = {}
+          end
+
+          # Claim the room the measuring pass gave list +name+ beside the variables.
+          def claim_measured_near_list(name, bytes)
+            base = @memory.alloc_near_base(bytes)
+            @near_places[name] = NearPlace.new(base: base, bytes: bytes)
+            @measured_near_bases[name] = base
           end
 
           # The most bytes of slots kept beside the variables (#near_list?): a few small lists, so

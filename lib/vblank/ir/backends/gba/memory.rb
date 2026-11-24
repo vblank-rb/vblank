@@ -65,8 +65,9 @@ module VBlank
             @far = address
           end
 
-          # Claim +bytes+ next to the base, for something that is cheaper to reach
-          # there. Only variables want this.
+          # Claim +bytes+ next to the base, for something that is cheaper to reach there:
+          # the variables, and the small lists read only at slots written in the program
+          # (Lists#near_list?).
           def alloc_near_base(bytes)
             addr = @near
             @near += whole_words(bytes)
@@ -112,7 +113,8 @@ module VBlank
           # How much of this memory is spoken for, both ends added together.
           def used = near_bytes + far_bytes
 
-          # How much the base end holds (the variables), and how much the far end (everything else).
+          # How much the base end holds (the variables and the small lists beside them), and how
+          # much the far end (everything else).
           def near_bytes = @near - @base
           def far_bytes = @ceiling - @far
 
