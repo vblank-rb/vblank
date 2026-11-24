@@ -334,6 +334,7 @@ require_relative "guardrails/channel_conflict"
 require_relative "guardrails/song_needs_frames"
 require_relative "guardrails/song_instrument_unknown"
 require_relative "guardrails/effect_tick_too_short"
+require_relative "guardrails/effect_on_timer_this_frame"
 require_relative "guardrails/song_too_many_parts"
 require_relative "guardrails/square_note_too_low"
 require_relative "guardrails/slide_off_first_square"
@@ -396,6 +397,7 @@ module VBlank
         Checks::SongNeedsFrames.new,
         Checks::SongInstrumentUnknown.new,
         Checks::EffectTickTooShort.new,
+        Checks::EffectOnTimerThisFrame.new,
         Checks::SongTooManyParts.new,
         Checks::SquareNoteTooLow.new,
         Checks::SlideOffFirstSquare.new,
