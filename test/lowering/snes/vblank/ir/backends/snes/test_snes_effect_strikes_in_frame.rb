@@ -263,6 +263,37 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     assert_game_sound_heard_over_effect(:snes, :beep, near: GAME_SOUND_NEAR_AT_FOUR_A_FRAME)
   end
 
+  # What a frame spends sending its line ahead to the sound unit (Sound#emit_ahead_sent_straight, its
+  # rt_sound_ahead_ labels), in lines of the picture, at four ticks a frame, a note on each: the
+  # console's clocks there each frame, read from bsnes. Measured 43 lines (the frame's 13 commands,
+  # each waiting on the sound unit's some 150 cycles to list it), from 64 before the commands were
+  # answered as copied, sent straight from the line and closed once a frame. A Super Nintendo's own
+  # sound driver takes a frame's commands in under a line (fullsnes, "SNES APU Main CPU Communication
+  # Port"), so this budget holds the cost where it is, not where it belongs.
+  SENDING_LINES_A_FRAME = 46
+  SENDING_FRAMES = ((EffectStrikesHeard::STARTED_ON + 2)...(EffectStrikesHeard::STARTED_ON + 12))
+
+  def test_sending_four_ticks_a_frame_costs_the_frame_no_more_than_its_budget
+    rom = game_sound_cartridge(:snes, true, :beep)
+    labels = rom.built.code.map { |label, address| [address, label] }.sort
+    label_at = ->(address) { labels[(labels.bsearch_index { |(at, _)| at > address } || labels.size) - 1][1] }
+    VBlank::Diagnostics::Emulator.load_snes!
+    sending = VBlank::Diagnostics::Emulator.with_cartridge(rom, file_name: "game.sfc") do |core|
+      core.take_processor_time
+      Array.new(SENDING_FRAMES.end) do |frame|
+        core.run_frame
+        spent = core.take_processor_time
+        next unless SENDING_FRAMES.cover?(frame)
+
+        spent.sum { |address, clocks| label_at.call(address & 0xFFFFFF).start_with?("rt_sound_ahead_") ? clocks : 0 }
+      end.compact
+    end
+    lines = sending.sum.fdiv(sending.size * VBlank::Diagnostics::SNESProfiler::LINE_CLOCKS)
+
+    assert_operator lines, :>, 1, "the frame sends the line ahead while the effect plays"
+    assert_operator lines, :<=, SENDING_LINES_A_FRAME, "lines a frame spent sending the line ahead"
+  end
+
   def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
     assert_game_sound_heard_over_effect(:snes, :beep, near: GAME_SOUND_NEAR, rate: GAME_SOUND_RATE)
   end
