@@ -269,22 +269,15 @@ module VBlank
       end
 
       # What a start after a frame cannot be given: +snapshots+ that are not a SnapshotCache, or with
-      # no start, and a start that is not a frame or a moment's name.
-      def self.refuse_unusable_start!(starting_after, snapshots)
-        if snapshots && !snapshots.is_a?(SnapshotCache)
-          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
-                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
-        end
-        if starting_after.nil?
-          return unless snapshots
+      # no start, and a start that is not a frame or a moment's name. +what+ names what was given
+      # them, at the start of a sentence ("The comparison").
+      def self.refuse_unusable_start!(starting_after, snapshots, what:)
+        SnapshotCache.refuse_not_cache!(snapshots)
+        Tape.refuse_unusable_start!(starting_after)
+        return unless starting_after.nil? && snapshots
 
-          raise ArgumentError, "The playing was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
-                               "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
-        end
-        return if starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
-
-        raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
-                             "number 1 or more, or the name of one of its moments."
+        raise ArgumentError, "#{what} was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
+                             "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
       end
 
       # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
@@ -524,7 +517,7 @@ module VBlank
                         save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, match: match,
                         seed: seed, progress: progress)
           if start
-            progress.step("Playing from frame #{start.frame + 1}")
+            progress.step("playing from frame #{start.frame + 1}")
             playing.play_after_start(steps, start.frame)
           else
             progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
@@ -681,7 +674,11 @@ module VBlank
         # Play +steps+ on a console already on frame +start+ of them: what they hold up to that
         # frame goes on the tape without a frame being played, a hold the start falls inside is cut
         # there, and the rest is played. A moment at or before the start is on the tape, with no
-        # picture, and its block is not handed the game: the game was not on that frame here.
+        # picture, and its block is not handed the game. Before the start the game was never on that
+        # frame here. On the start's own frame it is, but a console put back from a snapshot has
+        # played no frame yet, so its screen holds no picture until the next one (the emulator draws
+        # a frame as it plays it): the moment would be handed a blank screen where a playing from
+        # power-on shows the frame. So it is not handed the game at all, warm or cold alike.
         def play_after_start(steps, start)
           played = 0
           steps.each do |step|

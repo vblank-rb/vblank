@@ -42,18 +42,22 @@ module TapeSnapshotTests
   end
 
   # A moment at or before the start is on the tape that comes back, and its block is not handed the
-  # game, which is not there yet. A moment after it is handed the game, with its picture kept.
+  # game: :at_300 is the start's own frame, which a console put back from a snapshot has not drawn
+  # yet, and a start played to cold is treated the same. A moment after it is handed the game, with
+  # its picture kept.
   def test_moments_at_or_before_the_start_are_not_handed_the_game
     game = walker
     from_power_on = played(game, tape)
     with_snapshots do |snapshots|
-      warm = Array.new(2) { played(game, tape, starting_after: :at_300, snapshots: snapshots) }.last
+      cold, warm = Array.new(2) { played(game, tape, starting_after: :at_300, snapshots: snapshots) }
 
       assert_equal %i[at_100 at_200 at_300 at_400], from_power_on[:handed]
-      assert_equal %i[at_400], warm[:handed]
-      assert_equal %i[at_400], warm[:pictures].keys
-      assert_equal from_power_on[:pictures][:at_400], warm[:pictures][:at_400]
-      assert_equal from_power_on[:moments], warm[:moments]
+      [cold, warm].each do |started|
+        assert_equal %i[at_400], started[:handed]
+        assert_equal %i[at_400], started[:pictures].keys
+        assert_equal from_power_on[:pictures][:at_400], started[:pictures][:at_400]
+        assert_equal from_power_on[:moments], started[:moments]
+      end
     end
   end
 

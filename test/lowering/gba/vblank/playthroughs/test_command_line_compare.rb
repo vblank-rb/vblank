@@ -284,7 +284,7 @@ class TestCommandLineCompare < Minitest::Test
   end
 
   # --starting-after compares from the frame after a frame of the tape, by its number or a moment's
-  # name, and finds the drift on the frame it finds from power-on. --snapshots keeps a snapshot of
+  # name (the colon Ruby writes before one is allowed), and finds the drift on the frame it finds from power-on. --snapshots keeps a snapshot of
   # each cartridge's console there, one for each, which the next run loads.
   def test_starting_after_compares_from_late_in_the_tape_from_kept_snapshots
     with_cartridges do |dir|
@@ -292,7 +292,7 @@ class TestCommandLineCompare < Minitest::Test
       by_number, number_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--starting-after", "30",
                                      "--snapshots", "snaps", dir: dir)
       kept = Dir.glob(File.join(dir, "snaps", "*.state")).size
-      by_moment, moment_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--starting-after", "walked",
+      by_moment, moment_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--starting-after", ":walked",
                                      "--snapshots", "snaps", dir: dir)
       agreed, agreed_status = cli("compare", "walker.rb", "walker.gba", "--script", "walk.rb", "--starting-after", "30",
                                   "--snapshots", "snaps", dir: dir)
@@ -347,6 +347,9 @@ class TestCommandLineCompare < Minitest::Test
         ["--lead-ins", "five frames"] => /--lead-ins needs two names/,
         %w[--saves walked.sav] => /--saves needs two save files/,
         %w[--tape walk.rb] => /tape/,
+        %w[--starting-after -5] => /--starting-after -5 is not a frame/,
+        %w[--starting-after 0] => /--starting-after/,
+        %w[--starting-after nowhere] => /no moment of that name/,
       }.each do |wrong, says|
         out, status = cli("compare", "walker.rb", "walker.gba", "--script", "walk.rb", *wrong, dir: dir)
 

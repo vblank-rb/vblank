@@ -75,21 +75,34 @@ module VBlank
       # moments, that the side starts after in place of the tape's last. +snapshots+ (a
       # Playthroughs::SnapshotCache, with +tape:+) puts the cartridge on that frame from a snapshot of
       # its console, made the first time and loaded every time after, so a film of a moment deep in a
-      # tape costs the frames it shows; without, the tape is played there from power-on.
+      # tape costs the frames it shows; without, the tape is played there from power-on. A snapshot is
+      # the emulator's own, so a side shown as a lowering plays the tape to the start whatever
+      # +snapshots+ is, and one film can give both kinds of side the same start.
       def self.open(game, tape: nil, state: nil, console: nil, lowering: nil, sound: false, starting_after: nil,
                     snapshots: nil)
         new(game, tape: tape, state: state, console: console, lowering: lowering, sound: sound,
                   starting_after: starting_after, snapshots: snapshots)
       end
 
+      # A start part way through a tape, or from a snapshot of it, needs the tape. A FilmScript asks
+      # this as it reads a film file, before any side opens. +tape+ is a Tape or a path, nil for none.
+      def self.refuse_start_without_tape!(tape, starting_after, snapshots)
+        Playthroughs::SnapshotCache.refuse_not_cache!(snapshots)
+        Playthroughs::Tape.refuse_unusable_start!(starting_after)
+        return if tape || (starting_after.nil? && snapshots.nil?)
+
+        raise ArgumentError, "A side of a film was given `#{starting_after.nil? ? 'snapshots' : 'starting_after'}:` and no " \
+                             "`tape:`. The presses up to the start come from a tape. Give `tape:` the tape, or remove it."
+      end
+
       def initialize(game, tape: nil, state: nil, console: nil, lowering: nil, sound: false, starting_after: nil,
                      snapshots: nil)
         refuse_tape_and_state!(tape, state)
-        refuse_start_without_tape!(tape, starting_after, snapshots)
+        FilmCartridge.refuse_start_without_tape!(tape, starting_after, snapshots)
         console = Console.named(console) if console
         way = Playthroughs::CommandLine.shown_way_named(lowering)
         refuse_state_on_lowering!(lowering) if state && way
-        refuse_snapshots_on_lowering!(lowering) if snapshots && way
+        snapshots = nil if way
         tape = tape_from(tape)
         start = tape && tape.start_frame(starting_after || tape.frames)
         @save_dir = Dir.mktmpdir("film-save")
@@ -247,7 +260,7 @@ module VBlank
         game_to_build?(game) ? game.build_rom(out: nil, profile: false, **{ console: console }.compact) : finished_cartridge(game, console)
       end
 
-      def game_to_build?(game) =game.respond_to?(:build_rom) && game.respond_to?(:checked_program)
+      def game_to_build?(game) = game.respond_to?(:build_rom) && game.respond_to?(:checked_program)
 
       # A built cartridge as it is, or a cartridge file read from its path, when it is for +console+.
       def finished_cartridge(game, console)
@@ -289,27 +302,6 @@ module VBlank
       end
 
       # A start part way through a tape, or from a snapshot of it, needs the tape.
-      def refuse_start_without_tape!(tape, starting_after, snapshots)
-        if snapshots && !snapshots.is_a?(Playthroughs::SnapshotCache)
-          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
-                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
-        end
-        unless starting_after.nil? || starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
-          raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
-                               "number 1 or more, or the name of one of its moments."
-        end
-        return if tape || (starting_after.nil? && snapshots.nil?)
-
-        raise ArgumentError, "A side of a film was given `#{starting_after.nil? ? 'snapshots' : 'starting_after'}:` and no " \
-                             "`tape:`. The presses up to the start come from a tape. Give `tape:` the tape, or remove it."
-      end
-
-      def refuse_snapshots_on_lowering!(lowering)
-        raise ArgumentError, "A snapshot is the emulator's own, and this side shows the game on #{lowering}. Only the " \
-                             "cartridge in the emulator can start from a snapshot. To fix this, leave out `lowering:`, " \
-                             "or leave out `snapshots:`."
-      end
-
       def refuse_state_on_lowering!(lowering)
         raise ArgumentError, "A saved state is the emulator's own, and this side shows the game on #{lowering}. Only " \
                              "the cartridge in the emulator can start from a saved state. To fix this, leave out " \

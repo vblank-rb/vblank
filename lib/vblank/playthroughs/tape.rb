@@ -231,9 +231,21 @@ module VBlank
                                                            start: start, progress: progress, &at_each_moment)
       end
 
-      # The frame +starting_after+ names on this tape: a number, or the frame of the moment it names.
-      # +last_allowed+ is the last frame a start can be.
+      # A start a tape can give is a frame of it, a whole number 1 or more, or a moment's name; nil is
+      # none. What a comparison, a probe, a playing and a film side each take as `starting_after:`.
+      def self.refuse_unusable_start!(starting_after)
+        return if starting_after.nil? || starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
+
+        raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
+                             "number 1 or more, or the name of one of its moments."
+      end
+
+      # The frame +starting_after+ names on this tape: a number, or the frame of the moment it names;
+      # 0 for nil, which is power-on. +last_allowed+ is the last frame a start can be.
       def start_frame(starting_after, last_allowed: frames)
+        Tape.refuse_unusable_start!(starting_after)
+        return 0 if starting_after.nil?
+
         frame = if starting_after.is_a?(Symbol)
                   moments.fetch(starting_after) do
                     raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
@@ -244,13 +256,14 @@ module VBlank
                 end
         return frame if frame <= last_allowed
 
-        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{frames} frames. " \
+        left = last_allowed < frames ? " Nothing is left to play after the tape's last." : ""
+        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{frames} frames.#{left} " \
                              "To fix this, give a frame of the tape, #{last_allowed} or less."
       end
 
       # Where a playing of this tape starts (a Playthrough::StartAfter), or nil for power-on.
       private def start_for_playing(starting_after, snapshots, lead_in:, on:, window:)
-        Playthrough.refuse_unusable_start!(starting_after, snapshots)
+        Playthrough.refuse_unusable_start!(starting_after, snapshots, what: "The playing")
         return nil if starting_after.nil?
 
         said = []

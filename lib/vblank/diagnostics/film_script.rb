@@ -218,10 +218,11 @@ module VBlank
                                "{ \"ours\" => \"game.gba\" }`, or in the film with `side \"ours\", \"game.gba\"`."
         end
         refuse_bad_shell_start!
+        refuse_start_off_the_tape!
 
         plan = Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, starting_after: @starting_after,
-                        snapshots: @snapshots, states: @states, scale: @scale, console: @console, lowering: @lowering, shell: @shell, shell_from: @shell_from,
-                        sound: @sound)
+                        snapshots: @snapshots, states: @states, scale: @scale, console: @console, lowering: @lowering,
+                        shell: @shell, shell_from: @shell_from, sound: @sound)
         plan.heard_labels # a +sound+ naming no side is refused before any side opens
         plan
       end
@@ -247,11 +248,24 @@ module VBlank
       end
 
       def refuse_tape_start_without_tape!(tape, starting_after, snapshots)
+        Playthroughs::SnapshotCache.refuse_not_cache!(snapshots) unless snapshots.is_a?(String)
+        Playthroughs::Tape.refuse_unusable_start!(starting_after)
         return if tape || (starting_after.nil? && snapshots.nil?)
 
         raise ArgumentError, "`start_from` in #{@path} gives `#{starting_after.nil? ? 'snapshots' : 'starting_after'}:` and " \
                              "no tape. A side starts after a frame of a tape. Write it like `start_from tape: " \
                              "\"walk.tape\", starting_after: :door, snapshots: \".cache/snapshots\"`."
+      end
+
+      # A start the tape cannot give (a frame past its end, a moment it does not name), or a tape no
+      # film can play, refused as the film file is read, before any side opens.
+      def refuse_start_off_the_tape!
+        return unless @tape && @starting_after
+
+        tape = @tape.is_a?(Playthroughs::Tape) ? @tape : Playthroughs::Tape.read(@tape.to_s)
+        tape.start_frame(@starting_after)
+      rescue ArgumentError => e
+        raise ArgumentError, "`start_from` in #{@path} cannot start there. #{e.message}"
       end
 
       def refuse_bad_keys!(given)

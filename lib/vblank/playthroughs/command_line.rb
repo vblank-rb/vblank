@@ -420,7 +420,7 @@ module VBlank
                     when :same then written.to_sym
                     when :lead_ins then lead_ins_named(written)
                     when :saves then save_files_named(written)
-                    when :starting_after then parse_stretch_end(written)
+                    when :starting_after then parse_start(written)
                     when :snapshots then SnapshotCache.new(written)
                     else written
                     end]
@@ -455,6 +455,16 @@ module VBlank
       rescue ArgumentError
         raise Refused, "--ignoring-frames #{written} is not a range. Write a range of frame numbers or of moments, " \
                        "for example --ignoring-frames 1..120 title..in_the_world."
+      end
+
+      # --starting-after as a command line writes it: a frame number, or a moment's name, with or
+      # without the colon Ruby writes before one.
+      def parse_start(written)
+        name = written.delete_prefix(":")
+        return name.match?(/\A\d+\z/) ? name.to_i : name.to_sym if name.match?(/\A\w+\z/)
+
+        raise Refused, "--starting-after #{written} is not a frame. Give a frame number, 1 or more, or the name of a " \
+                       "moment, for example --starting-after 300 or --starting-after at_the_door."
       end
 
       def parse_stretch_end(text)

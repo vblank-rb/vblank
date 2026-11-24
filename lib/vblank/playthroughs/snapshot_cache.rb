@@ -67,6 +67,14 @@ module VBlank
         end
       end
 
+      # What every start from a snapshot takes as `snapshots:`: a SnapshotCache, or nil for none.
+      def self.refuse_not_cache!(snapshots)
+        return if snapshots.nil? || snapshots.is_a?(SnapshotCache)
+
+        raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
+                             "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
+      end
+
       attr_reader :folder
 
       def initialize(folder, env: ENV)

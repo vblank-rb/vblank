@@ -322,27 +322,12 @@ module VBlank
       # frame of the moment it names.
       def start_frame(tape, starting_after, snapshots)
         refuse_unusable_start!(tape, starting_after, snapshots)
-        return 0 if starting_after.nil?
-
-        frame = if starting_after.is_a?(Symbol)
-                  tape.moments.fetch(starting_after) do
-                    raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
-                                         "no moment of that name. Its moments are #{tape.moments.keys.map(&:inspect).join(', ')}."
-                  end
-                else
-                  starting_after
-                end
-        return frame if frame <= tape.frames
-
-        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{tape.frames} frames. " \
-                             "To fix this, give a frame of the tape, #{tape.frames} or less."
+        starting_after.nil? ? 0 : tape.start_frame(starting_after)
       end
 
       def refuse_unusable_start!(tape, starting_after, snapshots)
-        if snapshots && !snapshots.is_a?(SnapshotCache)
-          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
-                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
-        end
+        SnapshotCache.refuse_not_cache!(snapshots)
+        Tape.refuse_unusable_start!(starting_after)
         if starting_after.nil?
           return if tape.nil? && snapshots.nil?
 
@@ -350,14 +335,10 @@ module VBlank
                                "and no `starting_after:`. They are used only to open the probe after a frame of the tape. " \
                                "Give `starting_after:` the frame, or remove them."
         end
-        unless tape.is_a?(Tape)
-          raise ArgumentError, "The probe was given `starting_after:` and no `tape:`. The presses up to the frame come " \
-                               "from a tape. Give `tape:` the tape (Tape.read(path)), or remove `starting_after:`."
-        end
-        return if starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
+        return if tape.is_a?(Tape)
 
-        raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
-                             "number 1 or more, or the name of one of its moments."
+        raise ArgumentError, "The probe was given `starting_after:` and no `tape:`. The presses up to the frame come " \
+                             "from a tape. Give `tape:` the tape (Tape.read(path)), or remove `starting_after:`."
       end
 
       # A console whose snapshot leaves out the save memory its cartridge keeps would be put back

@@ -623,20 +623,9 @@ module VBlank
       # after the start, so a block that keeps what it saw on the frame before starts with nothing
       # there, as it does on the first frame of a comparison from power-on.
       private def refuse_settings_wrong_for_start!
-        if @snapshots && !@snapshots.is_a?(SnapshotCache)
-          raise ArgumentError, "`snapshots:` was #{@snapshots.inspect}. It must be a SnapshotCache: " \
-                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
-        end
-        if @starting_after.nil?
-          return unless @snapshots
+        Playthrough.refuse_unusable_start!(@starting_after, @snapshots, what: "The comparison")
+        return if @starting_after.nil?
 
-          raise ArgumentError, "The comparison was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
-                               "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
-        end
-        unless @starting_after.is_a?(Symbol) || (@starting_after.is_a?(Integer) && @starting_after >= 1)
-          raise ArgumentError, "`starting_after:` was #{@starting_after.inspect}. It must be a frame of the tape, a whole " \
-                               "number 1 or more, or the name of one of its moments."
-        end
         said = []
         said << "`lead_ins:`" if @lead_ins.any?
         said << @step_count.setting_name if @step_count
@@ -649,23 +638,9 @@ module VBlank
                              "Remove #{said.size == 1 ? 'it' : 'them'}, or remove `starting_after:`."
       end
 
-      # The frame of +tape+ the comparison starts after, 0 for none: a number, or a moment's frame.
-      private def start_frame_on(tape)
-        return 0 if @starting_after.nil?
-
-        frame = if @starting_after.is_a?(Symbol)
-                  tape.moments.fetch(@starting_after) do
-                    raise ArgumentError, "`starting_after:` names the moment #{@starting_after.inspect}, and the tape has " \
-                                         "no moment of that name. Its moments are #{tape.moments.keys.map(&:inspect).join(', ')}."
-                  end
-                else
-                  @starting_after
-                end
-        return frame if frame < tape.frames
-
-        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{tape.frames} frames. Nothing is " \
-                             "left to compare after it. Give a frame before the tape's last."
-      end
+      # The frame of +tape+ the comparison starts after, 0 for none: a number, or a moment's frame,
+      # before the tape's last, so something is left to compare.
+      private def start_frame_on(tape) = tape.start_frame(@starting_after, last_allowed: tape.frames - 1)
 
       # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
       # holding the save it was switched on with (Console::Kit#snapshot_leaves_out_save_memory?).

@@ -306,20 +306,9 @@ module VBlank
       # it has played from power-on, so nothing can say which snapshot they reach, and playing it
       # would cost every frame before the start the snapshot is there to save.
       def self.refuse_unusable_start!(presses, starting_after, snapshots, lead_ins)
-        if snapshots && !snapshots.is_a?(SnapshotCache)
-          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
-                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
-        end
-        if starting_after.nil?
-          return unless snapshots
+        Playthrough.refuse_unusable_start!(starting_after, snapshots, what: "The comparison")
+        return if starting_after.nil?
 
-          raise ArgumentError, "The comparison was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
-                               "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
-        end
-        unless starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
-          raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
-                               "number 1 or more, or the name of one of its moments."
-        end
         unless lead_ins.compact.empty?
           raise ArgumentError, "The comparison was given `starting_after:` and `lead_ins:`. The frames before the start " \
                                "are not heard, so a lead-in is not needed. Remove `lead_ins:`, or remove `starting_after:`."
@@ -331,23 +320,9 @@ module VBlank
                              "`playthrough.play(ours).tape`, or `Tape.read(path)`."
       end
 
-      # The frame of +tape+ the sound is heard after, 0 for power-on: a number, or a moment's frame.
-      def self.start_frame_on(tape, starting_after)
-        return 0 if starting_after.nil?
-
-        frame = if starting_after.is_a?(Symbol)
-                  tape.moments.fetch(starting_after) do
-                    raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
-                                         "no moment of that name. Its moments are #{tape.moments.keys.map(&:inspect).join(', ')}."
-                  end
-                else
-                  starting_after
-                end
-        return frame if frame < tape.frames
-
-        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{tape.frames} frames. Nothing is " \
-                             "left to hear after it. Give a frame before the tape's last."
-      end
+      # The frame of +tape+ the sound is heard after, 0 for power-on: a number, or a moment's frame,
+      # before the tape's last, so something is left to hear.
+      def self.start_frame_on(tape, starting_after) = tape.start_frame(starting_after, last_allowed: tape.frames - 1)
       private_class_method :refuse_unusable_start!, :start_frame_on
 
       # One cartridge's tape played again with only some voices heard: switched on, told which voices
