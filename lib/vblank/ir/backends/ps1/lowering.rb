@@ -1134,13 +1134,6 @@ module VBlank
             end
           end
 
-          # The lists whose length is always their capacity, so an index is checked against a number written
-          # in the instruction rather than a length read from main RAM, which has no cache and makes the
-          # processor wait for every load: a game of rooms reads its lists hundreds of times a pass. Such a
-          # list is made full (`full_of:`) every time it is made, nothing pushes to it, drops from it or
-          # copies a table into it, and it is made before anything can read or write it
-          # (LoweringPlan#lists_made_before_use): one read before then stops the interpreter's game (the
-          # list is not made yet), and must stop this one's, which the length read from RAM, nought, does.
           # The most bytes of lists kept in the scratchpad beside the variables (#place_list): a few
           # small ones, so the variables keep the room they had.
           SCRATCHPAD_LIST_BYTES = 256
@@ -1176,6 +1169,13 @@ module VBlank
             end
           end
 
+          # The lists whose length is always their capacity, so an index is checked against a number written
+          # in the instruction rather than a length read from main RAM, which has no cache and makes the
+          # processor wait for every load: a game of rooms reads its lists hundreds of times a pass. Such a
+          # list is made full (`full_of:`) every time it is made, nothing pushes to it, drops from it or
+          # copies a table into it, and it is made before anything can read or write it
+          # (LoweringPlan#lists_made_before_use): one read before then stops the interpreter's game (the
+          # list is not made yet), and must stop this one's, which the length read from RAM, nought, does.
           def lists_of_fixed_length(program)
             changed = program.walk.filter_map { |node| node.name if %i[list_push list_drop list_copy].include?(node.kind) }
             made = program.walk.select { |node| node.kind == :list_new }.group_by(&:name)

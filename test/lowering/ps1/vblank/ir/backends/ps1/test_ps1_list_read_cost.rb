@@ -29,9 +29,9 @@ class TestPS1ListReadCost < Minitest::Test
 
   # A slot named by a number written in the program, `x += a[1]`, is one load at an address known as
   # the code is written, with no check (PS1::Lowering#fixed_slot_address), straight into the register
-  # the sum wants (#emit_load_simple). Measured: 18 cycles a read, where these lists of 32 are too
-  # big for the scratchpad (#place_list) and each load waits on main RAM; a variable, kept in the
-  # scratchpad, costs next to nothing.
+  # the sum wants (#emit_load_simple). Measured: 18 cycles a read. Of these four lists of 32 words
+  # only the first fits the room the scratchpad keeps for lists (#place_list), so three of the four
+  # loads wait on main RAM; a variable, kept in the scratchpad, costs next to nothing.
   WRITTEN_SLOT_BOUND = 21
 
   def test_a_read_of_a_written_slot_costs_under_its_bound
