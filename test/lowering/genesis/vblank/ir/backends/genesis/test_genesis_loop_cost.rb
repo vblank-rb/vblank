@@ -20,7 +20,13 @@ class TestGenesisLoopCost < Minitest::Test
   # while a jump set a hidden number the loop's test and the rest of the turn read; 158 and 266 with a
   # jump that is a branch, the count in work RAM; 120 and 239 with the count in a data register (the
   # `next` loop is a while that is not counted).
-  BOUNDS = { repeat_set: 62, repeat_read: 95, while_set: 62, while_read: 95, while_break: 130, while_next: 255 }.freeze
+  #
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn (`k * 3 + 1`,
+  # `k * 5 + 2`, `k + 7`, `100 - k`, LoopCostGames :steps): 270 a turn, each number worked out from the
+  # count read from work RAM and added to its variable there. The same rounds written out are 142 a
+  # round, each an ADDQ or ADDI of the number to the variable where it is.
+  BOUNDS = { repeat_set: 62, repeat_read: 95, while_set: 62, while_read: 95, while_break: 130, while_next: 255,
+             steps: 285 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

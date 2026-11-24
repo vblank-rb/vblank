@@ -19,7 +19,12 @@ class TestPS1LoopCost < Minitest::Test
   # search asking each turn whether to `break` or go to its `next` round was 59.9 and 59.8 while a jump
   # set a hidden number the loop's test and the rest of the turn read; 20.8 and 47.7 with a jump that
   # is a branch (the `next` loop is a while that is not counted).
-  BOUNDS = { repeat_set: 10, repeat_read: 21, while_set: 11, while_read: 21, while_break: 23, while_next: 53 }.freeze
+  #
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn (`k * 3 + 1`,
+  # `k * 5 + 2`, `k + 7`, `100 - k`, LoopCostGames :steps): 47.5 a turn; the same rounds written out are
+  # 40.5 a round.
+  BOUNDS = { repeat_set: 10, repeat_read: 21, while_set: 11, while_read: 21, while_break: 23, while_next: 53,
+             steps: 50 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do
