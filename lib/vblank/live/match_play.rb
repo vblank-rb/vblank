@@ -29,7 +29,7 @@ module VBlank
       def self.facts_from_plain(plain) = MatchFacts.new(**plain.transform_keys(&:to_sym))
 
       # What stops a match, each already in plain words.
-      FAILURES = [Network::Refused, Network::Desync, Network::ConnectionLost, Network::ConnectionFailed,
+      FAILURES = [Network::Refused, Network::Desync, Network::ConnectionLost, Network::MatchCutOff, Network::ConnectionFailed,
                   Network::VersionMismatch, Network::RoomRefused, Network::BadMessage].freeze
 
       # A match the game cannot play, said in plain words.

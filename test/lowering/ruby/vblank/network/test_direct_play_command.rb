@@ -123,6 +123,25 @@ class TestDirectPlayCommand < Minitest::Test
     assert_match(/The match is over/, hosting.lines.join)
   end
 
+  # The host is the room, so with it killed the two who joined cannot reach each other, nor agree which
+  # pass was the host's last: each stops, and says why, rather than each playing on its own way.
+  def test_a_killed_host_stops_the_match_for_both_who_joined_saying_why
+    hosting = host("--players", "3", "--pictures", "100000", "--keys", "right")
+    port = port_of(hosting)
+    joining = %w[left up].map { |key| start("--join", "127.0.0.1:#{port}", "--no-window", "--pictures", "100000", "--keys", key) }
+    joining.each { |run| run.read_until(/The match has begun/) }
+    Process.kill("KILL", hosting.pid)
+    Process.wait(hosting.pid)
+
+    joining.each do |run|
+      status = run.finish
+
+      refute_predicate status, :success?, run.lines.join
+      assert_match(/The connection to the match closed/, run.lines.join)
+      refute_match(/\.rb:\d+:in/, run.lines.join, "no backtrace")
+    end
+  end
+
   def test_joining_an_address_where_nobody_hosts_says_so_in_plain_words
     unused = TCPServer.new("127.0.0.1", 0)
     port = unused.addr[1]

@@ -295,11 +295,28 @@ module VBlank
           return if heard_everyone_for?(pass)
 
           if @transport.closed?
-            @roster.each { |each_player| record_departure(each_player) unless each_player == @player }
+            leave_cut_off_match
           else
             @transport.wait_for_message
           end
         end
+      end
+
+      # This machine's link to the room has closed in the match: the room went (a direct host is the room,
+      # so a host that went takes it along), or this machine's own link went. Either way the others are out
+      # of reach, and no message says which of their passes was their last.
+      #
+      # Where only the host was still in, nobody is left to disagree with: the host leaves after the last
+      # pass heard from it, and the game goes on here alone, as in a match of two whose host was closed.
+      # Where another player was still in, that player is cut off from the room too, or still plays with the
+      # host; either way each machine would pick its own last pass for the others, and their games would
+      # differ with nobody to see it. So the match stops on this machine (MatchCutOff), and on each other
+      # machine the room has gone from the same way.
+      def leave_cut_off_match
+        still_in = @roster.reject { |each_player| each_player == @player || @left_after.key?(each_player) }
+        raise MatchCutOff unless (still_in - [HOST_PLAYER]).empty?
+
+        still_in.each { |each_player| record_departure(each_player) }
       end
 
       # Whether every player still in the match has sent their buttons for +pass+.
@@ -373,6 +390,13 @@ module VBlank
           IR::Buttons::PLAYERS_NAMES[index].each_with_index.filter_map { |name, bit| name if mask[bit] == 1 }
         end
       end
+    end
+
+    # The link to the room closed in a match of three or more, so the players still in it cannot agree when
+    # the others left (Lockstep#leave_cut_off_match).
+    class MatchCutOff < StandardError
+      def initialize = super("The connection to the match closed. This computer cannot reach the other players now, " \
+                             "so the match stopped on this computer. To play again, start a new match.")
     end
 
     # The link to the room closed while a machine waited to be let into a match.

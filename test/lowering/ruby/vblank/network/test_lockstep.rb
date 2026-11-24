@@ -268,7 +268,9 @@ class TestLockstep < Minitest::Test
 
     outcomes = play(net, copies)
 
-    assert_all_finished outcomes
+    assert_all_finished outcomes.first(2)
+    # The one cut off cannot reach either of the two still playing, so it stops, saying why.
+    assert_kind_of Network::MatchCutOff, outcomes.last.error
     left = copies.first(2).map { |copy| copy.lockstep.events.select { |event| event.kind == :left } }
     assert_equal 1, left.first.size
     assert_equal left.first, left.last
