@@ -1636,6 +1636,29 @@ class TestPlainRubyAnswers < Minitest::Test
     refute_empty field_copies(&game)
   end
 
+  # A timer's handler runs between any two lines of the game on a console, so a number it changes
+  # can change between the line that gives the field its number and the read: the copy stays. Plain
+  # Ruby has no timer, so the answer is held to Ruby's rule instead: the field holds the number
+  # px had on its line.
+  def test_a_struct_field_read_after_a_draw_keeps_a_copy_of_a_number_a_timer_changes
+    game = proc do
+      screen :bitmap
+      px = 0
+      n = m = 0
+      timer(:beat, per_second: 60).on_tick { px += 10 }
+      game_loop do
+        px += 1
+        point = AnswerPoint.new(px + 2, 0, 0)
+        draw_rect_at(0, 0, 4, 4, :red)
+        n = point.x
+        m = px
+      end
+    end
+    played = played_game(3, &game)
+    assert_equal played[:m] + 2, played[:n], "the field does not hold the number px had on its line"
+    refute_empty field_copies(&game), "the field keeps no copy, though a timer changes px"
+  end
+
   # A Data object keeps the number it was made from, as a Struct does.
   def test_a_data_object_made_from_a_changing_number_keeps_a_copy
     agrees("AnswerFixedPoint.new(x: score), then score += 1", reads: %i[n], passes: 3) do

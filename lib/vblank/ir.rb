@@ -36,6 +36,7 @@ require_relative "ir/background_reading"    # Where a background's state is kept
 require_relative "ir/reading_by_name"       # A running game's state asked by its names, on every reader
 require_relative "ir/unchanging"            # Which values change nothing by being worked out
 require_relative "ir/reach"                 # What a run can reach: its routines and variables
+require_relative "ir/unneeded_copies"       # A kept copy whose number cannot change before its reads
 require_relative "ir/parity"
 require_relative "ir/affine"
 require_relative "ir/modes"

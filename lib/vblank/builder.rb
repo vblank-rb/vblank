@@ -747,6 +747,7 @@ module VBlank
       refuse_starts_not_declared! # ...and so is every `var` and `list` a start can name
       # Every line of game code is recorded, so each plain flag's tests and changes are known.
       @instance_variable_uses.refuse_game_flags!
+      drop_unneeded_field_copies # ...and every timer's handler and bend that could change a field's number
 
       finalize_scene_sprite_handover # first: it settles what each sprite waits for before it is painted
       finalize_sprite_repaints
@@ -1253,16 +1254,6 @@ module VBlank
       !mark.container.equal?(@container_stack.last) || !mark.container.children.last.equal?(mark.last)
     end
 
-    # The statements recorded since +mark+, left where they are, or nil where the builder records
-    # in another container now: what those lines are cannot be told from one list.
-    def statements_recorded_since(mark)
-      return unless mark.container.equal?(@container_stack.last)
-
-      children = mark.container.children
-      start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
-      start && children[(start + 1)..]
-    end
-
     # The statements recorded since +mark+, taken out of where they were recorded and handed back.
     def take_statements_since(mark)
       children = mark.container.children
@@ -1479,6 +1470,23 @@ module VBlank
     def note_unsaved_variable(name) = @unsaved_variables << name
 
     def unsaved_variable?(name) = @unsaved_variables.include?(name)
+
+    # A hidden variable that keeps the number a Struct's field was given
+    # (PlainRuby::InstanceVariables#own_field_variable), noted so that #drop_unneeded_field_copies
+    # can leave it out once the whole game is known.
+    def field_copy_variable(like:)
+      hidden_variable(:field, like: like).tap { |copy| (@field_copies ||= []) << copy.name }
+    end
+
+    # Each field copy whose number cannot change before its reads is left out, its reads given the
+    # working-out it copied (IR::UnneededCopies). Run once every line of game code is recorded, so
+    # every timer's handler and bend is known.
+    def drop_unneeded_field_copies
+      return if @field_copies.nil?
+
+      outside = IR::UnneededCopies.names_outside_main_flow(@program)
+      @field_copies.each { |name| forget_hidden_variable(name) if IR::UnneededCopies.drop!(@program, name, outside) }
+    end
 
     # A hidden variable nothing came to need, which then takes no memory and is not reported.
     def forget_hidden_variable(name)

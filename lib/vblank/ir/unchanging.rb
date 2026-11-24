@@ -38,17 +38,11 @@ module VBlank
       # A test changes what its sides change, and nothing more.
       TESTS = %i[if else].freeze
 
-      # Does running +statements+, one after another, leave the number +node+ works out as it was?
-      # The answer is yes only with a proof: +node+ reads only variables (READ_ONLY_VARIABLES), and
-      # each statement and everything it holds is a working-out, a test, a draw, or a change to a
-      # variable +node+ does not read. Anything else counts as a change (a call can change anything,
-      # and a wait lets the frame's timers run), so a missed proof costs a copy, never a wrong number.
-      def self.left_alone_by?(node, statements)
-        read = variables_read(node)
-        return false if read.nil?
-
-        statements.all? { |statement| statement.walk.all? { |each_node| leaves_variables?(each_node, read) } }
-      end
+      # Does +statement+, and everything it holds, leave every variable in +read+ alone? Yes only
+      # with a proof: each node is a working-out, a test, a draw, or a change to a variable not in
+      # +read+. Anything else counts as a change (a call can change anything, a wait lets the
+      # frame's timers run), so a missed proof keeps a copy, never gives a wrong number.
+      def self.left_alone_by?(statement, read) = statement.walk.all? { |node| leaves_variables?(node, read) }
 
       # The variables +node+ reads, or nil where it reads anything else.
       def self.variables_read(node)
