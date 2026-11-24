@@ -31,4 +31,27 @@ class TestHeardAlikeOnTheGenesis < Minitest::Test
     reader&.close
     every_voice&.close
   end
+
+  # Choosing opens the core again, which would throw away a state put back: chosen first, the voices
+  # are kept as the state loads (Genesis Plus GX keeps them in its settings, not its state).
+  def test_the_voices_heard_are_chosen_before_a_state_is_loaded
+    Dir.mktmpdir("states") do |folder|
+      state = File.join(folder, "tune.state")
+      played = VBlank::Diagnostics::Verifier.new(tune_game, frames: 0)
+      played.step(START + 30).save_state(state)
+      loaded = VBlank::Diagnostics::Verifier.new(tune_game, frames: 0).load_state(state)
+
+      late = assert_raises(ArgumentError) { loaded.hearing(only: [:noise]) }
+      assert_match "before the first frame", late.message
+      chosen = VBlank::Diagnostics::Verifier.new(tune_game, frames: 0)
+      chosen.hearing(only: [:noise]).load_state(state).step(10)
+
+      assert_operator chosen.loudest_by_frame.last(5).max * 4, :<, played.step(10).loudest_by_frame.last(5).max,
+                      "the noise voice alone, not the tune"
+    ensure
+      played&.close
+      loaded&.close
+      chosen&.close
+    end
+  end
 end

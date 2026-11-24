@@ -37,6 +37,7 @@ module VBlank
         @multitap = multitap
         @core = open_core
         @last_audio = []
+        @state_loaded = false
       end
 
       # The core on the cartridge, with the core settings +settings+, and the Team Player plugged in
@@ -61,7 +62,9 @@ module VBlank
 
       # Hear only the voices +only+ names, or every voice but those +without+ names, from the first
       # frame: the core is opened again with the others silent, so it must be asked before any frame
-      # is played.
+      # is played and before a state is put back (#load_state), which opening again would throw
+      # away. The voices are the core's settings and not part of its state, so chosen first they
+      # are kept as a state loads.
       def hearing(only: nil, without: nil)
         if only.nil? == without.nil?
           raise ArgumentError, "hearing must say only: or without:. only: keeps the voices you name and leaves out the " \
@@ -70,9 +73,10 @@ module VBlank
         named = Array(only || without)
         unknown = named - channels
         raise ArgumentError, "A Genesis has no voice #{unknown.join(', ')}. Its voices are #{channels.join(', ')}." unless unknown.empty?
-        if @core.frames.positive?
+        if @core.frames.positive? || @state_loaded
           raise ArgumentError, "This reader can choose the voices it hears on a Genesis cartridge only before the first " \
-                               "frame. To fix this, ask for the voices before the cartridge plays."
+                               "frame and before a state is loaded. To fix this, ask for the voices before the cartridge " \
+                               "plays or the state is loaded."
         end
 
         silent = only ? channels - named : named
@@ -128,7 +132,10 @@ module VBlank
       # The console's whole state, written to the file +path+ in Genesis Plus GX's own format, and put
       # back from one (Verifier#save_state, #load_state).
       def save_state(path) = File.binwrite(path, @core.serialize)
-      def load_state(path) = @core.unserialize(File.binread(path))
+      def load_state(path)
+        @core.unserialize(File.binread(path))
+        @state_loaded = true
+      end
 
       # The 64 colours as 15-bit colours, each channel's three bits widened to five.
       def palette = @core.color_ram.map { |color| COLORS.fetch(color) }
