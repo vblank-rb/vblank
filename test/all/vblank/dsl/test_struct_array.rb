@@ -768,6 +768,57 @@ class TestStructArray < Minitest::Test
     assert_match(/has no `x` or `y`/, error.message)
   end
 
+  # An Array of Structs blocked by a background stops each thing at its walls, as a pool's
+  # `blocked_by` does: a drop stepping right a pixel a pass stops against the wall at x 16.
+  def test_an_array_of_structs_blocked_by_a_background_stops_at_its_walls
+    player = played(frames: 20) do
+      screen :tiled
+      image(:drop, "#" => :green) { "########\n" * 8 }
+      image(:wall, "#" => :red) { "########\n" * 8 }
+      tiles :walls, "#" => :wall, solid: ["#"]
+      room = background :room, tiles: :walls, map: ["  #   ", "      "]
+      drops = Array.new(capacity: 2)
+      drops.blocked_by(room)
+      started = 0
+      game_loop do
+        if started == 0
+          drops << Drop.new(0, 0)
+          started = 1
+        end
+        drops.each { |d| d.x += 1 if d.can_move?(:right) }
+      end
+    end
+
+    assert_equal [8], player.pool(:drops, :x).compact
+  end
+
+  # Every thing of an Array of Structs moved to another layer at once, as a pool's `put_in_layer`
+  # does: a red guard drawn in front of a blue arch goes behind it, so its pixel under the arch
+  # shows the arch.
+  def test_an_array_of_structs_put_in_another_layer_moves_every_thing
+    shown = %i[upper walking].map do |where|
+      played(frames: 3) do
+        screen :tiled, backdrop: :black
+        image(:arch, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+        image(:guy, "#" => :red) { (["#" * 16] * 8).join("\n") }
+        tiles :arches, "#" => :arch
+        layers :walking, :scenery, :upper
+        layer(:scenery) { background :arch_bg, tiles: :arches, map: (0...18).map { ("#" * 13) + (" " * 7) } }
+        guards = Array.new(capacity: 4)
+        started = 0
+        game_loop do
+          if started == 0
+            guards << LayeredGuard.new(96, 64)
+            started = 1
+          end
+          guards.put_in_layer where
+        end
+      end.screen.pixel(100, 66)
+    end
+
+    assert_equal [VBlank::Graphics::Color.resolve(:red), VBlank::Graphics::Color.resolve(:blue)], shown
+  end
+
   # A save keeps an Array of Structs as it keeps the pool it is: the first pass puts a spark in
   # at x 5 and saves, the second moves it to 9, and the third loads, putting it back at 5.
   def test_a_save_keeps_an_array_of_structs

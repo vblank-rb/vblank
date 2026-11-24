@@ -79,5 +79,10 @@ FrontTile = Struct.new(:x, :y) do
   drawn_as :red_tile, layer: :front
 end
 
+# A guard in the layer at the top, which a game moves to another layer as it plays.
+LayeredGuard = Struct.new(:x, :y) do
+  drawn_as :guy, layer: :upper
+end
+
 # No place to draw at.
 Flag = Struct.new(:color)

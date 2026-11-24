@@ -36,7 +36,7 @@ module VBlank
     class StructArray
       # The Array methods an Array of Structs answers.
       VERBS = %i[<< push append shift clear each reverse_each each_with_index delete_if reject! sort! sort_by! reverse!
-                 min max minmax size length count empty? any?].freeze
+                 min max minmax size length count empty? any? blocked_by put_in_layer].freeze
 
       # The settings `Array.new` takes for one: how many, and where it is kept.
       SETTINGS = %i[fast].freeze
@@ -409,6 +409,21 @@ module VBlank
       end
 
       def inspect = "an Array of #{kind_name} kept as pool :#{@pool.name}" # :nodoc:
+
+      # Stops every thing at the solid tiles of +background+ when a walk moves it (`move`) or
+      # asks `can_move?`, as Pool#blocked_by does: the Array's things slide along walls each
+      # on its own. VBlank's word, as `capacity:` is: a Ruby Array has none.
+      def blocked_by(background)
+        @pool.blocked_by(background)
+        self
+      end
+
+      # Puts every thing in another of the declared layers from now on, as Pool#put_in_layer
+      # does; `showing:` picks one of a list of layers by a number the game works out.
+      def put_in_layer(which, showing: nil)
+        @pool.put_in_layer(which, showing: showing)
+        self
+      end
 
       def method_missing(name, *, &) # :nodoc:
         return super unless [].respond_to?(name)

@@ -26,6 +26,7 @@ stays for the lowering's own tests and for a reader following a build; a game ne
 | `sparks.size`, `length`, `count`, `empty?`, `any?` | counts the live things |
 | `sparks.sort_by! { \|s\| s.y }`, `sort!` | puts the walk order in order of fields |
 | `sparks.min`, `max`, `minmax` | one walk each, by the Struct's own order |
+| `sparks.blocked_by(room)`, `sparks.put_in_layer :walking` | VBlank's words: the pool's own, told on `collision.md` and `layers.md` |
 
 **Where each setting is written:**
 

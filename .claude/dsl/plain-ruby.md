@@ -405,7 +405,8 @@ end
   how many it holds for), `empty?`, `any?`. A walk hands an object of the game's own Struct, so its
   methods run, and each field holds the pool's number for that thing: `s.y += s.vy` changes it. It
   answers `face`, `draw_with`, `move`, `can_move?`, `clamp_to_screen`, `overlaps?`, the edges and
-  the screen-edge tests, and `index`. `==`/`eql?` compare every field (a test), `equal?` the slot.
+  the screen-edge tests, and `index`. The Array answers `blocked_by` and `put_in_layer`, VBlank's
+  words, as the pool's handle does (`collision.md`, `layers.md`). `==`/`eql?` compare every field (a test), `equal?` the slot.
   A thing given a name (`pick = s if s.x == 10`) keeps its slot in a hidden variable, so the name
   stays on it after the walk. `Array.new` takes `capacity:` (needed) and `fast:`; one that game code
   never changes stays Ruby's, its `capacity:` dropped. A thing put in may come from a local
