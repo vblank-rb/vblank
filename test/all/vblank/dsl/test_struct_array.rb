@@ -171,7 +171,7 @@ class TestStructArray < Minitest::Test
   def test_a_part_made_after_a_build_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       Thread.new do
-        VBlank.build("AFTER", console: :gba) { game_loop {} }
+        VBlank.build("AFTER", console: :gba, err: nil) { game_loop {} }
         HatcheryPart.new(nil)
       end.value
     end

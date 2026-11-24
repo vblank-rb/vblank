@@ -10,8 +10,8 @@ require "tmpdir"
 # would leave a page with no picture and a reader copying a game that does not work.
 #
 # A whole game is a fenced ```ruby block in a comment whose code declares one: `VBlank.game
-# "NAME", consoles: ...` (perhaps after a module or a constant of its own), or `VBlank.build("NAME",
-# console: :x) do`. Each is built for every console it names as `vblank build` builds it, with the
+# "NAME", consoles: ...` (perhaps after a module or a constant of its own), or `VBlank.build` given
+# a name and a console, with a block. Each is built for every console it names as `vblank build` builds it, with the
 # build's checks on, then played on this run's player where the run plays as one of its consoles.
 # Fragments of a game are not checked here.
 #
