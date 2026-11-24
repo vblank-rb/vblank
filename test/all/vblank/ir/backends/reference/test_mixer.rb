@@ -39,19 +39,21 @@ class TestMixer < Minitest::Test
     base = 0x0300_0000
     table = GBA::Mixer::VoiceTable.new(base: base, count: 3,
                                        clock: VBlank::Console::ADVANCE.sample_clock(8000),
-                                       sample_names: %i[zap hum])
+                                       sample_names: %i[zap hum], instrument_names: %i[bell])
     at = ->(slot, field) { base + (slot * GBA::Mixer::SLOT_BYTES) + field }
     memory = Hash.new(0)
     memory[at[0, GBA::Mixer::SLOT_ACTIVE]] = 1 # slot 0 sounds :zap ...
     memory[at[0, GBA::Mixer::SLOT_NAME]] = 0
     memory[at[0, GBA::Mixer::SLOT_POS]] = 40
-    memory[at[2, GBA::Mixer::SLOT_ACTIVE]] = 1 # ...slot 1 is idle, slot 2 loops :hum
+    memory[at[1, GBA::Mixer::SLOT_ACTIVE]] = GBA::Mixer.music_owner(0) # slot 1 sounds a song's :bell, its instrument 0 ...
+    memory[at[1, GBA::Mixer::SLOT_NAME]] = 0
+    memory[at[2, GBA::Mixer::SLOT_ACTIVE]] = 1 # ...and slot 2 loops :hum
     memory[at[2, GBA::Mixer::SLOT_NAME]] = 1
     memory[at[2, GBA::Mixer::SLOT_LOOP]] = 1
 
     voices = table.read { |address| memory[address] }
 
-    assert_equal %i[zap hum], voices.map(&:sample), "the idle slot between them is skipped"
+    assert_equal %i[zap bell hum], voices.map(&:sample), "a song's voice names its instrument's recording"
     assert_equal 40, voices.first.position
     assert voices.last.loop, "the looping flag reads back as true"
     refute voices.first.loop

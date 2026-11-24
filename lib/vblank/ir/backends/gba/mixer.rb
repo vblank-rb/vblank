@@ -159,7 +159,7 @@ module VBlank
           SLOT_PHASE = 44
           SLOT_GAIN = 48
           SLOT_RAMP = 52
-          SLOT_NAME = 56 # The number of the recording's own name (#sample_number), which SRC cannot say: recordings alike are kept once
+          SLOT_NAME = 56 # Which recording plays, by number (VoiceTable)
           SLOT_BYTES = 60
 
           # How many bits of fraction the gain keeps in a game that shapes a note, and how a
@@ -249,13 +249,12 @@ module VBlank
           # above is defined in one place and read in one place — a test that wants to know
           # what is sounding calls `verifier.voices` and never counts bytes into a slot.
           #
-          # +sample_addresses+ maps each sample's name to where it landed in the cartridge,
-          # which is how a slot's source address becomes a name again. Two samples with
-          # identical bytes may share one address, and then a voice playing either reads back
-          # as whichever was declared first.
-          # +sample_names+ are the names of the declared samples, by the number a voice keeps of its own
-          # (SLOT_NAME): two recordings with the same samples are one copy in the cartridge, so the
-          # address a voice reads from cannot tell them apart.
+          # A voice keeps which recording it plays as a number (SLOT_NAME), because recordings with
+          # the same samples are one copy in the cartridge, so the address a voice reads from cannot
+          # tell them apart. The game's own voices keep the recording's place among the declared
+          # samples, +sample_names+; a song's or a sound effect's keep the place of the part's
+          # instrument in the music's table of them, +instrument_names+, which is the number its
+          # note already reads that table by. The voice's mark says which of the two it is.
           #
           # +clock+ is the sample clock the build settled on (Timers.sample_clock), and it
           # belongs here because a voice's step is meaningless without it: a step of 1.0 means
@@ -273,8 +272,8 @@ module VBlank
           # emulator's own rate, at moments the emulator's timing settles, and a game's own transfers
           # into video memory move those moments a little, so two builds that mix alike can be heard
           # a little apart. Nil for a table made without them.
-          VoiceTable = Data.define(:base, :count, :sample_names, :clock, :effect_marks, :mix_buffers, :front_at) do
-            def initialize(effect_marks: {}, mix_buffers: nil, front_at: nil, **rest) = super
+          VoiceTable = Data.define(:base, :count, :sample_names, :instrument_names, :clock, :effect_marks, :mix_buffers, :front_at) do
+            def initialize(instrument_names: [], effect_marks: {}, mix_buffers: nil, front_at: nil, **rest) = super
 
             # The frame of sound the mix wrote last, a signed sample each, read off the console a
             # byte at a time by the block given an address: the buffer that is not playing.
@@ -295,7 +294,8 @@ module VBlank
                 mark = yield(at + SLOT_ACTIVE)
                 next if mark.zero?
 
-                Voice.new(sample: sample_names.fetch(yield(at + SLOT_NAME)), position: yield(at + SLOT_POS),
+                names = mark == OWNER_GAME ? sample_names : instrument_names
+                Voice.new(sample: names.fetch(yield(at + SLOT_NAME)), position: yield(at + SLOT_POS),
                           length: yield(at + SLOT_LEN), step: yield(at + SLOT_STEP),
                           loop: !yield(at + SLOT_LOOP).zero?, volume: yield(at + SLOT_VOL),
                           owner: owner(mark))
@@ -480,17 +480,16 @@ module VBlank
             { ROUTINE => @mix_routine_iwram...(@mix_routine_iwram + @emitter.routine_bytes(ROUTINE)) }
           end
 
-          # Where the voices are kept and where each sample landed, for the build record to
-          # carry — or nil for a program that plays no samples and so has no voices at all.
-          # Valid after the program is laid out, when every sample's position is known. A
-          # sample's run-time address is the same cartridge arithmetic a data load is patched
-          # with: base, plus the header, plus where the blob sits.
-          def voice_table
+          # Where the voices are kept and what each one's number of its recording names, for the
+          # build record to carry — or nil for a program that plays no samples and so has no voices
+          # at all. +instrument_names+ are the music's instruments' recordings, in the order of its
+          # table of them (Audio#instrument_names).
+          def voice_table(instrument_names)
             return nil unless @voice_base
 
             VoiceTable.new(base: @voice_base, count: MAX_VOICES, clock: @sample_clock, effect_marks: @effect_marks,
                            mix_buffers: [@mix_buf0, @mix_buf1], front_at: @primitives.var_addr(MIX_FRONT),
-                           sample_names: @samples.keys)
+                           sample_names: @samples.keys, instrument_names: instrument_names)
           end
 
           # Where the console counts the sounds it could not play, for the build record to

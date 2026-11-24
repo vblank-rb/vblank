@@ -355,7 +355,7 @@ module VBlank
         def mix_buf0 = @mixer.mix_buf0
         def mix_buf1 = @mixer.mix_buf1
         def voice_base = @mixer.voice_base
-        def voice_table = @mixer.voice_table
+        def voice_table = @mixer.voice_table(@audio.instrument_names)
         def drop_table = @mixer.drop_table
 
         # Where the cartridge counts the sprites that found no lent group of colours, and whose

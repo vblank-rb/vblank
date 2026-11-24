@@ -298,12 +298,11 @@ module VBlank
           # shaped differently are simply two entries and the note's own number picks between
           # them. Putting the four numbers on every note instead would have grown every recorded
           # lane of every tune by a third, whether it shaped anything or not.
-          INSTRUMENT_SHIFT = 5
+          INSTRUMENT_SHIFT = 4
           INSTRUMENT_BYTES = 1 << INSTRUMENT_SHIFT
           INSTRUMENT_LENGTH = 4
           INSTRUMENT_ENVELOPE = 8
           INSTRUMENT_HELD_BY = 12
-          INSTRUMENT_NAME = 16 # the number a voice keeps of the recording's name (Mixer::SLOT_NAME)
 
           # A frame no tune ever reaches. Each part ends in a row that waits for it, so a part
           # that has run out stays quiet until the tune comes round again.
@@ -1816,6 +1815,11 @@ module VBlank
             @bookkeeping&.emit_pass_shown
           end
 
+          # The recording of each instrument the music's notes name, in the order of its table of
+          # them: a song's or an effect's voice keeps its instrument's place there (Mixer::VoiceTable).
+          # Empty for a game whose music plays no recording.
+          def instrument_names = (@sounding_numbers || {}).keys.map(&:name)
+
           private
 
           # The number each tune is known by — its place in .tunes_in_order, from 1.
@@ -2845,13 +2849,11 @@ module VBlank
             emit_scaled_loudness(ACC) if routine == START_RECORDED_NOTE_SCALED
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_VOL))
             @emitter.emit(ASM.load_halfword_offset(ACC, at, 8))               # which recording...
-            @emitter.emit(ASM.lsl_imm(ACC, ACC, INSTRUMENT_SHIFT))
-            @emitter.emit(ASM.add_reg(recording, base, ACC))
+            @emitter.emit(ASM.add_reg_lsl(recording, base, ACC, INSTRUMENT_SHIFT))
+            @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_NAME))       # ...by number (Mixer::VoiceTable)
             @primitives.emit_add_const(recording, recording, @instruments_at, ACC) # ...its table entry
             @emitter.emit(ASM.ldr(ACC, recording))                            # where it is
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_SRC))
-            @emitter.emit(ASM.ldr_offset(ACC, recording, INSTRUMENT_NAME))    # which recording, by name
-            @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_NAME))
             @emitter.emit(ASM.ldr_offset(ACC, recording, INSTRUMENT_LENGTH))  # how long it is
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_LEN))
             # A note can outlast its recording, and this is what stops it ending there: a
@@ -2934,7 +2936,7 @@ module VBlank
               # itself was declared with, which is where music decoded from elsewhere keeps it.
               shape = sounding.envelope || info.envelope
               shape = nil if shape&.plain?
-              [0, info.length, shape ? shape.packed : 0, info.loop_length, @mixer.sample_number(sounding.name), 0, 0, 0].pack("V8")
+              [0, info.length, shape ? shape.packed : 0, info.loop_length].pack("VVVV")
             end.join
             table += shapes.map { |shape| GameBoySound.wavetable_halfwords(shape).pack("v*") }.join
             events = [NEVER, 0, 0, 0].pack("VVvv") # a row any lane can wait on
