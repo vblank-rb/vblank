@@ -582,6 +582,7 @@ module VBlank
             next "" if start < at || start >= ends
 
             text = rewritten_text(child)
+            text = arguments_followed_text(node, child, text)
             text = "#{INSTANCE_VARIABLES}.making_part(self) do; #{text}; end" if initialize_body?(node, child)
             piece = between(at, start) + text
             at = child.location.end_offset
@@ -612,6 +613,29 @@ module VBlank
         # made once (Builder#making_part).
         def initialize_body?(node, child)
           node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil? && child.equal?(node.body)
+        end
+
+        # +text+, the body +child+ of +node+, a method of game code, first following the objects its
+        # arguments hold (InstanceVariables.follow_objects_in): an object a plain file made, handed
+        # to a method, is first named there. A body with `rescue` is left as it is, since it cannot
+        # be put in parentheses.
+        def arguments_followed_text(node, child, text)
+          return text unless @follows_instance_variables && node.is_a?(Prism::DefNode) && child.equal?(node.body)
+          return text if child.is_a?(Prism::BeginNode)
+
+          names = parameter_names(node.parameters)
+          return text if names.empty?
+
+          listed = names.join(", ")
+          "(#{listed}, = #{INSTANCE_VARIABLES}.follow_objects_in([#{listed}]); #{text}\n)"
+        end
+
+        def parameter_names(parameters)
+          return [] unless parameters
+
+          named = [*parameters.requireds, *parameters.optionals, parameters.rest, *parameters.posts, *parameters.keywords,
+                   parameters.keyword_rest]
+          named.filter_map { |parameter| parameter.name if parameter.respond_to?(:name) && parameter.name }
         end
 
         # A `return` in a block belongs to that block, so tests open outside it do not apply.
@@ -752,24 +776,8 @@ module VBlank
           return listed_attribute_methods_text(node) if listed_attribute_call?(node)
           return counted_loop_text(node) if node.receiver && node.block.is_a?(Prism::BlockNode)
           return endless_loop_text(node) if endless_loop?(node)
-          return object_made_text(node) if object_made_from_constant?(node)
 
           copied_text(node)
-        end
-
-        # `Point.new(x, y)` or `Point[x, y]`, a class named by a constant made into an object. Where
-        # the class is a Struct or a Data class written in a file no rewrite read (plain `require`),
-        # its fields are followed as a game file's are (InstanceVariables.followed_class).
-        def object_made_from_constant?(node)
-          return false unless @follows_instance_variables && %i[new []].include?(node.name)
-
-          receiver = node.receiver
-          receiver.is_a?(Prism::ConstantReadNode) || receiver.is_a?(Prism::ConstantPathNode)
-        end
-
-        def object_made_text(node)
-          "#{INSTANCE_VARIABLES}.followed_class(#{rewritten_text(node.receiver)})" \
-            "#{copied_text(node, from: node.receiver.location.end_offset)}"
         end
 
         # The numbers Ruby counts with given a block, `n.times { }`, `0.upto(n) { }` or
@@ -1565,11 +1573,22 @@ module VBlank
         # (Steps.kept_answer's +button_kept+).
         def kept_value_text(value, write)
           kept = @promotion.kept_copy(write).copy
-          return value_text(value) unless kept
+          return objects_followed_text(value) unless kept
 
           button = ", button_kept: true" if @promotion.button_kept?(write)
           "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept}, name: :#{write.name}#{button})"
         end
+
+        # A plain local given anything but a literal: the objects it holds followed
+        # (InstanceVariables.follow_objects_in), since a Struct a plain file made may be among them.
+        def objects_followed_text(value)
+          return value_text(value) if !@follows_instance_variables || PLAIN_LITERALS.any? { |kind| value.is_a?(kind) }
+
+          "#{INSTANCE_VARIABLES}.follow_objects_in(#{value_text(value)})"
+        end
+
+        PLAIN_LITERALS = [Prism::IntegerNode, Prism::FloatNode, Prism::StringNode, Prism::SymbolNode, Prism::NilNode,
+                          Prism::TrueNode, Prism::FalseNode, Prism::InterpolatedStringNode].freeze
 
         def value_text(value)
           return "(#{value_text(lone_statement(value))})" if lone_statement(value)

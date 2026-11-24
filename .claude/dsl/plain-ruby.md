@@ -586,10 +586,14 @@ through an object (`self::BOX`, `kind.class::LIFTED`) is that object's own and i
 the object is cannot be known from the source. A path that starts from a name (`File::SEPARATOR`,
 `::File`) is checked by that name.
 
-A Struct or Data class written in a file plain `require` loaded (no rewrite read it) is followed
-the first time game code makes an object of it (`Point.new`, `Point[]`) or gives a name an object
-of it a method there made: its fields keep the number they were given, as a game file's do
-(`InstanceVariables.followed_class`). VBlank's own classes are left alone.
+A Struct or Data class can be in a file loaded with plain `require`, which is not read as game
+code. Its objects are followed one at a time, when game code first gives one a name: a local, an
+instance variable or a method's argument, alone or in an Array, a Hash or a field
+(`InstanceVariables.follow_objects_in`). Each field then keeps the number it held on that line,
+as in Ruby. A Struct object gets the accessors a game file's Struct has, on that object only, and
+a Data object is replaced by a copy whose fields hold copies of those numbers. The class does not
+change. A frozen object that holds a number the game works out is refused. A class from Ruby, a
+gem or VBlank is left alone.
 
 ## What is refused, and what to write instead
 

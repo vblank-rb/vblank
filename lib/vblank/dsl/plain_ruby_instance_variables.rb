@@ -1130,37 +1130,56 @@ module VBlank
           return followed_data(made) if made.is_a?(Class) && made < Data
           return made unless made.is_a?(Class) && made < Struct
 
-          # The mark comes in with the accessors, in one prepend, so a build in another Ractor never
-          # sees the mark on a class whose accessors are not there yet (#followed_class).
+          made.prepend(struct_accessors(made, started_when_made: true))
+          made
+        end
+
+        # The methods #followed_struct puts in front of a Struct class's own. +started_when_made+
+        # is false for one object of a class no rewrite read (#followed_struct_object): it is started where
+        # game code first names it, not by `initialize`.
+        def struct_accessors(made, started_when_made:)
           accessors = Module.new { include FollowedFields }
           # Struct's own `initialize` sets the fields without their writers, so the named ones are
           # made game variables after it, as a named instance variable is at its first number.
+          # Each method is Ruby's own (`super`) while no game is being built, so outside a build the
+          # object is the one its file made and costs no more.
+          if started_when_made
+            accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+              def initialize(...)
+                super
+                ::VBlank::DSL::PlainRuby::InstanceVariables.start_fields(self) if #{BUILDER_SOURCE}
+              end
+            RUBY
+          end
           accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
-            def initialize(...)
-              super
-              ::VBlank::DSL::PlainRuby::InstanceVariables.start_fields(self)
+            def [](key)
+              return super unless #{BUILDER_SOURCE}
+
+              ::VBlank::DSL::PlainRuby::InstanceVariables.read_field(self, ::VBlank::DSL::PlainRuby::InstanceVariables.field_at(self, key))
             end
 
-            def [](key) = ::VBlank::DSL::PlainRuby::InstanceVariables.read_field(self, ::VBlank::DSL::PlainRuby::InstanceVariables.field_at(self, key))
-
             def []=(key, given)
+              return super unless #{BUILDER_SOURCE}
+
               ::VBlank::DSL::PlainRuby::InstanceVariables.write_field(self, ::VBlank::DSL::PlainRuby::InstanceVariables.field_at(self, key), given)
             end
 
-            def to_a = members.map { |member| self[member] }
-            alias deconstruct to_a
-            alias values to_a
-            def to_h(&) = members.to_h { |member| [member, self[member]] }.to_h(&)
-            def values_at(*places) = to_a.values_at(*places)
+            def to_a = #{BUILDER_SOURCE} ? members.map { |member| self[member] } : super
+            def deconstruct = #{BUILDER_SOURCE} ? to_a : super
+            def values = #{BUILDER_SOURCE} ? to_a : super
+            def to_h(&) = #{BUILDER_SOURCE} ? members.to_h { |member| [member, self[member]] }.to_h(&) : super
+            def values_at(*places) = #{BUILDER_SOURCE} ? to_a.values_at(*places) : super
 
             def each(&)
+              return super unless #{BUILDER_SOURCE}
               return to_enum(:each) unless block_given?
 
               to_a.each(&)
               self
             end
 
-            def each_pair
+            def each_pair(&)
+              return super unless #{BUILDER_SOURCE}
               return to_enum(:each_pair) unless block_given?
 
               members.each { |member| yield member, self[member] }
@@ -1168,14 +1187,16 @@ module VBlank
             end
 
             def select(&)
+              return super unless #{BUILDER_SOURCE}
               return to_enum(:select) unless block_given?
 
               to_a.select(&)
             end
-            alias filter select
+
+            def filter(&) = #{BUILDER_SOURCE} ? select(&) : super
 
             def dig(key, *keys)
-              return super unless key.is_a?(Integer) || members.include?(key.to_s.to_sym)
+              return super unless #{BUILDER_SOURCE} && (key.is_a?(Integer) || members.include?(key.to_s.to_sym))
 
               found = self[key]
               keys.empty? || found.nil? ? found : found.dig(*keys)
@@ -1183,6 +1204,7 @@ module VBlank
 
             # Ruby's own answer, from the fields as #[] reads them.
             def deconstruct_keys(keys)
+              return super unless #{BUILDER_SOURCE}
               return to_h if keys.nil?
               return {} if keys.length > members.length
 
@@ -1195,46 +1217,149 @@ module VBlank
           RUBY
           made.members.each do |field|
             accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
-              def #{field} = ::VBlank::DSL::PlainRuby::InstanceVariables.read_field(self, :#{field})
+              def #{field} = #{BUILDER_SOURCE} ? ::VBlank::DSL::PlainRuby::InstanceVariables.read_field(self, :#{field}) : super
               def #{field}=(given)
+                return super unless #{BUILDER_SOURCE}
+
                 ::VBlank::DSL::PlainRuby::InstanceVariables.write_field(self, :#{field}, given)
               end
             RUBY
           end
-          made.prepend(accessors)
-          made
+          accessors
         end
 
-        # Marks a Struct or Data class whose fields are followed (#followed_struct), so it is followed once.
+        # Marks a Struct or Data class, or one Struct object, whose fields are followed (#followed_struct).
         module FollowedFields; end
 
-        # +made+, the class game code makes an object of (`Point.new(x, y)`), with its fields
-        # followed as a game file's Struct or Data class's are. One written in a file plain
-        # `require` brought in was never read as game code, so `Struct.new` there made a plain
-        # Ruby class: its fields would hold the game's working-out itself, not the number it had on
-        # the line that made the object, and a later change to that number would show through.
-        # Following it here, the first time game code makes one, gives Ruby's answer. Outside a
-        # build its methods are Ruby's own (#ruby_field?), so the class works as before everywhere else.
-        # VBlank's own classes are the library's, not the game's, and stay as they are.
-        def followed_class(made)
-          return made unless made.is_a?(Class) && (made < Struct || made < Data) && !(made < FollowedFields)
-          return made if made.name&.start_with?("VBlank::")
+        # The call a followed class's methods make to ask whether a game is being built.
+        BUILDER_SOURCE = "::VBlank::Builder::Session.builder"
 
-          followed_struct(made)
+        # The folders of what is not the game's own source: Ruby's standard library and the
+        # installed gems. Read once at load, since a Ractor other than the first cannot read them.
+        LIBRARY_FOLDERS = Ractor.make_shareable(
+          [RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["archdir"], *Gem.path]
+            .compact.map { |folder| File.join(File.expand_path(folder), "") }
+        )
+
+        # +value+, which game code has just given a name (`point = Points.at(score)`,
+        # `pts = [Points.at(score)]`, `@kept = point`, a method's argument), with each Struct or Data
+        # object in it followed as one a game file made is.
+        #
+        # A Struct or Data class written in a file loaded with plain `require` was never read as game
+        # code, so `Struct.new` there made a plain Ruby class, and its objects hold the game's
+        # working-out itself: a later change to a number the object was made from would show
+        # through its field, and a field changed by game code would not be followed. So each such
+        # object is followed where game code first has it, as if that line had made it, the same
+        # for every object however and whenever it was made:
+        #
+        # - A Struct object is given the accessors a game file's Struct class has (#struct_accessors),
+        #   on that object alone, and started (#start_fields). Its class, and every other object of
+        #   it, stays as the file wrote it.
+        # - A Data object cannot be changed, so it is answered as a copy of itself (`with`) whose
+        #   fields hold a variable of their own, set here to the number the field held
+        #   (#own_field_variable). The copy the game never needed is left out once it is built
+        #   (IR::UnneededCopies).
+        #
+        # A game file's own objects are only started. Arrays, Hashes and fields are looked through,
+        # a Data object in one put back as its copy. A class with no file of the game's own, Ruby's,
+        # a gem's or VBlank's (#game_source_class?), is left alone.
+        def follow_objects_in(value)
+          Builder::Session.builder ? followed_held_objects(value, {}.compare_by_identity) : value
         end
 
-        # +value+, given a name by game code, may be a Struct or Data object a method of a plain file
-        # made (`point = Points.at(score)`), whose class game code never named, so #followed_class
-        # never saw it. Its class is followed now, and the object counted as made on this line,
-        # which is where game code first has it: as if the line had made it.
-        def follow_object_made_outside(value)
-          return unless value.is_a?(Struct) || value.is_a?(Data)
-          return if value.is_a?(FollowedFields) || !Builder::Session.builder
+        # +value+, or the copy that stands for it (a Data object's), each object in it followed.
+        def followed_held_objects(value, seen)
+          return seen.fetch(value) if seen.key?(value)
 
-          followed = followed_class(value.class)
-          return unless followed.equal?(value.class) && value.is_a?(FollowedFields)
+          seen[value] = value
+          case value
+          when Array
+            value.each_with_index { |held, at| replace_held(value, held, seen) { |copy| value[at] = copy } }
+          when Hash
+            value.each_pair { |key, held| replace_held(value, held, seen) { |copy| value[key] = copy } }
+          when StructArray::Thing then value
+          when Struct then followed_struct_object(value, seen)
+          when Data then seen[value] = followed_data_object(value, seen)
+          else value
+          end
+        end
 
-          value.is_a?(Data) ? start_data_fields(value) : start_fields(value)
+        # +held+, in +container+, followed: where that answers a copy, the block puts it in its place.
+        def replace_held(container, held, seen)
+          copy = followed_held_objects(held, seen)
+          return if copy.equal?(held)
+
+          refuse_frozen_holder!(container, held) if container.frozen?
+          yield copy
+        end
+
+        def followed_struct_object(value, seen)
+          unless value.is_a?(FollowedFields)
+            return value unless game_source_class?(value.class)
+
+            if value.frozen?
+              # Nothing can change it, and a plain number needs no following.
+              return value unless Struct.instance_method(:to_a).bind_call(value).any?(Value)
+
+              refuse_frozen_holder!(value, value)
+            end
+            value.singleton_class.prepend(followed_struct_accessors(value.class))
+          end
+          start_found_object(value)
+          value.members.each do |field|
+            replace_held(value, field_as_held(value, field), seen) { |copy| hold_in_field(value, field, copy) }
+          end
+          value
+        end
+
+        # The accessors one object of +made+ is given (#struct_accessors), made once a class in
+        # each Ractor, since a module made in one cannot be shared with another while it is made.
+        def followed_struct_accessors(made)
+          made_by_class = (Ractor.current[:vblank_followed_struct_accessors] ||= {}.compare_by_identity)
+          made_by_class[made] ||= struct_accessors(made, started_when_made: false)
+        end
+
+        def followed_data_object(value, seen)
+          if value.is_a?(FollowedFields)
+            start_found_object(value)
+            return value
+          end
+          return value unless game_source_class?(value.class)
+
+          fields = Data.instance_method(:to_h).bind_call(value)
+          copies = fields.to_h do |field, held|
+            copy = followed_held_objects(held, seen)
+            copy = own_field_variable(value, field, copy) if copied_into_field?(value, field, copy)
+            [field, copy]
+          end
+          copies.all? { |field, copy| copy.equal?(fields[field]) } ? value : value.with(**copies)
+        end
+
+        # +holder+ is started as its class's `initialize` starts one made while building, unless
+        # this build started it already.
+        def start_found_object(holder)
+          return if Builder::Session.builder.instance_variable_uses.object_started?(holder)
+
+          holder.is_a?(Data) ? start_data_fields(holder) : start_fields(holder)
+        end
+
+        # Was +made+ written in the game's own source: a file that is not Ruby's, a gem's or VBlank's?
+        # A class with no name, or one Ruby made in C, has no file to tell by, and is not.
+        def game_source_class?(made)
+          file, = made.name && Object.const_source_location(made.name)
+          return false unless file && File.file?(file)
+
+          path = File.expand_path(file)
+          !path.start_with?(BlockChecks.library_folder) && LIBRARY_FOLDERS.none? { |folder| path.start_with?(folder) }
+        end
+
+        # +holder+, frozen, holds +held+, an object whose fields game code needs to follow.
+        def refuse_frozen_holder!(holder, held)
+          name = held.class.name || "Struct"
+          raise Refused, "Game code uses an object of `#{name}` that is frozen, or is in something frozen " \
+                         "(#{holder.class}). Its fields hold numbers the game works out, and VBlank must change " \
+                         "the object to keep them. To fix this, do not freeze it." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # A Data class's readers, `to_h` and `deconstruct_keys` hand the copy of a game number a
@@ -1244,20 +1369,36 @@ module VBlank
           readers.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
             def initialize(...)
               super
-              ::VBlank::DSL::PlainRuby::InstanceVariables.start_data_fields(self)
+              ::VBlank::DSL::PlainRuby::InstanceVariables.start_data_fields(self) if #{BUILDER_SOURCE}
             end
 
             def to_h(&)
+              return super unless #{BUILDER_SOURCE}
+
               copies = super().to_h do |member, held|
                 [member, ::VBlank::DSL::PlainRuby::InstanceVariables.copy_data_field_number!(self, member, held)]
               end
               copies.to_h(&)
             end
-            def deconstruct_keys(keys) = to_h.slice(*(keys || members))
+
+            # Ruby's own answer, from the fields as #to_h hands them.
+            def deconstruct_keys(keys)
+              return super unless #{BUILDER_SOURCE}
+
+              fields = to_h
+              return fields if keys.nil?
+              return {} if keys.length > members.length
+
+              keys.each_with_object({}) do |key, found|
+                break found unless fields.key?(key)
+
+                found[key] = fields[key]
+              end
+            end
           RUBY
           made.members.each do |field|
             readers.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
-              def #{field} = ::VBlank::DSL::PlainRuby::InstanceVariables.copy_data_field_number!(self, :#{field}, super)
+              def #{field} = #{BUILDER_SOURCE} ? ::VBlank::DSL::PlainRuby::InstanceVariables.copy_data_field_number!(self, :#{field}, super) : super
             RUBY
           end
           made.prepend(readers)
@@ -1387,6 +1528,7 @@ module VBlank
         def start_data_fields(holder)
           return unless Builder::Session.builder
 
+          Builder::Session.builder.instance_variable_uses.note_object_started(holder)
           holder.to_h.each { |field, value| note_field_given(holder, field) if value.is_a?(Value) }
         end
 
@@ -1454,6 +1596,7 @@ module VBlank
           return unless builder
 
           uses = builder.instance_variable_uses
+          uses.note_object_started(holder)
           uses.note_object_made(holder)
           uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil) if Builder::Session.recording?
           holder.members.each do |field|
@@ -1602,6 +1745,7 @@ module VBlank
             @names_by_class = {}
             @changing_by_class = {}
             @made_order = {}.compare_by_identity
+            @objects_started = {}.compare_by_identity
             @made_count = Hash.new(0)
             @made_every_pass = {}.compare_by_identity
             @made_in_game_code = {}.compare_by_identity
@@ -1908,6 +2052,11 @@ module VBlank
 
           # +owner+'s `initialize` runs: it is the next object of its class, counted from 1.
           def note_object_made(owner) = @made_order[owner] ||= (@made_count[owner.class] += 1)
+
+          # +holder+, a Struct or Data object, had its fields started this build (InstanceVariables.start_fields).
+          def note_object_started(holder) = @objects_started[holder] = true
+
+          def object_started?(holder) = @objects_started.key?(holder)
 
           # +owner+ is made by code that runs every frame and not kept (Builder#made_every_pass?),
           # so Ruby makes a new one on every pass.

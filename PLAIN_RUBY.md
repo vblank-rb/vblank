@@ -493,7 +493,7 @@ end
 
 Its locals stay its own, and its constants and methods are shared with the game. Its methods and blocks are checked as a game block is.
 
-A Struct or Data class in a file loaded with plain `require` works in game code too: an object of it keeps the numbers it was made from, as Ruby's does.
+A Struct or Data class can also be in a file loaded with plain `require`. When game code gives a name to an object of it, the object keeps the numbers it was made from, as in Ruby. This is also true for objects in an Array, a Hash or a field. If such an object is frozen and holds a number the game works out, the build stops and tells you.
 
 ## What is refused, and what to write instead
 
