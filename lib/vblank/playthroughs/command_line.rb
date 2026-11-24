@@ -95,16 +95,29 @@ module VBlank
       PLAYING_FLAGS = %i[playthrough lead_in pictures_in write_tape write_mgba_script write_bk2 in_passes seed].freeze
 
       # Compare the cartridges at the two paths and say where they drift, or that they agree.
-      # Hands back what the comparison found.
+      # Hands back what the comparison found: a Comparison's result, or with --sound a
+      # HeardComparison.
       def compare(first_file, second_file)
         saying_errors_plainly do
           refuse_missing_cartridges!(first_file, second_file)
+          refuse_sound_flags_without_sound! unless options[:sound]
           presses = tape_or_playthrough(lead_in_flag: :lead_ins)
+          next compare_sound(presses, first_file, second_file) if options[:sound]
+
           settings = comparison_settings
           cartridges = [first_file, second_file].map { |file| cartridge_at(file) }
           presses.compare(*cartridges, **settings).tap { |found| say_drifts_or_agreement(found) }
         end
       end
+
+      # The settings of a comparison of heard sound a command line has a flag for
+      # (HeardComparison.play), each the flag of the same name: the first four are needed.
+      SOUND_SETTINGS = %i[heard_above first_heard_frames_apart level_share_apart ending_frames_apart level_stretch_frames
+                          pitch_cents_apart line_up_within_frames hearing].freeze
+      NEEDED_SOUND_SETTINGS = SOUND_SETTINGS.first(4).freeze
+
+      # ...and the settings of a comparison of pictures that a comparison of sound takes too.
+      SETTINGS_SOUND_SHARES = %i[lead_ins starting_after snapshots].freeze
 
       private
 
@@ -495,6 +508,87 @@ module VBlank
 
         raise Refused, "--by-passes #{written} is not a count of passes. Write passes, or VARIABLE, or FIRST,SECOND, " \
                        "for example --by-passes passes or --by-passes ticks,passes."
+      end
+
+      # --- compare --sound ---
+
+      # The two cartridges' heard sound compared on +presses+ (HeardComparison.play), both written
+      # to --wav where it is given, and what was found said. Hands back the HeardComparison.
+      def compare_sound(presses, first_file, second_file)
+        @settings_with_flags = SOUND_SETTINGS + SETTINGS_SOUND_SHARES
+        refuse_picture_flags_beside_sound!
+        refuse_missing_sound_flags!
+        refuse_unwritable_file!(:wav)
+        settings = sound_settings
+        cartridges = [first_file, second_file].map { |file| cartridge_at(file) }
+        compared = HeardComparison.play(presses, *cartridges, **settings)
+        say "Wrote both sounds to #{compared.write_wav(options[:wav], layout: :in_turn)}." if options[:wav]
+        say_sound_alike_or_different(compared)
+        compared
+      end
+
+      # Every setting of a comparison of sound that was given, as HeardComparison.play takes it.
+      def sound_settings
+        said = (SOUND_SETTINGS + SETTINGS_SOUND_SHARES).to_h { |setting| [setting, options[setting]] }.compact
+        said.to_h do |setting, written|
+          [setting, case setting
+                    when :hearing then hearing_named(written)
+                    when :lead_ins then lead_ins_named(written)
+                    when :starting_after then parse_start(written)
+                    when :snapshots then SnapshotCache.new(written)
+                    else written
+                    end]
+        end
+      end
+
+      # --hearing as a command line writes it: each cartridge's voices, the first's and then the
+      # second's, with a comma between voices, or sound_effects.
+      def hearing_named(written)
+        unless written.size == 2
+          raise Refused, "--hearing needs two lists of voices, the first cartridge's and then the second's. It was given " \
+                         "#{written.size}. Put a comma between the voices of one cartridge, for example " \
+                         "--hearing square1 square1,square2."
+        end
+
+        written.map do |voices|
+          voices == HeardComparison::SOUND_EFFECTS.to_s ? HeardComparison::SOUND_EFFECTS : voices.split(",").map(&:to_sym)
+        end
+      end
+
+      # A flag of a comparison of sound given without --sound would be quietly unused.
+      def refuse_sound_flags_without_sound!
+        said = (SOUND_SETTINGS + [:wav]).find { |flag| options[flag] } or return
+
+        raise Refused, "#{flag_of(said)} is for a comparison of sound. To compare the sound, add --sound. To compare the " \
+                       "picture, remove #{flag_of(said)}."
+      end
+
+      # A flag of a comparison of pictures given with --sound would be quietly unused.
+      def refuse_picture_flags_beside_sound!
+        said = (Comparison.settings - SETTINGS_SOUND_SHARES).find { |flag| options[flag] } or return
+
+        raise Refused, "#{flag_of(said)} is for a comparison of pictures, and --sound compares the sound. Remove " \
+                       "#{flag_of(said)}, or remove --sound."
+      end
+
+      # Every measure's tolerance is the person's to give: none has a value that is assumed.
+      def refuse_missing_sound_flags!
+        missing = NEEDED_SOUND_SETTINGS.reject { |flag| options[flag] }
+        return if missing.empty?
+
+        raise Refused, "--sound needs how far apart the two sounds can be. Give #{missing.map { |flag| flag_of(flag) }.join(', ')}, " \
+                       "for example --heard-above 0 --first-heard-frames-apart 0 --level-share-apart 0.1 " \
+                       "--ending-frames-apart 6."
+      end
+
+      def say_sound_alike_or_different(compared)
+        if compared.alike?
+          say "The two cartridges sound alike. #{compared.first.frames} frames were heard."
+          HeardReport.moved_lines(compared.moved_frames).each { |line| say line }
+        else
+          say "The two cartridges sound different."
+          HeardReport.difference_message(compared).each_line { |line| say "  #{line.chomp}" }
+        end
       end
 
       def same_script? = options[:same] == "script"

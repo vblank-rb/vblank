@@ -36,5 +36,6 @@ require_relative "playthroughs/comparison_drift_report"       # A drift on a fra
 require_relative "playthroughs/comparison_moment_report"      # A drift at a moment, on the same script
 require_relative "playthroughs/heard_sound"                   # How loud one cartridge was on each frame of a playing
 require_relative "playthroughs/heard_comparison"              # Two cartridges' heard sound on the same presses
+require_relative "playthroughs/heard_report"                  # The words of a heard comparison that found two unlike
 require_relative "playthroughs/command_line"                 # What `vblank run` with a script or tape, and `vblank compare`, do
 require_relative "playthroughs/probe"                         # A cartridge driven a frame at a time by hand, read by memory label

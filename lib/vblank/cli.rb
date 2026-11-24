@@ -705,6 +705,36 @@ module VBlank
                                  screens, where they differ, and a tape that plays
                                  a cartridge to that frame.
         #{SET}
+
+      The sound in place of the picture (a cartridge for any console):
+        --sound                  Compare what the two put out of the speakers, by
+                                 the loudest sample of each frame: when each is
+                                 first heard, its level, when it is last heard,
+                                 and how long its last sound takes to fall
+                                 silent. Each speaker, and each voice where one
+                                 can play alone, is compared too. Takes --tape
+                                 or --script, --lead-ins, --starting-after and
+                                 --snapshots, and none of the picture's flags.
+        --heard-above N          With --sound, needed: the loudest sample a
+                                 frame can have and count as silent.
+        --first-heard-frames-apart N
+                                 With --sound, needed: how many frames apart
+                                 the two can first be heard.
+        --level-share-apart SHARE
+                                 With --sound, needed: how far apart the levels
+                                 can be, a share of the louder, 0 to 1.
+        --ending-frames-apart N  With --sound, needed: how many frames apart the
+                                 two can be last heard, and can fall silent.
+        --level-stretch-frames N Hold the level N frames at a time.
+        --pitch-cents-apart CENTS
+                                 Hold each voice's pitch, played alone, within
+                                 this many cents. A semitone is 100.
+        --line-up-within-frames N
+                                 Move the second's sound up to N frames earlier
+                                 or later, to line up with the first's.
+        --hearing FIRST SECOND   Hear only these voices on each cartridge, with
+                                 a comma between voices: square1 square1,wave.
+        --wav PATH               Write both sounds to PATH, one after the other.
     TEXT
     options_for_playing
     option :share_may_differ, type: :numeric, banner: "SHARE"
@@ -733,12 +763,24 @@ module VBlank
     option :starting_after, banner: "FRAME"
     option :snapshots, banner: "DIR"
     option :reports_in, banner: "DIR"
+    option :sound, type: :boolean
+    option :heard_above, type: :numeric, banner: "N"
+    option :first_heard_frames_apart, type: :numeric, banner: "N"
+    option :level_share_apart, type: :numeric, banner: "SHARE"
+    option :ending_frames_apart, type: :numeric, banner: "N"
+    option :level_stretch_frames, type: :numeric, banner: "N"
+    option :pitch_cents_apart, type: :numeric, banner: "CENTS"
+    option :line_up_within_frames, type: :numeric, banner: "N"
+    option :hearing, type: :array, banner: "VOICES"
+    option :wav, banner: "PATH"
     def compare(first_file, second_file)
-      # A comparison lines screens up at one size, so only the consoles whose kits allow it are offered.
-      result = with_playthroughs_command_line("compare", offered: COMPARED_NAMES) do |command|
+      # A comparison of pictures lines screens up at one size, so only the consoles whose kits allow it
+      # are offered; a comparison of sound plays any console's cartridge.
+      offered = options[:sound] ? nil : COMPARED_NAMES
+      result = with_playthroughs_command_line("compare", offered: offered) do |command|
         command.compare(first_file, second_file)
       end
-      exit DRIFTED if result.drift?
+      exit DRIFTED if options[:sound] ? !result.alike? : result.drift?
     end
 
     desc "preview GAME_FILE", "Play the game in a browser, built again on every reload"
