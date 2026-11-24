@@ -69,7 +69,56 @@ module VBlank
             def emit(asm, memory)
               at = ->(name) { Runtime.at(memory, name) }
               emit_put(asm, at)
+              emit_fold(asm, at)
               emit_due(asm, at)
+            end
+
+            # Whether the list holds anything, inline: to +label+ when it is empty. Uses t0 and t1.
+            def emit_branch_if_empty(asm, at, label)
+              asm.lw(:t0, at.call(HEAD), :gp)
+              asm.lw(:t1, at.call(TAIL), :gp)
+              asm.beq(:t0, :t1, label)
+            end
+
+            # rt_strikes_fold(a0 = a write's word, #write_word), for a write asked for outside a tick's
+            # pass while the list holds something: a fade stepped or a recording's shape at the frame
+            # boundary. Where the list holds a write of the same register, the latest of them takes this
+            # one's value, and the chip is left alone until it is struck; otherwise the chip is written
+            # now. A new note's volume waits on the list for its key on, so a fade stepped before the
+            # strike would otherwise be heard on the note still sounding, and be undone by the listed
+            # volume as the strike came. With the interrupt held off, and every register as it was after.
+            def emit_fold(asm, at)
+              kept = %i[ra t0 t1 t2 t3 t5 t6 t7]
+              asm.label("rt_strikes_fold")
+              asm.addiu(:sp, :sp, -4 * kept.size)
+              kept.each_with_index { |name, i| asm.sw(name, i * 4, :sp) }
+              asm.mfc0(:t7, R3000::COP0_STATUS)
+              asm.mtc0(:zero, R3000::COP0_STATUS)
+              asm.srl(:t0, :a0, 16) # the register written, and the write's bit
+              asm.move(:t6, :zero) # where the latest of the same register is, once found
+              asm.lw(:t2, at.call(HEAD), :gp)
+              asm.lw(:t3, at.call(TAIL), :gp)
+              asm.label("rt_strikes_fold_next")
+              asm.beq(:t2, :t3, "rt_strikes_fold_looked")
+              asm.addu(:t1, :gp, :t2)
+              asm.lw(:t5, at.call(LIST), :t1)
+              asm.srl(:t5, :t5, 16)
+              asm.bne(:t5, :t0, "rt_strikes_fold_other")
+              asm.move(:t6, :t1)
+              asm.label("rt_strikes_fold_other")
+              asm.addiu(:t2, :t2, ENTRY_BYTES)
+              asm.b("rt_strikes_fold_next") { asm.andi(:t2, :t2, LIST_MASK) }
+              asm.label("rt_strikes_fold_looked")
+              asm.beq(:t6, :zero, "rt_strikes_fold_now")
+              asm.b("rt_strikes_fold_done") { asm.sw(:a0, at.call(LIST), :t6) }
+              asm.label("rt_strikes_fold_now")
+              asm.move(:t5, :a0)
+              asm.lui(:t1, h::IO >> 16)
+              asm.jal("rt_strikes_key")
+              asm.label("rt_strikes_fold_done")
+              asm.mtc0(:t7, R3000::COP0_STATUS)
+              kept.each_with_index { |name, i| asm.lw(name, i * 4, :sp) }
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * kept.size) }
             end
 
             # rt_strikes_put(a0 = an entry's word: a key, or a write, #write_word): onto the list, due on

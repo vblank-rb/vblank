@@ -97,4 +97,47 @@ class TestPS1EffectStrikesInFrame < Minitest::Test
       assert_operator sound.passes, :<=, FRAMES / 2, "every pass takes two frames or more"
     end
   end
+
+  # A note struck part way through a frame on a voice still sounding the note before, the new note
+  # fading from its first frame: E5 at full loudness, then A5 softer and fading. The frame boundary
+  # steps the fade before the strike comes. The note before keeps its own loudness until the strike,
+  # and the new note is heard at its stepped loudness from the strike on, not the loudness it was
+  # listed with. Read as the loudest sample in each LOUDNESS_PAIRS pairs, beside the same notes with
+  # no fade, which sound alike until the strike.
+  LOUDNESS_PAIRS = 64
+  private def loudness_of_two_notes(fading)
+    notes = [Note.new(at: 0, key: :E5, length: 3, volume: 15),
+             Note.new(at: 3, key: :A5, length: 9, volume: 10, decay: (1 if fading))]
+    effect = Score.new(tempo: 50, ticks_per_beat: 60, length: 12, plays_once: true, on_timer: true,
+                       parts: [Part.new(notes: notes)])
+    cartridge = VBlank.build("STRIKES", console: :ps1, out: nil, err: nil) do
+      enable_sound
+      sfx = sound_effects :sfx, { chime: effect }
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        sfx.play :chime if pass == PLAYED_ON
+      end
+    end
+    reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
+    left = []
+    (PLAYED_ON + 30).times do
+      reader.step(1)
+      left.concat(reader.last_frame_samples.each_slice(2).map(&:first))
+    end
+    left.each_slice(LOUDNESS_PAIRS).map { |run| run.map(&:abs).max }
+  ensure
+    reader&.close
+  end
+
+  def test_a_fade_stepped_before_its_note_is_struck_waits_for_the_strike
+    plain = loudness_of_two_notes(false)
+    fading = loudness_of_two_notes(true)
+    heard = plain.index { |loud| loud > HEARD_ABOVE }
+    struck = (heard + 1...plain.size).find { |at| (plain[at] - plain[at - 1]).abs > HEARD_ABOVE }
+    apart = plain.zip(fading).index { |was, now| (was - now).abs > HEARD_ABOVE }
+
+    assert_operator apart, :>=, struck, "the note before changed loudness before the strike: #{fading[(struck - 4)..(struck + 4)].inspect}"
+    assert_operator fading[struck + 1], :<, plain[struck + 1], "the struck note at its stepped loudness"
+  end
 end

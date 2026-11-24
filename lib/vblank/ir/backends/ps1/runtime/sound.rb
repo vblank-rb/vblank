@@ -161,21 +161,19 @@ module VBlank
             end
 
             # rt_spu_write(a0 = the register's distance from 1F801C00h, a1 = what goes in it). With +strikes+, one
-            # asked for while a tick's pass plays goes on Strikes' list instead.
+            # asked for while a tick's pass plays goes on Strikes' list instead, and one asked for while the
+            # list holds something is folded into it (Strikes#emit_fold).
             def emit_spu_write(asm, at, strikes: false)
               asm.label("rt_spu_write")
               asm.lw(:t0, at.call(ON), :gp)
               asm.beq(:t0, :zero, "rt_spu_write_done")
               if strikes
                 asm.lw(:t0, at.call(Strikes::STRIKING), :gp)
-                asm.beq(:t0, :zero, "rt_spu_write_now")
-                emit_strikes_put_returning(asm) do
-                  asm.sll(:a0, :a0, 16)
-                  asm.andi(:t0, :a1, 0xFFFF)
-                  asm.or(:a0, :a0, :t0)
-                  asm.lui(:t0, Strikes::WRITE >> 16)
-                  asm.or(:a0, :a0, :t0)
-                end
+                asm.beq(:t0, :zero, "rt_spu_write_unlisted")
+                emit_write_word_returning(asm, "rt_strikes_put")
+                asm.label("rt_spu_write_unlisted")
+                Strikes.emit_branch_if_empty(asm, at, "rt_spu_write_now")
+                emit_write_word_returning(asm, "rt_strikes_fold")
                 asm.label("rt_spu_write_now")
               end
               asm.lui(:t1, h::IO >> 16)
@@ -183,6 +181,18 @@ module VBlank
               asm.sh(:a1, spu_at(0), :t1)
               asm.label("rt_spu_write_done")
               asm.jr(:ra)
+            end
+
+            # A call of +routine+ with rt_spu_write's numbers as a write's word (Strikes#write_word), inline,
+            # that returns to rt_spu_write's caller.
+            def emit_write_word_returning(asm, routine)
+              emit_strikes_call_returning(asm, routine) do
+                asm.sll(:a0, :a0, 16)
+                asm.andi(:t0, :a1, 0xFFFF)
+                asm.or(:a0, :a0, :t0)
+                asm.lui(:t0, Strikes::WRITE >> 16)
+                asm.or(:a0, :a0, :t0)
+              end
             end
 
             # rt_sound_loud(a0 = the side << 12 | the voice << 8 | its volume, a1 = the step it moves by): the
@@ -194,7 +204,8 @@ module VBlank
             # rt_sound_volume (t0 = a volume, t2 = a voice, t3 = gp plus four bytes a voice): the voice's volume
             # registers set to the volume's loudness (SPUWrites::VOLUME_REGISTER), the one of a side it is not
             # heard from at nought. It changes t4 to t7. With +strikes+, the two writes asked for while a tick's
-            # pass plays go on Strikes' list instead (#emit_volume_struck).
+            # pass plays go on Strikes' list instead, and those asked for while the list holds something are
+            # folded into it (#emit_volume_listed).
             def emit_loudness(asm, at, strikes: false)
               asm.label("rt_sound_loud")
               asm.lw(:t0, at.call(ON), :gp)
@@ -217,6 +228,9 @@ module VBlank
               if strikes
                 asm.lw(:t4, at.call(Strikes::STRIKING), :gp)
                 asm.bne(:t4, :zero, "rt_sound_volume_struck")
+                asm.lw(:t4, at.call(Strikes::HEAD), :gp)
+                asm.lw(:t5, at.call(Strikes::TAIL), :gp)
+                asm.bne(:t4, :t5, "rt_sound_volume_folded")
               end
               asm.la(:t4, "rt_sound_volume_table")
               asm.sll(:t5, :t0, 1)
@@ -239,12 +253,16 @@ module VBlank
               asm.sh(:t5, spu_at(h::SPU_VOLUME_RIGHT), :t7)
               asm.label("rt_sound_volume_done")
               asm.jr(:ra)
-              emit_volume_struck(asm, at) if strikes
+              return unless strikes
+
+              emit_volume_listed(asm, at, "rt_sound_volume_struck", "rt_strikes_put")
+              emit_volume_listed(asm, at, "rt_sound_volume_folded", "rt_strikes_fold")
             end
 
-            # rt_sound_volume_struck: rt_sound_volume's two writes, worked out the same way, on Strikes' list.
-            def emit_volume_struck(asm, at)
-              asm.label("rt_sound_volume_struck")
+            # rt_sound_volume_struck and rt_sound_volume_folded (+label+): rt_sound_volume's two writes, worked out
+            # the same way, each handed to +routine+, rt_strikes_put or rt_strikes_fold.
+            def emit_volume_listed(asm, at, label, routine)
+              asm.label(label)
               asm.addiu(:sp, :sp, -8)
               asm.sw(:ra, 0, :sp)
               asm.sw(:a0, 4, :sp)
@@ -255,34 +273,34 @@ module VBlank
               asm.lw(:t6, at.call(SIDES), :t3)
               asm.move(:t4, :t5)
               asm.li(:t0, SPUWrites::SIDES.fetch(:right))
-              asm.bne(:t6, :t0, "rt_sound_volume_struck_left")
+              asm.bne(:t6, :t0, "#{label}_left")
               asm.move(:t4, :zero) # heard from the right alone
-              asm.label("rt_sound_volume_struck_left")
+              asm.label("#{label}_left")
               asm.li(:t0, SPUWrites::SIDES.fetch(:left))
-              asm.bne(:t6, :t0, "rt_sound_volume_struck_right")
+              asm.bne(:t6, :t0, "#{label}_right")
               asm.move(:t5, :zero) # heard from the left alone
-              asm.label("rt_sound_volume_struck_right")
+              asm.label("#{label}_right")
               [[h::SPU_VOLUME_LEFT, :t4], [h::SPU_VOLUME_RIGHT, :t5]].each do |register, value|
                 asm.sll(:a0, :t2, 20) # the voice's registers, 10h apart, in the word's distance
                 asm.lui(:t0, Strikes.write_word(register, 0) >> 16)
                 asm.or(:a0, :a0, :t0)
                 asm.andi(:t0, value, 0xFFFF)
                 asm.or(:a0, :a0, :t0)
-                asm.jal("rt_strikes_put")
+                asm.jal(routine)
               end
               asm.lw(:ra, 0, :sp)
               asm.lw(:a0, 4, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 8) }
             end
 
-            # A call of rt_strikes_put, inline, that returns to the caller: the block makes a0 the entry's
-            # word, and a0 is as it was after.
-            def emit_strikes_put_returning(asm)
+            # A call of +routine+, rt_strikes_put or rt_strikes_fold, inline, that returns to the caller: the block
+            # makes a0 the entry's word, and a0 is as it was after.
+            def emit_strikes_call_returning(asm, routine)
               asm.addiu(:sp, :sp, -8)
               asm.sw(:ra, 0, :sp)
               asm.sw(:a0, 4, :sp)
               yield
-              asm.jal("rt_strikes_put")
+              asm.jal(routine)
               asm.lw(:ra, 0, :sp)
               asm.lw(:a0, 4, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 8) }
@@ -307,7 +325,7 @@ module VBlank
               if struck_as
                 asm.lw(:t0, at.call(Strikes::STRIKING), :gp)
                 asm.beq(:t0, :zero, "#{label}_at_boundary")
-                emit_strikes_put_returning(asm) { asm.ori(:a0, :a0, struck_as) }
+                emit_strikes_call_returning(asm, "rt_strikes_put") { asm.ori(:a0, :a0, struck_as) }
                 asm.label("#{label}_at_boundary")
               end
               asm.li(:t1, 1)
