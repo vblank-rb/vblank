@@ -466,7 +466,7 @@ module VBlank
           return keep_group(entry_commands([entry], voicing, song.name) { |said| yield said }.flatten(1)) unless side
 
           writes = song_writes.heard_from_one_side(song_writes.loudness_at(channel, volume, voicing, song.name), side)
-          keep_group(writes.map { |write| sound_command(write) } + [[GROUP_LOG, yield(entry), 0]])
+          keep_group(commands_for(writes) + [[GROUP_LOG, yield(entry), 0]])
         end
 
         # One note of +song+'s +part+ on +channel+ (an +event+ of its list), with +between+ its head
@@ -529,10 +529,10 @@ module VBlank
           return nil if taken.empty?
           return keep_group(slide_stop_commands(channel)) if taken.include?(nil)
 
-          keep_group(song_writes.slide_step(channel, taken.last, was, shape, from: @sliding_from).map { |write| sound_command(write) })
+          keep_group(commands_for(song_writes.slide_step(channel, taken.last, was, shape, from: @sliding_from)))
         end
 
-        def slide_stop_commands(channel) = song_writes.slide_stop(channel).map { |write| sound_command(write) }
+        def slide_stop_commands(channel) = commands_for(song_writes.slide_stop(channel))
 
         # A note that swells under the music volume. The voice climbs by itself, as far as the top,
         # whatever the level is, so the player counts along with it (Runtime::Music's
@@ -552,7 +552,7 @@ module VBlank
         def swell_strike_group(entry, song, side, voicing)
           writes = song_writes.swell_strike(entry, voicing, song.name)
           writes = song_writes.heard_from_one_side(writes, side) if side
-          keep_group(writes.map { |write| sound_command(write) } + [[GROUP_LOG, yield(entry), 0]])
+          keep_group(commands_for(writes) + [[GROUP_LOG, yield(entry), 0]])
         end
 
         # A note that steps its shapes: a group for each of its four frames, its source written and
@@ -564,7 +564,7 @@ module VBlank
             shape = duty.at(frame)
             next if shape == duty.at(frame - 1)
 
-            writes = song_writes.shape(channel, frequency, shape).map { |write| sound_command(write) }
+            writes = commands_for(song_writes.shape(channel, frequency, shape))
             keep_group(writes + [[GROUP_LOG, yield([:duty, channel, shape]), 0]])
           end
           @shape_records << record unless @shape_records.include?(record)
@@ -576,7 +576,7 @@ module VBlank
         # move is a group like a note's: its writes, and its [:wobble ...] entry in the sound log.
         def wobble_record(channel, frequency, vibrato)
           up, down = [vibrato.above, -vibrato.below].map do |steps|
-            writes = song_writes.wobble(channel, frequency, steps).map { |write| sound_command(write) }
+            writes = commands_for(song_writes.wobble(channel, frequency, steps))
             keep_group(writes + [[GROUP_LOG, yield([:wobble, channel, steps]), 0]])
           end
           record = [vibrato.after, vibrato.speed, up, down, vibrato.carries ? 1 : 0]
@@ -686,10 +686,13 @@ module VBlank
 
         def song_named(name) = @songs.find { |song| song.name == name } || raise(self.class::LoweringError, "the song #{name.inspect} is not declared")
 
+        # The commands that make +writes+ on the console, one a write unless the console packs them.
+        def commands_for(writes) = writes.map { |write| sound_command(write) }
+
         # Each of +entries+' commands: its chip writes, then its entry into the sound log.
         def entry_commands(entries, voicing, song, &number_of)
           song_writes.each_entry_writes(entries, voicing, song: song).map do |entry, writes|
-            writes.map { |write| sound_command(write) } + [[GROUP_LOG, yield(entry), 0]]
+            commands_for(writes) + [[GROUP_LOG, yield(entry), 0]]
           end
         end
 

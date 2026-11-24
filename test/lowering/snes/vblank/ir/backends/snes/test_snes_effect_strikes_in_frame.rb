@@ -213,11 +213,18 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   # Nintendo sound driver's effects commonly keep. Left on the list, the effect's strike keys its note
   # on over the game's sound part way through the frame.
   #
-  # Not at the helper's four ticks a frame: a square note is nine commands through the mailboxes, which
-  # carry about 45 a frame, so four ticks' notes fill them and the game's own sound waits frames behind
-  # them.
   GAME_SOUND_NEAR = Rational(1, 8)
   GAME_SOUND_RATE = 50
+
+  # At four ticks a frame, within half a frame. A frame's pass waits while its notes go through the
+  # mailboxes, which carry a few dozen commands a frame: a note told whole is two commands, so four
+  # ticks are some seventeen with their timing, sent in under half a frame. Sent as nine writes a
+  # note, they filled the mailboxes and the game's own sound waited two frames behind them.
+  GAME_SOUND_NEAR_AT_FOUR_A_FRAME = Rational(1, 2)
+
+  def test_the_games_beep_is_heard_soon_over_four_ticks_a_frame
+    assert_game_sound_heard_over_effect(:snes, :beep, near: GAME_SOUND_NEAR_AT_FOUR_A_FRAME)
+  end
 
   def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
     assert_game_sound_heard_over_effect(:snes, :beep, near: GAME_SOUND_NEAR, rate: GAME_SOUND_RATE)

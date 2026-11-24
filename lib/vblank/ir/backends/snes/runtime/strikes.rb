@@ -339,10 +339,10 @@ module VBlank
             # first number (IR::Tunes, "The game's own sound against a listed strike"). The console
             # writes it as the game plays it, after the frame's ticks have been listed, so every listed
             # write still waiting for that voice is dropped here, before it can strike over the game's
-            # sound: a write to one of the voice's own registers, and a write to the noise switches
-            # when the voice is the noise voice; the voice's bit is taken out of a waiting key-on and
-            # key-off, and the noise clock's bits out of a waiting flags write for the noise voice. A
-            # dropped entry becomes a key-off of no voice, which leaves KOFF as it is.
+            # sound: a note told whole on the voice, a write to one of the voice's own registers, and a
+            # write to the noise switches when the voice is the noise voice; the voice's bit is taken out
+            # of a waiting key-on and key-off, and the noise clock's bits out of a waiting flags write for
+            # the noise voice. A dropped entry becomes a key-off of no voice, which leaves KOFF as it is.
             def emit_drop(spc)
               dsp = DSPWrites
               noise_base = dsp::NOISE_VOICE << 4
@@ -377,7 +377,16 @@ module VBlank
                 bra "strikes_drop_next"
                 label "strikes_drop_not_flags"
                 cmp :a, imm(Sound::WRITE_DSP)
+                beq "strikes_drop_write"
+                and_ :a, imm(Sound::COMMAND_BITS) # a note told whole names its voice in its command
+                cmp :a, imm(Sound::WHOLE_NOTE)
                 bne "strikes_drop_next"
+                mov :a, direct_x(LIST_COMMANDS)
+                and_ :a, imm(Sound::VOICE_BITS)
+                cmp :a, direct(COMMAND_COPY[2])
+                bne "strikes_drop_next"
+                bra "strikes_drop_dropped"
+                label "strikes_drop_write"
                 mov :a, direct_x(LIST_FIRSTS)
                 cmp :a, imm(dsp::KEY_ON)
                 bne "strikes_drop_not_key_on"
