@@ -139,6 +139,10 @@ module VBlank
       TILE_COLLISION_Y = :__tile_collision_y  # :nodoc:
       TILE_COLLISION_CLEAR = :__tile_collision_clear  # :nodoc:
 
+      # The shared routine of a tile check: its +name+ to call, where to put the position asked about
+      # (+x+, +y+) and where the answer lands (+clear+).
+      TileCollision = Data.define(:name, :x, :y, :clear)  # :nodoc:
+
       def build_tile_collision(cells, hit_x, hit_y, hit_w, hit_h, index)
         name = :"__tile_collision_#{index}"
         [TILE_COLLISION_X, TILE_COLLISION_Y, TILE_COLLISION_CLEAR].each { |v| ensure_var(v) }
@@ -181,7 +185,7 @@ module VBlank
           end
         end
 
-        { name: name, x: TILE_COLLISION_X, y: TILE_COLLISION_Y, clear: TILE_COLLISION_CLEAR }
+        TileCollision.new(name: name, x: TILE_COLLISION_X, y: TILE_COLLISION_Y, clear: TILE_COLLISION_CLEAR)
       end
 
       # Where the showing map's walls start in the table, as a {Value} — nil for a

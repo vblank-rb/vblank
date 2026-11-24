@@ -604,10 +604,10 @@ module VBlank
       # frame, not just the moving. Called, it is emitted once however many movers there are.
       def emit_tile_check(target_x, target_y)
         routine = @builder.tile_collision_routine(@solid_cells, @hit_x, @hit_y, @hit_w, @hit_h)
-        @builder.store!(routine[:x], Value.node_for(target_x))
-        @builder.store!(routine[:y], Value.node_for(target_y))
-        @builder.call(routine[:name])
-        Value.new(@builder, Build.var_ref(routine[:clear]), name: routine[:clear]) == 1
+        @builder.store!(routine.x, Value.node_for(target_x))
+        @builder.store!(routine.y, Value.node_for(target_y))
+        @builder.call(routine.name)
+        Value.new(@builder, Build.var_ref(routine.clear), name: routine.clear) == 1
       end
 
       def faceted?

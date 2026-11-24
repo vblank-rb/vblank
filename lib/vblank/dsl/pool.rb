@@ -1550,10 +1550,10 @@ module VBlank
           hit_x, hit_y, hit_w, hit_h = require_box!
           builder = @pool.builder
           routine = builder.tile_collision_routine(cells, hit_x, hit_y, hit_w, hit_h)
-          builder.store!(routine[:x], Value.node_for(target_x))
-          builder.store!(routine[:y], Value.node_for(target_y))
-          builder.call(routine[:name])
-          Value.new(builder, IR::Build.var_ref(routine[:clear]), name: routine[:clear]) == 1
+          builder.store!(routine.x, Value.node_for(target_x))
+          builder.store!(routine.y, Value.node_for(target_y))
+          builder.call(routine.name)
+          Value.new(builder, IR::Build.var_ref(routine.clear), name: routine.clear) == 1
         end
 
         def field(name) = @pool.field_ref(name, @index)
