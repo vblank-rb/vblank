@@ -1163,7 +1163,7 @@ module VBlank
               emit_load_painted_run_place(ScreenLayout::PaintedRun.place_var(name), done)
             end
             @emitter.note_video_copy("painting #{run.what} :#{name}", run.bytes)
-            from = list[:base]
+            from = list.base
             if held_tile_run?(run)
               @primitives.load_var(2, ScreenLayout::PaintedRun.held_var(name))
               from = Primitives::InRegister.new(2)
@@ -1283,7 +1283,7 @@ module VBlank
               list = painted_run_list(name, run)
               place = run.moves? ? @primitives.var_addr(ScreenLayout::PaintedRun.place_var(name)) | 1 : VRAM_START + run.at
               held = held_tile_run?(run)
-              from = held ? @primitives.var_addr(ScreenLayout::PaintedRun.held_var(name)) | 1 : list[:base]
+              from = held ? @primitives.var_addr(ScreenLayout::PaintedRun.held_var(name)) | 1 : list.base
               Primitives.refuse_copy_of_nothing!(run.bytes / 4) # the walk writes this control word by hand
               { name: name, what: run.what, bytes: run.bytes, held: held,
                 words: [@primitives.var_addr(node.masks.fetch(i / per)), 1 << (i % per), from, place,
@@ -1296,7 +1296,7 @@ module VBlank
           # tree that reached it some other way.
           def painted_run_list(name, run)
             list = @lists.list_info(run.list)
-            raise LoweringError, "#{run.what} :#{name} paints from list :#{run.list}, which the game shifts." if list[:ring]
+            raise LoweringError, "#{run.what} :#{name} paints from list :#{run.list}, which the game shifts." if list.ring
 
             list
           end

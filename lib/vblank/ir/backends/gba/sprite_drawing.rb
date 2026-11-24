@@ -481,7 +481,7 @@ module VBlank
               blobs[table] = sprites.flat_map { |sprite| [sprite.slot - first, sprite.pieces] }.pack("C*")
               order = lists.list_info(run.order)
               DrawRun.new(first_slot: first, slots: slots, staging: memory.alloc(slots * 8),
-                          order: order[:base], entry_bytes: order[:bytes], members: sprites.length, table: table,
+                          order: order.base, entry_bytes: order.bytes, members: sprites.length, table: table,
                           shown: shown_sorts[run.order])
             end
           end

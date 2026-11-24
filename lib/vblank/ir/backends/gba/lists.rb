@@ -34,6 +34,11 @@ module VBlank
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[list_new list_push list_drop list_set list_fill list_sort list_pack stop_full].freeze
 
+          # Where a list is and how it is kept (#register_list): +capacity+ items of +width+ (+bytes+ a
+          # slot) from +base+, and, for a ring, +mask+ one less than its slots. +roomy+ whether it went
+          # to the roomy memory, +want+ the bytes it asks of the quick memory, +fast+ what the author set.
+          ListLayout = Data.define(:capacity, :ring, :mask, :base, :width, :bytes, :roomy, :want, :fast)
+
           def emit_statement(node)
             case node.kind
             when :list_new then emit_list_new(node)
@@ -96,7 +101,7 @@ module VBlank
           # them is not a run of memory. Nothing builds a fill of one.
           def emit_list_fill(node)
             info = list_info(node.name)
-            raise LoweringError, "list #{node.name.inspect} is shifted, so a run of it cannot be filled" if info[:ring]
+            raise LoweringError, "list #{node.name.inspect} is shifted, so a run of it cannot be filled" if info.ring
 
             @fills = true
             skip = @emitter.gensym
@@ -117,14 +122,14 @@ module VBlank
             @emitter.emit(ASM.mov_reg_cond(:gt, 2, 12))             # stop at the end
             @emitter.emit(ASM.cmp_imm(2, 0))
             @emitter.emit_branch(:bcond, skip, cond: :le)           # nothing to write
-            shift = Math.log2(info[:bytes]).to_i
+            shift = Math.log2(info.bytes).to_i
             if shift.positive?
               @emitter.emit(ASM.lsl_imm(ACC, ACC, shift))           # r0 = from * item size
               @emitter.emit(ASM.lsl_imm(2, 2, shift))               # r2 = bytes to write
             end
-            @primitives.emit_list_base(info[:base])
+            @primitives.emit_list_base(info.base)
             @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))         # r1 = where the run starts
-            emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
+            emit_fill_pattern(info.width)                         # r0 = the value in every byte place
             @placement.emit_call_cold_routine(FILL_ROUTINE)
             @emitter.place_label(skip)
           end
@@ -156,7 +161,7 @@ module VBlank
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit_branch(:bcond, skip, cond: :lt)                    # starts before the list
             @primitives.load_var(2, length_var(node.name))
-            shift = Math.log2(from[:bytes]).to_i
+            shift = Math.log2(from.bytes).to_i
             @emitter.emit(ASM.lsl_imm(2, 2, shift)) if shift.positive?      # r2 = bytes to copy
             @emitter.emit(ASM.cmp_imm(2, 0))
             @emitter.emit_branch(:bcond, skip, cond: :le)                    # nothing to copy
@@ -166,12 +171,12 @@ module VBlank
             @emitter.emit(ASM.sub_reg(3, TMP, 2))                            # r3 = the last start that fits
             @emitter.emit(ASM.cmp_reg(ACC, 3))
             @emitter.emit_branch(:bcond, skip, cond: :gt)                    # runs past its end
-            if from[:ring]
+            if from.ring
               emit_ring_pack_runs(node, from, into, shift)
             else
-              @primitives.emit_list_base(into[:base])
+              @primitives.emit_list_base(into.base)
               @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))                # r1 = where the run goes
-              @primitives.emit_list_base(from[:base])
+              @primitives.emit_list_base(from.base)
               @emitter.emit(ASM.mov_reg(ACC, LIST_ADDR))                     # r0 = the list's first slot
               @placement.emit_call_cold_routine(COPY_ROUTINE)
             end
@@ -191,16 +196,16 @@ module VBlank
             done = e.gensym
             stack = 13 # the stack pointer
             @primitives.load_var(3, head)
-            e.emit(ASM.rsb_imm(3, 3, from[:mask] + 1))                       # slots from the head to the block's end
+            e.emit(ASM.rsb_imm(3, 3, from.mask + 1))                       # slots from the head to the block's end
             e.emit(ASM.lsl_imm(3, 3, shift)) if shift.positive?
             e.emit(ASM.cmp_reg(3, 2))
             e.emit(ASM.mov_reg_cond(:gt, 3, 2))                              # r3 = bytes in the first run
             e.emit(ASM.push(ACC, 2, 3))                                      # where, all the bytes, the first run's
             @primitives.load_var(TMP, head)
             e.emit(ASM.lsl_imm(TMP, TMP, shift)) if shift.positive?
-            @primitives.emit_list_base(from[:base])
+            @primitives.emit_list_base(from.base)
             e.emit(ASM.add_reg(ACC, LIST_ADDR, TMP))                         # r0 = the head's slot
-            @primitives.emit_list_base(into[:base])
+            @primitives.emit_list_base(into.base)
             e.emit(ASM.ldr_offset(TMP, stack, 0))
             e.emit(ASM.add_reg(TMP, LIST_ADDR, TMP))                         # r1 = where the run goes
             e.emit(ASM.ldr_offset(2, stack, 8))                                 # r2 = the first run's bytes
@@ -209,9 +214,9 @@ module VBlank
             e.emit(ASM.ldr_offset(3, stack, 8))
             e.emit(ASM.subs_reg(2, 2, 3))                                    # r2 = the bytes left
             e.emit_branch(:bcond, done, cond: :eq)
-            @primitives.emit_list_base(from[:base])
+            @primitives.emit_list_base(from.base)
             e.emit(ASM.mov_reg(ACC, LIST_ADDR))                              # r0 = the block's first slot
-            @primitives.emit_list_base(into[:base])
+            @primitives.emit_list_base(into.base)
             e.emit(ASM.ldr_offset(TMP, stack, 0))
             e.emit(ASM.add_reg(TMP, TMP, 3))                                 # where + the first run's bytes
             e.emit(ASM.add_reg(TMP, LIST_ADDR, TMP))                         # r1 = where the rest goes
@@ -239,7 +244,7 @@ module VBlank
             # The builder refuses these (Builder#copy_table_run); this is the lowering's own
             # invariant, for a tree that reached it some other way — either would write past
             # the list into whatever memory follows it.
-            unless table.elem_bytes == info[:bytes] && node.count.between?(1, [info[:capacity], table.count].min)
+            unless table.elem_bytes == info.bytes && node.count.between?(1, [info.capacity, table.count].min)
               raise LoweringError, "list #{node.name.inspect} cannot hold #{node.count} entries of table #{node.table.inspect}"
             end
 
@@ -257,12 +262,12 @@ module VBlank
             held = (@held_tile_lists || {})[node.name]
             return @primitives.store_var(ACC, held) if held
 
-            @primitives.emit_list_base(info[:base])
+            @primitives.emit_list_base(info.base)
             @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))                       # r1 = the list's first slot
             @emitter.emit_number(2, node.count * table.elem_bytes) # r2 = bytes to copy
             @placement.emit_call_cold_routine(COPY_ROUTINE)
             @emitter.emit_number(ACC, 0)
-            @primitives.store_var(ACC, head_var(node.name)) if info[:ring]
+            @primitives.store_var(ACC, head_var(node.name)) if info.ring
             @emitter.emit_number(ACC, node.count)
             @primitives.store_var(ACC, length_var(node.name))
           end
@@ -295,21 +300,21 @@ module VBlank
             info = list_info(node.name)
             keys = list_info(node.by)
             [[node.name, info], [node.by, keys]].each do |name, each|
-              raise LoweringError, "list #{name.inspect} is shifted, so it cannot be sorted" if each[:ring]
+              raise LoweringError, "list #{name.inspect} is shifted, so it cannot be sorted" if each.ring
             end
 
             e = @emitter
             shown = shown_sort(node.name)
             emit_shown_marked(node, shown, info) if shown
-            step = info[:bytes]
+            step = info.bytes
             outer = e.gensym
             inner = e.gensym
             place = e.gensym
             done = e.gensym
             stays = node.descending ? :ge : :le # the item before stays before when it is not beyond
             e.emit(ASM.push(SORT_AT, SORT_END, SORT_KEYS, SORT_ITEM, SORT_FIRST))
-            e.emit_number(SORT_FIRST, info[:base])
-            e.emit_number(SORT_KEYS, keys[:base])
+            e.emit_number(SORT_FIRST, info.base)
+            e.emit_number(SORT_KEYS, keys.base)
             @primitives.load_var(SORT_END, length_var(node.name))
             shift = Math.log2(step).to_i
             e.emit(ASM.lsl_imm(SORT_END, SORT_END, shift)) if shift.positive?
@@ -617,11 +622,11 @@ module VBlank
           # takes no room of its own.
           def register_list(name, capacity, ring: true, width: :word, fast: nil, roomy: false, at: nil)
             if (existing = @lists[name])
-              return if existing[:capacity] == capacity && existing[:width] == width
+              return if existing.capacity == capacity && existing.width == width
 
               raise LoweringError,
                     "list #{name.inspect} is created with two different capacities " \
-                    "(#{existing[:capacity]} and #{capacity})"
+                    "(#{existing.capacity} and #{capacity})"
             end
 
             slots = Lists.slots_of(capacity, ring: ring)
@@ -635,8 +640,8 @@ module VBlank
                              end
             fast = true if at # a pool's area moves as its block does (#reserve_pool_areas)
             # Placed before its counters are named, since where they go follows where it went.
-            @lists[name] = { capacity: capacity, ring: ring, mask: slots - 1, base: base,
-                             width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast }
+            @lists[name] = ListLayout.new(capacity: capacity, ring: ring, mask: slots - 1, base: base,
+                                          width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast)
             counters = ring ? [head_var(name), length_var(name)] : [length_var(name)] # a plain array's head can never move
             counters << capacity_var(name) if @lists_of_varying_capacity.include?(name)
             counters.each do |counter|
@@ -672,7 +677,7 @@ module VBlank
             owner = @counter_owners[var]
             kind, parts = Messages::MadeNames.read(var) unless owner
             owner = Messages::MadeNames.make(:pool_part, pool: parts[:pool], part: :active) if kind == :pool_part
-            @lists.dig(owner, :roomy) || false
+            @lists[owner]&.roomy || false
           end
 
           # Which memory this one goes in. The quick one unless the author marked that it does not
@@ -773,17 +778,17 @@ module VBlank
           # each holds there: every one the author set nothing about. {Placement} weighs them
           # against the code that wants the same room.
           def movable_quick_lists
-            @lists.reject { |_name, info| info[:roomy] || !info[:fast].nil? }.transform_values { |info| info[:want] }
+            @lists.reject { |_name, info| info.roomy || !info.fast.nil? }.transform_values { |info| info.want }
           end
 
           # How many bytes a slot of each list is, by name: what one read of it moves.
-          def list_widths = @lists.transform_values { |info| info[:bytes] }
+          def list_widths = @lists.transform_values { |info| info.bytes }
 
           # The collections that ended up in the roomy memory, and how big each is — the
           # one thing a build report has to say about a decision nobody wrote.
           def roomy_lists
-            @lists.select { |_name, info| info[:roomy] }
-                  .to_h { |name, info| [name, info[:capacity] * info[:bytes]] }
+            @lists.select { |_name, info| info.roomy }
+                  .to_h { |name, info| [name, info.capacity * info.bytes] }
           end
 
           # Where each list lives, for a finished cartridge to be asked about: the address of its
@@ -805,9 +810,9 @@ module VBlank
           def list_places
             @lists.to_h do |name, info|
               slot = slot_place(name, info)
-              [name, Place.new(base: info[:base], capacity: info[:capacity], bytes: slot.width,
-                               length_at: @primitives.vars.fetch(length_var(name)), slots: info[:mask] + 1,
-                               head_at: (@primitives.vars.fetch(head_var(name)) if info[:ring]),
+              [name, Place.new(base: info.base, capacity: info.capacity, bytes: slot.width,
+                               length_at: @primitives.vars.fetch(length_var(name)), slots: info.mask + 1,
+                               head_at: (@primitives.vars.fetch(head_var(name)) if info.ring),
                                stride: slot.stride, scale: slot.scale)]
             end
           end
@@ -891,7 +896,7 @@ module VBlank
           def pool_block(pool) = @pool_blocks&.fetch(pool.to_sym, nil)
 
           # How far the slot of +list+ for a thing is from the thing's slot in its pool's first area.
-          def field_distance(list) = list_info(list)[:base] - pool_block(DSL::Pool.owner_of_list(list))
+          def field_distance(list) = list_info(list).base - pool_block(DSL::Pool.owner_of_list(list))
 
           # Whether +list+ is one of +pool+'s lists kept in its block.
           # Only a list placed in the pool's block: a pool keeps lists of its own outside it too (the
@@ -905,7 +910,7 @@ module VBlank
           # any other a slot of its width after another.
           def slot_place(name, info)
             (@slot_places || {}).fetch(name) do
-              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: info[:bytes], width: info[:bytes], scale: 1)
+              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: info.bytes, width: info.bytes, scale: 1)
             end
           end
 
@@ -916,7 +921,7 @@ module VBlank
             placement.slots.each do |list, slot|
               info = @lists[list] or next
               next if slot.area == list && slot.scale == 1 && slot.offset.zero? && slot.stride == slot.width &&
-                      slot.width == info[:bytes]
+                      slot.width == info.bytes
 
               raise LoweringError, "Pool :#{shape.name} is kept as #{placement.layout}. The Game Boy Advance build keeps " \
                                    "a pool only as lists for now. To fix this, give the pool `layout: :lists`, or no layout."
@@ -983,7 +988,7 @@ module VBlank
           def emit_capacity(reg, name, info)
             return @primitives.load_var(reg, capacity_var(name)) if @lists_of_varying_capacity.include?(name)
 
-            @emitter.emit_number(reg, info[:capacity])
+            @emitter.emit_number(reg, info.capacity)
           end
 
           # list_new: reset the list to empty. Its storage is already reserved (see
@@ -1000,7 +1005,7 @@ module VBlank
             shown = shown_sort(node.name)
             emit_shown_start(shown) if shown
             @emitter.emit_number(ACC, 0)
-            @primitives.store_var(ACC, head_var(node.name)) if info[:ring]
+            @primitives.store_var(ACC, head_var(node.name)) if info.ring
             if @lists_of_varying_capacity.include?(node.name)
               @emitter.emit_number(ACC, node.capacity)
               @primitives.store_var(ACC, capacity_var(node.name))
@@ -1031,18 +1036,18 @@ module VBlank
           # always was. The runs are whole words, so the pattern is the same in each.
           def emit_fill_from_first_slot(info, value, capacity)
             @fills = true
-            bytes = capacity * info[:bytes]
+            bytes = capacity * info.bytes
             at = 0
             while at < bytes
               run = [bytes - at, FILL_RUN_BYTES].min
-              @primitives.emit_list_base(info[:base])
+              @primitives.emit_list_base(info.base)
               if at.zero?
                 @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))          # r1 = where the run starts
               else
                 @primitives.emit_add_const(TMP, LIST_ADDR, at, 2)
               end
               @emitter.emit_number(3, value)
-              emit_fill_pattern(info[:width])                       # r0 = the value in every byte place
+              emit_fill_pattern(info.width)                       # r0 = the value in every byte place
               @emitter.emit_number(2, run)                          # r2 = bytes to write
               @placement.emit_call_cold_routine(FILL_ROUTINE)
               at += run
@@ -1065,7 +1070,7 @@ module VBlank
             again = @emitter.gensym
             number = value.negative? ? value : value * slot.scale
             turns, left = capacity.divmod(FILL_SLOTS_A_TURN)
-            @primitives.emit_list_base(info[:base])
+            @primitives.emit_list_base(info.base)
             @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))              # r1 = the first slot
             @emitter.emit_number(3, number)
             if turns.positive?
@@ -1110,7 +1115,7 @@ module VBlank
             @primitives.load_var(ACC, length)            # r0 = length (the tail offset)
             emit_capacity(TMP, node.name, info)
             @emitter.emit(ASM.cmp_reg(ACC, TMP))                  # length - capacity
-            @emitter.emit_branch(:bcond, @fault_stops.list_full_stop(info[:base]), cond: :ge) # r1 = the capacity
+            @emitter.emit_branch(:bcond, @fault_stops.list_full_stop(info.base), cond: :ge) # r1 = the capacity
 
             emit_slot_address(info, node.name)         # r1 = &slot[(head+length)&mask]
             @emitter.emit(ASM.push(TMP))                          # hold the address across the value eval
@@ -1139,7 +1144,7 @@ module VBlank
             if node.from == :front
               @primitives.load_var(ACC, head)                        # head = (head + 1) & mask
               @emitter.emit(ASM.add_imm(ACC, ACC, 1))
-              @primitives.emit_and_const(ACC, ACC, info[:mask], TMP)
+              @primitives.emit_and_const(ACC, ACC, info.mask, TMP)
               @primitives.store_var(ACC, head)
             end
 
@@ -1167,13 +1172,13 @@ module VBlank
             if (offset = written_slot_offset(info, slot, node.index))
               @lowering.value(node.value)                   # r0 = value
               # After the value, which may use r9 and r12 itself.
-              base, distance = @primitives.emit_fixed_slot_base(info[:base] + offset, info[:base])
+              base, distance = @primitives.emit_fixed_slot_base(info.base + offset, info.base)
               @emitter.emit(ASM.str_offset(ACC, base, distance))
               return
             end
 
             @lowering.value(node.index)                     # r0 = index
-            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
+            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info.base)
             emit_slot_address(info, node.name)         # r1 = &slot[(head+index)&mask]
             @emitter.emit(ASM.push(TMP))
             @lowering.value(node.value)                     # r0 = value
@@ -1192,7 +1197,7 @@ module VBlank
             return emit_fixed_slot_load(ACC, node) if fixed_slot_read?(node)
 
             @lowering.value(node.index)                     # r0 = index
-            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
+            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info.base)
             emit_slot_address(info, node.name)         # r1 = &slot[(head+index)&mask]
             emit_load_element(info, ACC, TMP, bytes: slot.width) # r0 = slot
             emit_value_unscaled(slot)
@@ -1214,7 +1219,7 @@ module VBlank
           def emit_fixed_slot_load(reg, node)
             info = list_info(node.name)
             offset = written_slot_offset(info, slot_place(node.name, info), node.index)
-            base, distance = @primitives.emit_fixed_slot_base(info[:base] + offset, info[:base])
+            base, distance = @primitives.emit_fixed_slot_base(info.base + offset, info.base)
             @emitter.emit(ASM.ldr_offset(reg, base, distance))
           end
 
@@ -1303,7 +1308,7 @@ module VBlank
           # A link kept multiplied written at an index, the value scaled as it goes in.
           def emit_scaled_list_set(node, info, slot)
             @lowering.value(node.index)
-            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
+            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info.base)
             emit_slot_address(info, node.name)
             @emitter.emit(ASM.push(TMP))
             @lowering.value(node.value)
@@ -1325,12 +1330,12 @@ module VBlank
           # says and no pool's field, a plain array or a ring (#emit_ring_pack_runs).
           def block_copyable?(node, from, into)
             @bookkeeping.nil? && !(@slot_places || {}).key?(node.name) && plain_array?(node.into, into) &&
-              from[:bytes] == ListPacking::WIDTH_BYTES.fetch(node.width) && into[:bytes] == 1
+              from.bytes == ListPacking::WIDTH_BYTES.fetch(node.width) && into.bytes == 1
           end
 
           # Whether list +name+ (+info+ its layout) is never shifted and is no pool's field, so its
           # slots sit side by side from its first.
-          def plain_array?(name, info) = !info[:ring] && !(@slot_places || {}).key?(name)
+          def plain_array?(name, info) = !info.ring && !(@slot_places || {}).key?(name)
 
           def emit_list_pack_loops(node) = ListPacking.loops_for(node).each { |loop| @lowering.statement(loop) }
 
@@ -1340,8 +1345,8 @@ module VBlank
           # bound and scale. The byte offset, or nil where the slot must be found as the game runs
           # (a ring, a narrow list, a number past the capacity, which the bound sends to slot nought).
           def written_slot_offset(info, slot, index)
-            return nil unless index.kind == :int && !info[:ring] && slot.width == 4 && @bookkeeping.nil?
-            return nil unless index.value.between?(0, info[:capacity] - 1)
+            return nil unless index.kind == :int && !info.ring && slot.width == 4 && @bookkeeping.nil?
+            return nil unless index.value.between?(0, info.capacity - 1)
 
             offset = index.value * slot.stride # the list's base is its first slot, wherever its layout put it
             offset <= 0xFFF ? offset : nil
@@ -1363,16 +1368,16 @@ module VBlank
           # list rebuilt an address that had not changed since the cartridge was built, three
           # instructions at a time, in the hottest loop a game has.
           def emit_slot_address(info, name)
-            if info[:ring]
+            if info.ring
               @primitives.load_var(TMP, head_var(name))            # r1 = head
               @emitter.emit(ASM.add_reg(ACC, TMP, ACC))            # r0 = head + offset
-              @primitives.emit_and_const(ACC, ACC, info[:mask], TMP) # r0 = slot (ring-wrapped)
+              @primitives.emit_and_const(ACC, ACC, info.mask, TMP) # r0 = slot (ring-wrapped)
             else
-              emit_bound_to_capacity(info[:capacity])              # r0 = slot, or nought
+              emit_bound_to_capacity(info.capacity)              # r0 = slot, or nought
             end
             shift = Math.log2(slot_place(name, info).stride).to_i  # 4 bytes -> 2, 2 -> 1, 1 -> 0
             @emitter.emit(ASM.lsl_imm(ACC, ACC, shift)) if shift.positive? # r0 = slot * elem size
-            @primitives.emit_list_base(info[:base])               # r9 = base address, often already there
+            @primitives.emit_list_base(info.base)               # r9 = base address, often already there
             @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))       # r1 = base + slot*size
           end
 
@@ -1387,7 +1392,7 @@ module VBlank
           # back negative would break every countdown written `sub` first and tested second.
           #
           # +bytes+ is the slot's width (#slot_place), the list's own unless a layout placed it.
-          def emit_load_element(info, into, addr, bytes: info[:bytes])
+          def emit_load_element(info, into, addr, bytes: info.bytes)
             case bytes
             when 4 then @emitter.emit(ASM.ldr(into, addr))
             when 2 then @emitter.emit(ASM.ldrsh(into, addr))
@@ -1398,7 +1403,7 @@ module VBlank
           # +into+ = the number list +keys+ holds at the place in +item+: the place shifted by the
           # list's width and added to its first slot (in SORT_KEYS), then read at that width.
           def emit_load_key(keys, into, item)
-            shift = Math.log2(keys[:bytes]).to_i
+            shift = Math.log2(keys.bytes).to_i
             if shift.positive?
               @emitter.emit(ASM.lsl_imm(into, item, shift))
               @emitter.emit(ASM.add_reg(into, into, SORT_KEYS))
@@ -1411,7 +1416,7 @@ module VBlank
           # ...and the store, which keeps only the low bits that fit. A value too big for the
           # width is cut down rather than reaching the element next door — the same bargain
           # the index bound makes, and the interpreter cuts it down to exactly the same number.
-          def emit_store_element(info, from, addr, bytes: info[:bytes])
+          def emit_store_element(info, from, addr, bytes: info.bytes)
             case bytes
             when 4 then @emitter.emit(ASM.str(from, addr))
             when 2 then @emitter.emit(ASM.store_halfword(from, addr))
