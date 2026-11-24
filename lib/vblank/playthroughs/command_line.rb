@@ -420,6 +420,8 @@ module VBlank
                     when :same then written.to_sym
                     when :lead_ins then lead_ins_named(written)
                     when :saves then save_files_named(written)
+                    when :starting_after then parse_stretch_end(written)
+                    when :snapshots then SnapshotCache.new(written)
                     else written
                     end]
         end

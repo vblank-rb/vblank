@@ -657,6 +657,15 @@ module VBlank
         --saves FIRST SECOND     A save file for each, or - for none.
         --lead-ins FIRST SECOND  A playthrough for each to play first and not
                                  count, or - for none. Needs --script.
+        --starting-after FRAME   Compare from the frame after this frame of the
+                                 presses: a frame number, or a moment's name.
+                                 Each cartridge plays to it, and is not
+                                 compared before it.
+        --snapshots DIR          With --starting-after: keep a snapshot of each
+                                 console at the start in DIR. The next run
+                                 starts from the snapshot, and does not play
+                                 the frames before the start. Without it, each
+                                 run plays to the start.
 
       What counts as different (with none of these, one pixel is a difference):
         --share-may-differ SHARE
@@ -721,6 +730,8 @@ module VBlank
     option :save, banner: "PATH"
     option :saves, type: :array, banner: "PATH"
     option :lead_ins, type: :array, banner: "NAME"
+    option :starting_after, banner: "FRAME"
+    option :snapshots, banner: "DIR"
     option :reports_in, banner: "DIR"
     def compare(first_file, second_file)
       # A comparison lines screens up at one size, so only the consoles whose kits allow it are offered.
