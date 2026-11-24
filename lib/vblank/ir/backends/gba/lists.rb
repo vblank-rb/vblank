@@ -38,7 +38,7 @@ module VBlank
             case node.kind
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
-            when :stop_full then emit_stop_full(node)
+            when :stop_full then @fault_stops.emit_stop_full(node) # a full pool told to stop, as the interpreter stops it (Reference#exec_stop_full)
             when :list_drop then emit_list_drop(node)
             when :list_set then emit_list_set(node)
             when :list_fill then emit_list_fill(node)
@@ -1096,9 +1096,6 @@ module VBlank
             when 1 then @emitter.emit(ASM.strb_post(from, TMP, slot.stride))
             end
           end
-
-          # stop_full: a full pool told to stop, as the interpreter stops it (Reference#exec_stop_full).
-          def emit_stop_full(node) = @fault_stops.emit_stop_full(node)
 
           attr_writer :fault_stops
 
