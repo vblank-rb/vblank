@@ -204,6 +204,48 @@ class TestList < Minitest::Test
     end
   end
 
+  # Two scenes can each declare a list of one name, with capacities of their own. The list holds
+  # what the declaration that made it last says, so the second scene's list is four items long and
+  # takes no more, read back and pushed alike.
+  def test_a_list_declared_again_holds_the_capacity_of_the_last_declaration
+    builder = Builder.new
+    builder.instance_eval do
+      n = var :n, 0
+      kept = var :kept, 0
+      far = var :far, 0
+      at = var :at, 6
+      scene(:big) do
+        list :marks, capacity: 8, full_of: 0
+        rows = list :rows, capacity: 8, full_of: 0
+        rows[at] = 7
+        far = rows[at]
+        n = 1
+      end
+      scene(:small) do
+        marks = list :marks, capacity: 4, full_of: 0
+        list :rows, capacity: 4, full_of: 0
+        marks[1] = -5
+        kept = marks.length
+        n = 2
+      end
+      scene(:emptied) do
+        marks = list :marks, capacity: 4
+        3.times { |item| marks.push item }
+        kept = marks.length
+        n = 3
+      end
+      game_loop { call({ 0 => :big, 1 => :small, 2 => :emptied, 3 => :big }, number: :n) }
+    end
+    builder.finalize_program
+    player = game_player
+    seen = []
+    player.each_vblank { seen << [player[:kept], player.list(:marks), player[:far], player.list(:rows).length] }
+    player.run(builder.program, frames: 5)
+
+    assert_equal [[0, [0] * 8, 7, 8], [4, [0, -5, 0, 0], 7, 4], [3, [0, 1, 2], 7, 4], [3, [0] * 8, 7, 8]], seen.drop(1),
+                 "each pass's length and items, as the scenes big, small, emptied and big again left them"
+  end
+
   def test_pushing_past_capacity_raises_a_friendly_error
     err = assert_raises(Reference::ProgramError) do
       interpret do
