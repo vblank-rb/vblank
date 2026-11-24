@@ -200,8 +200,9 @@ module VBlank
               # while this one runs, and the switches are put back as it ends.
               asm.label("rt_vblank_interrupt")
               %i[af bc de hl].each { |pair| asm.push(pair) }
+              Strikes.emit_blank(asm, memory) if Strikes.any?(memory) # first: the lines the strikes are timed by
               asm.call("rt_bar_sprites_back") if memory.reserved?(Picture::BAR_COVERS)
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.load_high(:a, h::IE)
                 asm.push(:af)
                 asm.and_a(h::INT_STAT) # a bent screen's lines go on being drawn
@@ -232,7 +233,7 @@ module VBlank
               asm.call("rt_increment32")
               asm.load(:a, 1)
               asm.load_high(vblank, :a)
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.di
                 asm.pop(:af)
                 asm.load_high(h::IE, :a)
@@ -268,7 +269,7 @@ module VBlank
                 # with the interrupt held off so a frame drawn now is played after them. In a game that
                 # plays a recording, only the screen's is held off: a frame behind can owe several, and
                 # the timer's samples go on between them, as they do in the screen's interrupt.
-                if clips
+                if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                   asm.load_high(:a, h::IE)
                   asm.push(:af)
                   asm.and_a(h::INT_STAT) # a bent screen's lines go on being drawn
@@ -290,7 +291,7 @@ module VBlank
                 asm.call("rt_rumble_tick") if rumble
                 asm.jump_relative("rt_wait_vblank_owed")
                 asm.label("rt_wait_vblank_paid")
-                if clips
+                if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                   asm.pop(:af)
                   asm.load_high(h::IE, :a)
                 else
@@ -378,7 +379,7 @@ module VBlank
               asm.ret
 
               emit_dark_tick(asm, memory) if dark?(memory)
-              emit_timer_tick(asm, memory) if dark?(memory) && Clips.any?(memory)
+              emit_timer_tick(asm, memory) if dark?(memory) && (Clips.any?(memory) || Strikes.any?(memory))
               emit_increment(asm)
               emit_buttons(asm, memory)
               emit_stopping(asm, memory)
@@ -422,7 +423,7 @@ module VBlank
               h = Console::GBCHardware
               clips = Clips.any?(memory)
               asm.label("rt_music_owed")
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.load_high(:a, h::IE)
                 asm.push(:af)
                 asm.and_a(h::INT_STAT) # a bent screen's lines go on being drawn
@@ -442,7 +443,7 @@ module VBlank
               asm.call("rt_rumble_tick") if Rumble.any?(memory)
               asm.jump_relative("rt_music_owed_next")
               asm.label("rt_music_owed_paid")
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.pop(:af)
                 asm.load_high(h::IE, :a)
               else
@@ -580,14 +581,16 @@ module VBlank
               asm.load_high(h::TAC, :a)
               asm.call("rt_display_on")
               asm.call("rt_shown_is_passes")
-              asm.load(:a, clips ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
+              asm.load(:a, clips || Strikes.any?(memory) ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
               asm.load_high(h::IE, :a)
               asm.load_high(:a, h::IF)
               asm.and_a(~h::INT_TIMER & 0xFF)
               asm.load_high(h::IF, :a)
-              if clips
+              if clips || Strikes.any?(memory)
                 asm.load(:a, DARK_OVER)
                 asm.load([memory[DARK_IN_MEMORY]], :a)
+              end
+              if clips
                 asm.load_high(:a, memory[Clips::PLAYING])
                 asm.and_a(:a)
                 asm.call(:nz, "rt_clip_start")
@@ -609,7 +612,7 @@ module VBlank
               asm.jump("rt_dark_tick")
               asm.label("rt_timer_tick_sample")
               asm.pop(:af)
-              asm.jump("rt_clip_tick")
+              asm.jump(Clips.any?(memory) ? "rt_clip_tick" : "rt_strikes_alarm")
             end
 
             # ...and once the first frame boundary has come, the frames it was off for added to the

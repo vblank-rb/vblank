@@ -13,6 +13,7 @@ require_relative "runtime/sound"
 require_relative "runtime/music"
 require_relative "runtime/effects"
 require_relative "runtime/effect_table"
+require_relative "runtime/strikes" # sound effects on a timer, written to the chip as each tick comes
 require_relative "runtime/clips"
 require_relative "runtime/rumble"
 require_relative "runtime/kept_sprites"
@@ -65,6 +66,7 @@ module VBlank
             SpriteTileLoads.reserve(memory) if tile_loads
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
+            Strikes.reserve(memory) if effect_clock_step && !effects.empty? && !clips
             KeptSprites.reserve(memory) if kept_sprites
             Frame.reserve(memory, together: together, dark: dark)
             Picture.reserve(memory, lends: art.lending, groups: art.groups?, bar_rows: bar_rows, rooms: art.rooms.any?,
@@ -141,6 +143,7 @@ module VBlank
                                     by_rank: music&.effects_by_rank || [], fades: music&.fades? || false,
                                     slides: music&.slides? || false, pans: music&.pans? || false,
                                     carries: music&.carries? || false, clock_step: music&.effect_clock_step)
+            Strikes.emit(asm, memory, music.effect_clock_step) if Strikes.any?(memory)
             Saving.emit(asm, memory) if saves
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown
             Rumble.emit(asm, memory) if Rumble.any?(memory)
@@ -149,7 +152,7 @@ module VBlank
             emit_start(asm)
             emit_main(asm, main)
             emit_frame_begins(asm, frame_begins)
-            [*Boot.vector_sections(clips: !shown.nil?, dark: Frame.dark?(memory)), asm.section, *Paint.table_sections(maps: art.square_maps)]
+            [*Boot.vector_sections(clips: !shown.nil?, dark: Frame.dark?(memory), strikes: Strikes.any?(memory)), asm.section, *Paint.table_sections(maps: art.square_maps)]
           end
 
           # What a game needs before its first line: its variables that do not start at nought,

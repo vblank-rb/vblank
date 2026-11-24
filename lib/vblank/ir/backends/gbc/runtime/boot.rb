@@ -34,7 +34,7 @@ module VBlank
             # plays a sample of a recording in a game that plays one (+clips+, Runtime::Clips), and
             # counts the frames the screen is off for in a game that counts them (+dark+,
             # Runtime::Frame#emit_dark_tick).
-            def vector_sections(clips: false, dark: false)
+            def vector_sections(clips: false, dark: false, strikes: false)
               vectors = SM83.new("vectors", home: 0)
               8.times { vectors.bytes_of([0xC9] + ([0x00] * 7)) } # each RST: a return
               vectors.label("rt_vblank_vector") # 0x40
@@ -43,8 +43,9 @@ module VBlank
               vectors.jump("rt_hblank_interrupt") # 0x48: the display's, raised as a line ends
               [0x50, 0x58, 0x60].each do |at|
                 vectors.bytes_of(Array.new(at - vectors.here, 0x00))
-                next vectors.jump("rt_timer_tick") if clips && dark && at == Console::GBCHardware::TIMER_VECTOR
+                next vectors.jump("rt_timer_tick") if (clips || strikes) && dark && at == Console::GBCHardware::TIMER_VECTOR
                 next vectors.jump("rt_clip_tick") if clips && at == Console::GBCHardware::TIMER_VECTOR
+                next vectors.jump("rt_strikes_alarm") if strikes && at == Console::GBCHardware::TIMER_VECTOR
                 next vectors.jump("rt_dark_tick") if dark && at == Console::GBCHardware::TIMER_VECTOR
 
                 vectors.reti
@@ -63,6 +64,7 @@ module VBlank
             def emit(asm, main:, clips: false, backdrop: Art::BACKDROP, memory: nil)
               h = Console::GBCHardware
               dark = memory && Frame.dark?(memory)
+              strikes = memory && Strikes.any?(memory) # the timer is the strikes' alarm (Runtime::Strikes)
               asm.label("rt_boot")
               asm.di
               asm.load(:sp, Memory::STACK_TOP)
@@ -123,7 +125,7 @@ module VBlank
               end
               asm.load_high(h::TAC, :a) if clips && !dark # a timer counting the dark frames counts on
               asm.load_high(h::IF, :a)
-              asm.load(:a, clips || dark ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
+              asm.load(:a, clips || dark || strikes ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
               asm.load_high(h::IE, :a)
               asm.ei
               asm.call("rt_start")
