@@ -201,6 +201,14 @@ module VBlank
               asm.label("rt_vblank_interrupt")
               %i[af bc de hl].each { |pair| asm.push(pair) }
               Strikes.emit_blank(asm, memory) if Strikes.any?(memory) # first: the lines the strikes are timed by
+              # A strike on the line match whose line went by unanswered, on a screen with bent rows, whose
+              # interrupt answers the strikes only on that line (Runtime::Picture): unless the game's side is
+              # changing the list, as this interrupt came.
+              if Strikes.line?(memory)
+                Strikes.emit_strikes_unless_busy(asm, memory, "rt_vblank_strikes_busy")
+                asm.call("rt_strikes_due")
+                asm.label("rt_vblank_strikes_busy")
+              end
               asm.call("rt_bar_sprites_back") if memory.reserved?(Picture::BAR_COVERS)
               if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.load_high(:a, h::IE)

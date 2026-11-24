@@ -166,6 +166,8 @@ module VBlank
 
             # The display's switch that raises its interrupt as each line ends (STAT's mode-0 bit).
             STAT_HBLANK = 0x08
+            # ...and the flag it reads 1 in while the display is on the line LYC names.
+            STAT_COINCIDENCE = 0x04
             # ...and the one that raises it as the display starts the line LYC names.
             STAT_LINE_MATCH = 0x40
             STAT_MODE = 0x03 # STAT's low two bits: nought between the lines' drawing
@@ -1330,6 +1332,8 @@ module VBlank
               asm.load_high(h::IF, :a)
               asm.load_high(:a, h::STAT)
               asm.or_a(STAT_HBLANK)
+              # The strikes' line match read as each line ends, from its coincidence flag (Strikes#emit_line_match_on).
+              asm.and_a(~STAT_LINE_MATCH & 0xFF) if strikes
               asm.load_high(h::STAT, :a)
               asm.load_high(:a, h::IE)
               asm.or_a(h::INT_STAT)
@@ -1340,6 +1344,7 @@ module VBlank
                 asm.load_high(:a, h::STAT)
                 asm.and_a(~STAT_HBLANK & 0xFF)
                 asm.load_high(h::STAT, :a)
+                asm.call("rt_strikes_due") # the line match back on for what is still listed
               else
                 asm.load_high(:a, h::IE)
                 asm.and_a(~h::INT_STAT & 0xFF)
@@ -1391,32 +1396,14 @@ module VBlank
               asm.label("rt_hblank_interrupt")
               %i[af de hl].each { |pair| asm.push(pair) }
               shared = Strikes.bar_shared?(memory)
-              if Strikes.line?(memory) # the line match the strikes wait for, or a line's end
-                emit_shared_line_before_bar(asm, memory) if shared # first: its line ends soon
-                asm.call("rt_strikes_due")
-                asm.load_high(:a, h::STAT)
-                asm.and_a(STAT_HBLANK)
-                asm.jump_relative(:z, "rt_hblank_interrupt_done")
-              end
+              emit_line_match_or_line_end(asm) if Strikes.line?(memory)
               covers = memory.reserved?(BAR_COVERS)
               emit_line_before_bar(asm, memory) if covers && !shared
-              asm.load_high(:a, h::LY)
-              asm.inc(:a)
-              asm.cp_a(Console::GBCHardware::SCREEN_HEIGHT)
-              asm.jump_relative(:c, "rt_hblank_interrupt_row")
-              asm.xor_a(:a)
-              asm.label("rt_hblank_interrupt_row")
-              asm.load(:e, :a)
-              emit_bent_line_before_bar(asm, memory) if covers
-              asm.load(:d, 0)
-              asm.load(:hl, memory[BENDS])
-              asm.add_hl(:de)
-              asm.load(:a, [memory[BEND_BASE]])
-              asm.add_a([:hl])
-              asm.load_high(h::SCX, :a)
+              emit_next_row_bent(asm, memory, "rt_hblank_interrupt")
               asm.label("rt_hblank_interrupt_done")
               %i[hl de af].each { |pair| asm.pop(pair) }
               asm.reti
+              emit_line_match(asm, memory, shared) if Strikes.line?(memory)
 
               # The cells changed during the pass (CELLS), each its tile into the first bank of video
               # memory and its colours into the second.
@@ -3026,6 +3013,51 @@ module VBlank
               asm.label("rt_hblank_interrupt_bent")
             end
 
+            # In the display's interrupt, in a game whose strikes wait for the line match (Strikes#emit_set_line),
+            # which raises it as the line LYC names starts, as a line's end does on a screen with bent rows.
+            # With no bend the interrupt is the line match's: a covering bar's line first, where it shares the
+            # match (#emit_shared_line_before_bar), then rt_strikes_due, and nothing more. With a bend it comes
+            # at the end of every line, and answering the strikes there, a few dozen instructions, would take
+            # most of each line, so the display's coincidence flag is all that is read for them: a bit tested
+            # and a call not taken. A strike whose line went by with the interrupt held off is answered as the
+            # blank begins (Runtime::Frame). The bend's own lines go on after. Read as STAT's two bits at once,
+            # a bend's line with no line match takes the common way through.
+            def emit_line_match_or_line_end(asm)
+              asm.load_high(:a, Console::GBCHardware::STAT)
+              asm.and_a(STAT_HBLANK | STAT_COINCIDENCE)
+              asm.cp_a(STAT_HBLANK) # a bent screen's line, not the line match's: the bend alone
+              asm.jump_relative(:nz, "rt_hblank_interrupt_line_match")
+              asm.label("rt_hblank_interrupt_line_end")
+            end
+
+            # ...and the line match's own, after the interrupt's end (rt_hblank_interrupt_done), A = STAT's
+            # two bits: on a bent screen its next row's bend first, since that must be in before the row
+            # starts, then the strikes, and then the end of the line they ran into, with the bend of the
+            # row after it; on one with no bend the strikes alone.
+            def emit_line_match(asm, memory, shared)
+              asm.label("rt_hblank_interrupt_line_match")
+              asm.and_a(STAT_HBLANK)
+              asm.jump_relative(:z, "rt_hblank_interrupt_no_bend")
+              emit_next_row_bent(asm, memory, "rt_hblank_interrupt_struck")
+              asm.call("rt_strikes_line_end")
+              # The strikes can take the line after: its end waited for, and the row after it bent there,
+              # in place of its own interrupt, held off till now, which would come too late for that row.
+              asm.label("rt_hblank_interrupt_struck_wait")
+              asm.load_high(:a, Console::GBCHardware::STAT)
+              asm.and_a(STAT_MODE)
+              asm.jump_relative(:nz, "rt_hblank_interrupt_struck_wait")
+              emit_next_row_bent(asm, memory, "rt_hblank_interrupt_caught_up")
+              asm.load_high(:a, Console::GBCHardware::IF) # that line end's own interrupt is answered
+              asm.and_a(~Console::GBCHardware::INT_STAT & 0xFF)
+              asm.load_high(Console::GBCHardware::IF, :a)
+              asm.jump("rt_hblank_interrupt_done")
+              asm.label("rt_hblank_interrupt_no_bend")
+              emit_shared_line_before_bar(asm, memory) if shared # first: its line ends soon
+              Strikes.emit_strikes_unless_busy(asm, memory, "rt_hblank_interrupt_done")
+              asm.call("rt_strikes_due")
+              asm.jump("rt_hblank_interrupt_done")
+            end
+
             # In the display's interrupt, where the strikes share the line match (Strikes#emit_line_match_set),
             # before they are answered, since the switch must go over before the line ends: the line before
             # the bar's top, if it has begun on a frame being drawn and the bar still wants it, waited out
@@ -3053,15 +3085,36 @@ module VBlank
               asm.label("rt_hblank_interrupt_no_bar")
             end
 
+            # In the display's interrupt on a screen with bent rows, inline: the row coming next scrolled by its
+            # bend, the bar covering the sprites from its top if it does. +name+ makes the labels. Uses A, DE
+            # and HL.
+            def emit_next_row_bent(asm, memory, name)
+              h = Console::GBCHardware
+              asm.load_high(:a, h::LY)
+              asm.inc(:a)
+              asm.cp_a(Console::GBCHardware::SCREEN_HEIGHT)
+              asm.jump_relative(:c, "#{name}_row")
+              asm.xor_a(:a)
+              asm.label("#{name}_row")
+              asm.load(:e, :a)
+              emit_bent_line_before_bar(asm, memory, name) if memory.reserved?(BAR_COVERS)
+              asm.load(:d, 0)
+              asm.load(:hl, memory[BENDS])
+              asm.add_hl(:de)
+              asm.load(:a, [memory[BEND_BASE]])
+              asm.add_a([:hl])
+              asm.load_high(h::SCX, :a)
+            end
+
             # ...and on a screen with them, E the line coming next: the bar's top, on a bar covering.
-            def emit_bent_line_before_bar(asm, memory)
+            def emit_bent_line_before_bar(asm, memory, name)
               asm.load(:a, [memory[BAR_COVERS]])
               asm.and_a(:a)
-              asm.jump_relative(:z, "rt_hblank_interrupt_uncovered")
+              asm.jump_relative(:z, "#{name}_uncovered")
               asm.load(:a, [memory[BAR]])
               asm.cp_a(:e)
               asm.call(:z, "rt_bar_hide_sprites")
-              asm.label("rt_hblank_interrupt_uncovered")
+              asm.label("#{name}_uncovered")
             end
 
             # rt_bar_show(grid), for a bar with several maps (Reference#exec_show_map): the whole bar

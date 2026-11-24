@@ -89,6 +89,8 @@ module VBlank
 
             # Reserved in a game whose recording holds the timer: the alarm is the display's line match.
             LINE_ALARM = "rt strikes line alarm"
+            # ...and there, above nought while the game's side reads or writes the list (#emit_hold_alarm).
+            BUSY = "rt strikes busy"
 
             # In such a game whose status bar covers the sprites, the line match is shared with the bar's top
             # (#emit_line_match_set): the line each wants it on, plus one, and nought for none.
@@ -98,7 +100,7 @@ module VBlank
             # +bar+ for a game with +line+ whose status bar covers the sprites (Runtime::Picture::BAR_COVERS).
             def reserve(memory, line: false, bar: false)
               [STRIKING, HEAD, TAIL].each { |name| memory.reserve(name, 1) }
-              memory.reserve(LINE_ALARM, 1) if line
+              [LINE_ALARM, BUSY].each { |name| memory.reserve(name, 1) } if line
               [STRIKE_AT, BAR_AT].each { |name| memory.reserve(name, 1) } if line && bar
               [BLANK_LINES, BASE, ACCUM, DUE].each { |name| memory.reserve(name, 2) }
               memory.reserve_in_page(LIST, 0x100)
@@ -135,6 +137,7 @@ module VBlank
               emit_due(asm, memory)
               emit_alarm(asm) unless line?(memory)
               emit_line_match_set(asm, memory) if bar_shared?(memory)
+              emit_line_end(asm, memory) if line?(memory)
               emit_frame(asm, memory, step)
               emit_later(asm)
               emit_multiply(asm)
@@ -240,7 +243,7 @@ module VBlank
               asm.load(:a, :b)
               asm.load_high([:c], :a)
               asm.label("rt_sound_put_done")
-              emit_let_alarm(asm)
+              emit_let_alarm(asm, memory)
               %i[hl de bc af].each { |pair| asm.pop(pair) }
               asm.ret
             end
@@ -249,8 +252,20 @@ module VBlank
             # interrupts are on: IE without the timer, IE as it was kept on the stack. The music is
             # played with only the timer's interrupt let in (Runtime::Frame), so a strike due as it
             # plays is struck then, and never in the middle of the list being changed. Uses A.
+            #
+            # Where the alarm is the line match (#line?), the display's interrupt is a bent screen's too, and
+            # held off it would leave rows unbent while the music plays. So it is not held off: the list is
+            # marked BUSY instead, a count that holds nested holds, and the interrupt and the blank's
+            # interrupt leave the strikes for a line later while it is (#emit_strikes_unless_busy).
             def emit_hold_alarm(asm, memory)
               h = Console::GBCHardware
+              if line?(memory)
+                asm.load(:a, [memory[BUSY]])
+                asm.inc(:a)
+                asm.load([memory[BUSY]], :a)
+                asm.push(:af)
+                return
+              end
               asm.load_high(:a, h::IE)
               asm.push(:af)
               asm.and_a(~alarm_interrupt(memory) & 0xFF)
@@ -258,9 +273,42 @@ module VBlank
             end
 
             # ...and let in again as it was. Uses A and the flags.
-            def emit_let_alarm(asm)
+            def emit_let_alarm(asm, memory)
               asm.pop(:af)
+              if line?(memory)
+                asm.load(:a, [memory[BUSY]])
+                asm.dec(:a)
+                asm.load([memory[BUSY]], :a)
+                return
+              end
               asm.load_high(Console::GBCHardware::IE, :a)
+            end
+
+            # In the display's interrupt or the blank's, where the alarm is the line match: to +busy+ while
+            # the list is BUSY, LYC set for the line after this one, so the strikes are tried again then.
+            # Uses A.
+            def emit_strikes_unless_busy(asm, memory, busy)
+              asm.load(:a, [memory[BUSY]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "#{busy}_free")
+              emit_line_after_this(asm)
+              asm.jump(busy)
+              asm.label("#{busy}_free")
+            end
+
+            # LYC the line after the one the display is on, inline, or the first line drawn from the blank on:
+            # a bent screen reads the coincidence flag as each line drawn ends, and no line in the blank does.
+            # Uses A.
+            def emit_line_after_this(asm)
+              h = Console::GBCHardware
+              label = "rt_line_after_#{asm.here}"
+              asm.load_high(:a, h::LY)
+              asm.inc(:a)
+              asm.cp_a(BLANK_LINE)
+              asm.jump_relative(:c, label)
+              asm.xor_a(:a)
+              asm.label(label)
+              asm.load_high(h::LYC, :a)
             end
 
             # rt_line_now: HL = the line the display is on, counted from power-on. A blank whose
@@ -371,7 +419,7 @@ module VBlank
               end
               asm.label("rt_strikes_out")
               asm.pop(:af)
-              emit_let_alarm(asm)
+              emit_let_alarm(asm, memory)
               %i[hl de bc af].each { |pair| asm.pop(pair) }
               asm.ret
             end
@@ -450,9 +498,98 @@ module VBlank
                 return
               end
               asm.load_high(h::LYC, :a)
+              emit_line_match_on(asm, "rt_strikes_line")
+            end
+
+            # rt_strikes_line_end: rt_strikes_due as the display's interrupt answers it at a line's end on a
+            # screen with bent rows (Runtime::Picture#emit_line_match), where it must be over soon after the
+            # next line starts, before that line's own end: the first entry due written, and LYC set for the
+            # next, the next line where there are more, and nothing more. A tick's few writes go out a line
+            # apart, some 0.1 milliseconds. The display's interrupt is the alarm and is being answered, and a write to the
+            # list from the game's side holds it off, so nothing else reads the list meanwhile; the line match
+            # is left off, as a bent screen reads the coincidence flag. Keeps every register.
+            def emit_line_end(asm, memory)
+              h = Console::GBCHardware
+              page = memory[LIST] >> 8
+              asm.label("rt_strikes_line_end")
+              %i[af bc de hl].each { |pair| asm.push(pair) }
+              emit_strikes_unless_busy(asm, memory, "rt_strikes_line_end_out")
+              asm.call("rt_line_now")
+              asm.load(:b, page)
+              asm.label("rt_strikes_line_end_next")
+              asm.load(:a, [memory[HEAD]])
+              asm.load(:c, :a)
+              asm.load(:a, [memory[TAIL]])
+              asm.cp_a(:c)
+              asm.jump_relative(:z, "rt_strikes_line_end_out")
+              asm.inc(:c)
+              asm.inc(:c)
+              asm.load(:a, [:bc])
+              asm.sub_a(:l)
+              asm.load(:e, :a)
+              asm.inc(:c)
+              asm.load(:a, [:bc])
+              asm.sbc_a(:h)
+              asm.load(:d, :a) # DE = its line less the line now
+              asm.dec(:c)
+              asm.dec(:c)
+              asm.dec(:c)
+              asm.bit(7, :d)
+              asm.jump_relative(:nz, "rt_strikes_line_end_write")
+              asm.or_a(:e)
+              asm.jump_relative(:z, "rt_strikes_line_end_write")
+              asm.load(:a, :d)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_strikes_line_end_far")
+              asm.load(:a, :e)
+              asm.cp_a(LINES_A_FRAME)
+              asm.jump_relative(:c, "rt_strikes_line_end_near")
+              asm.label("rt_strikes_line_end_far")
+              asm.load(:e, LINES_A_FRAME - 1)
+              asm.label("rt_strikes_line_end_near")
+              asm.load_high(:a, h::LY)
+              asm.add_a(:e)
+              asm.cp_a(LINES_A_FRAME)
+              asm.jump_relative(:c, "rt_strikes_line_end_set")
+              asm.sub_a(LINES_A_FRAME)
+              asm.label("rt_strikes_line_end_set")
+              asm.load_high(h::LYC, :a)
+              asm.jump_relative("rt_strikes_line_end_out")
+              asm.label("rt_strikes_line_end_write")
+              asm.load(:a, :c)
+              asm.add_a(ENTRY_BYTES)
+              asm.load([memory[HEAD]], :a)
+              asm.load(:a, [:bc]) # the register
+              asm.inc(:c)
+              asm.load(:e, :a)
+              asm.load(:a, [:bc]) # the value
+              asm.load(:c, :e)
+              asm.load_high([:c], :a)
+              # One a line: the rest at the next line's end, LYC that line, so this one is over in time.
+              asm.load(:a, [memory[HEAD]])
+              asm.load(:c, :a)
+              asm.load(:a, [memory[TAIL]])
+              asm.cp_a(:c)
+              asm.jump_relative(:z, "rt_strikes_line_end_out")
+              asm.load(:e, 1)
+              asm.jump_relative("rt_strikes_line_end_near")
+              asm.label("rt_strikes_line_end_out")
+              %i[hl de bc af].each { |pair| asm.pop(pair) }
+              asm.ret
+            end
+
+            # STAT's line match switched on, inline, unless the display's interrupt comes at every line's end
+            # for a bent screen: then that interrupt reads the coincidence flag instead, after the next row's
+            # bend (Runtime::Picture#emit_line_match_or_line_end), since a line match raised as a line starts
+            # would be answered with the bend for the line after it. +name+ makes the label. Uses A.
+            def emit_line_match_on(asm, name)
+              h = Console::GBCHardware
               asm.load_high(:a, h::STAT)
+              asm.bit(3, :a) # Picture::STAT_HBLANK
+              asm.jump_relative(:nz, "#{name}_at_line_ends")
               asm.or_a(Picture::STAT_LINE_MATCH)
               asm.load_high(h::STAT, :a)
+              asm.label("#{name}_at_line_ends")
             end
 
             # rt_line_match_set, where the strikes and a status bar covering the sprites share the line
@@ -491,9 +628,7 @@ module VBlank
               asm.label("rt_line_match_on")
               asm.dec(:a)
               asm.load_high(h::LYC, :a)
-              asm.load_high(:a, h::STAT)
-              asm.or_a(Picture::STAT_LINE_MATCH)
-              asm.load_high(h::STAT, :a)
+              emit_line_match_on(asm, "rt_line_match")
               asm.pop(:bc)
               asm.ret
               asm.label("rt_line_match_off")

@@ -33,26 +33,29 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second.
   # With +work+ each pass of the game counts that high first. The effect plays on pass +played_on+.
   # With +recording+ a silent recording loops from the second pass, and holds the timer. With +bar+ a
-  # status bar covers the sprites from BAR_TOP down, a white sprite across its top.
-  private def game(rate:, apart:, lasting:, notes: 5, work: 0, recording: false, bar: false)
+  # status bar covers the sprites from BAR_TOP down, a white sprite across its top. With +bend+ the
+  # background's rows are bent, so the display's interrupt comes at the end of every line.
+  private def game(rate:, apart:, lasting:, notes: 5, work: 0, recording: false, bar: false, bend: false)
     VBlank.build("STRIKES", console: :gbc, out: nil, err: nil,
-                 &game_code(rate: rate, apart: apart, lasting: lasting, notes: notes, work: work, recording: recording, bar: bar))
+                 &game_code(rate: rate, apart: apart, lasting: lasting, notes: notes, work: work, recording: recording, bar: bar,
+                            bend: bend))
   end
 
   BAR_TOP = 128
 
-  private def game_code(rate:, apart:, lasting:, notes: 5, work: 0, recording: false, bar: false)
+  private def game_code(rate:, apart:, lasting:, notes: 5, work: 0, recording: false, bar: false, bend: false)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: :E5, length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
     test = self
     proc do
-      test.covering_bar(self) if bar
+      test.covering_bar(self, bar: bar, bend: bend) if bar || bend
       enable_sound
       sfx = sound_effects :sfx, { chime: effect }
       pass = var :pass, 0
       busy = var :busy, 0
-      quiet = (sample :quiet, pcm: Array.new(4000, 0) if recording)
+      # At a low rate: a bent screen and a recording at the usual rate leave a pass little of its frame.
+      quiet = (sample :quiet, pcm: Array.new(2000, 0), rate: 2048 if recording)
       game_loop do
         pass += 1
         quiet.play(loop: true) if recording && pass == 2
@@ -62,20 +65,23 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
     end
   end
 
-  # A green status bar from BAR_TOP down that covers the sprites, over a red field, and a white sprite
-  # half over it, in the game +game+ (test_gbc_bar_covers_sprites.rb's).
-  def covering_bar(game)
+  # A green status bar from BAR_TOP down that covers the sprites (with +bar+), over a red field (its rows
+  # bent with +bend+), and a white sprite half over it, in the game +game+ (test_gbc_bar_covers_sprites.rb's).
+  def covering_bar(game, bar:, bend:)
     game.instance_eval do
       screen :tiled
-      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:red_art, "#" => :red, "." => :blue) { bend ? (["#..#...."] * 8).join("\n") : Minitest::Test::SOLID_TILE }
       image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
       image(:ball, "#" => :white) { Minitest::Test::SOLID_TILE }
       tiles :field_tiles, "#" => :red_art
       tiles :bar_tiles, "#" => :green_art
-      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
-      bar = status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "#" * 32], top: TestGBCEffectStrikesInFrame::BAR_TOP
+      field = background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      field.scroll_each_row { |row| row & 3 } if bend
+      if bar
+        covering = status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "#" * 32], top: TestGBCEffectStrikesInFrame::BAR_TOP
+        covering.covers_sprites = true
+      end
       sprite :ball, at: [40, TestGBCEffectStrikesInFrame::BAR_TOP - 4]
-      bar.covers_sprites = true
     end
   end
 
@@ -145,6 +151,31 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
   # the bar's top, and the strikes share it: the line match is set for whichever comes first.
   def test_a_game_playing_a_recording_under_a_bar_over_its_sprites_strikes_its_notes_on_their_lines
     assert_struck_apart(rate: 50, apart: 3, lasting: 1, recording: true, bar: true)
+  end
+
+  # A screen with bent rows has the display's interrupt at the end of every line, which the line match
+  # shares: the strikes are answered on the line it names, and each line's bend goes on.
+  def test_a_game_playing_a_recording_on_a_bent_screen_strikes_its_notes_on_their_lines
+    assert_struck_apart(rate: 50, apart: 3, lasting: 1, recording: true, bend: true)
+    assert_struck_apart(rate: 240, apart: 10, lasting: 3, recording: true, bend: true)
+  end
+
+  # The bends themselves: the field's columns stand where each row's bend puts them, on every frame
+  # while notes are struck.
+  def test_a_bent_screen_keeps_its_bends_while_notes_are_struck_on_the_line_match
+    reader = VBlank::Diagnostics::Verifier.new(game(rate: 240, apart: 2, lasting: 1, notes: 40, recording: true, bend: true), frames: 0)
+    rows = lambda do
+      reader.step(1)
+      (0...144).step(9).map { |y| (0...8).map { |x| reader.pixel_gba(x, y) } }
+    end
+    (PLAYED_ON - 3).times { rows.call }
+    bent = rows.call
+    frames = Array.new(20) { rows.call == bent }
+
+    refute_equal 1, bent.uniq.size, "the rows are bent, each its own way"
+    assert_equal [true], frames.uniq, "the bent rows alike on each frame: #{frames.inspect}"
+  ensure
+    reader&.close
   end
 
   # ...and the bar still covers the sprites on every frame while the notes are struck, from its top
