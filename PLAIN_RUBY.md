@@ -132,6 +132,8 @@ A Hash or Array of numbers that game code changes is a number for each key, wher
 
 A Hash written out in the game block, `h = { a: 1, b: 2 }`, works the same way when game code changes it at a key: `h[:a] += 3`, `h[:b] = 0`, or `m = (h[:a] += 3)`, which gives `m` the new number as Ruby does. The numbers are named after the local and the key, `h_a` and `h_b`. The game keeps one number for each key, so a key the Hash does not have stops the build, and so does a method that adds, removes or changes many keys in one step (`store`, `merge!`, `delete`, `transform_values!`, `clear` and the others). Change one key at a time instead. A copy of such a Hash, `dup`, `merge`, `select`, `slice` and the others that answer a new Hash holding its numbers, stops the build too: in Ruby the copy keeps its own numbers, and the game's would change with the Hash. So does an Array of its values kept in game code, `v = h.values` or `h.to_a`; read it where it is made instead, as in `h.values.sum`, `h.values.max` or `h.values.each { ... }`.
 
+A Hash that holds only names, written as Symbols, stays a Ruby Hash, even when game code adds a key to it: `screens = { 0 => :title, 1 => :play }`, then `screens[2] = :over if hard`. It is a table that a verb such as `call` reads while the game is built (`call screens, number: state`). Change it with a test that Ruby answers while building, not with a number the game works out.
+
 ```ruby
 # One count for each side, kept by the game
 class Tilt

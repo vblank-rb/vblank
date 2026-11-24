@@ -165,8 +165,20 @@ module VBlank
           end
 
           # Is this name a Hash the game keeps a variable for at each key (LocalNames#game_hash?)?
+          #
+          # Not a Hash that holds names alone, written out and put in as Symbols (`{ 0 => :title }`, then
+          # `screens[2] = :over`): that is a table of routines or settings a verb reads while building
+          # (`call screens, number: state`), and it stays Ruby's own Hash.
           def game_hash?
-            changed_as_collection && @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && LocalNames.keyed_hash?(write.node.value) }
+            changed_as_collection && !names_only? &&
+              @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && LocalNames.keyed_hash?(write.node.value) }
+          end
+
+          # Does every line that gives this name a value write out Symbols alone, and every change put one?
+          def names_only?
+            written = @writes.flat_map { |write| write.node.respond_to?(:value) && write.node.value.is_a?(Prism::HashNode) ? write.node.value.elements : [nil] }
+            written.all? { |slot| slot.is_a?(Prism::AssocNode) && slot.value.is_a?(Prism::SymbolNode) } &&
+              array_puts.all?(Prism::SymbolNode)
           end
         end
 

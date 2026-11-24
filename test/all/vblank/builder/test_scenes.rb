@@ -72,6 +72,16 @@ module ScenesGames
           call screens, number: state
           step += 1
         end
+      when :hash_in_loop
+        # The Hash written in the game loop, a key added by a test Ruby answers while building: names
+        # the game picks a routine by, which stay Ruby's own Hash.
+        over_too = true
+        game_loop do
+          screens = { 0 => :title, 1 => :play }
+          screens[OVER] = :over if over_too
+          call screens, number: state
+          step += 1
+        end
       when :plain_case
         game_loop do
           case state
@@ -237,6 +247,14 @@ class TestScenes < Minitest::Test
     counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
     by_plain_case = game_player.run(three_screens(pick: :plain_case), frames: 12)
     by_hash = game_player.run(three_screens(pick: :hash), frames: 12)
+
+    assert_equal counts.call(by_plain_case), counts.call(by_hash)
+  end
+
+  def test_scenes_picked_from_a_hash_made_in_the_game_loop_play_as_with_a_plain_case
+    counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
+    by_plain_case = game_player.run(three_screens(pick: :plain_case), frames: 12)
+    by_hash = game_player.run(three_screens(pick: :hash_in_loop), frames: 12)
 
     assert_equal counts.call(by_plain_case), counts.call(by_hash)
   end
