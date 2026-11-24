@@ -129,6 +129,16 @@ class TestHeardComparison < Minitest::Test
     assert_equal [[:level, nil]], louder.differences.map { |found| [found.what, found.speaker] }
   end
 
+  # A sound moved to line up with another keeps its length: what moves off one end is gone, and the
+  # other end is silence.
+  def test_a_sound_moved_earlier_or_later_keeps_its_length
+    sound = heard(0, 0, 1000, 500, 0)
+
+    assert_equal [1000, 500, 0, 0, 0], sound.moved(2).loudest_by_frame
+    assert_equal [0, 0, 0, 0, 1000], sound.moved(-2).loudest_by_frame
+    assert_equal [3, 1], [sound.first_heard, sound.moved(2).first_heard]
+  end
+
   def test_neither_heard_is_a_difference_with_no_frame
     found = difference(heard(0, 0), heard(0, 0))
 

@@ -145,6 +145,55 @@ module HeardAlikeTests
     end
   end
 
+  # How many frames late the original's tune starts in the tests of lining up, and how far the game
+  # lets the two be lined up: a few frames of start-up, as two builds that set up differently take.
+  LATE_FRAMES = 3
+  LINED_UP_WITHIN = 4
+
+  # What a test of lining up gives: the same as for a tune a frame late, and the frames each tune
+  # ends on as far apart as that allows on this console.
+  private def lined_up_settings = moved_tune_settings.merge(ending_frames_apart: frame_late_endings_apart,
+                                                            line_up_within_frames: LINED_UP_WITHIN)
+
+  # A tune that starts a few frames late in the original is lined up with ours before it is compared,
+  # and the comparison says how far it was moved.
+  def test_a_tune_a_few_frames_late_is_lined_up_and_says_how_far_it_was_moved
+    as_a_file(tune_game(starts: START + LATE_FRAMES)) do |path|
+      unmoved = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **lined_up_settings.except(:line_up_within_frames))
+      lined_up = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **lined_up_settings)
+
+      assert_equal :first_heard, unmoved.difference.what
+      assert_nil unmoved.moved_frames
+      assert_predicate lined_up, :alike?
+      assert_equal LATE_FRAMES, lined_up.moved_frames
+      assert_equal lined_up.first.first_heard, lined_up.second.first_heard
+    end
+  end
+
+  # Lined up and still unlike: the failure says how far the second was moved.
+  def test_a_failure_after_lining_up_says_how_far_the_second_was_moved
+    message = failure_against(tune_game(starts: START + LATE_FRAMES, loudness: 7), **lined_up_settings)
+
+    assert_match "The second cartridge's sound was moved #{LATE_FRAMES} frames earlier to line up with the first's.", message
+    assert_match "heard at different levels", message
+  end
+
+  # Further apart than the game allows, the two are not lined up that far, and differ.
+  def test_a_tune_later_than_the_game_allows_is_not_lined_up
+    as_a_file(tune_game(starts: START + LINED_UP_WITHIN + 3)) do |path|
+      compared = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **lined_up_settings)
+
+      refute_predicate compared, :alike?
+      assert_operator compared.moved_frames.abs, :<=, LINED_UP_WITHIN
+    end
+  end
+
+  def test_lining_up_that_makes_no_sense_is_refused
+    error = assert_raises(ArgumentError) { VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **STRICT, line_up_within_frames: -2) }
+
+    assert_match "line_up_within_frames", error.message
+  end
+
   def test_a_quieter_tune_fails_naming_each_level
     message = failure_against(tune_game(loudness: 7))
 

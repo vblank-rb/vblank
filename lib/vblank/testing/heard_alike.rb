@@ -34,6 +34,10 @@ module VBlank
     #                              in cents (a semitone is 100), so a wrong note fails naming the voice
     #                              and the frame (optional); each voice is played alone on both to hear
     #                              it, on a console whose emulator plays a voice alone
+    #   line_up_within_frames:     move the second's sound up to this many frames earlier or later, to
+    #                              where it lines up best with the first's, before comparing (optional),
+    #                              for two whose start-up takes a few frames more on one; the failure
+    #                              says how far it was moved
     #   each_speaker: false        compare the speakers mixed alone, for two that place their sound
     #                              differently on purpose (each speaker is compared too unless set)
     #   each_voice: false          after a difference, do not play each voice alone to name the one
@@ -168,7 +172,17 @@ module VBlank
           alone = "On the #{difference.voice} voice alone: " if difference.voice
           "#{alone}#{[measure_words(difference, compared), frame_words(difference)].compact.join(' ')}"
         end
-        (hearing_lines(compared.hearing) + lines + voice_lines(compared.voices)).join("\n")
+        (hearing_lines(compared.hearing) + moved_lines(compared.moved_frames) + lines + voice_lines(compared.voices)).join("\n")
+      end
+
+      # How far the second cartridge's sound was moved to line up with the first's
+      # (`line_up_within_frames:`), first: every frame after is of the second as moved.
+      def self.moved_lines(frames)
+        return [] if frames.nil?
+        return ["The two cartridges' sounds were lined up as they are: neither was moved."] if frames.zero?
+
+        ["The second cartridge's sound was moved #{frames.abs} #{frames.abs == 1 ? 'frame' : 'frames'} " \
+         "#{frames.positive? ? 'earlier' : 'later'} to line up with the first's."]
       end
 
       # The voices the game chose to hear on each side (`hearing:`), first: every measure is of them.
@@ -263,7 +277,7 @@ module VBlank
         "They first differ on frame #{difference.frame}: the loudest sample is #{difference.loudest[0]} on the first " \
           "and #{difference.loudest[1]} on the second."
       end
-      private_class_method :hearing_lines, :voice_list_words, :voice_lines, :measure_words, :level_words, :pitch_words, :times_as_loud_words, :never_heard_words, :frame_words,
+      private_class_method :hearing_lines, :moved_lines, :voice_list_words, :voice_lines, :measure_words, :level_words, :pitch_words, :times_as_loud_words, :never_heard_words, :frame_words,
                            :recording_measure_words, :over_words, :recording_measures_words, :decibel_words
     end
   end

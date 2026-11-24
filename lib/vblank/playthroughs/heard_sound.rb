@@ -38,6 +38,22 @@ module VBlank
       # How many frames were heard: the frames after the start.
       def frames = loudest_by_frame.size
 
+      # The same sound +frames+ earlier, or later where +frames+ is less than nought, as many frames
+      # long: what moves off one end is gone, and the other end is made up with silence.
+      def moved(frames)
+        return self if frames.zero?
+
+        with(loudest_by_frame: HeardSound.moved_list(loudest_by_frame, frames, 0).freeze,
+             pitch_by_frame: pitch_by_frame && HeardSound.moved_list(pitch_by_frame, frames, nil).freeze)
+      end
+
+      # +list+ moved +frames+ toward its start, made up at the other end with +silence+.
+      def self.moved_list(list, frames, silence)
+        return list.drop(frames) + Array.new([frames, list.size].min, silence) if frames.positive?
+
+        Array.new([-frames, list.size].min, silence) + list.first([list.size + frames, 0].max)
+      end
+
       # The pitch on +frame+ in hertz, nil for a frame with none, before the start or past the end.
       def pitch_on(frame)
         return if pitch_by_frame.nil? || frame <= starts_after
