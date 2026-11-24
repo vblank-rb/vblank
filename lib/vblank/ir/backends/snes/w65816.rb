@@ -116,6 +116,15 @@ module VBlank
           # being free to. A block copy steps it, and REP or SEP of the index width cuts it.
           WRITES_Y = %i[ldy tay txy ply iny dey xce plp].freeze
 
+          # What leaves the N and Z flags telling of all 16 bits of A (#flags_of_a?): a load or a sum
+          # into a 16-bit A, and each of the shifts and steps on A itself, set them from the answer;
+          # these others leave the flags and A as they are (fullsnes, "CPU 65XX Microprocessor").
+          # TAX and TAY set N and Z from the index register they write, which is A's 16 bits only
+          # while X and Y are 16 bits wide; with 8-bit index registers they tell of A's low byte.
+          SETS_FLAGS_OF_A = %i[lda ora and_a eor adc sbc txa tya tdc tsc pla].freeze
+          KEEPS_FLAGS = %i[sta stx sty stz pha phx phy phb phd phk clc sec].freeze
+          KEEPS_FLAGS_WHILE_X_WIDE = %i[tax tay].freeze
+
           # What X and A are noted to hold (#x_holds, #accumulator_holds), each nil when it is not known.
           Held = Data.define(:x, :a)
           NOTHING_HELD = Held.new(x: nil, a: nil)
@@ -128,6 +137,13 @@ module VBlank
           # can start a copy into memory).
           WRITTEN_PLACES = %i[dp abs].freeze
           REGISTERS_FROM = 0x2100
+
+          # The ways of naming a place by its whole 24-bit address, and where work RAM the low banks
+          # do not show starts and ends (#store_misses?).
+          FAR_PLACES = %i[long long_x].freeze
+          FAR_WORK_RAM_BANK = 0x7E0000
+          FAR_WORK_RAM_FROM = 0x2000
+          WORK_RAM_END = 0x7FFFFF
 
           # A long branch is the opposite branch and a BRL; a short one, the branch alone. A jump
           # (#jump) is a BRL alone, and its short form a BRA.
@@ -185,6 +201,8 @@ module VBlank
             @y_changes = 0
             @held_at_branches = Hash.new { |states, label| states[label] = [] }
             @joins = {}
+            @flags_of_a = false
+            @last_store = nil
           end
 
           # --- operands ---
@@ -227,6 +245,7 @@ module VBlank
             raise Error, "label #{name} is placed twice" if @labels.key?(name)
 
             @labels[name] = here
+            @flags_of_a = false
             ways_in = @held_at_branches.delete(name) || []
             ways_in << @held unless @held == GONE
             @held = Held.new(x: agreed(ways_in.map(&:x), join), a: agreed(ways_in.map(&:a), join))
@@ -255,6 +274,28 @@ module VBlank
 
           # Notes that A holds the low half of the variable at +address+ (in the first 64K).
           def note_accumulator_holds(address) = (@held = Held.new(x: x_holds, a: address))
+
+          # Whether the N and Z flags tell of A's 16 bits as it is now: the last instruction to touch
+          # them set them from A (SETS_FLAGS_OF_A), and nothing since changed A, the flags or A's
+          # width, nor is a label between, where another way in brings flags of its own. A test of
+          # A's sign then needs no compare: BPL and BMI read the N flag the sum left.
+          def flags_of_a? = @flags_of_a
+
+          # Takes back the store of A to +operand+ when it is the last thing written and no label is
+          # at or past it, for a lowering that finds the number need not be stored there after all: a
+          # variable set and then set again from itself (`d = a - b`, then `d = d.abs`) is stored
+          # once. A then holds what it held; nothing is noted of it, since the place no longer does.
+          # Whether it was taken back.
+          def take_back_store(operand)
+            at, stored = @last_store
+            return false unless stored == operand && @last_store_end == here
+            return false if @labels.values.any? { |offset| offset >= at } || @fixups.any? { |fixup| fixup.offset >= at }
+
+            @bytes = @bytes.byteslice(0, at)
+            @last_store = nil
+            @held = Held.new(x: x_holds, a: nil) unless @held == GONE
+            true
+          end
 
 
           # What the code at the next label finds A, X and Y to be: +a16+ and +xy16+ mark whether
@@ -375,6 +416,7 @@ module VBlank
           # Making X 8 bits wide empties its high byte, and A's width changes what a load of it reads,
           # so the note of what either holds is forgotten.
           def rep(flags)
+            @flags_of_a = false
             emit(0xC2, flags & 0xFF)
             @wide_a = true if flags.anybits?(0x20)
             @wide_x = true if flags.anybits?(0x10)
@@ -382,6 +424,7 @@ module VBlank
           end
 
           def sep(flags)
+            @flags_of_a = false
             emit(0xE2, flags & 0xFF)
             @wide_a = false if flags.anybits?(0x20)
             @wide_x = false if flags.anybits?(0x10)
@@ -408,9 +451,11 @@ module VBlank
 
           def emit_operated(name, operand, opcode)
             forget_held_for(name, operand)
+            note_flags(name, operand)
             operand = Operand.new(:imm, operand, 0) if operand.is_a?(Integer)
             return emit(opcode) if operand == :a
 
+            @last_store = name == :sta ? [here, operand] : nil
             emit(opcode)
             case operand.mode
             when :imm then emit_immediate(name, operand)
@@ -424,6 +469,14 @@ module VBlank
             when :long, :long_x then emit_address(operand, :long, 3)
             else refuse_mode!(name, operand)
             end
+            @last_store_end = here if @last_store
+          end
+
+          # Whether N and Z tell of A after +name+ with +operand+ (#flags_of_a?).
+          def note_flags(name, operand)
+            sets = SETS_FLAGS_OF_A.include?(name) || (operand == :a && CHANGES_A_IN_PLACE.include?(name))
+            keeps = KEEPS_FLAGS.include?(name) || (@wide_x && KEEPS_FLAGS_WHILE_X_WIDE.include?(name))
+            @flags_of_a = sets ? @wide_a : (@flags_of_a && keeps)
           end
 
           def wide_immediate?(name)
@@ -465,6 +518,7 @@ module VBlank
 
           def emit_single(name, opcode)
             forget_held_for(name, :a)
+            note_flags(name, :a)
             emit(opcode)
           end
 
@@ -475,6 +529,7 @@ module VBlank
           end
 
           def emit_block_copy(opcode, to_bank, from_bank)
+            @flags_of_a = false
             @held = NOTHING_HELD
             @y_changes += 1
             emit(opcode, to_bank, from_bank)
@@ -513,11 +568,27 @@ module VBlank
           # Whether a store to +operand+ surely leaves the variable at +noted+ alone: its address is
           # written in the instruction, is memory, and the two bytes stored there do not reach the
           # variable's low half.
+          #
+          # A store into work RAM past its first 8K misses every variable in that first 8K, even one
+          # at X: bank $7E from $2000 on and bank $7F are seen in no other bank, while the first 8K
+          # is the one stretch of work RAM the low banks show (fullsnes, "SNES Memory Map"), and X,
+          # at most $FFFF, cannot carry a slot's address from bank $7E round into it. A list's slots
+          # are there, so `e.y += 256` leaves X at `e`'s slot for the next field of `e`.
           def store_misses?(operand, noted)
-            return false unless operand.is_a?(Operand) && WRITTEN_PLACES.include?(operand.mode) && operand.value.is_a?(Integer)
+            return false unless operand.is_a?(Operand) && operand.value.is_a?(Integer)
+            return far_work_ram?(operand) && noted < FAR_WORK_RAM_FROM if FAR_PLACES.include?(operand.mode)
+            return false unless WRITTEN_PLACES.include?(operand.mode)
 
             address = operand.value + operand.plus
             address < REGISTERS_FROM && !(noted - 1..noted + 1).cover?(address)
+          end
+
+          # Whether every byte a store to +operand+ (long, or long plus X) can reach is in work RAM
+          # past its first 8K.
+          def far_work_ram?(operand)
+            first = operand.value + operand.plus
+            last = first + (operand.mode == :long_x ? 0xFFFF : 0) + 1
+            first >= FAR_WORK_RAM_BANK + FAR_WORK_RAM_FROM && last <= WORK_RAM_END
           end
 
           # A branch to +target+ written, with what X and A hold now as one way in to it. A label

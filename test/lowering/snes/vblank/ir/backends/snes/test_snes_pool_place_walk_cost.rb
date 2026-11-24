@@ -64,17 +64,18 @@ class TestSNESPoolPlaceWalkCost < Minitest::Test
 
   # A retail game's walk of five enemies (its routine stepping each one straight and the collision
   # checks that routine calls) is about a fifteenth of a frame, measured in bsnes by the processor
-  # time spent at each of its routines' addresses. A pair checked costs what that game spends. A
-  # walk's own numbers (the thing it is on, the one after, the last, its count of turns) are kept in
-  # registers and set only where the walk reads them, since no checked run compares them
-  # (RunComparison.uncompared_variables). What is left over is the routine's own work on each thing
-  # outside the walk: the nudge works the place's pixel out three times, and a number kept before
-  # the walk is written in four bytes. The bound holds what the routine costs now.
-  def test_five_walkers_stepping_and_checking_take_under_this_bound
+  # time spent at each of its routines' addresses, and this routine takes no more. A walk's own
+  # numbers (the thing it is on, the one after, the last, its count of turns) are kept in registers
+  # and set only where the walk reads them, since no checked run compares them
+  # (RunComparison.uncompared_variables), and the place of the thing it is on is not stored where
+  # nothing reads it back. A difference made positive is stored once, its sign read from the
+  # subtraction's flags; a pixel kept before the walk is two bytes; and the table step keeps the
+  # thing's slot in X through the table's read.
+  def test_five_walkers_stepping_and_checking_take_a_fifteenth_of_a_frame
     rom = self.class.game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
     spent = rom.profile(out: StringIO.new, settle: 10, frames: 20).game.find { |row| row.routine.to_s.include?("step_straight") }
 
-    assert_operator spent.share, :<, 0.078
+    assert_operator spent.share, :<, 1.0 / 15
   end
 
   # The walkers step, meet and turn as on the interpreter, on every pass.

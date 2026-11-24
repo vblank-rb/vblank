@@ -309,6 +309,7 @@ module VBlank
             @list_slots = {}
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
+            @half_locals = {} # those kept in two bytes (#emit_kept_number) -> true
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_on) -> their table's label
@@ -618,8 +619,9 @@ module VBlank
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
 
-          # Whether the variable +name+ is kept in two bytes (HalfVariables).
-          def half_variable?(name) = @half_variables.include?(name)
+          # Whether the variable +name+ is kept in two bytes (HalfVariables), or the routine's own
+          # number +name+ is (#emit_kept_number).
+          def half_variable?(name) = @half_variables.include?(name) || @half_locals.key?(name)
 
           # A try asked for the whole place of a variable kept in two bytes (#place_of); the next try
           # keeps it whole (SNES#settings_after).
@@ -785,7 +787,12 @@ module VBlank
           # --- statements ---
 
           def statement(node)
-            return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
+            if node.is_a?(RoutineCuts::PartCall)
+              # A part cut off a body too big for a bank is written in a section of its own, which
+              # sets X from a walk's stored place (#scaled_current_read?).
+              note_scaled_current_read
+              return call_routine(node.label)
+            end
             return if @cancelled_steps.include?(node)
 
             emit_statement(node)
@@ -894,7 +901,7 @@ module VBlank
             known = folded(value)
             return store_half_number(name, known) if known
 
-            emit_low_half(value, 16)
+            emit_low_half(value, 16) unless size_of_itself?(name, value) && emit_size_of_stored(name)
             into = low_half_of(name)
             @asm.sta(into)
             # A still holds what was stored, so `d = d.abs` straight after reads it from A.
@@ -1180,8 +1187,28 @@ module VBlank
           end
 
           def emit_abs(node)
+            return emit_set_half(node.var, Build.absolute(Build.var_ref(node.var))) if half_variable?(node.var)
+
             value(Build.absolute(Build.var_ref(node.var)))
             store(node.var)
+          end
+
+          # Whether +value+ is the size of the variable +name+ it is set into, `d = d.abs`.
+          def size_of_itself?(name, value)
+            value.is_a?(Node) && value.kind == :absolute && value.operand.is_a?(Node) && value.operand.kind == :var_ref &&
+              value.operand.name == name
+          end
+
+          # A variable kept in two bytes that the statement before has just stored, `d = a - b` then
+          # `d = d.abs`, made positive in A where that store left it, the store taken back, so the
+          # number is stored once: the store was the last instruction, so nothing read the variable
+          # between the two, and the sum that made the number left its sign in the N flag
+          # (#emit_size_of_a). Whether it was; nothing is written when it was not.
+          def emit_size_of_stored(name)
+            return false unless within_half?(proven_range(Build.var_ref(name))) && @asm.take_back_store(low_half_of(name))
+
+            emit_size_of_a
+            true
           end
 
           # -|v|: turned round only when it is above nought, so the lowest number stays itself.
@@ -1361,6 +1388,7 @@ module VBlank
             if @asm.x_holds == [current.at, current.stride]
               @asm.cpx(partner)
             else
+              note_scaled_current_read
               @asm.lda(at_place(current.scaled))
               @asm.cmp(partner)
             end
@@ -1752,8 +1780,12 @@ module VBlank
               before = @asm.here
               emit_slot_into_x(place, stride, index, checked: checked)
               # X held the slot already, so nothing was written and A still holds the number:
-              # `e.y += 256` stores what it worked out with no load of it back.
-              return @asm.sta(slot_operand(list_slots(node).base, 0, true)) if in_a && width == 2 && @asm.here == before
+              # `e.y += 256` stores what it worked out with no load of it back, nor into R0, which
+              # nothing then reads.
+              if in_a && width == 2 && @asm.here == before
+                @asm.take_back_store(@asm.direct(R0))
+                return @asm.sta(slot_operand(list_slots(node).base, 0, true))
+              end
 
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             else
@@ -1939,24 +1971,58 @@ module VBlank
             emit_slot_scaled(kept_place_of(starts.fetch(walk.ahead, walk.ahead)), ahead, shifts)
             emit_slot_scaled(kept_place_of(starts.fetch(walk.last, walk.last)), last, shifts) if last
             current&.partners&.each { |name, scaled| emit_slot_scaled(place_of(name), scaled, shifts) }
+            turn = WalkTurn.new(walk: walk, at: at, ahead: ahead, last: last, shifts: shifts, current: current, body: body)
             @asm.label(top)
             @asm.ldx(at_place(ahead))
             @asm.branch_long(:bmi, done)
             if current
-              @asm.stx(at_place(current.scaled))
+              @asm.stx(at_place(current.scaled)) if scaled_current_read?(turn)
             else
               @asm.txa
               shifts.times { @asm.lsr }
               @asm.sta(at_place(at))
               @asm.note_accumulator_holds(at)
             end
-            @asm.note_x_holds([at, links.stride])
-            emit_walk_link_read(links, @lists.fetch(walk.links)[2], ahead, last, shifts)
-            with_scaled_current(walk.at, current) { body.each { |child| statement(child) } }
+            emit_walk_turn(turn)
             @asm.inc(at_place(index)) if counted
             @asm.jump(top)
             @asm.label(done)
             emit_walk_index_kept_below(index, folded(node.count)) if counted
+          end
+
+          # One turn of a walk stepped the console's way (#emit_stepped_walk): the walk, where its
+          # variable, the thing ahead and the last are kept, how far a slot is shifted to its place,
+          # the ScaledCurrent or nil, and the body.
+          WalkTurn = Data.define(:walk, :at, :ahead, :last, :shifts, :current, :body)
+
+          # A turn after X is set to the thing's place: the link to the next thing read, then the
+          # body, with X noted as the place.
+          def emit_walk_turn(turn)
+            links = list_slots(turn.walk.links)
+            @asm.note_x_holds([turn.at, links.stride])
+            emit_walk_link_read(links, @lists.fetch(turn.walk.links)[2], turn.ahead, turn.last, turn.shifts)
+            with_scaled_current(turn.walk.at, turn.current) { turn.body.each { |child| statement(child) } }
+          end
+
+          # Whether a turn reads back the place X was stored at (ScaledCurrent#scaled): only where
+          # something in the body changes X and then reaches a slot of the thing, or compares it
+          # once X is gone. Written first on copies of the lowering's state and thrown away, as
+          # #y_kept_through? is. Where nothing does, X is never stored, and a walk checking each
+          # thing against the one it moves saves a store on every turn.
+          def scaled_current_read?(turn)
+            LOWERING_STATE.on_copies(self) do
+              @asm = measuring_assembler
+              @routine = "measuring"
+              @labels = 0
+              @scaled_current_reads = 0
+              emit_walk_turn(turn)
+              @scaled_current_reads.positive?
+            end
+          end
+
+          # Notes that the place a ScaledCurrent was stored at is read (#scaled_current_read?).
+          def note_scaled_current_read
+            @scaled_current_reads += 1 if @scaled_current_reads
           end
 
           # Whether anything outside the walk +repeat+ reads the thing it is on: a handle to a thing
@@ -2253,6 +2319,7 @@ module VBlank
               return if key && @asm.x_holds == key
 
               if key && (current = scaled_current_for(key))
+                note_scaled_current_read
                 @asm.ldx(at_place(current.scaled))
                 return @asm.note_x_holds(key)
               end
@@ -2465,14 +2532,46 @@ module VBlank
           # keeping the left side on the stack takes a PHA, an ADC of the stack and a PLY, and X then
           # holds the slot, so a store of the sum back to it needs no X of its own (fullsnes, "CPU
           # 65XX Microprocessor").
+          #
+          # Where the right side leaves Y alone, X is set to the slot first and kept in Y while the
+          # right side is worked out, TXY and TYX: a field stepped by a table at another field of the
+          # same thing, `e.x + steps[e.dir]`, then reads `e.dir` at the X already set, and X is not
+          # worked out a second time.
           def emit_low_half_with_slot_last(node, depth)
             left = node.lhs
+            place = list_placed(left)[0]
+            stride = list_slots(left).stride
+            if @y_counter.nil? && variable_named(left.index) && index_inside_full_list?(left.name, left.index) &&
+               y_kept_working_out?(node.rhs, depth + 1)
+              emit_slot_of_index_into_x(place, stride, left)
+              if (slot = @asm.x_holds)
+                @asm.txy
+                emit_low_half(node.rhs, 16, depth + 1)
+                @asm.tyx
+                @asm.note_x_holds(slot)
+                emit_carry_for(node.op)
+                return emit_half_sum(node.op, @asm.long_x(list_slots(left).base))
+              end
+            end
+
             emit_low_half(node.rhs, 16, depth + 1)
             @asm.tay
-            emit_slot_of_index_into_x(list_placed(left)[0], list_slots(left).stride, left)
+            emit_slot_of_index_into_x(place, stride, left)
             @asm.tya
             emit_carry_for(node.op)
             emit_half_sum(node.op, @asm.long_x(list_slots(left).base))
+          end
+
+          # Whether working out +node+'s low half, written into an assembler of its own on copies of
+          # the lowering's state as #y_kept_through? writes statements, leaves Y as it was.
+          def y_kept_working_out?(node, depth)
+            LOWERING_STATE.on_copies(self) do
+              measuring = @asm = measuring_assembler
+              @routine = "measuring"
+              @labels = 0
+              emit_low_half(node, 16, depth)
+              @asm.equal?(measuring) && measuring.y_changes.zero?
+            end
           end
 
           # Where +node+'s low half can be read from as it is: a number written in the program, a
@@ -2578,17 +2677,28 @@ module VBlank
           def emit_low_half_of_size(operand, depth)
             return false unless within_half?(proven_range(operand))
 
-            positive = fresh("positive")
-            # The CMP sets the flags, so a variable A holds already need not be loaded again
+            # The sign is read from the flags, so a variable A holds already need not be loaded again
             # (#emit_low_half_load).
             place = low_half_operand(operand, 16)
             variable_operand?(place) ? emit_low_half_load(place) : emit_low_half(operand, 16, depth + 1)
-            @asm.cmp(0x8000) # the carry is set when the number is below nought
-            @asm.bcc(positive)
+            emit_size_of_a
+            true
+          end
+
+          # A = the size of A's 16-bit number. Where the sum or load that made A left its sign in the
+          # N flag (W65816#flags_of_a?), BPL reads it there; otherwise CMP $8000 sets the carry for a
+          # number below nought, three bytes and three cycles more on every number made positive.
+          def emit_size_of_a
+            positive = fresh("positive")
+            if @asm.flags_of_a?
+              @asm.bpl(positive)
+            else
+              @asm.cmp(0x8000)
+              @asm.bcc(positive)
+            end
             emit_negate_a
             # Reached only from the branch above, so what X held before still holds here.
             @asm.label(positive, join: true)
-            true
           end
 
           def emit_low_half_shifted_up(operand, count, bits, depth)
@@ -4396,12 +4506,21 @@ module VBlank
           # once before the loop.
           #
           # A shift proven never below nought and inside 16 bits is worked out in its low half alone
-          # (#emit_low_half), its high half nought.
+          # (#emit_low_half), its high half nought. Every read of it in the loop is its low half, a
+          # sum or a compare at 16 bits, so it is kept in those two bytes alone, as a variable proven
+          # to fit them is (#half_variable?); a try that reads it whole hands it over
+          # (#place_of), and the next try keeps the high half too.
           def emit_kept_number(read)
             number = keep_local(:kept_read, every_turn: true)
             range = shifted_read(read) && proven_range(read)
             if range && range.begin >= 0 && within_half?(range)
               emit_low_half(read, 16)
+              unless @cache.facts.handed_over.include?(number)
+                @half_locals[number] = true
+                @asm.sta(low_half_of(number))
+                return number
+              end
+
               at = place_of(number)
               @asm.sta(at_place(at))
               if at + 2 <= 0xFFFF

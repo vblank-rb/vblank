@@ -206,7 +206,8 @@ class TestSNESW65816 < Minitest::Test
     asm.note_x_holds(noted)
     asm.sta(asm.abs(0x0704))
     asm.lda(asm.long_x(0x7E2000))
-    assert_equal noted, asm.x_holds, "a store elsewhere, and a read at X, leave it"
+    asm.sta(asm.long_x(0x7E2000))
+    assert_equal noted, asm.x_holds, "a store elsewhere, a read at X and a store at X past work RAM's first 8K leave it"
 
     asm.beq("past")
     asm.lda(1)
@@ -220,7 +221,8 @@ class TestSNESW65816 < Minitest::Test
 
     # Moving the direct page moves what a direct page address means, the noted variable's among them.
     [-> { asm.tcd }, -> { asm.pld }, -> { asm.sta(asm.abs(0x0701)) }, -> { asm.tax }, -> { asm.jsl(asm.long("routine")) },
-     -> { asm.sta(asm.long_x(0x7E2000)) }, -> { asm.sta(asm.abs(0x2118)) }, -> { asm.label("anywhere") }].each do |change|
+     -> { asm.sta(asm.long_x(0x7E0000)) }, -> { asm.sta(asm.long_x(0x7F8000)) }, -> { asm.sta(asm.long(0x000700)) },
+     -> { asm.sta(asm.abs(0x2118)) }, -> { asm.label("anywhere") }].each do |change|
       asm.note_x_holds(noted)
       change.call
       assert_nil asm.x_holds
@@ -243,6 +245,74 @@ class TestSNESW65816 < Minitest::Test
       change.call
       assert_nil asm.accumulator_holds
     end
+  end
+
+  # The N and Z flags tell of A after a load or a sum into a 16-bit A, through what leaves both
+  # alone, and no longer after a compare, a load of X, a swap of A's bytes, a change of width or a
+  # label.
+  def test_flags_of_a_are_known_until_something_else_sets_them
+    asm = W65816.new("test")
+    asm.sec
+    asm.sbc(asm.direct(0x10))
+    asm.sta(asm.direct(0x20))
+    asm.tax
+    asm.clc
+    assert asm.flags_of_a?, "a subtraction, then a store, a TAX and a CLC"
+
+    [-> { asm.cmp(0x8000) }, -> { asm.ldx(0) }, -> { asm.xba }, -> { asm.inc(asm.direct(0x10)) }, -> { asm.rep(0x20) },
+     -> { asm.label("anywhere") }].each do |change|
+      asm.lda(asm.direct(0x10))
+      change.call
+      refute asm.flags_of_a?
+    end
+    asm.sep(0x20)
+    asm.lda(asm.direct(0x10))
+    refute asm.flags_of_a?, "a load into an 8-bit A tells of its low byte alone"
+  end
+
+  # TAX and TAY set the flags from the index register they write: A's 16 bits while X and Y are
+  # 16 bits wide, A's low byte alone while they are 8.
+  def test_tax_and_tay_keep_flags_of_a_only_while_x_is_wide
+    asm = W65816.new("test")
+    asm.sep(0x10)
+    %i[tax tay].each do |transfer|
+      asm.lda(asm.direct(0x10))
+      transfer == :tax ? asm.tax : asm.tay
+      refute asm.flags_of_a?, "#{transfer} into an 8-bit index register"
+    end
+    asm.rep(0x10)
+    %i[tax tay].each do |transfer|
+      asm.lda(asm.direct(0x10))
+      transfer == :tax ? asm.tax : asm.tay
+      assert asm.flags_of_a?, "#{transfer} into a 16-bit index register"
+    end
+  end
+
+  # A store just written is taken back, and the section is as if it never was; a store with
+  # anything after it, or a label at it, stays.
+  def test_a_store_just_written_is_taken_back
+    asm = W65816.new("test")
+    asm.lda(asm.direct(0x10))
+    before = asm.bytes.dup
+    asm.sta(asm.direct(0x20))
+    refute asm.take_back_store(asm.direct(0x22)), "a store elsewhere"
+    assert asm.take_back_store(asm.direct(0x20))
+    assert_equal before, asm.bytes
+
+    asm.sta(asm.direct(0x20))
+    asm.clc
+    refute asm.take_back_store(asm.direct(0x20)), "something written after it"
+
+    asm.label("before")
+    asm.clc
+    asm.sta(asm.direct(0x20))
+    assert asm.take_back_store(asm.direct(0x20)), "a label before it"
+    asm.label("at")
+    asm.sta(asm.direct(0x20))
+    refute asm.take_back_store(asm.direct(0x20)), "a label at it"
+    asm.sta(asm.direct(0x20))
+    asm.label("after")
+    refute asm.take_back_store(asm.direct(0x20)), "a label after it"
   end
 
   # A number kept in Y over a run of code is still there when nothing in the run can change Y: a
