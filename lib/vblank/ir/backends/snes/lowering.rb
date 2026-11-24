@@ -1797,10 +1797,17 @@ module VBlank
           # sign into the high half takes a test and a branch.
           def fixed_half_slot_halves(node)
             return nil unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
-            return nil unless list_placed(node)[2] == 2 && (unsigned_list?(node.name) || proven_range(node)&.begin.to_i >= 0)
+            return nil unless list_placed(node)[2] == 2 && (unsigned_list?(node.name) || proven_not_negative?(node))
 
             slot = fixed_slot_address(node)
             slot ? [slot_at(slot), @asm.imm(0)] : nil
+          end
+
+          # Whether +node+ is proven never below nought: false where nothing is known of it, or
+          # nothing of its lowest.
+          def proven_not_negative?(node)
+            range = proven_range(node)
+            !range.nil? && !range.begin.nil? && range.begin >= 0
           end
 
           # The operand naming a slot: +slots+ plus X, or +slots+ itself when +x+ is false.
