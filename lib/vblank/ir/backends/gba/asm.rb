@@ -622,6 +622,12 @@ module VBlank
             [0xE8800000 | (rn << 16) | mask].pack("V")
           end
 
+          # LDMIA rn!, {regs} and STMIA rn!, {regs} — the same, with rn moved on past the words, so a
+          # loop walking memory a block at a time needs no add of its own.
+          WRITEBACK = 0x0020_0000
+          def ldmia_writeback(rn, *regs) = [ldmia(rn, *regs).unpack1("V") | WRITEBACK].pack("V")
+          def stmia_writeback(rn, *regs) = [stmia(rn, *regs).unpack1("V") | WRITEBACK].pack("V")
+
           # --- MOV register to register ---
 
           # MOV rd, rm

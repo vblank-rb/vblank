@@ -88,11 +88,12 @@ class TestSaveJobsSnapshotCost < Minitest::Test
   end
 
   # The copy engine writes whole words or half-words only, so a list that starts on an odd byte of the
-  # record is written by the processor, a byte, a half-word and a byte for each word read: about six
-  # times the engine's cost and under half of the 15,000 cycles of a byte at a time.
-  UNALIGNED_LIST_CYCLES = 7_000
+  # record is written by the processor, each word written joined from two read
+  # (Lists#emit_copy_to_odd_address), four at a time: about three times the engine's cost, where a
+  # byte at a time took 15,000 cycles.
+  UNALIGNED_LIST_CYCLES = 3_500
 
-  def test_a_list_after_an_odd_number_of_bytes_costs_under_half_of_a_byte_at_a_time
+  def test_a_list_after_an_odd_number_of_bytes_costs_about_three_plain_ones
     full, = save_frame_cycles(saving_game(full: true, odd_before: 3))
     empty, = save_frame_cycles(saving_game(full: false, odd_before: 3))
 

@@ -189,7 +189,7 @@ module VBlank
             e = @emitter
             head = head_var(node.name)
             done = e.gensym
-            sp = 13 # the stack pointer
+            stack = 13 # the stack pointer
             @primitives.load_var(3, head)
             e.emit(ASM.rsb_imm(3, 3, from[:mask] + 1))                       # slots from the head to the block's end
             e.emit(ASM.lsl_imm(3, 3, shift)) if shift.positive?
@@ -201,18 +201,18 @@ module VBlank
             @primitives.emit_list_base(from[:base])
             e.emit(ASM.add_reg(ACC, LIST_ADDR, TMP))                         # r0 = the head's slot
             @primitives.emit_list_base(into[:base])
-            e.emit(ASM.ldr_offset(TMP, sp, 0))
+            e.emit(ASM.ldr_offset(TMP, stack, 0))
             e.emit(ASM.add_reg(TMP, LIST_ADDR, TMP))                         # r1 = where the run goes
-            e.emit(ASM.ldr_offset(2, sp, 8))                                 # r2 = the first run's bytes
+            e.emit(ASM.ldr_offset(2, stack, 8))                                 # r2 = the first run's bytes
             @placement.emit_call_cold_routine(COPY_ROUTINE)
-            e.emit(ASM.ldr_offset(2, sp, 4))
-            e.emit(ASM.ldr_offset(3, sp, 8))
+            e.emit(ASM.ldr_offset(2, stack, 4))
+            e.emit(ASM.ldr_offset(3, stack, 8))
             e.emit(ASM.subs_reg(2, 2, 3))                                    # r2 = the bytes left
             e.emit_branch(:bcond, done, cond: :eq)
             @primitives.emit_list_base(from[:base])
             e.emit(ASM.mov_reg(ACC, LIST_ADDR))                              # r0 = the block's first slot
             @primitives.emit_list_base(into[:base])
-            e.emit(ASM.ldr_offset(TMP, sp, 0))
+            e.emit(ASM.ldr_offset(TMP, stack, 0))
             e.emit(ASM.add_reg(TMP, TMP, 3))                                 # where + the first run's bytes
             e.emit(ASM.add_reg(TMP, LIST_ADDR, TMP))                         # r1 = where the rest goes
             @placement.emit_call_cold_routine(COPY_ROUTINE)
@@ -381,26 +381,12 @@ module VBlank
             e.emit(ASM.return)
             e.place_label(bytes)
             # A run that comes from a whole word and is a whole number of words can only have got here
-            # by going to an odd address. Read a word and write it as a byte, a half-word and a byte:
-            # the half-word lands on an even address whichever odd one the run starts at, and the
-            # three writes cost one read where four byte writes cost four. The write is to memory
-            # that takes a byte or a half-word on its own, as every list's is.
+            # by going to an odd address (#emit_copy_to_odd_address).
             alone = e.gensym
-            word_out = e.gensym
             e.emit(ASM.orr_reg(3, ACC, 2))
             e.emit(ASM.tst_imm(3, 3))
             e.emit_branch(:bcond, alone, cond: :ne)
-            e.place_label(word_out)
-            e.emit(ASM.ldr_offset(3, ACC, 0))
-            e.emit(ASM.add_imm(ACC, ACC, 4))
-            e.emit(ASM.strb_post(3, TMP, 1))
-            e.emit(ASM.lsr_imm(3, 3, 8))
-            e.emit(ASM.store_halfword_post(3, TMP, 2))
-            e.emit(ASM.lsr_imm(3, 3, 16))
-            e.emit(ASM.strb_post(3, TMP, 1))
-            e.emit(ASM.subs_imm(2, 2, 4))
-            e.emit_branch(:bcond, word_out, cond: :ne)
-            e.emit(ASM.return)
+            emit_copy_to_odd_address
             e.place_label(alone)
             alone_loop = e.gensym
             e.place_label(alone_loop)
@@ -413,6 +399,81 @@ module VBlank
             # Where it ends, so a profile can say how much of a frame went into copying (see
             # GBA#lowered_routine_addresses).
             e.place_label(DerivedNames.routine_end(COPY_ROUTINE))
+          end
+
+          # The copy routine's run of whole words from r0 to the odd address r1, r2 bytes of them,
+          # which the copy engine cannot write: it writes whole words and half-words only, each at
+          # an address of its own size (GBATEK, "DMA Transfers").
+          #
+          # The processor can, and the trick is to write whole words too, each made of the end of
+          # one word read and the start of the next. The first word read gives the bytes up to the
+          # next whole-word address, a byte and a half-word or a byte alone, and what is left of it
+          # waits in r3. Then each word read is shifted up and joined to what waits, written as one
+          # word, and its own top left waiting; four at a time with one block read and one block
+          # write, then one at a time. What waits at the end is the run's last bytes. How far each
+          # word is shifted is how far the address is from a whole word, 1 or 3, so the routine has
+          # the loop twice, one for each.
+          def emit_copy_to_odd_address
+            e = @emitter
+            three_short = e.gensym
+            e.emit(ASM.push(4, 5, 6, 7))
+            e.emit(ASM.ldr_offset(3, ACC, 0))
+            e.emit(ASM.add_imm(ACC, ACC, 4))
+            e.emit(ASM.sub_imm(2, 2, 4))                                     # r2 = the bytes after the first word
+            e.emit(ASM.strb_post(3, TMP, 1))
+            e.emit(ASM.lsr_imm(3, 3, 8))
+            e.emit(ASM.tst_imm(TMP, 2))
+            e.emit_branch(:bcond, three_short, cond: :eq)                    # one byte made the address whole
+            e.emit(ASM.store_halfword_post(3, TMP, 2))
+            e.emit(ASM.lsr_imm(3, 3, 16))                                    # r3 = one byte waiting
+            emit_joined_words(8)
+            e.place_label(three_short)                                       # r3 = three bytes waiting
+            emit_joined_words(24)
+          end
+
+          # The rest of #emit_copy_to_odd_address once r1 is a whole-word address and r3 holds the
+          # bytes waiting, each word read shifted up +up+ bits and joined to them.
+          def emit_joined_words(up)
+            e = @emitter
+            blocks = e.gensym
+            singles = e.gensym
+            single = e.gensym
+            last = e.gensym
+            down = 32 - up
+            e.place_label(blocks)
+            e.emit(ASM.subs_imm(2, 2, 16))
+            e.emit_branch(:bcond, singles, cond: :lt)                        # fewer than four words left
+            e.emit(ASM.ldmia_writeback(ACC, 4, 5, 6, 7))
+            e.emit(ASM.orr_reg_lsl(3, 3, 4, up))
+            [4, 5, 6].each do |reg|
+              e.emit(ASM.lsr_imm(reg, reg, down))
+              e.emit(ASM.orr_reg_lsl(reg, reg, reg + 1, up))
+            end
+            e.emit(ASM.stmia_writeback(TMP, 3, 4, 5, 6))
+            e.emit(ASM.lsr_imm(3, 7, down))
+            e.emit_branch(:b, blocks)
+            e.place_label(singles)
+            e.emit(ASM.add_imm(2, 2, 16))
+            e.place_label(single)
+            e.emit(ASM.cmp_imm(2, 0))
+            e.emit_branch(:bcond, last, cond: :eq)
+            e.emit(ASM.ldr_offset(4, ACC, 0))
+            e.emit(ASM.add_imm(ACC, ACC, 4))
+            e.emit(ASM.orr_reg_lsl(3, 3, 4, up))
+            e.emit(ASM.str_post(3, TMP, 4))
+            e.emit(ASM.lsr_imm(3, 4, down))
+            e.emit(ASM.sub_imm(2, 2, 4))
+            e.emit_branch(:b, single)
+            e.place_label(last)
+            if up == 8
+              e.emit(ASM.strb_post(3, TMP, 1))
+            else
+              e.emit(ASM.store_halfword_post(3, TMP, 2))
+              e.emit(ASM.lsr_imm(3, 3, 16))
+              e.emit(ASM.strb_post(3, TMP, 1))
+            end
+            e.emit(ASM.pop(4, 5, 6, 7))
+            e.emit(ASM.return)
           end
 
           # The value in r3 repeated across a whole word in r0, so a word written anywhere in the
