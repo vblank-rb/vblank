@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "etc"
 require "json"
 require "open3"
 require "tmpdir"
@@ -14,6 +15,7 @@ require_relative "../lib/vblank/root"
 #   rake emitted              the working tree against head, every example
 #   rake emitted REF=HEAD~3   against some other point in history
 #   rake emitted ONLY=pong    one example (or a few: ONLY=pong,snake)
+#   EMITTED_JOBS=4 rake ...   how many examples build at once (one fewer than the processors)
 #
 # It compares two versions of the library, so it only means anything while working
 # on VBlank itself — hence a contributor's rake task and not part of the
@@ -57,6 +59,10 @@ module Emitted
   # which a worker Ractor may not touch.
   RUBY = RbConfig.ruby.freeze
   EXAMPLES = Ractor.make_shareable(File.join(ROOT, "examples"))
+
+  # How many examples are built at once: EMITTED_JOBS, or one fewer than the machine's processors,
+  # so the machine keeps one for everything else. Read once, when this file loads.
+  JOBS = [Integer(ENV.fetch("EMITTED_JOBS", (Etc.nprocessors - 1).to_s)), 1].max
 
   # Every ARM instruction the backend emits is four bytes, so code is reported in
   # instructions — the unit a lowering change is thought about in.
@@ -190,9 +196,28 @@ module Emitted
     Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bps1\b/) }
   end
 
-  # Build every example against the library at +lib_root+, one process each.
+  # Build every example against the library at +lib_root+, one process each, JOBS at once.
   def measure(lib_root, paths, detail: false)
-    paths.to_h { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }
+    in_parallel(paths) { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }.to_h
+  end
+
+  # Each of +items+ handed to the block on up to JOBS threads at once, the answers in the items'
+  # order. Each build is a process of its own, so a thread only waits on its child.
+  def in_parallel(items)
+    queue = Queue.new
+    items.each_with_index { |item, at| queue << [item, at] }
+    queue.close
+    answers = Array.new(items.size)
+    workers = Array.new([JOBS, items.size].min) do
+      Thread.new do
+        while (job = queue.pop)
+          item, at = job
+          answers[at] = yield(item)
+        end
+      end
+    end
+    workers.each(&:join)
+    answers
   end
 
   # Each example's Color cartridge, named apart from its Advance one: +code+ the part always in
@@ -211,11 +236,11 @@ module Emitted
 
   # Each of +paths+ built by +probe+, one process each, named with +mark+ after the example.
   def measure_cartridges(lib_root, paths, probe, mark)
-    paths.to_h do |path|
+    in_parallel(paths) do |path|
       name = "#{File.basename(path, '.rb')}#{mark}"
       stdout, stderr, status = Open3.capture3(RUBY, probe, lib_root, ROOT, path, chdir: ROOT)
       [name, measurement(name, stdout, stderr, status)]
-    end
+    end.to_h
   end
 
   def probe(lib_root, path, detail: false)
