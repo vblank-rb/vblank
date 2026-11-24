@@ -63,10 +63,6 @@ module VBlank
           # over once it is made.
           attr_writer :scene_entry
 
-          # Call a routine that always stays in the cartridge, from wherever this code is kept
-          # (see Placement#emit_call_cold_routine).
-          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
-
           # A line that changes a background by name, for a name declared in several scenes: each
           # scene's declaration sits in a place of its own (see ScreenLayout#declared_background),
           # and the line is reached from the gap between frames, which every scene passes through.
@@ -422,7 +418,7 @@ module VBlank
 
           # Read the display's settings into ACC, let the block change them, write them back. Where
           # the screen's interrupt can switch held layers on, with it off between the read and the
-          # write (#with_interrupts_held_off). Uses ACC and TMP.
+          # write (Primitives#with_interrupts_held_off). Uses ACC and TMP.
           def emit_display_control_changed
             write = lambda do
               @emitter.emit_number(TMP, REG_DISPCNT)
@@ -430,7 +426,7 @@ module VBlank
               yield
               @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
-            holds_layers? ? with_interrupts_held_off(&write) : write.call
+            holds_layers? ? @primitives.with_interrupts_held_off(&write) : write.call
           end
 
           # A block of cells (Nodes::SetTileBlock) is its cells written one by one, as its children
@@ -676,7 +672,7 @@ module VBlank
             @emitter.emit_branch(:bcond, same, cond: :eq)
             # The routine is handed the map's number and its set, in the registers that hold
             # them here already.
-            emit_call_cold_routine(set_swap_routine_label(node.name, bg))
+            @placement.emit_call_cold_routine(set_swap_routine_label(node.name, bg))
             @emitter.emit_branch(:b, done)
             @emitter.place_label(same)
           end
@@ -866,7 +862,7 @@ module VBlank
               return @emitter.emit(ASM.store_halfword(reg, TMP))
             end
 
-            with_interrupts_held_off do
+            @primitives.with_interrupts_held_off do
               write = @emitter.gensym
               unless held
                 held_label = @emitter.gensym
@@ -923,15 +919,14 @@ module VBlank
           # landing between the two writes would OR the held layers into the settings about to
           # be replaced and clear the hold, and the write after would switch the layers off with
           # nothing left to bring them back.
-          def with_interrupts_held_off(&) = @primitives.with_interrupts_held_off(&)
 
           # Write +reg+, the display's settings written whole on every pass, to the display; where
           # a hold lasts, with the layers (backgrounds and sprites) taken out and held instead, so
           # the write does not switch them on part way down the picture they are held for, and the
           # interrupt switches on the ones this pass wants. The hold and the write are one pair
-          # (#with_interrupts_held_off). Uses TMP.
+          # (Primitives#with_interrupts_held_off). Uses TMP.
           def emit_display_control_keeping_held_off(reg)
-            with_interrupts_held_off do
+            @primitives.with_interrupts_held_off do
               none = @emitter.gensym
               @primitives.load_var(TMP, LAYERS_HELD)
               @emitter.emit(ASM.cmp_imm(TMP, 0))
@@ -1023,7 +1018,7 @@ module VBlank
               @primitives.load_var(ACC, bg.colors.at)
               @emitter.emit(ASM.cmp_imm(ACC, 0)) # told nothing: the area's own colours are right
               @emitter.emit_branch(:bcond, sent, cond: :eq)
-              emit_call_cold_routine(walking_colors_routine_label(name, bg))
+              @placement.emit_call_cold_routine(walking_colors_routine_label(name, bg))
             end
             @emitter.emit_branch(:b, sent)
             @emitter.place_label(walk)
@@ -1398,7 +1393,7 @@ module VBlank
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
             @primitives.store_var(ACC, lists.at)
             if lists.area_bytes
-              emit_call_cold_routine(walking_colors_routine_label(node.name, bg))
+              @placement.emit_call_cold_routine(walking_colors_routine_label(node.name, bg))
             else
               emit_groups_send(lists, lists.banks)
             end

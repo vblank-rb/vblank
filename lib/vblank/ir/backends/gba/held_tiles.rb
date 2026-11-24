@@ -165,13 +165,13 @@ module VBlank
             @held_drop_used = true
             @emitter.emit_number(HELD_DROP_FROM, start << HELD_PLACE_SHIFT)
             @emitter.emit_number(HELD_DROP_SPAN, (finish - start) << HELD_PLACE_SHIFT)
-            emit_call_cold_routine(HELD_DROP_ROUTINE)
+            @placement.emit_call_cold_routine(HELD_DROP_ROUTINE)
           end
 
           # Reference#exec_show_held_tiles.
           def emit_show_held_tiles(_node)
             @held_routine_used = true
-            emit_call_cold_routine(HELD_ROUTINE)
+            @placement.emit_call_cold_routine(HELD_ROUTINE)
           end
 
           # A held change to a cell settled while the program was written: its word is a number.
@@ -203,7 +203,7 @@ module VBlank
             @emitter.emit(ASM.cmp_imm(HELD_LEFT, Nodes::ShowHeldTiles::MOST_CELLS))
             @emitter.emit_branch(:bcond, room, cond: :lo)
             @emitter.emit(ASM.mov_reg(HELD_KEPT, ACC))
-            emit_call_cold_routine(HELD_ROUTINE)
+            @placement.emit_call_cold_routine(HELD_ROUTINE)
             @emitter.emit(ASM.mov_reg(ACC, HELD_KEPT))
             @emitter.emit_number(HELD_LEFT, 0)
             @emitter.place_label(room)
