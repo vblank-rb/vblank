@@ -267,15 +267,27 @@ module VBlank
 
             logged = read32(runtime_place(Runtime::Sound::LOGGED))
             read_sound_entries(logged)
-            @spu_reads << [logged, @core.spu_registers] unless strikes_waiting?
+            @spu_reads << [logged, spu_registers_after_strikes]
             logged
           end
 
-          # Whether keys the log already counts are still on Runtime::Strikes' list, to be struck later in
-          # the frame: the chip's registers are read once they are struck.
-          def strikes_waiting?
+          # The chip's registers as they will be once Runtime::Strikes has struck what its list holds, in a
+          # game whose sound effects are struck inside the frame: writes the log already counts can still be
+          # waiting there for their line, so each listed write is laid over the registers read now, oldest
+          # first. A listed key on or off changes no register the log holds.
+          def spu_registers_after_strikes
+            registers = @core.spu_registers
             strikes = Runtime::Strikes
-            @places.runtime.key?(strikes::LIST) && read32(runtime_place(strikes::HEAD)) != read32(runtime_place(strikes::TAIL))
+            return registers unless @places.runtime.key?(strikes::LIST)
+
+            at = read32(runtime_place(strikes::HEAD))
+            tail = read32(runtime_place(strikes::TAIL))
+            until at == tail
+              word = read32(runtime_place(strikes::LIST) + at)
+              registers[(word >> 16) & 0x7FFF] = word & 0xFFFF if word.anybits?(strikes::WRITE)
+              at = (at + strikes::ENTRY_BYTES) & strikes::LIST_MASK
+            end
+            registers
           end
 
           def sound? = @places.runtime.key?(Runtime::Sound::LOGGED)

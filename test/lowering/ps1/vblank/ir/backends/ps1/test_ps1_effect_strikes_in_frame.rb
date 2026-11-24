@@ -28,20 +28,37 @@ class TestPS1EffectStrikesInFrame < Minitest::Test
   SLOW_WORK = 300_000
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second.
-  # With +work+ each pass of the game counts that high first.
-  private def game(rate:, apart:, lasting:, notes: 5, work: 0)
+  # With +work+ each pass of the game counts that high first. The effect plays on pass +played_on+.
+  private def game(rate:, apart:, lasting:, notes: 5, work: 0, played_on: PLAYED_ON)
+    VBlank.build("STRIKES", console: :ps1, out: nil, err: nil,
+                 &game_code(rate: rate, apart: apart, lasting: lasting, notes: notes, work: work, played_on: played_on))
+  end
+
+  # ...as a program, for a checked run.
+  private def game_program(**)
+    builder = Builder.new
+    builder.instance_eval(&game_code(**))
+    builder.finalize_program
+    builder.program.copy.tap { |program| program.console = :ps1 }
+  end
+
+  private def game_code(rate:, apart:, lasting:, notes: 5, work: 0, played_on: PLAYED_ON, work_on: nil)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: :E5, length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
-    VBlank.build("STRIKES", console: :ps1, out: nil, err: nil) do
+    proc do
       enable_sound
       sfx = sound_effects :sfx, { chime: effect }
       pass = var :pass, 0
       busy = var :busy, 0
       game_loop do
         pass += 1
-        sfx.play :chime if pass == PLAYED_ON
-        repeat(work) { busy += 1 } if work.positive?
+        sfx.play :chime if pass == played_on
+        if work_on
+          repeat(work) { busy += 1 } if pass == work_on
+        elsif work.positive?
+          repeat(work) { busy += 1 }
+        end
       end
     end
   end
@@ -139,5 +156,18 @@ class TestPS1EffectStrikesInFrame < Minitest::Test
 
     assert_operator apart, :>=, struck, "the note before changed loudness before the strike: #{fading[(struck - 4)..(struck + 4)].inspect}"
     assert_operator fading[struck + 1], :<, plain[struck + 1], "the struck note at its stepped loudness"
+  end
+
+  # The checked run holds the sound chip to the interpreter's log at every pass, those whose notes are
+  # still listed to be struck among them: it reads the chip as those writes leave it. One pass of the
+  # game takes several frames as the effect plays, and the passes after it end while the notes of the
+  # frames it took are still listed.
+  def test_the_checked_run_reads_the_chip_at_every_pass_while_notes_wait_to_be_struck
+    frames = PLAYED_ON + 30
+    slow_once = { rate: 50, apart: 3, lasting: 1, work: SLOW_WORK, work_on: PLAYED_ON + 1 }
+    run = VBlank::IR::Backends::PS1::CheckedRun.new.run(game_program(**slow_once), frames: frames)
+    quiet = VBlank::IR::Backends::PS1::CheckedRun.new.run(game_program(**slow_once, played_on: frames * 2), frames: frames)
+
+    assert_equal quiet.spu_reads.size, run.spu_reads.size
   end
 end
