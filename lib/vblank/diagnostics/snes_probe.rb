@@ -20,6 +20,7 @@ module VBlank
         @core.plug_in_multitap if multitap
         @battery = Cartridge::SNESROM.battery?(File.binread(path))
         @last_audio = []
+        @voices_chosen = false
       end
 
       # The bytes of the .srm file as it would be written now, or nil for a cartridge with no
@@ -98,6 +99,7 @@ module VBlank
         end
 
         before = @core.silent_voices
+        @voices_chosen = true
         silent = only ? channels - named : named
         @core.silence_voices(silent.map { |voice| channels.index(voice) })
         return self unless block_given?
@@ -117,7 +119,16 @@ module VBlank
       # The console's whole state, written to the file +path+ in bsnes's own format, and put back
       # from one (Verifier#save_state, #load_state).
       def save_state(path) = File.binwrite(path, @core.serialize)
-      def load_state(path) = @core.unserialize(File.binread(path))
+
+      # bsnes clears the byte that silences voices as it loads a state, so the voices this reader
+      # was told to hear (#hearing) are chosen again after: which voices are heard is the reader's
+      # choice, never the state's. A reader never told hears every voice and asks nothing of the
+      # core, which an older core cannot answer.
+      def load_state(path)
+        silent = @core.silent_voices if @voices_chosen
+        @core.unserialize(File.binread(path))
+        @core.silence_voices(silent) if silent
+      end
 
       def palette = @core.cgram.unpack("v*")
 

@@ -97,6 +97,27 @@ class TestHeardVoicesOnTheSuperNintendo < Minitest::Test
     end
   end
 
+  # bsnes clears which voices are silenced as it loads a state, and the reader chooses them again:
+  # a voice chosen before a state is put back is still the only one heard after it.
+  def test_the_voices_chosen_are_kept_across_a_state_loaded
+    as_files(game) do |path|
+      Dir.mktmpdir("states") do |folder|
+        state = File.join(folder, "beep.state")
+        cartridge = VBlank::Diagnostics::CartridgeFile.new(path)
+        played = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
+        played.step(BEEP_STARTS + 4).save_state(state)
+        loaded = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
+        loaded.hearing(only: [:voice5]).load_state(state).step(4)
+
+        assert_operator played.step(4).loudest_by_frame.last, :>, STRICT.fetch(:heard_above), "the tune and the beep sound"
+        assert_operator loaded.loudest_by_frame.last, :<=, STRICT.fetch(:heard_above), "and a voice nothing plays is all that is heard"
+      ensure
+        played&.close
+        loaded&.close
+      end
+    end
+  end
+
   def test_two_files_of_one_game_are_heard_alike
     as_files(game, game) { |ours, theirs| assert_heard_alike ours, theirs, listen, **STRICT }
   end
