@@ -218,7 +218,7 @@ module VBlank
                                "{ \"ours\" => \"game.gba\" }`, or in the film with `side \"ours\", \"game.gba\"`."
         end
         refuse_bad_shell_start!
-        refuse_start_off_the_tape!
+        refuse_start_past_tape_end!
 
         plan = Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, starting_after: @starting_after,
                         snapshots: @snapshots, states: @states, scale: @scale, console: @console, lowering: @lowering,
@@ -259,7 +259,7 @@ module VBlank
 
       # A start the tape cannot give (a frame past its end, a moment it does not name), or a tape no
       # film can play, refused as the film file is read, before any side opens.
-      def refuse_start_off_the_tape!
+      def refuse_start_past_tape_end!
         return unless @tape && @starting_after
 
         tape = @tape.is_a?(Playthroughs::Tape) ? @tape : Playthroughs::Tape.read(@tape.to_s)
