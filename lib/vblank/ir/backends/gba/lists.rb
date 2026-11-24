@@ -494,7 +494,7 @@ module VBlank
             base, in_roomy = if area
                                area
                              else
-                               at ? [at, false] : place_list(name, want, roomy ? false : fast)
+                               at ? [at, false] : place_list(name, want, roomy ? false : fast, ring: ring)
                              end
             fast = true if at # a pool's area moves as its block does (#reserve_pool_areas)
             # Placed before its counters are named, since where they go follows where it went.
@@ -547,14 +547,48 @@ module VBlank
           # this runs (see {QuickMemoryPlan}), and a collection that gives way to code comes
           # here already set to go to the roomy memory. Running out of both is a real
           # ceiling, and the message says which one gave way.
-          def place_list(name, want, fast)
+          def place_list(name, want, fast, ring: true)
             if fast == false || !@memory.room_for?(want)
               addr = @memory.alloc_roomy(want)
               return [addr, true] if addr
 
               raise LoweringError, no_room_message(name, want) if fast == false
             end
+            return [@memory.alloc_near_base(want), false] if near_list?(name, want, ring)
+
             [@memory.alloc(want), false]
+          end
+
+          # The most bytes of slots kept beside the variables (#near_list?): a few small lists, so
+          # the variables a game has stay within reach of their base however many such lists it has.
+          NEAR_LIST_BYTES = 512
+
+          # The lists the program reads and writes only at slots written in the program (`shown[1]`),
+          # the ones a place beside the variables helps (#near_list?). A list also read at an index the
+          # game works out keeps its place: that read wants the list's own base in its register, which
+          # a slot reached from the variables' base would leave unloaded for it.
+          def note_written_slot_lists(program)
+            written = ->(node) { %i[list_get list_set].include?(node.kind) && node.index.kind == :int }
+            naming = Hash.new { |names, name| names[name] = [] }
+            program.walk do |node|
+              node.attrs.each_value { |held| Array(held).grep(Symbol).each { |name| naming[name] << node } }
+            end
+            candidates = program.walk.filter_map { |node| node.name if written.call(node) }.uniq
+            @written_slot_lists = candidates.select do |name|
+              naming[name].all? { |node| node.kind == :list_new || written.call(node) }
+            end.to_set
+            @near_list_bytes = 0
+          end
+
+          # Does list +name+, of +want+ bytes, go beside the variables? A plain small list read at
+          # written slots does: each such read is then one load from the variables' base, as a
+          # variable's is (Primitives#emit_fixed_slot_base), where a list kept with the rest costs
+          # its own base loaded first. A ring moves its slots, so it never does.
+          def near_list?(name, want, ring)
+            return false if ring || !@written_slot_lists&.include?(name) || @near_list_bytes + want > NEAR_LIST_BYTES
+
+            @near_list_bytes += want
+            true
           end
 
           # Said in the author's own words for it: a pool is several lists with names of the
@@ -919,8 +953,9 @@ module VBlank
 
             if (offset = written_slot_offset(info, slot, node.index))
               @lowering.value(node.value)                   # r0 = value
-              @primitives.emit_list_base(info[:base])       # after the value, which may use r9 itself
-              @emitter.emit(ASM.str_offset(ACC, LIST_ADDR, offset))
+              # After the value, which may use r9 and r12 itself.
+              base, distance = @primitives.emit_fixed_slot_base(info[:base] + offset, info[:base])
+              @emitter.emit(ASM.str_offset(ACC, base, distance))
               return
             end
 
@@ -941,17 +976,33 @@ module VBlank
               emit_held_field_load(node, slot)
               return emit_value_unscaled(slot)
             end
-            if (offset = written_slot_offset(info, slot, node.index))
-              @primitives.emit_list_base(info[:base])
-              @emitter.emit(ASM.ldr_offset(ACC, LIST_ADDR, offset))
-              return
-            end
+            return emit_fixed_slot_load(ACC, node) if fixed_slot_read?(node)
 
             @lowering.value(node.index)                     # r0 = index
             @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
             emit_slot_address(info, node.name)         # r1 = &slot[(head+index)&mask]
             emit_load_element(info, ACC, TMP, bytes: slot.width) # r0 = slot
             emit_value_unscaled(slot)
+          end
+
+          # Whether +node+ reads a list's slot named by a number written in the program, which one
+          # load reaches (#written_slot_offset), so it can stand where a variable's read can
+          # (Expressions#one_load?).
+          def fixed_slot_read?(node)
+            return false unless node.kind == :list_get && @lists.key?(node.name) && !held_field?(node)
+
+            info = list_info(node.name)
+            slot = slot_place(node.name, info)
+            slot.scale == 1 && !written_slot_offset(info, slot, node.index).nil?
+          end
+
+          # +reg+ = the slot +node+ reads (#fixed_slot_read?), in one load where the slot is beside
+          # the variables (Primitives#emit_fixed_slot_base).
+          def emit_fixed_slot_load(reg, node)
+            info = list_info(node.name)
+            offset = written_slot_offset(info, slot_place(node.name, info), node.index)
+            base, distance = @primitives.emit_fixed_slot_base(info[:base] + offset, info[:base])
+            @emitter.emit(ASM.ldr_offset(reg, base, distance))
           end
 
           # --- a walk holding a register on its thing (Statements#emit_stepped_walk) ---

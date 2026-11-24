@@ -10,10 +10,15 @@ require "stringio"
 # console's own games read a field of a record they hold the address of with one load; a read at a
 # variable keeps the test, since the interpreter stops the game on an index outside the list.
 #
+# Two more ways are for a slot named by a number written in the program (:written, `x += a[1]`),
+# which the console's own games read as they read a variable, at an address known when the code was
+# written; and four variables read the same way (:named, `x += i`), which is what such a read is
+# held to. Each is added in, so no build can leave a read out as unused.
+#
 # The lists are made first, before the screen, so every console counts them as always full.
 module ListReadCostGames
   # The ways the index is written, and how many reads a pass each makes.
-  READS_A_PASS = { variable: 4, mask: 4, count: 32 }.freeze
+  READS_A_PASS = { variable: 4, mask: 4, count: 32, written: 4, named: 4 }.freeze
 
   # The game for +console+, its lists as wide as +width+, reading at +index+ or, with +reads+ false,
   # setting the same indexes and reading nothing.
@@ -50,6 +55,16 @@ module ListReadCostGames
           x = b[(t + 3) & 31]
           x = c[(t + 5) & 31]
           x = d[(t + 7) & 31]
+        elsif reads && index == :written
+          x += a[1]
+          x += b[2]
+          x += c[3]
+          x += d[4]
+        elsif reads && index == :named
+          x += i
+          x += j
+          x += k
+          x += m
         elsif index == :count
           repeat(8) do |n|
             if reads

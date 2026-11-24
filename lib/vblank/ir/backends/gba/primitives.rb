@@ -403,6 +403,18 @@ module VBlank
           # one. See {LIST_ADDR}.
           def emit_list_base(address) = emit_load_address_register(address, LIST_ADDR, @emitter.list_register)
 
+          # The register and distance a load or store of the slot at +address+, in the list whose
+          # first slot is at +list_base+, names. A slot near enough the variables is reached from
+          # their base, as a variable is, so a read of `shown[1]` costs what a read of a variable
+          # costs; one further away is reached from the list's own base.
+          def emit_fixed_slot_base(address, list_base)
+            near = address - IWRAM_START
+            return [ADDR, near] if near.between?(0, FURTHEST_FROM_BASE) && emit_var_address_base(near)
+
+            emit_list_base(list_base)
+            [LIST_ADDR, address - list_base]
+          end
+
           # rd = rn & imm — the ring-wrap mask. A mask that fits an 8-bit rotated
           # immediate (capacity up to 256) rides directly in the AND; a wider one is
           # loaded into +scratch+ first, since ARM can't fold it into the instruction.

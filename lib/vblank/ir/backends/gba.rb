@@ -462,6 +462,7 @@ module VBlank
           @lists = Lists.new(memory: @memory, primitives: @primitives, emitter: @emit, lowering: @lowering,
                              placement: self, bookkeeping: @bookkeeping)
           @primitives.lists = @lists # a collection's counters go where it went
+          @expressions.lists = @lists # a slot written in the program is one load, as a variable is
           @lists.expressions = @expressions # a draw order's sort branches on whether each thing shows
           # `placement: self` — Placement is not its own object yet (see its class
           # comment); its methods live directly on this instance, so handing self in is
@@ -1749,6 +1750,7 @@ module VBlank
             [asked == false ? 2 : (asked || roomy.hot?(node.name) ? 0 : 1), -node.capacity]
           end
           @lists.reserve_pool_areas(program, @lists_to_roomy)
+          @lists.note_written_slot_lists(program)
           ranked.each do |node, ring|
             at = var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
             @lists.register_list(node.name, node.capacity, ring: ring, width: node.width || :word,

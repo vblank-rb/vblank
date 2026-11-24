@@ -236,12 +236,24 @@ module VBlank
             emit_one_load(ACC, node.rhs)
           end
 
-          def one_load?(node) = node.kind == :var_ref || !@primitives.const_int(node).nil?
+          # Lists, which knows where each list's slots are (Lists#fixed_slot_read?).
+          attr_writer :lists
+
+          # A variable, a number, or a list's slot written in the program, each one load.
+          def one_load?(node)
+            node.kind == :var_ref || !@primitives.const_int(node).nil? || @lists&.fixed_slot_read?(node) || false
+          end
 
           def emit_one_load(reg, node)
             @lowering.measure_value(node) do
               fixed = @primitives.const_int(node)
-              fixed ? @emitter.emit_number(reg, fixed) : @primitives.load_var(reg, node.name)
+              if fixed
+                @emitter.emit_number(reg, fixed)
+              elsif node.kind == :list_get
+                @lists.emit_fixed_slot_load(reg, node)
+              else
+                @primitives.load_var(reg, node.name)
+              end
             end
           end
 
