@@ -715,11 +715,12 @@ module VBlank
         return node.name if node.kind == :var_ref
         return node if node.kind == :list_get && IR::Unchanging.variables_read(node.index)
 
+        where = Messages::AuthorSource.author_file_and_line
         raise ArgumentError,
-              "On a tiled screen, draw_number follows a variable or an item of an Array, and draws it " \
-              "again each frame. A working-out, like `hp - 1`, is not one. To fix this, keep the " \
-              "working-out in a name that the game loop changes, like `shown = hp - 1`. Then draw `shown`." \
-              "#{Messages::AuthorSource.at_author_line}"
+              "On a tiled screen, draw_number follows a variable or an item of an Array. It draws that " \
+              "number again each frame. The number #{where ? "at #{where} " : ''}is a working-out, like " \
+              "`hp - 1`. To fix this, keep the working-out in a name that the game loop changes, like " \
+              "`shown = hp - 1`. Then draw `shown`."
       end
 
       # The sprite pose that shows the digit of +source+ at +place+ (1, 10, 100, …).

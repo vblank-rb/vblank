@@ -261,5 +261,7 @@ class TestTiledText < Minitest::Test
       end
     end
     assert_match(/follows a variable/, err.message)
+    assert_match(/The number at test_tiled_text\.rb:\d+ is a working-out/, err.message, "it says where, early")
+    assert_match(/Then draw `shown`\.\z/, err.message, "and ends on the fix")
   end
 end
