@@ -245,7 +245,10 @@ module VBlank
             assign_planes
             given = names_in_steps
             named, unnamed = variables_most_read_first.partition { |name| given.include?(name) }
-            named.each { |name| @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4) }
+            held = face_numbers_bytes
+            named.each do |name|
+              @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4, leaving: held)
+            end
             unnamed.each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
@@ -330,6 +333,31 @@ module VBlank
             reads = Hash.new(0)
             @program.walk.each { |node| reads[node.name] += 1 if node.kind == :var_ref }
             (Reach.variables(@program) | loop_variables).each_with_index.sort_by { |name, at| [-reads[name], at] }.map(&:first)
+          end
+
+          # The scratchpad the variables and lists leave for the numbers a place's face drawing keeps of
+          # its own (IR::PlaceDrawing#face_routine): its loops' turns and counts (ControlFlow#emit_repeat),
+          # a word each (#repeat_numbers_bytes). The routine runs once a face, so those are read about a
+          # thousand times a pass, more than any variable, and a game of many variables would otherwise
+          # leave them in main RAM, which has no cache. The routine is written before the game's other
+          # routines keep any number of their own, so it takes this room first.
+          def face_numbers_bytes
+            @face_numbers_bytes ||= @program.walk.sum do |node|
+              next 0 unless node.kind == :func && face_drawing_routine?(node.name)
+
+              node.walk.sum { |step| step.kind == :repeat ? repeat_numbers_bytes(step) : 0 }
+            end
+          end
+
+          # The bytes of its own a repeat keeps (ControlFlow#emit_repeat): its turn, unless the loop
+          # counts in the game's own variable, and its count, unless that is written in the program.
+          def repeat_numbers_bytes(node)
+            (loop_form.counts_in_index?(node) ? 0 : 4) + (folded(node.count) ? 0 : 4)
+          end
+
+          def face_drawing_routine?(name)
+            kind, parts = Messages::MadeNames.read(name)
+            kind == :place_part && parts[:part].to_s == "face_drawing"
           end
 
           # Every name a step of the program gives in one of its operands. A variable none of them names
@@ -1152,7 +1180,7 @@ module VBlank
             end
 
             @scratchpad_list_bytes += bytes
-            @memory.reserve_scratchpad(label, bytes)
+            @memory.reserve_scratchpad(label, bytes, leaving: face_numbers_bytes)
           end
 
           # The lists the program names only where it makes them and where it reads or writes a slot

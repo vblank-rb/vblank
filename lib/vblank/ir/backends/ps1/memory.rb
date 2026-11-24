@@ -81,11 +81,13 @@ module VBlank
           end
 
           # +bytes+ for +name+ in the scratchpad while it has room, and in the region (#reserve) once it
-          # has not.
-          def reserve_scratchpad(name, bytes)
+          # has not. +leaving+ bytes at its end are left for what is placed later (a routine's own
+          # numbers the code reads most, Lowering#face_numbers_bytes): asked with +leaving+, a place
+          # that would reach into them goes in the region instead.
+          def reserve_scratchpad(name, bytes, leaving: 0)
             @places.fetch(name) do
               size = (bytes + 3) & ~3
-              next reserve(name, bytes) if @next_scratchpad + size > SCRATCHPAD_LAST
+              next reserve(name, bytes) if @next_scratchpad + size > SCRATCHPAD_LAST - leaving
 
               @places[name] = @next_scratchpad.tap { @next_scratchpad += size }
             end
