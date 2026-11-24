@@ -35,7 +35,9 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second,
   # their keys +keys+ in turn. With +work+ each pass of the game counts that high first, and with
   # +song+ a tune of three parts, a note on each every sixteenth, plays beside them. The effect plays
-  # on pass +played_on+.
+  # on the first pass +played_on+ frames from power-on or later: counted in frames, not passes, since
+  # the build with the tune sends a longer sound program and starts its passes later, and its notes
+  # are compared with those of the build without at the same moments.
   private def game(**) = VBlank.build("STRIKES", console: :snes, out: nil, err: nil, &game_code(**))
 
   # ...as a program, for a checked run.
@@ -62,10 +64,14 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
       end
       sfx = sound_effects :sfx, { chime: effect }
       pass = var :pass, 0
+      started = var :started, 0
       busy = var :busy, 0
       game_loop do
         pass += 1
-        sfx.play :chime if pass == played_on
+        if started == 0 && frames_since_power_on >= played_on
+          started = 1
+          sfx.play :chime
+        end
         repeat(work) { busy += 1 } if work.positive?
       end
     end
