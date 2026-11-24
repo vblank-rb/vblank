@@ -681,11 +681,42 @@ module VBlank
         # and the object whose instance variable holds it, never from the reader's name.
         def call_text(node)
           site = @names.reader_index_sites[node] if @follows_instance_variables
+          note_values_read_at_once(node)
           text = call_text_as_written(node)
+          text = values_handed_text(text) if values_handed?(node)
           return text unless site
 
           "#{INSTANCE_VARIABLES}.indexed((#{text}), worked_out: #{site.worked_out}, changed: #{site.changed})"
         end
+
+        # `h.values` and the other calls that hand back an Array of a Hash's values
+        # (InstanceVariables::KeyedHash::VALUES_HANDED). On a Hash of game variables the Array holds
+        # those variables, where Ruby's holds the numbers of that moment, so the answer is checked
+        # as the line runs (InstanceVariables.refuse_hash_values_handed!). A call that only reads the
+        # answer straight away, `h.values.sum` (#note_values_read_at_once), is left as written.
+        def values_handed?(node)
+          node.receiver && InstanceVariables::KeyedHash::VALUES_HANDED.include?(node.name) &&
+            !values_read_at_once.key?(node)
+        end
+
+        def values_handed_text(text) = "#{INSTANCE_VARIABLES}.refuse_hash_values_handed!(#{text})"
+
+        # +node+ reads what its receiver hands back and keeps none of it (`h.values.sum`,
+        # `h.values.each { ... }`): the receiver's answer is never kept, so it is no copy.
+        def note_values_read_at_once(node)
+          receiver = node.receiver
+          return unless receiver.is_a?(Prism::CallNode) && read_at_once?(node.name)
+
+          values_read_at_once[receiver] = true
+        end
+
+        # Does +name+ read an Array's items and answer a number, a test or nothing: a question
+        # ItemQuestions answers, or a walk?
+        def read_at_once?(name) = ItemQuestions::QUESTIONS.include?(name) || READ_AT_ONCE.include?(name)
+
+        READ_AT_ONCE = %i[sum size length empty? each each_with_index].freeze
+
+        def values_read_at_once = (@values_read_at_once ||= {}.compare_by_identity)
 
         def call_text_as_written(node)
           note_tail_of_answering_block(node)

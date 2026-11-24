@@ -598,6 +598,7 @@ Each is a friendly error naming the line.
 | `counts[0] &&= value` on a number or true in game code, or `||=` on false or a game's true or false (`Writes.refuse_logic_slot_write!`; `||=` on a number is left alone, as Ruby does) | `counts[0] = value`, under an `if` where needed |
 | `store`, `merge!`, `delete` or another verb that changes many keys of a Hash of game variables at once | one key at a time, `h[:a] = 5` |
 | a copy of a Hash of game variables, `dup`, `merge`, `select`, `slice` and the others answering a new Hash holding its variables (`KeyedHash::HASH_ANSWERED`) | the values one at a time, `left = h[:left]` |
+| an Array of a Hash of game variables' values kept in game code, `v = h.values`, `h.to_a` (`KeyedHash::VALUES_HANDED`, checked by `InstanceVariables.refuse_hash_values_handed!`; a call that only reads it at once, `h.values.sum`, is left alone: `Rewriter#note_values_read_at_once`) | read it where it is made, `h.values.sum` |
 | an instance variable that game code changes and reads back, where the source does not show the change (`@busy = 1` in a method a routine calls) | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable not marked, set outright by a method under a test the game makes (`r.reset if k == 2`), or worked out from a number another routine gave it, then read | `game_variables :n` in the class's body |
 | a part whose numbers or Arrays change, made in a `game_loop`, a scene or a `func` (`c = Counter.new` there) | make it above the game loop, or keep it: `@counter ||= Counter.new` |

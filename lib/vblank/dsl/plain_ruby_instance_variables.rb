@@ -818,6 +818,27 @@ module VBlank
           note_made_variable(builder, variable, owner, label)
         end
 
+        # +answer+, what game code got from `h.values` or another of KeyedHash::VALUES_HANDED, refused
+        # while game code is recorded where it holds a slot of a Hash of game variables: the Array
+        # would change as the Hash does, where Ruby's keeps the numbers of that moment. Anything else
+        # is the call's own answer.
+        def refuse_hash_values_handed!(answer)
+          return answer unless Builder::Session.recording?
+
+          held = hash_slot_held(answer)
+          Steps.refuse_game_code!(held.holder.object.copy_taken_message) if held
+          answer
+        end
+
+        # The first variable in +answer+ (an Array or Hash, nested too) that is a slot of a KeyedHash.
+        def hash_slot_held(answer)
+          case answer
+          when Value then answer if answer.holder&.object.is_a?(KeyedHash)
+          when Array then answer.lazy.filter_map { |item| hash_slot_held(item) }.first
+          when Hash then answer.each_value.lazy.filter_map { |item| hash_slot_held(item) }.first
+          end
+        end
+
         # What a named Hash or Array of numbers becomes: its slots are game variables, taken at keys
         # Ruby holds while building.
         module KeyedVariables
@@ -876,6 +897,16 @@ module VBlank
               end
             RUBY
           end
+
+          # The calls that hand back an Array that can hold a Hash's values themselves. On a Hash of
+          # game variables, game code may only read such an Array where it is made (`h.values.sum`):
+          # the rewrite checks the rest as they run (Rewriter#values_handed?,
+          # InstanceVariables.refuse_hash_values_handed!). The library reads one through them itself.
+          VALUES_HANDED = %i[
+            values to_a entries values_at fetch_values sort sort_by min_by max_by minmax_by first take drop
+            take_while drop_while partition group_by zip each_slice each_cons find detect assoc rassoc map
+            collect flat_map collect_concat filter_map
+          ].freeze
 
           # Does +answer+, a new Array or Hash (nested too), hold one of this Hash's own variables?
           def holds_own_value?(answer)

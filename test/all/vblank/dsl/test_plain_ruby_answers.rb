@@ -1127,6 +1127,43 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  def test_values_of_a_hash_of_game_numbers_kept_are_refused
+    refused("v = h.values, then h[:a] += 1", /takes a copy/) do
+      h = { a: 1, b: 2 }
+      m = 0
+      game_loop do
+        v = h.values
+        h[:a] += 1
+        m = v[0]
+      end
+    end
+    refused("pairs = h.to_a", /takes a copy/) do
+      h = { a: 1, b: 2 }
+      m = 0
+      game_loop do
+        pairs = h.to_a
+        h[:a] += 1
+        m = pairs[0][1]
+      end
+    end
+  end
+
+  def test_values_of_a_hash_of_game_numbers_read_at_once
+    agrees("h.values.sum, .max, .count, .include? and .each after h[:a] += 1", reads: %i[m n o p q], passes: 3) do
+      h = { a: 1, b: 2 }
+      m = n = o = p = q = 0
+      game_loop do
+        h[:a] += 1
+        m = h.values.sum
+        n = h.values.max
+        o = h.values.count { |value| value > 2 }
+        p = h.values.include?(3) ? 1 : 0
+        q = 0
+        h.values.each { |value| q += value }
+      end
+    end
+  end
+
   def test_a_copy_of_a_hash_of_game_numbers_is_refused
     refused("g = h.dup, then h[:a] += 1", /takes a copy/) do
       h = { a: 1, b: 2 }
