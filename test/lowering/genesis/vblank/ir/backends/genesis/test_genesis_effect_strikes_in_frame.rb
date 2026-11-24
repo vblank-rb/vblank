@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "effect_strikes_heard"
 
 # A sound effect on a timer, struck inside the frame on the Genesis (Runtime::Strikes). Its notes are
 # as far apart in time as their ticks, not rounded to the frames they fall in: a tick of 50 a second
@@ -12,6 +13,8 @@ require "test_helper"
 # one before it left, in frames from power-on: the frame whose sound holds it, and how far through
 # that frame's sample pairs it is.
 class TestGenesisEffectStrikesInFrame < Minitest::Test
+  include EffectStrikesHeard
+
   Score = VBlank::Audio::Score
   Part = Score::Part
   Note = Score::Note
@@ -202,5 +205,21 @@ class TestGenesisEffectStrikesInFrame < Minitest::Test
     quiet = VBlank::IR::Backends::Genesis::CheckedRun.new.run(game_program(**slow_once, played_on: frames * 2), frames: frames)
 
     assert_equal quiet.chip_reads.size, run.chip_reads.size
+  end
+
+  # The game's own sound over the effect (EffectStrikesHeard), within half a frame of where it is
+  # heard with the effect at the frame's start: the PSG takes a new length of wave as the wave it is
+  # counting ends (SN76489 data sheet), up to a half wave of the effect's low note later, some 0.23 of
+  # a frame; and the frame's music, played before the game's pass, lists four ticks' writes where the
+  # other plays them, which takes the pass some thirty lines longer to reach. Folded into the strike,
+  # the game's sound is heard most of a frame late, or not at all.
+  GAME_SOUND_NEAR = Rational(1, 2)
+
+  def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:genesis, :beep, near: GAME_SOUND_NEAR)
+  end
+
+  def test_the_games_wave_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:genesis, :wave, near: GAME_SOUND_NEAR)
   end
 end

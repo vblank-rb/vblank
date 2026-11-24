@@ -31,6 +31,10 @@ module VBlank
           # undone as the strike came. The FM chip's key register keys a voice on or off by its value, so its
           # writes fold by the voice they name.
           #
+          # The game's own sound is not folded: it is made now, and drops every listed write of the registers
+          # it writes (GAME_SOUND), so the voice keeps it as the interpreter's does (IR::Tunes, "The game's own
+          # sound against a listed strike").
+          #
           # ### The line interrupt as the clock
           #
           # The video chip can raise an interrupt every so many lines of the screen it draws: its line
@@ -98,6 +102,12 @@ module VBlank
             FIRST_PSG_BITS = 0xF0
             KEY_VOICE = 0x1000
             KEY_VOICE_BITS = 7
+            # What a dropped entry names: no register, so striking it writes nothing.
+            DROPPED = 0x7FFF
+            # 1 while the game's own sound (`beep`, `noise`, `wave`, `stop_wave`) is written: each write then
+            # drops every listed write of the same register and is made now (IR::Tunes, "The game's own sound
+            # against a listed strike").
+            GAME_SOUND = "rt strikes game sound"
 
             LINES_A_FRAME = 262
             DRAWN_LINES = 224
@@ -121,7 +131,7 @@ module VBlank
             end
 
             def reserve(memory)
-              [STRIKING, DUE, BASE, BLANK_CLOCK, LINE_CLOCK, HINT_ON, NEXT_LINE, HEAD, TAIL].each { |name| memory.reserve(name, 2) }
+              [STRIKING, DUE, BASE, BLANK_CLOCK, LINE_CLOCK, HINT_ON, NEXT_LINE, HEAD, TAIL, GAME_SOUND].each { |name| memory.reserve(name, 2) }
               memory.reserve(REMAINING, 4)
               memory.reserve(LIST, ENTRIES * ENTRY_BYTES)
               memory.reserve(Recordings::FM_KEPT, Recordings::FM_REGISTERS * 2)
@@ -138,6 +148,7 @@ module VBlank
             def emit(asm, memory)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_unkept(asm, at)
+              emit_game_sound(asm, at)
               emit_chip(asm, at)
               emit_due(asm, at)
               emit_line(asm, at)
@@ -155,6 +166,13 @@ module VBlank
               asm.label("rt_strikes_unkept_next")
               asm.move(:w, asm.imm(Recordings::NOT_KEPT), asm.post(0))
               asm.dbra(asm.d(0), "rt_strikes_unkept_next")
+              asm.rts
+            end
+
+            # rt_strikes_game_sound(D0 = 1 or 0): GAME_SOUND set, around the game's own sound.
+            def emit_game_sound(asm, at)
+              asm.label("rt_strikes_game_sound")
+              asm.move(:w, asm.d(0), at.call(GAME_SOUND))
               asm.rts
             end
 
@@ -206,8 +224,10 @@ module VBlank
               asm.move(:w, at.call(TAIL), asm.d(5))
               asm.cmp(:w, asm.d(4), asm.d(5))
               asm.branch(:eq, "rt_strikes_chip_now")
-              asm.movea(:l, asm.imm(0), asm.a(0)) # the latest of the same register, once found
               asm.lea(at.call(LIST), asm.a(1))
+              asm.tst(:w, at.call(GAME_SOUND))
+              asm.branch(:ne, "rt_strikes_chip_drop")
+              asm.movea(:l, asm.imm(0), asm.a(0)) # the latest of the same register, once found
               asm.label("rt_strikes_chip_look")
               asm.cmp(:w, asm.idx(1, 0, 4, :w), asm.d(2))
               asm.branch(:ne, "rt_strikes_chip_other")
@@ -223,6 +243,18 @@ module VBlank
               asm.move(:w, asm.d(1), asm.disp(0, 4))
               asm.bra("rt_strikes_chip_done")
 
+              # The game's own sound: every listed write of the same register dropped, and this one made now.
+              asm.label("rt_strikes_chip_drop")
+              asm.cmp(:w, asm.idx(1, 0, 4, :w), asm.d(2))
+              asm.branch(:ne, "rt_strikes_chip_kept")
+              asm.lea(asm.idx(1, 0, 4, :w), asm.a(0))
+              asm.move(:w, asm.imm(DROPPED), asm.ind(0))
+              asm.label("rt_strikes_chip_kept")
+              asm.addq(:w, ENTRY_BYTES, asm.d(4))
+              asm.and(:w, asm.imm(LIST_MASK), asm.d(4))
+              asm.cmp(:w, asm.d(4), asm.d(5))
+              asm.branch(:ne, "rt_strikes_chip_drop")
+
               asm.label("rt_strikes_chip_now")
               asm.jsr(asm.abs_l("rt_strikes_write"))
               asm.label("rt_strikes_chip_done")
@@ -230,8 +262,12 @@ module VBlank
               asm.movem_pop(:l, :d4, :d5, :a0)
               asm.rts
 
-              # rt_strikes_write(D0, D1, D2): the write made, by the chip D2 names.
+              # rt_strikes_write(D0, D1, D2): the write made, by the chip D2 names; none for a dropped entry.
               asm.label("rt_strikes_write")
+              asm.cmp(:w, asm.imm(DROPPED), asm.d(2))
+              asm.branch(:ne, "rt_strikes_write_made")
+              asm.rts
+              asm.label("rt_strikes_write_made")
               asm.tst(:w, asm.d(2))
               asm.branch(:mi, "rt_strikes_write_psg")
               asm.jmp(asm.abs_l("rt_fm_now"))

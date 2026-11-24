@@ -235,12 +235,20 @@ module VBlank
               emit_sound_entry([:noise, hit])
             end
 
-            # +entry+'s chip writes, then its number into the cartridge's sound log.
+            # The log entries of the game's own sound, as against a song's or an effect's.
+            GAME_SOUND_ENTRIES = %i[beep noise wave stop_wave].freeze
+
+            # +entry+'s chip writes, then its number into the cartridge's sound log. The game's own sound, in a
+            # game that strikes its effects inside the frame, drops the listed writes it overtakes
+            # (Runtime::Strikes::GAME_SOUND).
             def emit_sound_entry(entry)
+              game_sound = GAME_SOUND_ENTRIES.include?(entry.first) && Runtime::Strikes.wanted?(@program)
+              runtime_call("rt_strikes_game_sound", [Build.int(1)]) if game_sound
               ChipWrites.for_entry(entry, sound_voicing).each do |write|
                 command, *numbers = Runtime::Sound.command_for(write)
                 runtime_call(Runtime::Sound::ROUTINES.fetch(command), numbers.map { |number| Build.int(number) })
               end
+              runtime_call("rt_strikes_game_sound", [Build.int(0)]) if game_sound
               runtime_call("rt_sound_log", [Build.int(sound_entry_number(entry))])
             end
 
