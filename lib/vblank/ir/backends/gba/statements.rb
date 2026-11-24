@@ -29,7 +29,8 @@ module VBlank
         class Statements
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[
-            set add sub copy negate abs negate_abs clamp if loop repeat inside every after call raw
+            set add sub copy negate abs negate_abs clamp if loop repeat break_repeat next_repeat inside every after
+            call raw
           ].freeze
 
           def emit_statement(node)
@@ -45,6 +46,8 @@ module VBlank
             when :if then emit_if(node)
             when :loop then emit_loop(node)
             when :repeat then emit_repeat(node)
+            when :break_repeat then emit_break_repeat(node)
+            when :next_repeat then emit_next_repeat(node)
             when :inside then emit_inside(node)
             when :every then emit_every(node)
             when :after then emit_after(node)
@@ -65,6 +68,7 @@ module VBlank
             @functions = functions
             @loop_shapes = {}
             @unread_indexes = Set.new
+            @loop_jumps = []
           end
 
           # Which shape each loop got (register/spilled/memory), keyed by its index —
@@ -283,7 +287,7 @@ module VBlank
             if shape == :registers
               emit_counted_while_in_registers(node, counted, sure, top, done)
             else
-              emit_counted_while_in_memory(node, counted, sure, top, done)
+              with_loop_jumps(node, done) { emit_counted_while_in_memory(node, counted, sure, top, done) }
             end
             @emitter.place_label(done)
             turns = start ? Build.binop(:-, Build.var_ref(variable), Build.int(start)) : Build.binop(:+, Build.var_ref(node.index), Build.var_ref(variable))
@@ -309,12 +313,17 @@ module VBlank
               @emitter.emit_branch(:bcond, done, cond: :ge)
             end
             @emitter.place_label(top)
-            @primitives.with_var_in_register(variable, LoopForm::COUNTER) do
-              node.children[0...-1].each { |stmt| @lowering.statement(stmt) }
+            # A `break` comes to +left+, where the variable is written back as the loop ends.
+            left = @emitter.gensym
+            with_loop_jumps(node, left) do
+              @primitives.with_var_in_register(variable, LoopForm::COUNTER) do
+                node.children[0...-1].each { |stmt| @lowering.statement(stmt) }
+              end
             end
             @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
             @emitter.emit_branch(:bcond, top, cond: :lt)
+            @emitter.place_label(left)
             # A loop that made no turn goes past this: its variable is still the one in memory.
             @primitives.store_var(LoopForm::COUNTER, variable)
           end
@@ -464,7 +473,7 @@ module VBlank
             @emitter.place_label(top)
             emit_stop_test(node, done)
 
-            node.children.each { |stmt| @lowering.statement(stmt) }
+            with_loop_jumps(node, done) { node.children.each { |stmt| @lowering.statement(stmt) } }
 
             @primitives.load_var(ACC, index)
             @emitter.emit(ASM.add_imm(ACC, ACC, 1))      # counter += 1
@@ -504,7 +513,7 @@ module VBlank
             @emitter.place_label(top)
             emit_stop_test(node, done)
 
-            node.children.each { |stmt| @lowering.statement(stmt) }
+            with_loop_jumps(node, done) { node.children.each { |stmt| @lowering.statement(stmt) } }
 
             @primitives.load_var(ACC, index)
             @emitter.emit(ASM.subs_imm(ACC, ACC, 1))
@@ -573,7 +582,9 @@ module VBlank
 
           def emit_preserving(*registers)
             @emitter.emit(ASM.push(*registers))
+            @loop_jumps.last&.pushed&.push(registers)
             yield
+            @loop_jumps.last&.pushed&.pop
             @emitter.emit(ASM.pop(*registers))
           end
 
@@ -596,7 +607,7 @@ module VBlank
             @emitter.emit_branch(:bcond, done, cond: :le)
 
             @emitter.place_label(top)
-            @primitives.with_var_in_register(node.index, LoopForm::COUNTER) { yield }
+            with_loop_jumps(node, done) { @primitives.with_var_in_register(node.index, LoopForm::COUNTER) { yield } }
             @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
             @emitter.emit_branch(:bcond, top, cond: :lt)
@@ -615,10 +626,37 @@ module VBlank
             @emitter.emit_branch(:bcond, done, cond: :le)
 
             @emitter.place_label(top)
-            yield
+            with_loop_jumps(node, done) { yield }
             @emitter.emit(ASM.subs_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit_branch(:bcond, top, cond: :ne)
             @emitter.place_label(done)
+          end
+
+          # Where a `break` and a `next` in the loop being written go (IR::LoopJumps): +leave+, past
+          # the loop's end, and the turn's end, placed by the block's end just before the count
+          # steps on, for a body with a `next`. +pushed+ is the registers a bracket (#emit_preserving)
+          # has on the stack at the jump, which it takes off first.
+          LoopExits = Data.define(:leave, :turn_end, :pushed)
+
+          def with_loop_jumps(node, leave)
+            turn_end = @emitter.gensym if IR::LoopJumps.next_in?(node)
+            @loop_jumps.push(LoopExits.new(leave:, turn_end:, pushed: []))
+            begin
+              yield
+            ensure
+              @loop_jumps.pop
+            end
+            @emitter.place_label(turn_end) if turn_end
+          end
+
+          def emit_break_repeat(_node) = emit_loop_jump(@loop_jumps.last.leave)
+          def emit_next_repeat(_node) = emit_loop_jump(@loop_jumps.last.turn_end)
+
+          # A branch out of the brackets open in the loop's body, each taken off the stack first, the
+          # innermost first.
+          def emit_loop_jump(label)
+            @loop_jumps.last.pushed.reverse_each { |registers| @emitter.emit(ASM.pop(*registers)) }
+            @emitter.emit_branch(:b, label)
           end
 
           # A beat (`every`, `after`) is the plain statements IR::Frames turns it into, emitted

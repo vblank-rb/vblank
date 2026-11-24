@@ -16,8 +16,11 @@ class TestSNESLoopCost < Minitest::Test
 
   # Measured: a repeat 236 a turn setting with its count an INC of work RAM, 156 counted in Y; 372
   # reading. A counted while was 775 and 996 while it was written as it reads (its hidden count kept,
-  # `i` read and added to as 32 bits each turn); counted, 156 setting (in Y) and 372 reading.
-  BOUNDS = { repeat_set: 170, repeat_read: 390, while_set: 170, while_read: 390 }.freeze
+  # `i` read and added to as 32 bits each turn); counted, 156 setting (in Y) and 372 reading. A search
+  # asking each turn whether to `break` or go to its `next` round was 995 and 1045 while a jump set a
+  # hidden number the loop's test and the rest of the turn read; 315 and 956 with a jump that is a
+  # branch (the `next` loop is a while that is not counted).
+  BOUNDS = { repeat_set: 170, repeat_read: 390, while_set: 170, while_read: 390, while_break: 345, while_next: 1050 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_master_clocks") do

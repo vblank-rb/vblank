@@ -16,8 +16,10 @@ class TestGenesisLoopCost < Minitest::Test
 
   # Measured: a repeat 57 a turn setting, 87 reading. A counted while was 118 and 181 while it was
   # written as it reads (its hidden count kept, `i` read and added to in work RAM each turn); counted,
-  # 58 and 88.
-  BOUNDS = { repeat_set: 62, repeat_read: 95, while_set: 62, while_read: 95 }.freeze
+  # 58 and 88. A search asking each turn whether to `break` or go to its `next` round was 398 and 290
+  # while a jump set a hidden number the loop's test and the rest of the turn read; 158 and 266 with a
+  # jump that is a branch (the `next` loop is a while that is not counted).
+  BOUNDS = { repeat_set: 62, repeat_read: 95, while_set: 62, while_read: 95, while_break: 175, while_next: 290 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

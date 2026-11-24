@@ -16,8 +16,10 @@ class TestGBCLoopCost < Minitest::Test
 
   # Measured: a repeat 180 a turn setting, 252 reading. A counted while was 536 and 700 while it was
   # written as it reads (its hidden count kept, `i` read and added to as four bytes each turn);
-  # counted, with `i` a byte, 180 and 252.
-  BOUNDS = { repeat_set: 195, repeat_read: 270, while_set: 195, while_read: 270 }.freeze
+  # counted, with `i` a byte, 180 and 252. A search asking each turn whether to `break` or go to its
+  # `next` round was 744 and 816 while a jump set a hidden number the loop's test and the rest of the
+  # turn read; 220 and 756 with a jump that is a branch (the `next` loop is a while that is not counted).
+  BOUNDS = { repeat_set: 195, repeat_read: 270, while_set: 195, while_read: 270, while_break: 240, while_next: 830 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

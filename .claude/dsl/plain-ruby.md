@@ -540,10 +540,12 @@ end
   Ruby's, written out once, and the rounds after it are a loop in the game.
 - **`break` and `next` in a loop the game runs do what Ruby says** (`PlainRuby::Jumps`): a `while`,
   an `until`, a counting loop over a game number, `for`, and `loop do`. A `loop do` is Ruby's, its
-  rounds written out while building, until a jump in it sits under a game test: that round is the
-  last written out, and the rounds after it are a loop in the game (`Counts.endless`). The loop keeps a hidden number the jump sets; what follows the jump, to the end of the round, runs
-  only while it is 0, and the loop's test stops on a `break`. That costs a store and a test where a
-  jump would cost a branch. `found && break` and `found || next` are sides of a test, as
+  rounds written out while building, until a jump in it sits under a game test: the rounds before
+  that one stay written out, and that round and the rounds after it are a loop in the game
+  (`Counts.endless`). A jump is one branch (`IR::LoopJumps`: `break` past the loop's end, `next` to
+  where its count steps on), and costs nothing on the rounds it is not taken. A `next` keeps a
+  `while i < n` ending `i += 1` from being counted (`LoopForm#counted_while`), as its `i += 1` is
+  left out of a round. `found && break` and `found || next` are sides of a test, as
   `break if found` is. In a loop Ruby runs while building they are Ruby's own, unless a game test
   stands between the jump and the loop, which is refused.
 - **A loop on plain numbers inside a loop of the game's is written out on every round**: `column = 0`,

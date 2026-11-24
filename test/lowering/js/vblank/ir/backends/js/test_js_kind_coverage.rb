@@ -20,7 +20,9 @@ class TestJSKindCoverage < Minitest::Test
     called = source.scan(/\b(rg_[a-z0-9_]+)\(/).flatten.uniq.reject { |name| name.start_with?("rg_game_") }
     features = VBlank::IR::Backends::RuntimeFeatures.js_text(JS::Lowering.new(program).runtime_features)
     runtime = JS::RUNTIME.map { |file| File.read(File.join(JS::RUNTIME_DIR, file), encoding: Encoding::UTF_8) }.join + features
-    defined = runtime.scan(/^function\*? (rg_[a-z0-9_]+)\(/).flatten
+    # ...and the functions the game's own source defines: a routine too long for one function is
+    # printed in parts and groups of steps (JS::Printer#print_part_call).
+    defined = (runtime + source).scan(/^function\*? (rg_[a-z0-9_]+)\(/).flatten
 
     assert_empty called - defined
   end

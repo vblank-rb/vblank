@@ -126,6 +126,13 @@ module VBlank
             run_bytes = 0
           end
           list.each do |node|
+            # A statement holding a `break` or `next` of a loop around it stays in that loop's
+            # routine, where the loop's labels are (IR::LoopJumps); what it holds is cut instead.
+            if LoopJumps.escapes?(node)
+              flush.call
+              next kept << cut_inside(node, base, parts)
+            end
+
             size = @sizes.fetch(node) { @measure.call([node]) }
             if size <= @most_part_bytes
               flush.call if run_bytes + size > @most_part_bytes

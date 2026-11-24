@@ -831,7 +831,7 @@ module VBlank
         # (#exec_declaration).
         STATEMENT_KINDS = (%i[
           program set add sub copy negate abs negate_abs clamp save_init save_store save_write save_erase
-          save_load_list save_store_list if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy list_pack
+          save_load_list save_store_list if loop inside repeat break_repeat next_repeat every after list_new list_push list_drop list_set list_fill list_copy list_pack
           list_sort blit blit_pose save_region restore_region call call_one_of case halt stop_full wait_vblank
           hide_sprites rumble screen clear_screen pixel fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
@@ -865,6 +865,8 @@ module VBlank
           when :loop then exec_loop(node)
           when :inside then exec_inside(node)
           when :repeat then exec_repeat(node)
+          when :break_repeat then exec_break_repeat(node)
+          when :next_repeat then exec_next_repeat(node)
           when :every then exec_every(node)
           when :after then exec_after(node)
           when :list_new then exec_list_new(node)
@@ -1073,11 +1075,31 @@ module VBlank
             # Checked BEFORE the body, so a loop that is already finished on its first pass
             # runs the body no times at all — the same reading on both backends.
             break if node.stop_when && !eval_value(node.stop_when).zero?
-
-            node.children.each { |child| exec(child) }
+            if jumps_in?(node)
+              break if exec_turn_with_jumps(node) == :break
+            else
+              node.children.each { |child| exec(child) }
+            end
             i += 1
           end
         end
+
+        # A `break` or `next` belongs to the innermost repeat around it (IR::LoopJumps), so each is
+        # thrown to the nearest catch of its name. Only a loop with a jump of its own catches.
+        def exec_break_repeat(_node) = throw(:break_repeat)
+        def exec_next_repeat(_node) = throw(:next_repeat)
+
+        # One turn of +node+'s body, which a jump can leave part way: :break once a `break` ran.
+        def exec_turn_with_jumps(node)
+          left = true
+          catch(:break_repeat) do
+            catch(:next_repeat) { node.children.each { |child| exec(child) } }
+            left = false
+          end
+          left ? :break : nil
+        end
+
+        def jumps_in?(node) = (@loops_with_jumps ||= {}.compare_by_identity).fetch(node) { @loops_with_jumps[node] = LoopJumps.jumps_in?(node) }
 
         def exec_every(node)
           # A repeating timer, counted in frames rather than in times this code ran: a pass of

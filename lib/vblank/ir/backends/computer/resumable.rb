@@ -293,6 +293,9 @@ module VBlank
           # One routine cut into steps. Steps are numbered as they are made, from 0, and each is a
           # list of statements ending in a Goto, a Pause or a Finish.
           class Cut
+            # A loop cut into steps: the step that asks its test, and the step after it.
+            CutLoop = Data.define(:head, :after)
+
             # The routine's locals (Statements::Local), each kept in a global of its own now.
             attr_reader :locals
 
@@ -324,19 +327,19 @@ module VBlank
             def open_step(step) = @step = step
             def goto_step(step) = Statements::Goto.new(counter: @counter, step: step)
 
-            # +loop_end+ is the step a Break here goes on at: the end of the cut loop it is in.
-            def append_statements(statements, loop_end)
-              statements.each { |statement| append_statement(statement, loop_end) }
+            # +cut_loop+ is the cut loop it is in (CutLoop), whose steps a Break and a Continue here go on at.
+            def append_statements(statements, cut_loop)
+              statements.each { |statement| append_statement(statement, cut_loop) }
             end
 
-            def append_statement(statement, loop_end)
-              return append(uncut_statement(statement, loop_end, in_loop: false)) unless @holds_wait.call(statement)
+            def append_statement(statement, cut_loop)
+              return append(uncut_statement(statement, cut_loop, in_loop: false)) unless @holds_wait.call(statement)
 
               case statement
               when Statements::Eval then append_stop(statement)
-              when Statements::If then append_branch(statement, loop_end)
+              when Statements::If then append_branch(statement, cut_loop)
               when Statements::While then append_loop(statement)
-              when Statements::Block then append_statements(statement.body, loop_end)
+              when Statements::Block then append_statements(statement.body, cut_loop)
               end
             end
 
@@ -355,17 +358,17 @@ module VBlank
               end
             end
 
-            def append_branch(statement, loop_end)
+            def append_branch(statement, cut_loop)
               taken = new_step
               other = statement.otherwise.empty? ? nil : new_step
               after = new_step
               append(Statements::If.new(condition: statement.condition, body: [goto_step(taken)], otherwise: [goto_step(other || after)]))
               open_step(taken)
-              append_statements(statement.body, loop_end)
+              append_statements(statement.body, cut_loop)
               append(goto_step(after))
               if other
                 open_step(other)
-                append_statements(statement.otherwise, loop_end)
+                append_statements(statement.otherwise, cut_loop)
                 append(goto_step(after))
               end
               open_step(after)
@@ -379,7 +382,7 @@ module VBlank
               open_step(head)
               append(Statements::If.new(condition: statement.condition, body: [goto_step(body)], otherwise: [goto_step(after)]))
               open_step(body)
-              append_statements(statement.body, after)
+              append_statements(statement.body, CutLoop.new(head:, after:))
               append(goto_step(head))
               open_step(after)
             end
@@ -387,24 +390,25 @@ module VBlank
             # A statement with no wait in it, as it was but for what the cut changes: a local is a
             # global now, a return finishes the routine, and a break out of a loop that was cut goes on
             # at that loop's end (one inside a loop kept whole is that loop's own).
-            def uncut_statement(statement, loop_end, in_loop:)
+            def uncut_statement(statement, cut_loop, in_loop:)
               case statement
               when Statements::Local
                 @locals << statement
                 Statements::Assign.new(target: statement.name, value: statement.value)
               when Statements::Return then Statements::Finish.new(counter: @counter)
-              when Statements::Break then in_loop ? statement : goto_step(loop_end)
+              when Statements::Break then in_loop ? statement : goto_step(cut_loop.after)
+              when Statements::Continue then in_loop ? statement : goto_step(cut_loop.head)
               when Statements::If
-                statement.with(body: uncut_statements(statement.body, loop_end, in_loop),
-                               otherwise: uncut_statements(statement.otherwise, loop_end, in_loop))
-              when Statements::While then statement.with(body: uncut_statements(statement.body, loop_end, true))
-              when Statements::Block then statement.with(body: uncut_statements(statement.body, loop_end, in_loop))
+                statement.with(body: uncut_statements(statement.body, cut_loop, in_loop),
+                               otherwise: uncut_statements(statement.otherwise, cut_loop, in_loop))
+              when Statements::While then statement.with(body: uncut_statements(statement.body, cut_loop, true))
+              when Statements::Block then statement.with(body: uncut_statements(statement.body, cut_loop, in_loop))
               else statement
               end
             end
 
-            def uncut_statements(statements, loop_end, in_loop)
-              statements.map { |statement| uncut_statement(statement, loop_end, in_loop: in_loop) }
+            def uncut_statements(statements, cut_loop, in_loop)
+              statements.map { |statement| uncut_statement(statement, cut_loop, in_loop: in_loop) }
             end
           end
         end

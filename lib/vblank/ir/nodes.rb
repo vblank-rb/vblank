@@ -1872,6 +1872,22 @@ module VBlank
         # lowering that keeps the pool as lists, and the interpreter, never read it.
       end
 
+      # Ruby's `break` and `next` in a loop: the innermost `repeat` around the statement ends now,
+      # or goes on to its next turn now, the rest of this turn left out. Neither names its loop: it
+      # is the nearest `repeat` above it, reached through tests alone, and never a walk of a pool
+      # (LoopJumps.refuse_stray_jumps!).
+      class BreakRepeat
+        include Node
+        kind :break_repeat
+        category :control
+      end
+
+      class NextRepeat
+        include Node
+        kind :next_repeat
+        category :control
+      end
+
       class RestoreRegion
         include Node
         kind :restore_region

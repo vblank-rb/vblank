@@ -42,7 +42,8 @@ module VBlank
           # #value_by_kind; read by test_native_kind_coverage.rb and #refuse_unlowered_kinds!. A
           # declaration writes nothing where it is (#lower_nothing).
           STATEMENT_KINDS = (%i[
-            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
+            program set add sub copy negate abs negate_abs clamp if loop repeat break_repeat next_repeat every after call
+            call_one_of
             case halt stop_full wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
             list_set list_fill list_copy list_sort list_pack screen clear_screen fill_rect draw_rect_at
             pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
@@ -68,6 +69,8 @@ module VBlank
             when :if then lower_if(node)
             when :loop then lower_loop(node)
             when :repeat then lower_repeat(node)
+            when :break_repeat then [Statements::Break.new]
+            when :next_repeat then lower_next_repeat(node)
             when :every then lower_every(node)
             when :after then lower_after(node)
             when :call then lower_call(node)
@@ -716,12 +719,26 @@ module VBlank
             pass = []
             pass << assign(node.index, index) if node.index
             pass << Statements::If.new(condition: value(node.stop_when), body: [Statements::Break.new]) if node.stop_when
-            pass.concat(body_of(node))
-            pass << Statements::Assign.new(index, call("rg_add", index, Statements::Int.new(1)))
+            repeat_indexes.push(index)
+            begin
+              pass.concat(body_of(node))
+            ensure
+              repeat_indexes.pop
+            end
+            pass << next_turn(index)
             [Statements::Block.new([Statements::Local.new(name: count, value: value(node.count)),
                            Statements::Local.new(name: index, value: Statements::Int.new(0)),
                            Statements::While.new(condition: call("rg_lt", index, count), body: pass)])]
           end
+
+          # Ruby's `next` in a repeat (IR::LoopJumps): the innermost loop's index steps on, as the end of
+          # its turn would, and the loop goes back to its test.
+          def lower_next_repeat(_node) = [next_turn(repeat_indexes.last), Statements::Continue.new]
+
+          def next_turn(index) = Statements::Assign.new(index, call("rg_add", index, Statements::Int.new(1)))
+
+          # The index locals of the repeats being lowered, the innermost last.
+          def repeat_indexes = (@repeat_indexes ||= [])
 
           # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def lower_beat(node) = Frames.beat_statements(node).flat_map { |statement| lower(statement) }

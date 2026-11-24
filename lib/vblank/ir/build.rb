@@ -472,6 +472,12 @@ module VBlank
                              stop_when: to_value_node(stop_when || 0))
       end
 
+      # Ruby's `break` in the innermost +repeat+ around it: the loop ends now (Nodes::BreakRepeat).
+      def break_repeat = Nodes.build(:break_repeat)
+
+      # Ruby's `next` there: the loop goes on to its next turn now (Nodes::NextRepeat).
+      def next_repeat = Nodes.build(:next_repeat)
+
       # A repeating timer: run +body+ once every +period+ frames. +counter+ names
       # the hidden frame counter (cleared once at boot) that a backend ticks each
       # frame and resets when it reaches the period. The whole point of it being a

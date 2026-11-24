@@ -147,7 +147,8 @@ module VBlank
           # What a part of a routine hands back to the method that called it, besides nil (it ran
           # to its end, so the caller goes on) and the routine's own 0 or 1 (the routine hands that
           # back at once): that the routine goes on to its next step, leaves its loop, or returns.
-          PART_ENDINGS = Ractor.make_shareable({ goto: ":rg_next", break: ":rg_break", return: ":rg_return" })
+          PART_ENDINGS = Ractor.make_shareable({ goto: ":rg_next", break: ":rg_break", return: ":rg_return",
+                                                 continue: ":rg_continue" })
 
           # The statements that always leave the method they are printed in, so a part ending in one
           # needs no nil after it.
@@ -411,16 +412,18 @@ module VBlank
             line(depth, "#{method_local('rg_part_ended')} = #{name}")
             if @in_part
               line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break) && @loops_open.positive?
+              line(depth, "next if rg_part_ended == #{PART_ENDINGS[:continue]}") if endings.include?(:continue) && @loops_open.positive?
               line(depth, "return rg_part_ended unless rg_part_ended.nil?")
             else
               line(depth, "next if rg_part_ended == #{PART_ENDINGS[:goto]}") if endings.include?(:goto)
               line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break)
+              line(depth, "next if rg_part_ended == #{PART_ENDINGS[:continue]}") if endings.include?(:continue)
               line(depth, "return if rg_part_ended == #{PART_ENDINGS[:return]}") if endings.include?(:return)
               line(depth, "return rg_part_ended unless rg_part_ended.nil?") if endings.include?(:value)
             end
           end
 
-          # How +list+ can leave the method it is printed in: :goto, :break (of a loop outside it),
+          # How +list+ can leave the method it is printed in: :goto, :break or :continue (of a loop outside it),
           # :return, or :value (the routine's own 0 or 1).
           def endings_of(list, in_loop:)
             list.each_with_object(Set.new) do |statement, endings|
@@ -429,6 +432,7 @@ module VBlank
               when Statements::Pause, Statements::Finish, Statements::Resume then endings << :value
               when Statements::Return then endings << :return
               when Statements::Break then endings << :break unless in_loop
+              when Statements::Continue then endings << :continue unless in_loop
               when Statements::If then endings.merge(endings_of(statement.body, in_loop: in_loop))
                                                 .merge(endings_of(statement.otherwise, in_loop: in_loop))
               when Statements::Block then endings.merge(endings_of(statement.body, in_loop: in_loop))
@@ -552,6 +556,7 @@ module VBlank
             when Statements::If then print_if(depth, item)
             when Statements::While then print_while(depth, item)
             when Statements::Break then @loops_open.positive? ? line(depth, "break") : leave(depth, :break, "break")
+            when Statements::Continue then @loops_open.positive? ? line(depth, "next") : leave(depth, :continue, "next")
             when Statements::Return then leave(depth, :return, "return")
             when Statements::Block then print_block(depth, item)
             when Statements::Comment then comment(depth, item.text)

@@ -40,7 +40,7 @@ module VBlank
       # with stay in its own lowering.
       module ControlFlow
         # The statements written here (Lowering#statements_written_by), each by its own method.
-        STATEMENT_KINDS = %i[if loop repeat every after case].freeze
+        STATEMENT_KINDS = %i[if loop repeat break_repeat next_repeat every after case].freeze
 
         # The numbers a routine keeps of its own for ONE CALL of it, asked for by these names through
         # keep_local: a loop's turns and its count (#emit_repeat), and the scene a `case` read
@@ -80,6 +80,8 @@ module VBlank
           when :if then emit_if(node)
           when :loop then emit_loop(node)
           when :repeat then emit_repeat(node)
+          when :break_repeat then jump(loop_targets.last.fetch(0))
+          when :next_repeat then jump(loop_targets.last.fetch(1))
           when :every, :after then emit_beat(node)
           when :case then emit_case(node)
           else raise ArgumentError, "no writer here for #{node.kind.inspect}"
@@ -197,18 +199,22 @@ module VBlank
             emit_store(limit.name)
             jump_unless(Build.binop(:>, limit, Build.int(0)), none)
           end
-          with_counter_held(node, counter) do
-            emit_store_zero(counter)
-            place_label(top)
-            emit_copy_variable(counter, node.index) if node.index && !in_index
-            jump_if(node.stop_when, done)
-            with_index_below(in_index && known ? counter : nil, known) do
-              children_of(node).first.each { |child| statement(child) }
+          turn_end = fresh_label("next_turn") if LoopJumps.next_in?(node)
+          with_loop_targets(done, turn_end) do
+            with_counter_held(node, counter) do
+              emit_store_zero(counter)
+              place_label(top)
+              emit_copy_variable(counter, node.index) if node.index && !in_index
+              jump_if(node.stop_when, done)
+              with_index_below(in_index && known ? counter : nil, known) do
+                children_of(node).first.each { |child| statement(child) }
+              end
+              place_label(turn_end) if turn_end
+              emit_increment(counter)
+              jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
+              statement(Build.sub(counter, Build.int(1))) if in_index
+              place_label(done)
             end
-            emit_increment(counter)
-            jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
-            statement(Build.sub(counter, Build.int(1))) if in_index
-            place_label(done)
           end
           place_label(none) if none
         end
@@ -237,18 +243,35 @@ module VBlank
           done = fresh_label("end_while")
           statement(Build.set(node.index, Build.neg(Build.var_ref(variable)))) unless start
           jump_if(node.stop_when, done) unless sure
-          with_counter_held(node, variable, loaded: true) do
-            place_label(top)
-            with_index_below(sure && start >= 0 ? variable : nil, limit) do
-              children_of(node).first[0...-1].each { |child| statement(child) }
+          left = fresh_label("left_while") if LoopJumps.jumps_in?(node)
+          with_loop_targets(left, nil) do
+            with_counter_held(node, variable, loaded: true) do
+              place_label(top)
+              with_index_below(sure && start >= 0 ? variable : nil, limit) do
+                children_of(node).first[0...-1].each { |child| statement(child) }
+              end
+              emit_increment(variable)
+              jump_if(Build.binop(:<, Build.var_ref(variable), counted.limit), top)
+              place_label(left) if left
             end
-            emit_increment(variable)
-            jump_if(Build.binop(:<, Build.var_ref(variable), counted.limit), top)
           end
           place_label(done)
           turns = start ? Build.binop(:-, Build.var_ref(variable), Build.int(start)) : Build.binop(:+, Build.var_ref(node.index), Build.var_ref(variable))
           statement(Build.set(node.index, turns))
         end
+
+        # Where a `break` and a `next` in the loop being written go (IR::LoopJumps): the label past
+        # its end, and the label of its one more. A `break` from a counted while goes to a label
+        # inside #with_counter_held, so a count kept in a register is put back on the way out; a
+        # counted while has no `next` (LoopForm#counted_while).
+        def with_loop_targets(leave, turn_end)
+          loop_targets.push([leave, turn_end])
+          yield
+        ensure
+          loop_targets.pop
+        end
+
+        def loop_targets = (@loop_targets ||= [])
 
         # The loop +node+ written by the block, from its count +counter+ set to nought to the label
         # every way out of it comes to. A lowering whose processor counts faster in a register than

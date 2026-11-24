@@ -84,7 +84,8 @@ module VBlank
         # - the last statement of its body adds one to +variable+, and no other statement the body
         #   runs, in it or in a routine it calls, names +variable+ (or +limit+, where that is a
         #   variable) but to read it, so the variable moves only by that one more;
-        # - nothing in the body can reach a frame boundary or stop the game: the checked run compares
+        # - no `next` in the body leaves the one more out of a turn (a `break` may leave the loop);
+      # - nothing in the body can reach a frame boundary or stop the game: the checked run compares
         #   every variable as a pass ends, the loop's hidden index among them, and a counted while
         #   keeps that index only as it ends (it is the turns made, the variable less where it
         #   started).
@@ -102,6 +103,9 @@ module VBlank
 
         def find_counted_while(node)
           return unless node.kind == :repeat && node.count.kind == :int && node.count.value == WHILE_TURNS && counts_in_index?(node)
+          # A `next` leaves out the rest of its turn, the one more among it, so the variable does not
+          # count the turns.
+          return if LoopJumps.next_in?(node)
 
           variable, limit = below_test(node.stop_when)
           step = node.children.last

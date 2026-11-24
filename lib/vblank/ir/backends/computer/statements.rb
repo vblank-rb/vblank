@@ -68,6 +68,8 @@ module VBlank
 
           While = Data.define(:condition, :body)
           Break = Data.define
+          # Back to the innermost While's test, the rest of its body left out.
+          Continue = Data.define
           Return = Data.define
 
           # { ... }, so a loop's own locals stay its own.

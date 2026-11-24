@@ -370,6 +370,61 @@ class TestLoopForm < Minitest::Test
                  "and the interpreter says the same"
   end
 
+  # A `break` or `next` out of the statement a spilled loop saves its registers around takes them
+  # off the stack before it jumps. Left there, the loop would count on in whatever the call left in
+  # the registers, and the stack would grow by two words a jump.
+  def test_a_jump_out_of_a_saved_statement_takes_the_saved_registers_back
+    rom = VBlank.build("LOOPJUMP", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      turns = var :turns, 10
+      hits = 0
+      seen = 0
+      b = self
+      func(:bump) { hits += 1 }
+      game_loop do
+        hits = 0
+        seen = 0
+        turns.times do |i|
+          if i == 2 || i > 6
+            b.call :bump
+            next if i == 2
+
+            break
+          end
+          seen += i
+        end
+      end
+    end
+
+    assert_equal :spilled, rom.loop_shapes.values.first.shape
+    assert_equal 2, read_var(rom, :hits), "a call on the turn that went on and on the turn that left"
+    assert_equal 19, read_var(rom, :seen), "0+1+3+4+5+6: turn 2 went on to the next, turn 7 left"
+    assert_equal 19, VBlank::IR::Backends::Reference.new.run(rom.source_program)[:seen]
+  end
+
+  # ...and a `break` out of a loop holding its count in registers writes the count back on the way.
+  def test_a_break_out_of_a_held_loop_leaves_its_index_at_the_turn_it_left_on
+    rom = VBlank.build("LOOPLEFT", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      turns = var :turns, 10
+      seen = 0
+      at = 0
+      game_loop do
+        seen = 0
+        turns.times do |i|
+          at = i
+          break if i == 3
+
+          seen += i
+        end
+      end
+    end
+
+    assert_equal :registers, rom.loop_shapes.values.first.shape
+    assert_equal 3, read_var(rom, :seen)
+    assert_equal 3, read_var(rom, :at)
+  end
+
   # The saving is really in the emitted code, both halves of it. A loop that reported the fast
   # shape without them would count in a register the call had already written. A loop that
   # reads its index counts up against a limit and saves both; one that does not counts down and

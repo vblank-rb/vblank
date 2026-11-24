@@ -54,6 +54,7 @@ require_relative "ir/light_scenes"          # Which scenes a light is off in, to
 require_relative "ir/tunes"                 # Which tunes a program plays, and the mixer voices they keep
 require_relative "ir/mixing"                # How recordings are added together into one stream
 require_relative "ir/rules_only"            # A program with nothing to see or hear, for a bot to play fast
+require_relative "ir/loop_jumps"            # Which loop a `break` or `next` belongs to
 require_relative "ir/verifier"
 require_relative "ir/portability"
 require_relative "ir/backends"

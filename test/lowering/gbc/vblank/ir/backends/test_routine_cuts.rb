@@ -97,6 +97,23 @@ class TestRoutineCuts < Minitest::Test
     assert_equal [statements], lowering.measured
   end
 
+  # A `break` jumps to a label of its loop's, which a part of its own could not reach: the test
+  # holding it stays in the loop's routine, and the statements beside it are cut into parts.
+  def test_a_statement_holding_a_break_stays_with_its_loop
+    leave = if_(binop(:==, var_ref(:n), int(3)), break_repeat)
+    waits = Array.new(4) { wait_vblank }
+    loop = repeat(8, :i, leave, *waits)
+    lowering = CountingLowering.new([[loop, 300], [leave, 10], *waits.map { |node| [node, 60] }].to_h.compare_by_identity)
+    cuts = cuts_for(lowering)
+
+    sections = cuts.sections("big", [loop]) { |label, held| lowering.section(label, held) }
+
+    body, = cuts.children_of(loop)
+    assert_same leave, body.first
+    assert_operator sections.length, :>, 1
+    refute lowering.measured.flatten.any? { |node| node.equal?(leave) }, "nothing measures it to move it"
+  end
+
   private def cuts_for(lowering, found = Set.new)
     RoutineCuts.new(plan: nil, most_routine_bytes: 200, most_part_bytes: 130, return_bytes: 1,
                     measure: ->(list) { lowering.measure(list) }, snapshot: -> { lowering.snapshot },

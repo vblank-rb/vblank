@@ -24,6 +24,13 @@ class TestGBALoopCost < Minitest::Test
   def test_a_turn_of_while_set_costs_under_10_cycles = assert_turn_under(:while_set, 10)
   def test_a_turn_of_while_read_costs_under_30_cycles = assert_turn_under(:while_read, 30)
 
+  # A search that asks each turn whether to `break` or go to its `next` round, a jump being one branch.
+  # Measured: 67 and 64 a turn while a jump set a hidden number that the loop's test and a test round
+  # the rest of the turn read; 12 and 47 as a branch. The `next` loop is not a counted while (its
+  # `i += 1` is not last), so its turn is a while's, asking its test of `i` in memory.
+  def test_a_turn_of_while_break_costs_under_14_cycles = assert_turn_under(:while_break, 14)
+  def test_a_turn_of_while_next_costs_under_50_cycles = assert_turn_under(:while_next, 50)
+
   private def assert_turn_under(loop, bound)
     cost = LoopCostGames.cycles_a_turn(:gba, loop, FRAME_CYCLES)
 

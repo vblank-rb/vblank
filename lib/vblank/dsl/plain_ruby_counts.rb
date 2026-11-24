@@ -50,9 +50,9 @@ module VBlank
         end
 
         # `loop do ... end` with a `break` in it. It is Ruby's, its rounds run while building,
-        # until a jump in it sits under a test the game makes (Jumps#note_round_start!). That
-        # round is the last Ruby writes out; the rounds after it are a loop the game runs, which
-        # only that `break` leaves, as in Ruby.
+        # until a jump in it sits under a test the game makes (Jumps#note_round_start!). The rounds
+        # before that one stay written out; that round and the rounds after it are a loop the game
+        # runs, which only that `break` leaves, as in Ruby.
         #
         # A loop Ruby ends, by a `break` or by an enumerator in it running out (StopIteration,
         # which Ruby's `loop` ends on and hands back the result of), ends here the same way.
@@ -79,18 +79,13 @@ module VBlank
         end
 
         def game_rounds_after_switch(builder, jumps)
-          switched = jumps.round_statements
-          jumps.end_round!
-          builder.repeat(Steps::MOST_PASSES, stop_when: jumps.leave_test) do
-            jumps.start_round!
-            begin
-              yield
-            rescue StopIteration
-              refuse_changing_round!
-            end
-            jumps.end_round!
+          switched = jumps.game_round_statements
+          builder.repeat(Steps::MOST_PASSES) do
+            yield
+          rescue StopIteration
+            refuse_changing_round!
           end
-          refuse_changing_round! unless RoundShape.same?(switched, jumps.round_body(builder.last_recorded_statement))
+          refuse_changing_round! unless RoundShape.same?(switched, builder.last_recorded_statement.children)
         end
 
         # Do two recordings of one block do the same? Each statement's kind, operands and the
@@ -139,13 +134,9 @@ module VBlank
         end
 
         # At most +rounds+ rounds of a loop the game runs, each handed its count from 0.
-        def game_rounds(builder, rounds, jumps)
+        def game_rounds(builder, rounds, jumps, &)
           jumps&.open_game!(builder)
-          builder.repeat(rounds, stop_when: jumps&.leave_test) do |index|
-            jumps&.start_round!
-            yield index
-            jumps&.end_round!
-          end
+          builder.repeat(rounds, &)
         end
 
         # A game number the loop starts from, kept as it is when the loop begins: the body may

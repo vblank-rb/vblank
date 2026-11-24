@@ -494,6 +494,18 @@ module ConformanceFixture
       # what the case above set.
       B.call_one_of(%i[scene_a scene_b], which: B.binop(:+, B.var_ref(:sel), B.int(1))),
       B.repeat(3, :ri, B.set(:acc, B.var_ref(:ri))), # counted loop, index 0..2
+      # A `next` on turn 1 and a `break` on turn 3 of five: :jumped is 0 + 2, and :rj stays 3.
+      B.set(:jumped, 0),
+      B.repeat(5, :rj,
+               B.if_(B.binop(:==, B.var_ref(:rj), B.int(1)), B.next_repeat),
+               B.if_(B.binop(:==, B.var_ref(:rj), B.int(3)), B.break_repeat),
+               B.add(:jumped, B.var_ref(:rj))),
+      # ...and a `break` out of a `while wi < 4` ending `wi += 1` (a counted while), on wi == 2.
+      B.set(:wi, 0),
+      B.repeat(0x7FFF_FFFF, :wt,
+               B.if_(B.binop(:==, B.var_ref(:wi), B.int(2)), B.break_repeat),
+               B.add(:wi, B.int(1)),
+               stop_when: B.binop(:==, B.binop(:<, B.var_ref(:wi), B.int(4)), B.int(0))),
 
       # --- timed triggers: a repeating and a one-shot timer (counters cleared
       # up front so the interpreter's schedule is deterministic) ---

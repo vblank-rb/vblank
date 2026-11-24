@@ -98,6 +98,7 @@ module VBlank
       def verify!(node)
         node.walk { |n| verify_known_kind!(n) }
         node.walk { |n| verify_node!(n) }
+        LoopJumps.refuse_stray_jumps!(node)
         node
       end
 

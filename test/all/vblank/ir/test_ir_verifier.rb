@@ -237,4 +237,23 @@ class TestIRVerifier < Minitest::Test
     bad = program(Nodes::Set.new(var: :x, value: 5))
     assert_raises(IR::InvariantError) { Verifier.verify!(bad) }
   end
+
+  # ---- a `break` or `next` belongs to the repeat it is in, under tests alone ----
+
+  def test_a_jump_in_a_repeat_under_a_test_passes
+    good = program(repeat(4, :i, if_(binop(:==, var_ref(:i), int(2)), break_repeat), next_repeat))
+
+    assert_same good, Verifier.verify!(good)
+  end
+
+  def test_a_jump_outside_every_repeat_is_refused
+    err = assert_raises(IR::InvariantError) { Verifier.verify!(program(break_repeat)) }
+    assert_match(/inside a repeat/, err.message)
+  end
+
+  def test_a_jump_through_a_timer_to_its_repeat_is_refused
+    bad = program(repeat(4, :i, every(:beat, 2, next_repeat)))
+
+    assert_raises(IR::InvariantError) { Verifier.verify!(bad) }
+  end
 end

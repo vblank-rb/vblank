@@ -154,6 +154,7 @@ module VBlank
             when Statements::If then print_if(depth, item)
             when Statements::While then print_while(depth, item)
             when Statements::Break then line(depth, "break;")
+            when Statements::Continue then line(depth, "continue;")
             when Statements::Return then line(depth, "return;")
             when Statements::Block then print_block(depth, item)
             when Statements::Comment then comment(depth, item.text)

@@ -753,22 +753,9 @@ module VBlank
               @game_loop = stopping_test(@test.call)
             end
             test_statements = take_statements_since(mark)
-            test_statements = open_jumps(test_statements) if @jumps
+            @jumps&.open_game!(@builder)
             @game_loop.open_repeat(MOST_PASSES, test_statements: test_statements)
-            @jumps&.start_round!
             true
-          end
-
-          # The loop stops on its own test, or once a `break` in it ran. A test that records
-          # statements of its own (`while (calls += 1) < most`) runs them only while no `break`
-          # has: Ruby does not ask the test again after one. Hands back those statements.
-          def open_jumps(test_statements)
-            @jumps.open_game!(@builder)
-            leave = @jumps.leave_test
-            return test_statements unless leave
-
-            @game_loop |= leave
-            test_statements.empty? ? [] : [@jumps.unless_left(test_statements)]
           end
 
           # Where the game being built records next, or nil with none: a plain Ruby loop outside a

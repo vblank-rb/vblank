@@ -303,6 +303,33 @@ class TestPlainRubyJumps < Minitest::Test
     assert_equal [true, false, true, true, false, false], drawn
   end
 
+  # A loop that waits for the next frame in its rounds: the game goes on from the middle of the
+  # loop a frame later, and a jump there still goes where Ruby's would.
+  def test_break_and_next_in_a_loop_that_waits_for_frames
+    player = played(frames: 12) do
+      steps = 0
+      total = 0
+      done = 0
+      at = 0
+      game_loop do
+        if done == 0
+          while at < 9
+            at += 1
+            wait_vblank
+            next if at == 2
+
+            steps += 1
+            total += at
+            break if at == 5
+          end
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [4, 13, 1, 5], [player[:steps], player[:total], player[:done], player[:at]]
+  end
+
   def test_break_with_a_value_in_a_loop_the_game_runs_is_refused
     error = assert_raises(Refused) do
       built do
