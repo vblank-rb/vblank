@@ -1130,7 +1130,9 @@ module VBlank
           return followed_data(made) if made.is_a?(Class) && made < Data
           return made unless made.is_a?(Class) && made < Struct
 
-          accessors = Module.new
+          # The mark comes in with the accessors, in one prepend, so a build in another Ractor never
+          # sees the mark on a class whose accessors are not there yet (#followed_class).
+          accessors = Module.new { include FollowedFields }
           # Struct's own `initialize` sets the fields without their writers, so the named ones are
           # made game variables after it, as a named instance variable is at its first number.
           accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
@@ -1203,10 +1205,42 @@ module VBlank
           made
         end
 
+        # Marks a Struct or Data class whose fields are followed (#followed_struct), so it is followed once.
+        module FollowedFields; end
+
+        # +made+, the class game code makes an object of (`Point.new(x, y)`), with its fields
+        # followed as a game file's Struct or Data class's are. One written in a file plain
+        # `require` brought in was never read as game code, so `Struct.new` there made a plain
+        # Ruby class: its fields would hold the game's working-out itself, not the number it had on
+        # the line that made the object, and a later change to that number would show through.
+        # Following it here, the first time game code makes one, gives Ruby's answer. Outside a
+        # build its methods are Ruby's own (#ruby_field?), so the class works as before everywhere else.
+        # VBlank's own classes are the library's, not the game's, and stay as they are.
+        def followed_class(made)
+          return made unless made.is_a?(Class) && (made < Struct || made < Data) && !(made < FollowedFields)
+          return made if made.name&.start_with?("VBlank::")
+
+          followed_struct(made)
+        end
+
+        # +value+, given a name by game code, may be a Struct or Data object a method of a plain file
+        # made (`point = Points.at(score)`), whose class game code never named, so #followed_class
+        # never saw it. Its class is followed now, and the object counted as made on this line,
+        # which is where game code first has it: as if the line had made it.
+        def follow_object_made_outside(value)
+          return unless value.is_a?(Struct) || value.is_a?(Data)
+          return if value.is_a?(FollowedFields) || !Builder::Session.builder
+
+          followed = followed_class(value.class)
+          return unless followed.equal?(value.class) && value.is_a?(FollowedFields)
+
+          value.is_a?(Data) ? start_data_fields(value) : start_fields(value)
+        end
+
         # A Data class's readers, `to_h` and `deconstruct_keys` hand the copy of a game number a
         # field keeps (#copy_data_field_number!), as a Struct's do.
         def followed_data(made)
-          readers = Module.new
+          readers = Module.new { include FollowedFields }
           readers.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
             def initialize(...)
               super

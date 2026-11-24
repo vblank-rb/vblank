@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "ruby_answers"
+require "fixtures/plain_file_structs"
 
 VBlank.require_game_file "../../../ruby_answers_parts"
 
@@ -1722,6 +1723,67 @@ class TestPlainRubyAnswers < Minitest::Test
         fresh = AnswerFixedPoint.new(x: score, y: 0)
         score += 5
         n = fresh.x
+      end
+    end
+  end
+
+  # A Struct written in a file plain `require` brought in, which no rewrite reads
+  # (test/fixtures/plain_file_structs.rb), keeps the number it was made from as one in a game file does.
+  def test_a_plain_file_struct_made_from_a_changing_number_keeps_a_copy
+    agrees("PlainFilePoint.new(score, 0), then score += 1", reads: %i[n], passes: 3) do
+      score = 0
+      point = PlainFilePoint.new(score, 0)
+      n = 0
+      game_loop do
+        score += 1
+        n = point.x
+      end
+    end
+  end
+
+  def test_a_plain_file_struct_made_in_the_game_loop_from_a_number_changed_after
+    agrees("fresh = PlainFilePoint.new(px + 2, 0); px += 5", reads: %i[n], passes: 3) do
+      px = n = 0
+      game_loop do
+        px += 1
+        fresh = PlainFilePoint.new(px + 2, 0)
+        px += 5
+        n = fresh.x
+      end
+    end
+  end
+
+  def test_a_plain_file_struct_field_changed_in_the_game_loop
+    agrees("PlainFilePoint.new(1, 0); point.x += 1", reads: %i[n], passes: 3) do
+      point = PlainFilePoint.new(1, 0)
+      n = 0
+      game_loop do
+        point.x += 1
+        n = point.x
+      end
+    end
+  end
+
+  def test_a_plain_file_struct_made_by_a_plain_file_method
+    agrees("point = PlainFilePoints.at(score), then score += 1", reads: %i[n], passes: 3) do
+      score = 0
+      point = PlainFilePoints.at(score)
+      n = 0
+      game_loop do
+        score += 1
+        n = point.x
+      end
+    end
+  end
+
+  def test_a_plain_file_data_object_made_from_a_changing_number_keeps_a_copy
+    agrees("PlainFileFixedPoint.new(x: score), then score += 1", reads: %i[n], passes: 3) do
+      score = 0
+      point = PlainFileFixedPoint.new(x: score, y: 0)
+      n = 0
+      game_loop do
+        score += 1
+        n = point.x
       end
     end
   end

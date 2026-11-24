@@ -586,6 +586,11 @@ through an object (`self::BOX`, `kind.class::LIFTED`) is that object's own and i
 the object is cannot be known from the source. A path that starts from a name (`File::SEPARATOR`,
 `::File`) is checked by that name.
 
+A Struct or Data class written in a file plain `require` loaded (no rewrite read it) is followed
+the first time game code makes an object of it (`Point.new`, `Point[]`) or gives a name an object
+of it a method there made: its fields keep the number they were given, as a game file's do
+(`InstanceVariables.followed_class`). VBlank's own classes are left alone.
+
 ## What is refused, and what to write instead
 
 Each is a friendly error naming the line.

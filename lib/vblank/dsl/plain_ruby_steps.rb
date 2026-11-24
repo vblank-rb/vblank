@@ -456,6 +456,7 @@ module VBlank
         # +button_kept+ marks a line outside game code that keeps a button for game code to read
         # (Promotion#button_kept?), which the build warns of.
         def kept_answer(value, copy: :numbers, name: nil, button_kept: false)
+          InstanceVariables.follow_object_made_outside(value)
           copied = copy_for_local(value, Promotion.copy(value, copy))
           return copied if copied.equal?(value)
 

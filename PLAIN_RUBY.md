@@ -493,6 +493,8 @@ end
 
 Its locals stay its own, and its constants and methods are shared with the game. Its methods and blocks are checked as a game block is.
 
+A Struct or Data class in a file loaded with plain `require` works in game code too: an object of it keeps the numbers it was made from, as Ruby's does.
+
 ## What is refused, and what to write instead
 
 Each refusal is a friendly error that names the line, said before anything is built.

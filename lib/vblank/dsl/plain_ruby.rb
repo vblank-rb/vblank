@@ -752,8 +752,24 @@ module VBlank
           return listed_attribute_methods_text(node) if listed_attribute_call?(node)
           return counted_loop_text(node) if node.receiver && node.block.is_a?(Prism::BlockNode)
           return endless_loop_text(node) if endless_loop?(node)
+          return object_made_text(node) if object_made_from_constant?(node)
 
           copied_text(node)
+        end
+
+        # `Point.new(x, y)` or `Point[x, y]`, a class named by a constant made into an object. Where
+        # the class is a Struct or a Data class written in a file no rewrite read (plain `require`),
+        # its fields are followed as a game file's are (InstanceVariables.followed_class).
+        def object_made_from_constant?(node)
+          return false unless @follows_instance_variables && %i[new []].include?(node.name)
+
+          receiver = node.receiver
+          receiver.is_a?(Prism::ConstantReadNode) || receiver.is_a?(Prism::ConstantPathNode)
+        end
+
+        def object_made_text(node)
+          "#{INSTANCE_VARIABLES}.followed_class(#{rewritten_text(node.receiver)})" \
+            "#{copied_text(node, from: node.receiver.location.end_offset)}"
         end
 
         # The numbers Ruby counts with given a block, `n.times { }`, `0.upto(n) { }` or

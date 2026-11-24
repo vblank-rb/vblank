@@ -43,6 +43,7 @@ module VBlank
           # thing after its walk moves on.
           return value.struct_array.kept(value, current) if value.is_a?(StructArray::Thing)
 
+          InstanceVariables.follow_object_made_outside(value)
           refuse_object_replaced!(label, current, value)
           share_argument(value, owner, label) if shares && owner
           if owner
