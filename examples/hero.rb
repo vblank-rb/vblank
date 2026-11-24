@@ -274,13 +274,13 @@ module Hero
     # Said once, this makes the build refuse any variable or list that no file keeps and that
     # is not named here. What is named here is what a load must leave alone: the file screen,
     # its menu and which file is picked, and the sign's box, which a fresh walk opens shut.
-    saves_keep_everything except: %i[slot saved mode shown0 shown1 shown2 number choosing next_choosing
+    saves_keep_everything except: %i[slot saved mode shown number choosing next_choosing
                                      actions note reading typed pen tick]
 
     slot = 0     # the file picked on the file screen, and the one START saves to
     saved = 0   # frames left of "SAVED" after START
     mode = var :mode, :files
-    shown = Array.new(3) { |n| var :"shown#{n}", 0 } # each file's steps, for the file screen
+    shown = Array.new(3, 0) # each file's steps, for the file screen
     number = 1 # the picked file's number, as the second step shows it
 
     # The file screen is two steps: pick a file, then say what to do with it. Which step is

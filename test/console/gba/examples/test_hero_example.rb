@@ -167,7 +167,7 @@ class TestHeroExample < Minitest::Test
     run = power_on(SaveImage.new, frames: 3)
 
     refute_equal Color.resolve(:red), run.screen.pixel(*CENTER), "the hero waits for a game to start"
-    assert_equal [0, 0, 0], (0..2).map { |n| run[:"shown#{n}"] }
+    assert_equal [0, 0, 0], run.list(:shown)
   end
 
   # Walk right, save with START, and turn the console off. On again, the file screen shows
@@ -178,7 +178,7 @@ class TestHeroExample < Minitest::Test
     saved = play(frames: 40, store: store) { |f| { 21 => :start }.fetch(f) { f <= 20 ? :right : nil } }
 
     back = power_on(store, frames: 3)
-    assert_equal 20, back[:shown0], "the file screen reads the walk from the save without loading it"
+    assert_equal 20, back.list(:shown)[0], "the file screen reads the walk from the save without loading it"
 
     continued = power_on(store, frames: 8, presses: { 1 => :a, 3 => :a })
     assert_equal [saved[:px], saved[:py], saved[:steps]], [continued[:px], continued[:py], continued[:steps]]
@@ -196,7 +196,7 @@ class TestHeroExample < Minitest::Test
     store = SaveImage.new
     play(frames: 25, store: store) { |f| f <= 20 ? :right : nil }
 
-    assert_equal 0, power_on(store, frames: 3)[:shown0]
+    assert_equal 0, power_on(store, frames: 3).list(:shown)[0]
   end
 
   # ERASE, three rows down from continue in the file's menu, empties the file; the
@@ -206,7 +206,7 @@ class TestHeroExample < Minitest::Test
     play(frames: 25, store: store) { |f| { 21 => :start }.fetch(f) { f <= 20 ? :right : nil } }
     power_on(store, frames: 12, presses: { 1 => :a, 3 => :down, 5 => :down, 7 => :down, 9 => :a })
 
-    assert_equal 0, power_on(store, frames: 3)[:shown0]
+    assert_equal 0, power_on(store, frames: 3).list(:shown)[0]
   end
 
   # Copy to next puts file 1's walk in file 2 as well.
@@ -216,6 +216,6 @@ class TestHeroExample < Minitest::Test
     power_on(store, frames: 10, presses: { 1 => :a, 3 => :down, 5 => :down, 7 => :a })
 
     back = power_on(store, frames: 3)
-    assert_equal [20, 20, 0], (0..2).map { |n| back[:"shown#{n}"] }
+    assert_equal [20, 20, 0], back.list(:shown)
   end
 end
