@@ -295,7 +295,7 @@ game_loop do
 end
 ```
 
-A list is named after its local, so a test or a profile reads `trail` by that name. In a file loaded with `VBlank.require_game_file`, the file's name comes first: `walker_trail` in `walker.rb`. A `list` line and an Array that would have the same name are refused, naming both lines.
+A list is named after its local, so a test or a profile reads `trail` by that name. In a file loaded with `VBlank.require_game_file`, the file's name comes first: `walker_trail` in `walker.rb`.
 
 ### What an Array cannot do
 

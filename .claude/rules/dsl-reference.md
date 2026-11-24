@@ -8,7 +8,8 @@ For an option or a handle's method, grep `.claude/dsl/`.
 
 A drift test (`test/all/vblank/test_dsl_reference.rb`) fails if a verb is on no page's list, if a
 verb on a list is not told on that page, or if a page is missing here. A new verb gets a line on
-its page's list and its entry below it.
+its page's list and its entry below it. `list` and `pool` are on no list: plain Ruby Arrays build
+into them, and `lists.md` and `pools.md` tell them under "What plain Ruby builds".
 
 Coordinates are pixels from the top left of a 240×160 screen. Where a verb takes a number, a
 number the game keeps works too.
@@ -47,7 +48,9 @@ number the game keeps works too.
 
 **The game's data**
 
-- `lists.md`, `tables.md`, `pools.md` — a list the game changes, a table in the cartridge, many of one thing.
+- `lists.md` — what an Array of numbers game code changes builds as: its costs, `capacity:`, `width:`, `fast:`, `fill`, sorting. A game writes the Array, never `list`.
+- `tables.md` — a table in the cartridge.
+- `pools.md` — what an Array of Structs builds as: walk order, drawing, a full Array, `drawn_as`, `narrow`. A game writes the Array, never `pool`.
 - `original.md` — `data_pack`: data read from the player's own copy of an original.
 - `sound.md` — sounds, songs, samples, instruments.
 - `clock.md` — the date and time.
