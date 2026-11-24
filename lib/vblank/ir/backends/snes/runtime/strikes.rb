@@ -116,9 +116,12 @@ module VBlank
             # looks as a write is given for its answer (Sound::PATIENCE).
             SENT_TRIES = Sound::AHEAD_ENTRIES * Sound::PATIENCE
 
-            # The console's side: whether FROM was sent for the pass playing now and UNTIL_NOW is owed, and
-            # where the tick playing now falls in the frame, in 256ths of the sound unit's counts.
+            # The console's side: whether FROM was sent for the pass playing now (FROM_THIS_PASS) and
+            # whether UNTIL_NOW is owed at the frame's end (UNTIL_NOW_OWED), and where the tick playing
+            # now falls in the frame, in 256ths of the sound unit's counts.
             FROM_SENT = "rt strikes from sent"
+            FROM_THIS_PASS = 1
+            UNTIL_NOW_OWED = 2
             OFFSET = "rt strikes offset"
 
             module_function
@@ -503,7 +506,11 @@ module VBlank
             # one way, so the sound unit takes a note's pitch and the note itself the same way.
             # rt_strikes_drop (JSL): DROP for the voice whose first register R0 names, sent as the
             # game's own sound is, in the queue behind the frame's listed notes. rt_strikes_close
-            # (JSL): UNTIL_NOW sent after a pass that sent FROM.
+            # (JSL): the pass that sent FROM ended, so the next pass sends its own FROM; UNTIL_NOW is owed.
+            # rt_strikes_until_now (JSL): UNTIL_NOW sent where a frame of the music ends, if a pass of
+            # it sent FROM. Once a frame, not once a pass: each FROM sets when what follows it is due,
+            # and nothing comes in the line between a frame's passes that the sound unit is to do at
+            # once, so one UNTIL_NOW ends them all, a turn of the mailboxes for each tick saved.
             def emit(asm, memory)
               asm.label("rt_strikes_mark")
               asm.lda(TIMING)
@@ -530,6 +537,13 @@ module VBlank
               asm.label("rt_strikes_close")
               asm.lda(asm.abs(memory[FROM_SENT]))
               asm.beq("rt_strikes_close_done")
+              asm.lda(UNTIL_NOW_OWED)
+              asm.sta(asm.abs(memory[FROM_SENT]))
+              asm.label("rt_strikes_close_done")
+              asm.rtl
+              asm.label("rt_strikes_until_now")
+              asm.lda(asm.abs(memory[FROM_SENT]))
+              asm.beq("rt_strikes_until_now_done")
               asm.stz(asm.abs(memory[FROM_SENT]))
               asm.lda(TIMING)
               asm.sta(asm.direct(Sound::R2))
@@ -537,7 +551,7 @@ module VBlank
               asm.lda(UNTIL_NOW)
               asm.sta(asm.direct(Sound::R1))
               asm.jsl(asm.long("rt_strikes_push"))
-              asm.label("rt_strikes_close_done")
+              asm.label("rt_strikes_until_now_done")
               asm.rtl
             end
 
@@ -590,6 +604,7 @@ module VBlank
               asm.lda(asm.abs(memory[s::ASKING_AHEAD]))
               asm.beq("rt_sound_write_in_line")
               asm.lda(asm.abs(memory[FROM_SENT]))
+              asm.and_a(FROM_THIS_PASS)
               asm.bne("rt_strikes_write_opened")
               [s::R0, s::R1, s::R2].each do |register|
                 asm.lda(asm.direct(register))
@@ -609,7 +624,7 @@ module VBlank
               asm.sta(asm.direct(s::R0))
               asm.jsl(asm.long("rt_strikes_push"))
               asm.bcc("rt_strikes_write_unopened")
-              asm.lda(1)
+              asm.lda(FROM_THIS_PASS | UNTIL_NOW_OWED)
               asm.sta(asm.abs(memory[FROM_SENT]))
               asm.label("rt_strikes_write_unopened")
               [s::R2, s::R1, s::R0].each do |register|

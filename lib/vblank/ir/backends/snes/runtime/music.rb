@@ -796,6 +796,7 @@ module VBlank
               asm.jsr(asm.abs("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_shapes")) if steps_shapes?(memory)
+              asm.jsl(asm.long("rt_strikes_until_now")) if strikes
               asm.rts
             end
 
