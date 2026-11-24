@@ -961,15 +961,37 @@ module VBlank
 
           # The first +capacity+ of a list's slots set to the whole number +value+ by the shared
           # fill routine.
+          #
+          # The copying engine runs with interrupts held off, and the display's frame interrupt is
+          # only remembered, not counted, while they are: a fill that outlasts a frame loses it, and
+          # a game that counts frames from power-on reads fewer than were shown. So a list too big
+          # to be written inside half a frame is written a run at a time, each its own call, with
+          # interrupts let through between them. A list under the run's size is the one call it
+          # always was. The runs are whole words, so the pattern is the same in each.
           def emit_fill_from_first_slot(info, value, capacity)
             @fills = true
-            @primitives.emit_list_base(info[:base])
-            @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))              # r1 = the first slot
-            @emitter.emit_number(3, value)
-            emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
-            @emitter.emit_number(2, capacity * info[:bytes]) # r2 = bytes to write
-            @placement.emit_call_cold_routine(FILL_ROUTINE)
+            bytes = capacity * info[:bytes]
+            at = 0
+            while at < bytes
+              run = [bytes - at, FILL_RUN_BYTES].min
+              @primitives.emit_list_base(info[:base])
+              if at.zero?
+                @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))          # r1 = where the run starts
+              else
+                @primitives.emit_add_const(TMP, LIST_ADDR, at, 2)
+              end
+              @emitter.emit_number(3, value)
+              emit_fill_pattern(info[:width])                       # r0 = the value in every byte place
+              @emitter.emit_number(2, run)                          # r2 = bytes to write
+              @placement.emit_call_cold_routine(FILL_ROUTINE)
+              at += run
+            end
           end
+
+          # The most bytes one call of the fill routine is given: 16384 words, about two fifths of a
+          # frame to the roomy memory, whose words take six cycles each to write (GBATEK, "Memory
+          # Timings").
+          FILL_RUN_BYTES = 16_384 * 4
 
           # Every slot of a pool's list kept in its layout's area set to +value+, a slot at a time at
           # the pool's stride, the number kept multiplied where the slot keeps it so (a link, whose
