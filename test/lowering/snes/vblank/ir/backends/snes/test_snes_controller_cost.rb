@@ -20,11 +20,14 @@ class TestSNESControllerCost < Minitest::Test
   FRAME_CLOCKS = 262 * 1364
   LINE_CLOCKS = 1364
 
-  # The console's own read is one load a controller. What this runtime adds to it, the buttons
-  # turned into IR::Buttons's order through a table a byte at a time and what went down kept, is
-  # about forty instructions more: under a line a controller, where clocking sixteen bits out of a
-  # port by hand and testing each button took more than two and a half.
-  BUDGET_A_CONTROLLER = LINE_CLOCKS
+  # The console's own read is one load a controller. What this runtime adds to it is, once a
+  # frame, the interrupt marking the read due and a look at HVBJOY and the line before it is taken
+  # (Runtime::Frame#emit_unless_read_settled), about twenty instructions: half a line. Then for
+  # each controller, the buttons turned into IR::Buttons's order through three tables of sixteen
+  # and what went down kept, about thirty more: two thirds of a line. Clocking sixteen bits out of
+  # a port by hand and testing each button took several lines a controller.
+  BUDGET_A_FRAME = LINE_CLOCKS / 2
+  BUDGET_A_CONTROLLER = LINE_CLOCKS * 2 / 3
 
   def self.game(players)
     VBlank.game("PADS #{players}", consoles: %i[snes], players: players) do
@@ -47,7 +50,7 @@ class TestSNESControllerCost < Minitest::Test
     define_method(:"test_#{players}_controllers_cost_what_the_automatic_read_costs") do
       cost = button_clocks(players)
 
-      assert_operator cost, :<, players * BUDGET_A_CONTROLLER,
+      assert_operator cost, :<, BUDGET_A_FRAME + (players * BUDGET_A_CONTROLLER),
                       "reading #{players} controllers costs #{cost.round} master clocks a frame"
     end
   end
