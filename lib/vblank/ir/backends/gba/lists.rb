@@ -77,6 +77,7 @@ module VBlank
             @fills = false
             @copies = false
             @near_places = {}
+            @written_slot_lists = Set.new
             @measured_near_bases = nil # the real build's (#follow_measured_near_lists)
           end
 
@@ -601,28 +602,27 @@ module VBlank
           # the ones a place beside the variables helps (#near_list?). A list also read at an index the
           # game works out keeps its place: that read wants the list's own base in its register, which
           # a slot reached from the variables' base would leave unloaded for it.
-          def note_written_slot_lists(program)
+          def self.lists_read_at_written_slots(program)
             written = ->(node) { %i[list_get list_set].include?(node.kind) && node.index.kind == :int }
             naming = Hash.new { |names, name| names[name] = [] }
             program.walk do |node|
               node.attrs.each_value { |held| Array(held).grep(Symbol).each { |name| naming[name] << node } }
             end
             candidates = program.walk.filter_map { |node| node.name if written.call(node) }.uniq
-            @written_slot_lists = candidates.select do |name|
-              naming[name].all? { |node| node.kind == :list_new || written.call(node) }
-            end.to_set
-            @near_list_bytes = 0
+            candidates.select { |name| naming[name].all? { |node| node.kind == :list_new || written.call(node) } }.to_set
           end
 
-          # Does list +name+, of +want+ bytes, go beside the variables? A plain small list read at
-          # written slots does: each such read is then one load from the variables' base, as a
-          # variable's is (Primitives#emit_fixed_slot_base), where a list kept with the rest costs
-          # its own base loaded first. A ring moves its slots, so it never does.
-          def near_list?(name, want, ring)
-            return false if ring || !@written_slot_lists&.include?(name) || @near_list_bytes + want > NEAR_LIST_BYTES
+          # The lists this build may keep beside the variables (#near_list?), set from
+          # ::lists_read_at_written_slots before any list is placed.
+          attr_writer :written_slot_lists
 
-            @near_list_bytes += want
-            true
+          # Does list +name+, of +want+ bytes, go beside the variables? A plain small list read at
+          # written slots does, while the lists already there leave it room: each such read is then
+          # one load from the variables' base, as a variable's is (Primitives#emit_fixed_slot_base),
+          # where a list kept with the rest costs its own base loaded first. A ring moves its slots,
+          # so it never does.
+          def near_list?(name, want, ring)
+            !ring && @written_slot_lists.include?(name) && near_list_bytes + want <= NEAR_LIST_BYTES
           end
 
           # Said in the author's own words for it: a pool is several lists with names of the

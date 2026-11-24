@@ -306,6 +306,7 @@ module VBlank
             @handover = @plan.handover
             @scenes = @plan.scenes
             @lists = {}
+            @near_list_bytes = 0 # bytes of lists kept in the first 8K (#place_list)
             @list_slots = {}
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
@@ -699,22 +700,22 @@ module VBlank
           # or in it, a 16-bit one (#near_list?).
           def place_list(name, bytes)
             label = "the list #{name.inspect}"
-            near_list?(name, bytes) ? @memory.reserve(label, bytes) : @memory.reserve_far(label, bytes)
+            return @memory.reserve_far(label, bytes) unless near_list?(name, bytes)
+
+            @near_list_bytes += bytes
+            @memory.reserve(label, bytes)
           end
 
           # Does list +name+ go in the first 8K? A small one that always holds its capacity
           # (#full_length_lists) and that the game reads or writes at a slot written in the program
           # does: each such read is then a 16-bit address, as a variable's is (#at_place), where a
           # list past the first 8K takes a long address, a byte and a cycle more (fullsnes, "SNES
-          # Memory Map"). Only while the first 8K keeps the room the routines' own numbers need.
+          # Memory Map"). Only while the lists already there leave it room, and the first 8K keeps
+          # the room the routines' own numbers need.
           def near_list?(name, bytes)
             return false unless full_length_lists.key?(name) && written_slot_lists.include?(name)
 
-            @near_list_bytes ||= 0
-            return false if @near_list_bytes + bytes > NEAR_LIST_BYTES || @memory.near_bytes_left < NEAR_BYTES_KEPT + bytes
-
-            @near_list_bytes += bytes
-            true
+            @near_list_bytes + bytes <= NEAR_LIST_BYTES && @memory.near_bytes_left >= NEAR_BYTES_KEPT + bytes
           end
 
           # The lists read or written at a slot named by a number written in the program.

@@ -1756,7 +1756,7 @@ module VBlank
             [asked == false ? 2 : (asked || roomy.hot?(node.name) ? 0 : 1), -node.capacity]
           end
           @lists.reserve_pool_areas(program, @lists_to_roomy)
-          @lists.note_written_slot_lists(program)
+          @lists.written_slot_lists = Lists.lists_read_at_written_slots(program)
           ranked.each do |node, ring|
             at = var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
             @lists.register_list(node.name, node.capacity, ring: ring, width: node.width || :word,
