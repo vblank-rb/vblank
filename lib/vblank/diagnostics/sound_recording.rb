@@ -28,9 +28,10 @@ module VBlank
     # so they never see one.
     class SoundRecording
       # What each console's emulator hands its sound over at, in samples a second for each speaker:
-      # libmgba's, bsnes's and Genesis Plus GX's output rates, each matching the samples it hands over
-      # in a run of known length.
-      CARTRIDGE_RATES = Ractor.make_shareable({ gba: 44_100, gbc: 44_100, snes: 48_000, genesis: 44_100 })
+      # libmgba's, bsnes's, Genesis Plus GX's and Beetle PSX's output rates, each matching the samples
+      # it hands over in a run of known length. Beetle's is the PlayStation sound chip's own, a pair
+      # every 768 of the processor's cycles (psx-spx, "Sound Processing Unit").
+      CARTRIDGE_RATES = Ractor.make_shareable({ gba: 44_100, gbc: 44_100, snes: 48_000, genesis: 44_100, ps1: 44_100 })
 
       # The quiet between the two recordings of a pair written one after the other (#write_pair).
       PAIR_GAP_SECONDS = 0.5

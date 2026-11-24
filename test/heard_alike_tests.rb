@@ -239,6 +239,147 @@ module HeardAlikeTests
     end
   end
 
+  def test_two_alike_play_no_voice_alone
+    compared = as_a_file(tune_game) { |path| VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **alike_settings) }
+
+    assert_predicate compared, :alike?
+    assert_nil compared.voices
+  end
+
+  # Where a comparison starts after a frame of the tape (`starting_after:`): after the tune has
+  # started, so it is sounding as the frames compared begin.
+  START_AFTER = START + 10
+
+  # A start leaves out every frame before it, so a console that settles at power-on needs no lead-in
+  # past that, and a start cannot be given one.
+  private def started_settings = alike_settings.except(:lead_ins)
+
+  private def with_snapshots
+    Dir.mktmpdir("vblank-snapshots") { |folder| yield VBlank::Playthroughs::SnapshotCache.new(folder), folder }
+  end
+
+  # The frames a start from a snapshot steps: those after the start, and the few before it an
+  # emulator plays unheard for its sound to come back after a load.
+  private def warm_frames = TAPE_FRAMES - START_AFTER + VBlank::Console.for(console).frames_sound_settles_after_load
+
+  # How far apart a level measured from a snapshot may be from power-on's, as a share. The Advance's
+  # and the Color's emulator gives the sound back sample for sample, so none; another's frames
+  # after it settles are within a few thousandths (Console::Kit#frames_sound_settles_after_load).
+  private def snapshot_level_share_apart = VBlank::Console.for(console).frames_sound_settles_after_load.zero? ? 0 : 0.005
+
+  # What a comparison measured of each side and each speaker, what was out and on which frame, and
+  # each voice's own, with its levels apart.
+  private def heard_measures(compared)
+    sides = [compared.first, compared.second, *compared.speakers&.values&.flatten]
+    { sides: sides.map { |side| [side.frames, side.first_heard, side.last_heard, side.fall_frames] },
+      differences: compared.differences.map { |found| [found.what, found.frame, found.speaker] },
+      voices: compared.voices&.transform_values { |voice| heard_measures(voice) } }
+  end
+
+  private def levels_of(compared)
+    [compared.first, compared.second, *compared.speakers&.values&.flatten].map(&:level) +
+      (compared.voices || {}).values.flat_map { |voice| levels_of(voice) }
+  end
+
+  private def assert_heard_the_same(expected, actual)
+    assert_equal heard_measures(expected), heard_measures(actual)
+    levels_of(expected).zip(levels_of(actual)) do |one, other|
+      next assert_nil(other, "a side never heard") if one.nil?
+
+      assert_in_delta one, other, one * snapshot_level_share_apart, "a level heard from a snapshot"
+    end
+  end
+
+  # Each side opened from a snapshot of the frame the comparison starts after, made once and loaded
+  # every time after, hears what each side played there from power-on hears, a voice at a time too,
+  # each voice from a snapshot of its own.
+  def test_a_start_from_a_snapshot_hears_what_a_start_from_power_on_hears
+    ours = tune_game
+    tape = listen.play(ours).tape
+    as_a_file(tune_game(loudness: 7)) do |path|
+      with_snapshots do |snapshots, folder|
+        heard = ->(**kept) { VBlank::Playthroughs::HeardComparison.play(tape, ours, path, **started_settings, starting_after: START_AFTER, **kept) }
+        cold = heard.call
+        made = heard.call(snapshots: snapshots)
+        warm = heard.call(snapshots: snapshots)
+
+        assert_equal :level, cold.difference.what
+        assert_operator cold.difference.frame, :>, START_AFTER, "frames are counted from power-on"
+        assert_equal voices_heard_alone?, !cold.voices.empty?
+        assert_heard_the_same cold, made
+        assert_heard_the_same cold, warm
+        assert_equal [TAPE_FRAMES, TAPE_FRAMES], cold.frames_stepped
+        assert_equal [warm_frames] * 2, warm.frames_stepped
+        warm.voices.each_value { |voice| assert_equal [warm_frames] * 2, voice.frames_stepped }
+        assert_equal 2 * (1 + cold.voices.size), Dir.glob(File.join(folder, "*.state")).size,
+                     "a snapshot of each cartridge for the voices mixed, and one for each voice alone"
+      end
+    end
+  end
+
+  # What is measured is of the frames after the start: a tune started before it is first heard on
+  # the frame after it.
+  def test_a_sound_started_before_the_start_is_heard_from_the_frame_after_it
+    ours = tune_game
+    with_snapshots do |snapshots|
+      compared = VBlank::Playthroughs::HeardComparison.play(listen.play(ours).tape, ours, ours, **started_settings,
+                                                            starting_after: START_AFTER, snapshots: snapshots)
+
+      assert_predicate compared, :alike?
+      assert_equal START_AFTER + 1, compared.first.first_heard
+      assert_equal TAPE_FRAMES - START_AFTER, compared.first.frames
+    end
+  end
+
+  # A start no later than the frames an emulator's sound takes to settle after a load has no
+  # earlier frame to take its snapshot on, so it plays from power-on and hears what power-on hears.
+  def test_a_start_within_the_settling_frames_hears_what_power_on_hears
+    ours = tune_game
+    tape = listen.play(ours).tape
+    early = [VBlank::Console.for(console).frames_sound_settles_after_load, 1].max
+    with_snapshots do |snapshots|
+      heard = ->(**kept) { VBlank::Playthroughs::HeardComparison.play(tape, ours, ours, **started_settings, starting_after: early, **kept) }
+      cold = heard.call
+      heard.call(snapshots: snapshots)
+      warm = heard.call(snapshots: snapshots)
+
+      assert_heard_the_same cold, warm
+      settles = VBlank::Console.for(console).frames_sound_settles_after_load
+      assert_equal [settles.zero? ? TAPE_FRAMES - early : TAPE_FRAMES] * 2, warm.frames_stepped
+    end
+  end
+
+  def test_a_start_that_cannot_be_kept_is_refused
+    tape = listen.play(tune_game).tape
+    with_snapshots do |snapshots|
+      play = ->(**given) { VBlank::Playthroughs::HeardComparison.play(tape, tune_game, tune_game, **STRICT, **given) }
+      lead_in = VBlank.playthrough("wait") { wait frames: 2 }
+
+      assert_match "lead_ins", assert_raises(ArgumentError) { play.call(starting_after: START_AFTER, lead_ins: [lead_in, nil]) }.message
+      assert_match "starting_after", assert_raises(ArgumentError) { play.call(snapshots: snapshots) }.message
+      assert_match "starting_after", assert_raises(ArgumentError) { play.call(starting_after: TAPE_FRAMES) }.message
+      script = assert_raises(ArgumentError) do
+        VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **STRICT, starting_after: START_AFTER,
+                                                                                            snapshots: snapshots)
+      end
+      assert_match "tape", script.message
+    end
+  end
+
+  def test_a_silent_cartridge_fails_saying_which_is_never_heard
+    message = failure_against(tune_game(starts: TAPE_FRAMES * 2))
+
+    assert_match "The second cartridge is never heard", message
+    assert_match "The first is first heard on frame", message
+  end
+end
+
+# The same, and what only a console whose emulator plays one voice alone can do: hear chosen voices
+# on each side, and hold each voice's pitch. Played by the Advance, the Color, the Super Nintendo and
+# the Genesis. Beetle PSX mixes its voices, so the PlayStation's tests include HeardAlikeTests alone.
+module HeardVoiceTests
+  include HeardAlikeTests
+
   # The voices a song's first part and its second play on, in that order: the two square voices on
   # the Advance, the Color and the Genesis.
   private def part_voices = %i[square1 square2]
@@ -323,98 +464,6 @@ module HeardAlikeTests
     end
   end
 
-  def test_two_alike_play_no_voice_alone
-    compared = as_a_file(tune_game) { |path| VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **alike_settings) }
-
-    assert_predicate compared, :alike?
-    assert_nil compared.voices
-  end
-
-  # Where a comparison starts after a frame of the tape (`starting_after:`): after the tune has
-  # started, so it is sounding as the frames compared begin.
-  START_AFTER = START + 10
-
-  # A start leaves out every frame before it, so a console that settles at power-on needs no lead-in
-  # past that, and a start cannot be given one.
-  private def started_settings = alike_settings.except(:lead_ins)
-
-  private def with_snapshots
-    Dir.mktmpdir("vblank-snapshots") { |folder| yield VBlank::Playthroughs::SnapshotCache.new(folder), folder }
-  end
-
-  # The frames a start from a snapshot steps: those after the start, and the few before it an
-  # emulator plays unheard for its sound to come back after a load.
-  private def warm_frames = TAPE_FRAMES - START_AFTER + VBlank::Console.for(console).frames_sound_settles_after_load
-
-  # How far apart a level measured from a snapshot may be from power-on's, as a share. The Advance's
-  # and the Color's emulator gives the sound back sample for sample, so none; another's frames
-  # after it settles are within a few thousandths (Console::Kit#frames_sound_settles_after_load).
-  private def snapshot_level_share_apart = VBlank::Console.for(console).frames_sound_settles_after_load.zero? ? 0 : 0.005
-
-  # What a comparison measured of each side and each speaker, what was out and on which frame, and
-  # each voice's own, with its levels apart.
-  private def heard_measures(compared)
-    sides = [compared.first, compared.second, *compared.speakers&.values&.flatten]
-    { sides: sides.map { |side| [side.frames, side.first_heard, side.last_heard, side.fall_frames] },
-      differences: compared.differences.map { |found| [found.what, found.frame, found.speaker] },
-      voices: compared.voices&.transform_values { |voice| heard_measures(voice) } }
-  end
-
-  private def levels_of(compared)
-    [compared.first, compared.second, *compared.speakers&.values&.flatten].map(&:level) +
-      (compared.voices || {}).values.flat_map { |voice| levels_of(voice) }
-  end
-
-  private def assert_heard_the_same(expected, actual)
-    assert_equal heard_measures(expected), heard_measures(actual)
-    levels_of(expected).zip(levels_of(actual)) do |one, other|
-      next assert_nil(other, "a side never heard") if one.nil?
-
-      assert_in_delta one, other, one * snapshot_level_share_apart, "a level heard from a snapshot"
-    end
-  end
-
-  # Each side opened from a snapshot of the frame the comparison starts after, made once and loaded
-  # every time after, hears what each side played there from power-on hears, a voice at a time too,
-  # each voice from a snapshot of its own.
-  def test_a_start_from_a_snapshot_hears_what_a_start_from_power_on_hears
-    ours = tune_game
-    tape = listen.play(ours).tape
-    as_a_file(tune_game(loudness: 7)) do |path|
-      with_snapshots do |snapshots, folder|
-        heard = ->(**kept) { VBlank::Playthroughs::HeardComparison.play(tape, ours, path, **started_settings, starting_after: START_AFTER, **kept) }
-        cold = heard.call
-        made = heard.call(snapshots: snapshots)
-        warm = heard.call(snapshots: snapshots)
-
-        assert_equal :level, cold.difference.what
-        assert_operator cold.difference.frame, :>, START_AFTER, "frames are counted from power-on"
-        refute_empty cold.voices
-        assert_heard_the_same cold, made
-        assert_heard_the_same cold, warm
-        assert_equal [TAPE_FRAMES, TAPE_FRAMES], cold.frames_stepped
-        assert_equal [warm_frames] * 2, warm.frames_stepped
-        warm.voices.each_value { |voice| assert_equal [warm_frames] * 2, voice.frames_stepped }
-        assert_equal 2 * (1 + cold.voices.size), Dir.glob(File.join(folder, "*.state")).size,
-                     "a snapshot of each cartridge for the voices mixed, and one for each voice alone"
-      end
-    end
-  end
-
-  # What is measured is of the frames after the start: a tune started before it is first heard on
-  # the frame after it.
-  def test_a_sound_started_before_the_start_is_heard_from_the_frame_after_it
-    ours = tune_game
-    with_snapshots do |snapshots|
-      compared = VBlank::Playthroughs::HeardComparison.play(listen.play(ours).tape, ours, ours, **started_settings,
-                                                            starting_after: START_AFTER, snapshots: snapshots)
-
-      assert_predicate compared, :alike?
-      assert_equal START_AFTER + 1, compared.first.first_heard
-      assert_equal TAPE_FRAMES - START_AFTER, compared.first.frames
-    end
-  end
-
   # Voices the game chose on each side are chosen on the console put back from the snapshot.
   def test_voices_chosen_on_each_side_are_heard_from_a_snapshot_as_from_power_on
     ours = two_part_game
@@ -435,47 +484,5 @@ module HeardAlikeTests
         assert_equal [warm_frames] * 2, warm.frames_stepped
       end
     end
-  end
-
-  # A start no later than the frames an emulator's sound takes to settle after a load has no
-  # earlier frame to take its snapshot on, so it plays from power-on and hears what power-on hears.
-  def test_a_start_within_the_settling_frames_hears_what_power_on_hears
-    ours = tune_game
-    tape = listen.play(ours).tape
-    early = [VBlank::Console.for(console).frames_sound_settles_after_load, 1].max
-    with_snapshots do |snapshots|
-      heard = ->(**kept) { VBlank::Playthroughs::HeardComparison.play(tape, ours, ours, **started_settings, starting_after: early, **kept) }
-      cold = heard.call
-      heard.call(snapshots: snapshots)
-      warm = heard.call(snapshots: snapshots)
-
-      assert_heard_the_same cold, warm
-      settles = VBlank::Console.for(console).frames_sound_settles_after_load
-      assert_equal [settles.zero? ? TAPE_FRAMES - early : TAPE_FRAMES] * 2, warm.frames_stepped
-    end
-  end
-
-  def test_a_start_that_cannot_be_kept_is_refused
-    tape = listen.play(tune_game).tape
-    with_snapshots do |snapshots|
-      play = ->(**given) { VBlank::Playthroughs::HeardComparison.play(tape, tune_game, tune_game, **STRICT, **given) }
-      lead_in = VBlank.playthrough("wait") { wait frames: 2 }
-
-      assert_match "lead_ins", assert_raises(ArgumentError) { play.call(starting_after: START_AFTER, lead_ins: [lead_in, nil]) }.message
-      assert_match "starting_after", assert_raises(ArgumentError) { play.call(snapshots: snapshots) }.message
-      assert_match "starting_after", assert_raises(ArgumentError) { play.call(starting_after: TAPE_FRAMES) }.message
-      script = assert_raises(ArgumentError) do
-        VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **STRICT, starting_after: START_AFTER,
-                                                                                            snapshots: snapshots)
-      end
-      assert_match "tape", script.message
-    end
-  end
-
-  def test_a_silent_cartridge_fails_saying_which_is_never_heard
-    message = failure_against(tune_game(starts: TAPE_FRAMES * 2))
-
-    assert_match "The second cartridge is never heard", message
-    assert_match "The first is first heard on frame", message
   end
 end

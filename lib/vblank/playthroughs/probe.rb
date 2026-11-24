@@ -265,8 +265,7 @@ module VBlank
 
       # What the cartridge put out on the frame played last (Diagnostics::FrameSound): its +samples+,
       # 16 bits each, left and right by turns, and the +loudest+ of them, the furthest any is from
-      # nought. The same on every console whose emulator hands its sound over, for any cartridge
-      # file; a PlayStation program is refused, saying its emulator gives no samples yet.
+      # nought. The same on every console, for any cartridge file.
       #
       #   probe.step
       #   probe.last_frame_sound.loudest   # => 0 for a frame of silence

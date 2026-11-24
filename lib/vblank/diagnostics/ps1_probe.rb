@@ -10,15 +10,15 @@ module VBlank
     # What differs underneath stops here. The picture is read from video RAM where the graphics chip is
     # told to show it, at the size it shows, as 15-bit colours, and the reader takes four bytes a pixel
     # with red in the low byte. The reader gives buttons as one number with a bit each, and the core takes the pad's own
-    # names (PS1::HeadlessRun::PAD_BUTTONS lists which is which). And the build makes no sound yet, so
-    # every frame's sound is silence.
+    # names (PS1::HeadlessRun::PAD_BUTTONS lists which is which). The sound is Beetle's mix of every
+    # voice, taken from the core after each frame.
     class PS1Probe
       # +multitap+ plugs Sony's Multitap into the second port before the first frame
       # (RubyPS1Emulator::Core#plug_in_multitap).
       def initialize(path, save_dir: nil, multitap: false)
         @core = Emulator.open_ps1(path, save_dir: save_dir)
         @core.plug_in_multitap if multitap
-        @frames = 0
+        @last_audio = []
       end
 
       # The picture is the size the graphics chip shows now, which the program sets: 320 × 240 for every
@@ -35,8 +35,10 @@ module VBlank
         IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(held).each_with_index do |buttons, port|
           @core.set_buttons(buttons, port: port)
         end
-        frames.times { @core.run_frame }
-        @frames = frames
+        @last_audio = Array.new(frames) do
+          @core.run_frame
+          @core.take_audio.pack("s<*")
+        end
       end
 
       # The picture as four bytes a pixel: red, green, blue and one unused, each five-bit channel
@@ -48,8 +50,10 @@ module VBlank
         end.pack("V*")
       end
 
-      # The sound of the last step, a String for each frame of it: empty, since the build makes none.
-      def audio_by_frame = Array.new(@frames) { "".b }
+      # The sound of the last step, a String of samples for each frame of it: 16 bits each, left and
+      # right by turns, at 44,100 pairs a second, the sound chip's own rate (psx-spx, "Sound
+      # Processing Unit"), as Beetle PSX mixes them.
+      def audio_by_frame = @last_audio.dup
 
       def read8(address) = PS1Memory.read8(@core, address)
       def read16(address) = PS1Memory.read16(@core, address)
@@ -64,12 +68,13 @@ module VBlank
       # The pad the build reads has no motor.
       def motor_on? = false
 
-      # The emulator gem hands over no samples yet, so no voice is heard alone and none is named.
+      # Beetle PSX mixes the sound chip's 24 voices into one output and has no setting to leave a voice
+      # out, so no voice is heard alone and none is named.
       def channels = []
 
       def hearing(**)
-        raise ArgumentError, "This reader cannot play one voice alone on a PlayStation program. Its emulator gives " \
-                             "no sound yet. To fix this, remove `only:` and `without:`."
+        raise ArgumentError, "This reader cannot play one voice alone on a PlayStation program. Its emulator mixes " \
+                             "all the voices together. To fix this, remove `only:` and `without:`."
       end
 
       # When the program began (RubyPS1Emulator::Core#watch_program_start!, #blanks_before_program).

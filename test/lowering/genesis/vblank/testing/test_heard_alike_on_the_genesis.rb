@@ -5,7 +5,7 @@ require "heard_alike_tests"
 
 # A port's heard sound held to its original's, on the Sega Genesis: both cartridges in Genesis Plus GX.
 class TestHeardAlikeOnTheGenesis < Minitest::Test
-  include HeardAlikeTests
+  include HeardVoiceTests
 
   private def console = :genesis
 

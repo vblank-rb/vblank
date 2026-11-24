@@ -916,8 +916,7 @@ module VBlank
       # loudest of them. One name and one meaning on every console whose emulator hands its sound
       # over, for a cartridge built here or anybody's file: 16-bit samples, left and right by turns,
       # and the loudest the furthest any is from nought on either speaker. A run that has played no
-      # frame has no samples, and its loudest is 0. A PlayStation program's reader refuses, since its
-      # emulator hands over none yet (PS1Reading).
+      # frame has no samples, and its loudest is 0.
       def last_frame_sound
         ensure_rendered!
         FrameSound.from_bytes(@sound.last_frame)

@@ -6,6 +6,7 @@ require "open3"
 require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/film_tasks"
+require "heard_film"
 
 # A film of a PlayStation program: a side naming a PS-X EXE opens in Beetle PSX, the PlayStation's
 # emulator, and not in the Advance's, and plays and shows frames as any console's side does. The game
@@ -14,6 +15,7 @@ class TestPS1Film < Minitest::Test
   # A film is made by ImageMagick and ffmpeg and read back by ffprobe: child processes, which hang
   # inside a Ractor. And the task is defined in a rake application of the test's own.
   runs_on_the_main_ractor!
+  include HeardFilm
 
   FilmCartridge = VBlank::Diagnostics::FilmCartridge
   Verifier = VBlank::Diagnostics::Verifier
@@ -157,18 +159,18 @@ class TestPS1Film < Minitest::Test
     assert_match(/console: :ps1/, error.message)
   end
 
-  # Beetle PSX here counts the program's samples and keeps none, so a film cannot hear a PlayStation
-  # side: it is refused, saying so, and not filmed silent.
-  def test_a_playstation_side_cannot_be_heard
-    film = File.join(scratch, "heard.mp4")
-    error = assert_raises(ArgumentError) do
-      VBlank::Diagnostics::Film.make(film, sides: { "ours" => -> { FilmCartridge.open(game) } }, parts: [1..3],
-                                           sound: "ours")
-    end
+  # A PlayStation side heard in a film: its tone is on the film frames that show the frames it put
+  # the tone out on, as the reader hears them.
+  def test_a_playstation_side_is_heard_on_the_frames_that_show_its_sound
+    program = VBlank.build("HEARD", console: :ps1, out: StringIO.new, err: StringIO.new, &beeping_game_source(12))
+    film = VBlank::Diagnostics::Film.make(File.join(scratch, "heard.mp4"), sides: { "ours" => -> { FilmCartridge.open(program) } },
+                                                                          parts: [1..30], sound: "ours")
+    reader = Verifier.new(program, frames: 0).step(30)
+    left, = film_sound(film)
 
-    assert_match(/PlayStation/, error.message)
-    assert_match(/no sound samples/, error.message)
-    refute_path_exists film
+    assert_in_delta onset(reader.audio_energy_by_frame), onset(left), 1
+  ensure
+    reader&.close
   end
 
   private def scratch = @scratch ||= Dir.mktmpdir("ps1-film-test")

@@ -7,7 +7,7 @@ require "heard_alike_tests"
 # whose samples the probe hands out as it does the Advance's, and whose eight voices it can hear one
 # at a time (test_heard_voices_on_the_super_nintendo.rb).
 class TestHeardAlikeOnTheSuperNintendo < Minitest::Test
-  include HeardAlikeTests
+  include HeardVoiceTests
 
   private def console = :snes
 
