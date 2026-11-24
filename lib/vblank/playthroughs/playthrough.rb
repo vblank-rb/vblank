@@ -251,6 +251,53 @@ module VBlank
         Started.new(game: game, stepper: stepper, lead_in_keys: lead_in_keys)
       end
 
+      # Where a playing of a tape starts when it starts after a frame of it (Tape#play's
+      # +starting_after+): the frame, the presses up to it (SnapshotCache::Presses), and the
+      # SnapshotCache the console is put there from, or nil to play there from power-on.
+      StartAfter = Data.define(:frame, :presses, :snapshots)
+
+      # A console switched on with +cartridge+ in it and brought to the frame after +presses+ (a list
+      # of SnapshotCache::Presses) without being looked at: put back from a snapshot in +snapshots+
+      # where one is given, else played there. +save+ is what the save memory held at power-on.
+      def self.power_on_after(cartridge, presses, save: nil, snapshots: nil)
+        cartridge = cartridge_from(cartridge)
+        open = -> { power_on(cartridge, save: save) }
+        return open.call.tap { |game| presses.each { |held| game.step(held.frames, keys: held.keys) } } unless snapshots
+
+        refuse_snapshot_without_save_memory!(cartridge)
+        snapshots.console_after(presses, cartridge, save: save, &open)
+      end
+
+      # What a start after a frame cannot be given: +snapshots+ that are not a SnapshotCache, or with
+      # no start, and a start that is not a frame or a moment's name.
+      def self.refuse_unusable_start!(starting_after, snapshots)
+        if snapshots && !snapshots.is_a?(SnapshotCache)
+          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
+                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
+        end
+        if starting_after.nil?
+          return unless snapshots
+
+          raise ArgumentError, "The playing was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
+                               "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
+        end
+        return if starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
+
+        raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
+                             "number 1 or more, or the name of one of its moments."
+      end
+
+      # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
+      # holding the save it was switched on with (Console::Kit#snapshot_leaves_out_save_memory?).
+      def self.refuse_snapshot_without_save_memory!(cartridge)
+        kit = Console.for(cartridge.console)
+        return unless kit.snapshot_leaves_out_save_memory?(cartridge)
+
+        raise ArgumentError, "The cartridge keeps a save, and a snapshot of a #{kit.title} does not hold what it saved. " \
+                             "A start from a snapshot would play with the save it had at power-on. To fix this, " \
+                             "remove `snapshots:`, and the cartridge is played to the start."
+      end
+
       # A game switched on and ready to play: +game+, the running game a playing asks, and +stepper+,
       # what plays its frames — the game itself, or a WindowStepper showing it in a window.
       # +lead_in_keys+ is the buttons the lead-in held on each of its frames, as the console reads
@@ -446,8 +493,12 @@ module VBlank
         #
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
+        #
+        # +start+ (a StartAfter, from Tape#play) brings the console to a frame of +steps+ without
+        # looking at it, and the playing goes on from the frame after (#play_after_start).
         def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-                      count_passes: false, match: nil, seed: nil, progress: Messages::Progress.silent, &at_each_moment)
+                      count_passes: false, match: nil, seed: nil, start: nil, progress: Messages::Progress.silent,
+                      &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
           Playthrough.refuse_unusable_seed!(seed, on, match: match)
           cartridge = Playthrough.unbuilt_if_game(cartridge, on, progress)
@@ -460,15 +511,25 @@ module VBlank
           # Making the game the way +on+ names (a big game written as Ruby, or built as C) takes a
           # while before its first frame, so it is a phase of its own.
           progress.step("Starting game")
-          started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
-                                                                count_passes: counting, match: match, seed: seed)
+          started = if start
+                      after = Playthrough.power_on_after(cartridge, start.presses, save: save, snapshots: start.snapshots)
+                      Started.new(game: after, stepper: after, lead_in_keys: [])
+                    else
+                      Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
+                                                                  count_passes: counting, match: match, seed: seed)
+                    end
           game = started.game
           stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
           playing = new(title, cartridge, game, at_each_moment, stepper: stepper, frame_stepper: started.stepper,
                         save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, match: match,
                         seed: seed, progress: progress)
-          progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
-          steps.each { |step| step.play(playing) }
+          if start
+            progress.step("Playing from frame #{start.frame + 1}")
+            playing.play_after_start(steps, start.frame)
+          else
+            progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
+            steps.each { |step| step.play(playing) }
+          end
           playing.played
         ensure
           progress.done
@@ -615,6 +676,26 @@ module VBlank
           @picture_files[name] = write_screen(@folder, name, @pictures[name]) if @folder
           @progress.step("Playing on from #{name}")
           @at_each_moment&.call(name, @game)
+        end
+
+        # Play +steps+ on a console already on frame +start+ of them: what they hold up to that
+        # frame goes on the tape without a frame being played, a hold the start falls inside is cut
+        # there, and the rest is played. A moment at or before the start is on the tape, with no
+        # picture, and its block is not handed the game: the game was not on that frame here.
+        def play_after_start(steps, start)
+          played = 0
+          steps.each do |step|
+            if step.is_a?(Moment) && played <= start
+              @taping.moment(step.name)
+            elsif played >= start
+              step.play(self)
+            else
+              passed_over = [start - played, step.frames].min
+              @taping.hold(step.buttons, passed_over)
+              hold(step.buttons, step.frames - passed_over) if step.frames > passed_over
+            end
+            played += step.frames
+          end
         end
 
         # The buttons held on each frame played so far, one key mask a frame.

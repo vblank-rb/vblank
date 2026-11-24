@@ -210,14 +210,61 @@ module VBlank
       # A tape recorded from a save is played from one, and one recorded after a lead-in
       # is played after one: from anywhere else it would be the same presses on a
       # different game.
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil,
-               progress: Messages::Progress.silent, &at_each_moment)
+      #
+      # +starting_after+ is a frame of the tape, by its number or by the name of one of its moments,
+      # that the playing starts after: the cartridge is brought to that frame without being looked
+      # at, and played on from the frame after. With +snapshots+ (a SnapshotCache) it is put there
+      # from a snapshot of its console, made the first time and loaded every time after, so a
+      # playing of a moment deep in a tape costs the frames after it; without, it is played there
+      # from power-on. The tape, the moments and the game at the end are the same as from power-on.
+      # A moment at or before the start is on the tape that comes back, and its block is not handed
+      # the game, which is not there yet; it has no picture either. Only the cartridge in its
+      # emulator starts so, from power-on or a save, with no lead-in and no window.
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, starting_after: nil,
+               snapshots: nil, progress: Messages::Progress.silent, &at_each_moment)
         refuse_missing_save!(save)
         refuse_missing_lead_in!(lead_in)
         refuse_match_elsewhere!(on)
+        start = start_for_playing(starting_after, snapshots, lead_in: lead_in, on: on, window: window)
         Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
                                                            window: window, in_passes: in_passes, match: match, seed: seed,
-                                                           progress: progress, &at_each_moment)
+                                                           start: start, progress: progress, &at_each_moment)
+      end
+
+      # The frame +starting_after+ names on this tape: a number, or the frame of the moment it names.
+      # +last_allowed+ is the last frame a start can be.
+      def start_frame(starting_after, last_allowed: frames)
+        frame = if starting_after.is_a?(Symbol)
+                  moments.fetch(starting_after) do
+                    raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
+                                         "no moment of that name. Its moments are #{moments.keys.map(&:inspect).join(', ')}."
+                  end
+                else
+                  starting_after
+                end
+        return frame if frame <= last_allowed
+
+        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{frames} frames. " \
+                             "To fix this, give a frame of the tape, #{last_allowed} or less."
+      end
+
+      # Where a playing of this tape starts (a Playthrough::StartAfter), or nil for power-on.
+      private def start_for_playing(starting_after, snapshots, lead_in:, on:, window:)
+        Playthrough.refuse_unusable_start!(starting_after, snapshots)
+        return nil if starting_after.nil?
+
+        said = []
+        said << "`lead_in:`" if lead_in
+        said << "`on: #{on.inspect}`" if on && on != LoweredGame::EMULATOR
+        said << "`window:`" if window
+        said << "a tape that counts passes" if in_passes
+        unless said.empty?
+          raise ArgumentError, "The playing was given `starting_after:` and #{said.join(' and ')}. A playing that starts " \
+                               "after a frame plays the cartridge in its emulator, from power-on or a save. Remove " \
+                               "#{said.size == 1 ? 'it' : 'them'}, or remove `starting_after:`."
+        end
+        frame = start_frame(starting_after)
+        Playthrough::StartAfter.new(frame: frame, presses: SnapshotCache.presses_up_to(self, frame), snapshots: snapshots)
       end
 
       # A tape of a match plays the same game only where the game is played as that match.

@@ -3,14 +3,14 @@
 require "stringio"
 require "tmpdir"
 
-# A probe opened part way through a tape (`starting_after:`), from a snapshot of the console kept on
-# disk (Playthroughs::SnapshotCache), held to a probe stepped there from power-on. Each including
-# test says +console+.
+# The game and the tape a start from a kept snapshot is tested on, for ProbeSnapshotTests and
+# TapeSnapshotTests. Each including test says +console+.
 #
 # The game is a white box on a blue field that walks right a pixel a pass while RIGHT is down and
 # left while LEFT is, so where it stands shows the presses that came before.
-module ProbeSnapshotTests
-  # How far the tape plays, where the probe opens, and how many frames it is stepped after.
+module SnapshotWalker
+  # How far the tape plays, where the probe or the playing starts, and how many frames a probe is
+  # stepped after.
   TAPE_FRAMES = 400
   START_AFTER = 300
   STEPPED_AFTER = 30
@@ -51,6 +51,12 @@ module ProbeSnapshotTests
   end
 
   private def snapshot_files(folder) = Dir.glob(File.join(folder, "**", "*.state"))
+end
+
+# A probe opened part way through a tape (`starting_after:`), from a snapshot of the console kept on
+# disk (Playthroughs::SnapshotCache), held to a probe stepped there from power-on.
+module ProbeSnapshotTests
+  include SnapshotWalker
 
   # What a probe opened on +cartridge+ with +opened+ shows STEPPED_AFTER frames on, its
   # frame counter then, and how many frames its emulator stepped.

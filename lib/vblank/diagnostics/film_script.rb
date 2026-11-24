@@ -21,6 +21,9 @@ module VBlank
     #                                   of frame to buttons works too (`keys LAUNCH`), as does a lambda.
     #                                   What `hold` and `keys` give for one frame are held together.
     #   start_from tape: "walk.tape"    every side plays a tape's presses first (from power-on)
+    #   start_from tape: "walk.tape", starting_after: :door, snapshots: ".cache/snapshots"
+    #                                   ...up to that frame or moment only, a cartridge side put there
+    #                                   from a snapshot kept in that folder (FilmCartridge)
     #   start_from state: { "ours" => "ours.ss1", "retail" => "retail.ss1" }
     #                                   each side starts from a state an emulator saved of it
     #   start_from :game                the Rakefile's shell (FilmTasks#shell) is filmed from its game's
@@ -48,8 +51,8 @@ module VBlank
     #   film sides: { "ours" => -> { ... } }, parts: [1..110], keys: ->(frame) { ... }, sound: "ours"
     class FilmScript
       # What a film file asks for, once read: made into an MP4 by #make.
-      Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :states, :scale, :console, :lowering, :shell, :shell_from,
-                         :sound) do
+      Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :starting_after, :snapshots, :states, :scale, :console,
+                         :lowering, :shell, :shell_from, :sound) do
         # Write the film to +path+, handed back. +search_path+ is where ImageMagick and ffmpeg are
         # looked for (see Film.make).
         def make(path, search_path: ENV.fetch("PATH", ""))
@@ -103,7 +106,8 @@ module VBlank
           state = states.is_a?(Hash) ? states[label] : states
           unless running?(cartridge)
             return FilmCartridge.open(cartridge, tape: tape, state: state, console: side.console || console,
-                                                 lowering: side.lowering || lowering, sound: heard)
+                                                 lowering: side.lowering || lowering, sound: heard,
+                                                 starting_after: starting_after, snapshots: snapshots)
           end
           return cartridge unless tape || state
 
@@ -151,6 +155,8 @@ module VBlank
         @holds = []
         @keys = nil
         @tape = nil
+        @starting_after = nil
+        @snapshots = nil
         @states = {}
         @scale = Film::PICTURE_SCALE
       end
@@ -171,10 +177,13 @@ module VBlank
         @keys = given.is_a?(Hash) ? ->(frame) { given[frame] } : given
       end
 
-      def start_from(place = nil, tape: nil, state: nil)
+      def start_from(place = nil, tape: nil, state: nil, starting_after: nil, snapshots: nil)
         refuse_bad_start!(place, tape, state)
+        refuse_tape_start_without_tape!(tape, starting_after, snapshots)
         @shell_from = place if place
         @tape = tape
+        @starting_after = starting_after
+        @snapshots = snapshots.is_a?(String) ? Playthroughs::SnapshotCache.new(snapshots) : snapshots
         @states = state.is_a?(Hash) ? state.transform_keys(&:to_s) : state
       end
 
@@ -210,8 +219,8 @@ module VBlank
         end
         refuse_bad_shell_start!
 
-        plan = Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, states: @states,
-                        scale: @scale, console: @console, lowering: @lowering, shell: @shell, shell_from: @shell_from,
+        plan = Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, starting_after: @starting_after,
+                        snapshots: @snapshots, states: @states, scale: @scale, console: @console, lowering: @lowering, shell: @shell, shell_from: @shell_from,
                         sound: @sound)
         plan.heard_labels # a +sound+ naming no side is refused before any side opens
         plan
@@ -235,6 +244,14 @@ module VBlank
 
         raise ArgumentError, "`hold #{buttons.inspect}, on: #{frames.inspect}` in #{@path} is not a hold. Give a " \
                              "button or a list of buttons, and a frame or a range of frames from 1: `hold :a, on: 4..5`."
+      end
+
+      def refuse_tape_start_without_tape!(tape, starting_after, snapshots)
+        return if tape || (starting_after.nil? && snapshots.nil?)
+
+        raise ArgumentError, "`start_from` in #{@path} gives `#{starting_after.nil? ? 'snapshots' : 'starting_after'}:` and " \
+                             "no tape. A side starts after a frame of a tape. Write it like `start_from tape: " \
+                             "\"walk.tape\", starting_after: :door, snapshots: \".cache/snapshots\"`."
       end
 
       def refuse_bad_keys!(given)
