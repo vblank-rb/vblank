@@ -112,7 +112,7 @@ class TestQuickMemoryNumbers < Minitest::Test
       filler = var :filler, 0
       func(:work, fast: true) do
         first = PLAIN
-        600.times { filler += 1 }
+        600.times { |n| filler += ADDS_BY_ROUND[n] }
         last = PLAIN
       end
       game_loop { call :work }
@@ -148,13 +148,19 @@ class TestQuickMemoryNumbers < Minitest::Test
       rest = var :rest, 0
       func(:work, fast: fast) do
         first = PLAIN
-        SHRINKING.times { |n| rest = PLAIN + 1 + n }
+        SHRINKING.times { |n| rest = SHRINKING_NUMBERS[n] }
       end
       game_loop { call :work }
     end
   end
 
   SHRINKING = 260
+
+  # The numbers the rounds of the two long routines use, read from a Ruby Array at the round so
+  # each round is written out: rounds alike but for a number counting up are made one loop, which
+  # would leave nothing long (PlainRuby::Counts::KnownRounds).
+  ADDS_BY_ROUND = Array.new(600) { |n| 1 + (n % 2) }
+  SHRINKING_NUMBERS = Array.new(SHRINKING) { |n| PLAIN + 1 + n + ((n % 2) << 16) }
 
   def test_a_routine_that_shrinks_into_reach_reads_every_number
     built = GBA.new
@@ -165,7 +171,7 @@ class TestQuickMemoryNumbers < Minitest::Test
     assert_operator built.func_ranges.fetch(:work).size, :>, 4096, "with every number built it is too long"
     read = words_read_by(backend, :work)
     assert_equal SHRINKING + 1, read.size, "every number is read"
-    assert_equal [PLAIN, PLAIN + SHRINKING], [read.first, read.last]
+    assert_equal [PLAIN, SHRINKING_NUMBERS.last], [read.first, read.last]
     charged, emitted = backend.charged_and_emitted_sizes.fetch(:work)
     assert_equal emitted, charged, "and it is charged for the size it shrank to"
   end
@@ -173,7 +179,7 @@ class TestQuickMemoryNumbers < Minitest::Test
   def test_the_numbers_of_a_routine_that_shrank_are_right_on_the_console
     console = console_after(shrinking_program, frames: 6)
 
-    assert_equal [PLAIN, PLAIN + SHRINKING], [console.var(:first), console.var(:rest)]
+    assert_equal [PLAIN, SHRINKING_NUMBERS.last], [console.var(:first), console.var(:rest)]
   end
 
   # A read that cannot reach its word stops the build. Whether a load reaches is settled from

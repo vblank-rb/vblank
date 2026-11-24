@@ -28,6 +28,11 @@ class TestRoomyMemory < Minitest::Test
 
   private def roomy_of(rom) = rom.built.roomy_memory
 
+  # What each round of a busy routine adds, read from a Ruby Array at the round so each round is
+  # written out and the routine is as long as its count says: rounds alike but for a number
+  # counting up are made one loop (PlainRuby::Counts::KnownRounds), which takes no room to speak of.
+  ADDS_BY_ROUND = Array.new(1375) { |n| 1 + (n % 2) }
+
   # --- a game that used to fail to build ---
 
   # 32K is 8192 whole numbers, and the quick memory also holds the variables and the code kept
@@ -178,7 +183,7 @@ class TestRoomyMemory < Minitest::Test
       screen :bitmap
       hoard = list :hoard, capacity: 7300
       total = var :total, 0
-      func(:tally, fast: true) { 200.times { total += 1 } }
+      func(:tally, fast: true) { 200.times { |n| total += ADDS_BY_ROUND[n] } }
       game_loop do
         hoard.push 1
         call :tally
@@ -198,7 +203,7 @@ class TestRoomyMemory < Minitest::Test
       hoard = list :hoard, capacity: 7300
       total = 0
       spin = var :spin, 0
-      func(:tally, fast: true) { 200.times { spin += 1 } }
+      func(:tally, fast: true) { 200.times { |n| spin += ADDS_BY_ROUND[n] } }
       clear_screen :black
       repeat(8) { hoard.push 3 }
       repeat(8) { |n| total += hoard[n] }
@@ -226,7 +231,7 @@ class TestRoomyMemory < Minitest::Test
       rocks = pool :rock, x: 0, y: 0, capacity: 400
       dust = list :dust, capacity: 5700
       spin = var :spin, 0
-      func(:tally, fast: true) { 150.times { spin += 1 } }
+      func(:tally, fast: true) { 150.times { |n| spin += ADDS_BY_ROUND[n] } }
       game_loop do
         rocks.spawn(x: 1, y: 2)
         rocks.each { |rock| rock.x += 1 }
@@ -249,7 +254,7 @@ class TestRoomyMemory < Minitest::Test
       cold = list :cold, capacity: 7300
       spin = var :spin, 0
       cold.push 1
-      game_loop { 300.times { spin += 1 } }
+      game_loop { 300.times { |n| spin += ADDS_BY_ROUND[n] } }
     end
 
     assert_includes rom.built.placement.funcs, GBA::Placement::FRAME_ROUTINE
@@ -263,7 +268,7 @@ class TestRoomyMemory < Minitest::Test
       screen :bitmap
       trickle = list :trickle, capacity: TRICKLE_WORDS
       spin = var :spin, 0
-      func(:busy) { BUSY_ADDS.times { spin += 1 } }
+      func(:busy) { BUSY_ADDS.times { |n| spin += ADDS_BY_ROUND[n] } }
       game_loop do
         trickle[3] = spin
         call :busy
@@ -299,8 +304,8 @@ class TestRoomyMemory < Minitest::Test
       trickle = list :trickle, capacity: SHARED_TRICKLE_WORDS
       spin = var :spin, 0
       where = 0
-      func(:left_work) { LEFT_ADDS.times { spin += 1 } }
-      func(:right_work) { RIGHT_ADDS.times { spin += 2 } }
+      func(:left_work) { LEFT_ADDS.times { |n| spin += ADDS_BY_ROUND[n] } }
+      func(:right_work) { RIGHT_ADDS.times { |n| spin += ADDS_BY_ROUND[n] + 1 } }
       scene(:left) { 3.times { call :left_work } }
       scene(:right) { call :right_work }
       game_loop do
