@@ -112,12 +112,16 @@ module VBlank
         return rewriter.rewritten_block if rewriter.block_node.is_a?(Prism::LambdaNode)
 
         code = "#{block.lambda? ? 'lambda' : 'proc'} #{rewriter.rewritten_block}"
+        return code if block.lambda?
+
         changing = rewriter.changing_instance_variables
         attributes = rewriter.changing_attributes
-        return code if (changing.empty? && attributes.empty?) || block.lambda?
-
-        "proc { |*__plain_ruby_given| #{Rewriter::INSTANCE_VARIABLES}.mark_changing(self, #{changing.inspect}, " \
-          "attributes: #{attributes.inspect}); (#{code}).call(*__plain_ruby_given) }"
+        file = File.expand_path(block.source_location.first)
+        marks = "#{Rewriter::INSTANCE_VARIABLES}.note_game_file(self, #{file.inspect}); "
+        unless changing.empty? && attributes.empty?
+          marks += "#{Rewriter::INSTANCE_VARIABLES}.mark_changing(self, #{changing.inspect}, attributes: #{attributes.inspect}); "
+        end
+        "proc { |*__plain_ruby_given| #{marks}(#{code}).call(*__plain_ruby_given) }"
       end
 
       def checked_source(rewriter, code, file, allow)
@@ -215,7 +219,7 @@ module VBlank
         rewritten = "#{opening}#{rewriter.rewritten(root)}"
         return rewritten if library
 
-        InstanceVariables.record_changing_attributes(rewriter.changing_attributes)
+        InstanceVariables.record_changing_attributes(File.expand_path(path), rewriter.changing_attributes)
 
         checks = BlockChecks.new(root, file: path, allow: [])
         checks.refuse_outside_calls_in_file!

@@ -145,15 +145,49 @@ module VBlank
           nil
         end
 
-        # The attributes game files may change through a writer (LocalNames#changing_attributes),
-        # as `:level`. Files are loaded in the main Ractor, before any game is built, and every
-        # Ractor reads the same names, as CallChanges.game_method_names.
-        def self.changing_attributes_in_files = @changing_attributes_in_files || Set.new.freeze
+        # The attributes each game file may change through a writer (LocalNames#changing_attributes),
+        # as `:level`, by the file's path; and the files running when each game file was brought in
+        # (Game#require_game_file), so a build takes the names of the files its own game brought in
+        # and no other game's (#changing_attributes_loaded_by). Files are loaded in the main Ractor,
+        # before any game is built, and every Ractor reads the same record, as
+        # CallChanges.game_method_names.
+        def self.changing_attributes_by_file = @changing_attributes_by_file || {}.freeze
+        def self.game_file_loaders = @game_file_loaders || {}.freeze
 
-        def self.record_changing_attributes(names)
+        def self.record_changing_attributes(path, names)
           return if names.empty? || Ractor.current != Ractor.main
 
-          @changing_attributes_in_files = Ractor.make_shareable(changing_attributes_in_files | names)
+          @changing_attributes_by_file = Ractor.make_shareable(changing_attributes_by_file.merge(path => names.to_set))
+        end
+
+        # +path+, a game file, brought in while the files +loaders+ ran (each on the stack then,
+        # the file that asked first), the first time or again.
+        def self.record_game_file_loaders(path, loaders)
+          return if Ractor.current != Ractor.main
+
+          known = game_file_loaders.fetch(path, Set.new)
+          return if loaders.all? { |file| known.include?(file) }
+
+          @game_file_loaders = Ractor.make_shareable(game_file_loaders.merge(path => known | loaders))
+        end
+
+        # The attributes the game whose block is in +game_file+ may change through a writer in
+        # its files: that file's own, and those of every game file brought in while it ran. Nil
+        # for a game whose file is not known, whose build takes every game file's names.
+        def self.changing_attributes_loaded_by(game_file)
+          changing_attributes_by_file.each_with_object(Set.new) do |(path, names), found|
+            found.merge(names) if path == game_file || game_file_loaders.fetch(path, Set.new).include?(game_file)
+          end
+        end
+
+        # Every game file's attributes, for a build whose game file is not known.
+        def self.changing_attributes_in_files = changing_attributes_by_file.values.reduce(Set.new, :|)
+
+        # The game block running on +owner+ is written in +file+ (PlainRuby.callable_source), so
+        # its build takes the writer names of that game's files alone.
+        def note_game_file(owner, file)
+          owner.instance_variable_uses.note_game_file(file) if owner.is_a?(Builder)
+          nil
         end
 
         def refuse_unsaved_naming_nothing!
@@ -1801,6 +1835,25 @@ module VBlank
             (@names_by_class[owner.class] ||= InstanceVariables.names_in_module(owner.class)).include?(label)
           end
 
+          # The first game block run on this build names its file (InstanceVariables.note_game_file).
+          def note_game_file(file)
+            return if @game_file
+
+            @game_file = file
+            @file_changing_attributes = nil
+          end
+
+          # The attributes the files of this build's game may change through a writer
+          # (InstanceVariables.changing_attributes_loaded_by), or every game file's where the
+          # game's file is not known.
+          def file_changing_attributes
+            @file_changing_attributes ||= if @game_file
+                                            InstanceVariables.changing_attributes_loaded_by(@game_file)
+                                          else
+                                            InstanceVariables.changing_attributes_in_files
+                                          end
+          end
+
           def mark_changing_on_builder(labels, attributes)
             @changing_on_builder.merge(labels)
             @changing_attributes.merge(attributes)
@@ -1815,7 +1868,7 @@ module VBlank
             return true unless InstanceVariables.names_in_module(holder).empty?
             return true unless InstanceVariables.names_in_module(holder, constant: CHANGING_CONSTANT).empty?
 
-            attributes = @changing_attributes | InstanceVariables.changing_attributes_in_files
+            attributes = @changing_attributes | file_changing_attributes
             attributes.any? { |attribute| owner.respond_to?(:"#{attribute}=") }
           end
 
@@ -1902,7 +1955,7 @@ module VBlank
             return true if @changing_objects[owner]&.include?(label)
 
             attribute = label.to_s.delete_prefix("@").to_sym
-            (@changing_attributes.include?(attribute) || InstanceVariables.changing_attributes_in_files.include?(attribute)) &&
+            (@changing_attributes.include?(attribute) || file_changing_attributes.include?(attribute)) &&
               owner.respond_to?(:"#{attribute}=")
           end
 

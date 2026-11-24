@@ -559,6 +559,10 @@ module VBlank
     def require_game_file(name)
       from = caller_locations(1, 1).first.path
       path = File.expand_path("#{name}.rb", File.dirname(from))
+      # Every file running now brought this one in: a game's writer names are those of the files
+      # its own file brought in (DSL::PlainRuby::InstanceVariables.changing_attributes_loaded_by).
+      loaders = caller_locations.filter_map { |at| at.absolute_path }.uniq
+      DSL::PlainRuby::InstanceVariables.record_game_file_loaders(path, loaders)
       return false if $LOADED_FEATURES.include?(path)
 
       RubyVM::InstructionSequence.compile(rewritten_game_file(path, File.dirname(from)), path, nil, 1).eval
