@@ -27,7 +27,6 @@ module VBlank
           end
 
           include Console::Hardware
-          include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, palette_tint:, uploads:,
                          placement:, raster:)
@@ -152,16 +151,16 @@ module VBlank
           def emit_boot_object_windows
             return if placed_fade.none?
 
-            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT | (WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT)) unless @raster.feeds_light?
-            store_word_immediate(placed_fade.fade_stack_index, var_addr(EFFECT_LINE))
+            @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT | (WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT)) unless @raster.feeds_light?
+            @primitives.store_word_immediate(placed_fade.fade_stack_index, @primitives.var_addr(EFFECT_LINE))
           end
 
           # Fill the sprite table with the "unused slot" marker so no leftover memory
           # shows as a sprite. One source-fixed DMA of a word that is two hidden slots.
           def clear_object_table
-            scratch = var_addr(:_oam_clear)
-            store_word_immediate(OBJ_HIDDEN_WORD, scratch)
-            emit_start_copy_engine(from: scratch, to: OAM_START, control: @framebuffer.dma_fill_control(OAM_SIZE / 4))
+            scratch = @primitives.var_addr(:_oam_clear)
+            @primitives.store_word_immediate(OBJ_HIDDEN_WORD, scratch)
+            @primitives.emit_start_copy_engine(from: scratch, to: OAM_START, control: @framebuffer.dma_fill_control(OAM_SIZE / 4))
             emit_clear_draw_run_copies
             emit_clear_held_table
           end
@@ -222,13 +221,13 @@ module VBlank
             @lowering.value(node.which)
             # One unsigned compare catches both ends: a negative number reads as a very large
             # one, so anything outside 0...count fails the same test.
-            emit_number(TMP, sets.count)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit(ASM.mov_reg_cond(:hs, ACC, TMP))
-            emit(ASM.lsl_imm(TMP, ACC, COLOR_SET_SHIFT))
-            emit_load_data_address(ACC, sets.blob)
-            emit(ASM.add_reg(ACC, ACC, TMP))
-            store_var(ACC, sets.source_var)
+            @emitter.emit_number(TMP, sets.count)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit(ASM.mov_reg_cond(:hs, ACC, TMP))
+            @emitter.emit(ASM.lsl_imm(TMP, ACC, COLOR_SET_SHIFT))
+            @emitter.emit_load_data_address(ACC, sets.blob)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
+            @primitives.store_var(ACC, sets.source_var)
             @palette_tint.emit_changed_list_colors(list) if list
             @palette_tint.emit_followed_list_colors(followed) if followed
           end
@@ -282,17 +281,17 @@ module VBlank
             return yield unless @layout.screen.walks_areas?
 
             came_in = BackgroundDrawing::SET_CAME_IN
-            work = gensym
-            past = gensym
-            load_var(ACC, came_in)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, work, cond: :eq)
-            emit_number(ACC, 0)
-            store_var(ACC, came_in)
-            emit_branch(:b, past)
-            place_label(work)
+            work = @emitter.gensym
+            past = @emitter.gensym
+            @primitives.load_var(ACC, came_in)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, work, cond: :eq)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, came_in)
+            @emitter.emit_branch(:b, past)
+            @emitter.place_label(work)
             yield
-            place_label(past)
+            @emitter.place_label(past)
           end
 
           # Every sprite off for a frame (see Builder::Sprites#hide_sprites).
@@ -318,12 +317,12 @@ module VBlank
 
           # `hide_sprites`: note it, for the gap after this pass.
           def emit_hide_sprites(_node)
-            store_word_immediate(SPRITES_ASKED, var_addr(SPRITES_HIDDEN)) if hides_sprites?
+            @primitives.store_word_immediate(SPRITES_ASKED, @primitives.var_addr(SPRITES_HIDDEN)) if hides_sprites?
           end
 
           # At power-on the layer is on, whatever the memory held.
           def emit_sprites_shown_at_power_on
-            store_word_immediate(SPRITES_SHOWN, var_addr(SPRITES_HIDDEN)) if hides_sprites?
+            @primitives.store_word_immediate(SPRITES_SHOWN, @primitives.var_addr(SPRITES_HIDDEN)) if hides_sprites?
           end
 
           # Between frames: the layer off for a frame that was asked for, and on again the gap
@@ -342,40 +341,40 @@ module VBlank
           def emit_switch_sprite_layer
             return unless hides_sprites?
 
-            done = gensym
-            turn_on = gensym
+            done = @emitter.gensym
+            turn_on = @emitter.gensym
             layer_switched = @layout.border.nil?
-            load_var(ACC, SPRITES_HIDDEN)
-            emit(ASM.cmp_imm(ACC, SPRITES_ASKED))
-            emit_branch(:bcond, turn_on, cond: :ne)
-            store_word_immediate(SPRITES_OFF, var_addr(SPRITES_HIDDEN))
+            @primitives.load_var(ACC, SPRITES_HIDDEN)
+            @emitter.emit(ASM.cmp_imm(ACC, SPRITES_ASKED))
+            @emitter.emit_branch(:bcond, turn_on, cond: :ne)
+            @primitives.store_word_immediate(SPRITES_OFF, @primitives.var_addr(SPRITES_HIDDEN))
             if layer_switched
               changing_display_control do
-                emit_number(TMP, REG_DISPCNT)
-                emit(ASM.load_halfword(ACC, TMP))
-                emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
-                emit(ASM.store_halfword(ACC, TMP))
+                @emitter.emit_number(TMP, REG_DISPCNT)
+                @emitter.emit(ASM.load_halfword(ACC, TMP))
+                @emitter.emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
+                @emitter.emit(ASM.store_halfword(ACC, TMP))
               end
             end
-            emit_branch(:b, done)
-            place_label(turn_on)
-            emit(ASM.cmp_imm(ACC, SPRITES_OFF))
-            emit_branch(:bcond, done, cond: :ne)
-            store_word_immediate(SPRITES_SHOWN, var_addr(SPRITES_HIDDEN))
-            return place_label(done) unless layer_switched
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(turn_on)
+            @emitter.emit(ASM.cmp_imm(ACC, SPRITES_OFF))
+            @emitter.emit_branch(:bcond, done, cond: :ne)
+            @primitives.store_word_immediate(SPRITES_SHOWN, @primitives.var_addr(SPRITES_HIDDEN))
+            return @emitter.place_label(done) unless layer_switched
 
             changing_display_control do
-              bitmap = gensym
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.load_halfword(ACC, TMP))
-              emit(ASM.and_imm(2, ACC, 7))
-              emit(ASM.cmp_imm(2, 3))
-              emit_branch(:bcond, bitmap, cond: :hs) # a bitmap screen
-              emit(ASM.orr_imm(ACC, ACC, OBJ_ENABLE))
-              emit(ASM.store_halfword(ACC, TMP))
-              place_label(bitmap)
+              bitmap = @emitter.gensym
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
+              @emitter.emit(ASM.and_imm(2, ACC, 7))
+              @emitter.emit(ASM.cmp_imm(2, 3))
+              @emitter.emit_branch(:bcond, bitmap, cond: :hs) # a bitmap screen
+              @emitter.emit(ASM.orr_imm(ACC, ACC, OBJ_ENABLE))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
+              @emitter.place_label(bitmap)
             end
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # A read and write of the display's settings, in a game where the screen's interrupt
@@ -401,21 +400,21 @@ module VBlank
           # (BackgroundDrawing#emit_display_control_keeping_held_off).
           def emit_screen_layers(value, &writes_it)
             hiding = hides_sprites? && value.anybits?(OBJ_ENABLE) && @layout.border.nil?
-            return write_reg16(REG_DISPCNT, value) unless hiding || writes_it
+            return @emitter.write_reg16(REG_DISPCNT, value) unless hiding || writes_it
 
-            emit_number(ACC, value)
+            @emitter.emit_number(ACC, value)
             if hiding
-              write = gensym
-              load_var(TMP, SPRITES_HIDDEN)
-              emit(ASM.cmp_imm(TMP, SPRITES_OFF))
-              emit_branch(:bcond, write, cond: :ne)
-              emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
-              place_label(write)
+              write = @emitter.gensym
+              @primitives.load_var(TMP, SPRITES_HIDDEN)
+              @emitter.emit(ASM.cmp_imm(TMP, SPRITES_OFF))
+              @emitter.emit_branch(:bcond, write, cond: :ne)
+              @emitter.emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
+              @emitter.place_label(write)
             end
             return writes_it.call(ACC) if writes_it
 
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
           # A run of the table drawn in an order the game works out (see Builder#draw_in_order).
@@ -511,69 +510,69 @@ module VBlank
           # it wrote past where this pass stopped are hidden (#emit_rows_past_run_hidden).
           def emit_copy_draw_run(run)
             list = run.order
-            next_sprite = gensym
-            next_row = gensym
-            copied = gensym
+            next_sprite = @emitter.gensym
+            next_row = @emitter.gensym
+            copied = @emitter.gensym
             entry = run.entry_bytes
-            emit_number(TMP, list + ((run.members - 1) * entry))
-            emit_number(ADDR, list - entry)
+            @emitter.emit_number(TMP, list + ((run.members - 1) * entry))
+            @emitter.emit_number(ADDR, list - entry)
             if run.shown
-              emit_number(ACC, run.shown.block)
-              emit(ASM.ldr_offset(ACC, ACC, ShownSort::HIDDEN))
-              emit(ASM.lsl_imm(ACC, ACC, 1)) if entry == 2
-              emit(ASM.add_reg(ADDR, ADDR, ACC))
+              @emitter.emit_number(ACC, run.shown.block)
+              @emitter.emit(ASM.ldr_offset(ACC, ACC, ShownSort::HIDDEN))
+              @emitter.emit(ASM.lsl_imm(ACC, ACC, 1)) if entry == 2
+              @emitter.emit(ASM.add_reg(ADDR, ADDR, ACC))
             end
-            emit_number(SPARE, oam_slot(run.first_slot, 0))
+            @emitter.emit_number(SPARE, oam_slot(run.first_slot, 0))
             if run.shown
-              emit(ASM.cmp_reg(TMP, ADDR))
-              emit_branch(:bcond, copied, cond: :eq)
+              @emitter.emit(ASM.cmp_reg(TMP, ADDR))
+              @emitter.emit_branch(:bcond, copied, cond: :eq)
             end
-            place_label(next_sprite)
+            @emitter.place_label(next_sprite)
             if entry == 2                                 # which sprite goes next
-              emit(ASM.load_halfword(ACC, TMP))
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
             else
-              emit(ASM.ldrb_offset(ACC, TMP, 0))
+              @emitter.emit(ASM.ldrb_offset(ACC, TMP, 0))
             end
-            emit(ASM.sub_imm(TMP, TMP, entry))
-            emit_load_data_address(POSE_WORD, run.table)
-            emit(ASM.add_reg(POSE_WORD, POSE_WORD, ACC))
-            emit(ASM.add_reg(POSE_WORD, POSE_WORD, ACC))  # ...its two bytes in the table
-            emit(ASM.ldrb_offset(HIGH, POSE_WORD, 0))     # its first row in the copy
-            emit(ASM.ldrb_offset(POSE_WORD, POSE_WORD, 1)) # how many rows it takes
-            emit(ASM.lsl_imm(HIGH, HIGH, 3))
-            emit_number(ACC, run.staging)
-            emit(ASM.add_reg(HIGH, HIGH, ACC))
-            place_label(next_row)
+            @emitter.emit(ASM.sub_imm(TMP, TMP, entry))
+            @emitter.emit_load_data_address(POSE_WORD, run.table)
+            @emitter.emit(ASM.add_reg(POSE_WORD, POSE_WORD, ACC))
+            @emitter.emit(ASM.add_reg(POSE_WORD, POSE_WORD, ACC))  # ...its two bytes in the table
+            @emitter.emit(ASM.ldrb_offset(HIGH, POSE_WORD, 0))     # its first row in the copy
+            @emitter.emit(ASM.ldrb_offset(POSE_WORD, POSE_WORD, 1)) # how many rows it takes
+            @emitter.emit(ASM.lsl_imm(HIGH, HIGH, 3))
+            @emitter.emit_number(ACC, run.staging)
+            @emitter.emit(ASM.add_reg(HIGH, HIGH, ACC))
+            @emitter.place_label(next_row)
             [0, 2, 4].each do |half|
-              emit(ASM.load_halfword_offset(ACC, HIGH, half))
-              emit(ASM.store_halfword_offset(ACC, SPARE, half))
+              @emitter.emit(ASM.load_halfword_offset(ACC, HIGH, half))
+              @emitter.emit(ASM.store_halfword_offset(ACC, SPARE, half))
             end
-            emit(ASM.add_imm(HIGH, HIGH, 8))
-            emit(ASM.add_imm(SPARE, SPARE, 8))
-            emit(ASM.subs_imm(POSE_WORD, POSE_WORD, 1))
-            emit_branch(:bcond, next_row, cond: :ne)
-            emit(ASM.cmp_reg(TMP, ADDR))
-            emit_branch(:bcond, next_sprite, cond: :ne)
-            place_label(copied)
+            @emitter.emit(ASM.add_imm(HIGH, HIGH, 8))
+            @emitter.emit(ASM.add_imm(SPARE, SPARE, 8))
+            @emitter.emit(ASM.subs_imm(POSE_WORD, POSE_WORD, 1))
+            @emitter.emit_branch(:bcond, next_row, cond: :ne)
+            @emitter.emit(ASM.cmp_reg(TMP, ADDR))
+            @emitter.emit_branch(:bcond, next_sprite, cond: :ne)
+            @emitter.place_label(copied)
             emit_rows_past_run_hidden(run) if run.shown
           end
 
           # The rows the pass before wrote past where this pass's copy stopped (in SPARE), each given
           # the "unused slot" marker, and where this pass stopped kept for the next.
           def emit_rows_past_run_hidden(run)
-            blank = gensym
-            done = gensym
-            emit_number(TMP, run.shown.block)
-            emit(ASM.ldr_offset(HIGH, TMP, ShownSort::ROWS_END))
-            emit(ASM.str_offset(SPARE, TMP, ShownSort::ROWS_END))
-            emit_number(ACC, OBJ_HIDDEN_WORD & 0xFFFF)
-            place_label(blank)
-            emit(ASM.cmp_reg(SPARE, HIGH))
-            emit_branch(:bcond, done, cond: :hs)
-            emit(ASM.store_halfword_offset(ACC, SPARE, 0))
-            emit(ASM.add_imm(SPARE, SPARE, 8))
-            emit_branch(:b, blank)
-            place_label(done)
+            blank = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit_number(TMP, run.shown.block)
+            @emitter.emit(ASM.ldr_offset(HIGH, TMP, ShownSort::ROWS_END))
+            @emitter.emit(ASM.str_offset(SPARE, TMP, ShownSort::ROWS_END))
+            @emitter.emit_number(ACC, OBJ_HIDDEN_WORD & 0xFFFF)
+            @emitter.place_label(blank)
+            @emitter.emit(ASM.cmp_reg(SPARE, HIGH))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.store_halfword_offset(ACC, SPARE, 0))
+            @emitter.emit(ASM.add_imm(SPARE, SPARE, 8))
+            @emitter.emit_branch(:b, blank)
+            @emitter.place_label(done)
           end
 
           # Fill the copy of every ordered run with the "unused slot" marker, for the same
@@ -581,7 +580,7 @@ module VBlank
           # The marker is already in the scratch word the table's own clear left it in.
           def emit_clear_draw_run_copies
             @layout.draw_runs.each do |run|
-              emit_start_copy_engine(from: var_addr(:_oam_clear), to: run.staging,
+              @primitives.emit_start_copy_engine(from: @primitives.var_addr(:_oam_clear), to: run.staging,
                                      control: @framebuffer.dma_fill_control(run.slots * 2))
             end
           end
@@ -640,14 +639,14 @@ module VBlank
           def emit_clear_held_table
             held = @layout.held_sprites or return
 
-            emit_start_copy_engine(from: var_addr(:_oam_clear), to: held.copy,
+            @primitives.emit_start_copy_engine(from: @primitives.var_addr(:_oam_clear), to: held.copy,
                                    control: @framebuffer.dma_fill_control(held.rows * 2))
-            store_word_immediate(OAM_START + OAM_SIZE, var_addr(HELD_SHOWN_TO))
+            @primitives.store_word_immediate(OAM_START + OAM_SIZE, @primitives.var_addr(HELD_SHOWN_TO))
           end
 
           # ...and nothing left out yet, at power-on only: the count runs from there.
           def emit_held_table_at_power_on
-            store_word_immediate(0, var_addr(LEFT_OUT)) if @layout.held_sprites
+            @primitives.store_word_immediate(0, @primitives.var_addr(LEFT_OUT)) if @layout.held_sprites
           end
 
           def emit_call_held_table_copy
@@ -667,8 +666,8 @@ module VBlank
             emit_call_held_table_copy
             return unless hides_game_rows?
 
-            emit_number(ACC, 0)
-            store_var(ACC, GAME_ROWS_HIDDEN)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, GAME_ROWS_HIDDEN)
           end
 
           # Where the game stops, the game's rows copied in again if a sending left them hidden: no
@@ -678,13 +677,13 @@ module VBlank
           def emit_game_rows_back_at_stop(wait:)
             return unless hides_game_rows?
 
-            past = gensym
-            load_var(ACC, GAME_ROWS_HIDDEN)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, past, cond: :eq)
-            emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16)) if wait
+            past = @emitter.gensym
+            @primitives.load_var(ACC, GAME_ROWS_HIDDEN)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, past, cond: :eq)
+            @emitter.emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16)) if wait
             emit_game_rows_copied_in
-            place_label(past)
+            @emitter.place_label(past)
           end
 
           # The game's rows of the console's table hidden, as far as the last copy reached, leaving
@@ -694,20 +693,20 @@ module VBlank
           # with bit 8 clear), and the copy into the table writes them all again (#emit_call_held_table_copy).
           # Uses ACC, TMP and ADDR.
           def emit_hide_game_rows
-            loop_top = gensym
-            done = gensym
-            emit_number(ACC, 1)
-            store_var(ACC, GAME_ROWS_HIDDEN)
-            load_var(TMP, HELD_SHOWN_TO)
-            emit_number(ADDR, first_game_row)
-            emit_number(ACC, OBJ_HIDDEN_ATTR0)
-            place_label(loop_top)
-            emit(ASM.cmp_reg(ADDR, TMP))
-            emit_branch(:bcond, done, cond: :hs)
-            emit(ASM.store_halfword(ACC, ADDR))
-            emit(ASM.add_imm(ADDR, ADDR, 8))
-            emit_branch(:b, loop_top)
-            place_label(done)
+            loop_top = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit_number(ACC, 1)
+            @primitives.store_var(ACC, GAME_ROWS_HIDDEN)
+            @primitives.load_var(TMP, HELD_SHOWN_TO)
+            @emitter.emit_number(ADDR, first_game_row)
+            @emitter.emit_number(ACC, OBJ_HIDDEN_ATTR0)
+            @emitter.place_label(loop_top)
+            @emitter.emit(ASM.cmp_reg(ADDR, TMP))
+            @emitter.emit_branch(:bcond, done, cond: :hs)
+            @emitter.emit(ASM.store_halfword(ACC, ADDR))
+            @emitter.emit(ASM.add_imm(ADDR, ADDR, 8))
+            @emitter.emit_branch(:b, loop_top)
+            @emitter.place_label(done)
           end
 
           # The first row of the console's table the game's sprites are copied to: the first, or the
@@ -732,72 +731,72 @@ module VBlank
           def emit_held_table_copy_routine
             held = @layout.held_sprites or return
 
-            look = gensym
-            full = gensym
-            passed = gensym
-            hide = gensym
-            hidden = gensym
-            emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
-            place_label(HELD_TABLE_ROUTINE)
-            emit(ASM.push(4, 5, 6, 7, 8, 14))
+            look = @emitter.gensym
+            full = @emitter.gensym
+            passed = @emitter.gensym
+            hide = @emitter.gensym
+            hidden = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+            @emitter.place_label(HELD_TABLE_ROUTINE)
+            @emitter.emit(ASM.push(4, 5, 6, 7, 8, 14))
             border = @layout.border
-            emit_number(TMP, held.copy)
-            emit_number(SPARE, held.copy + (held.rows * 8))
-            emit_number(HIGH, first_game_row)
-            emit_number(4, held.came_from)
-            emit(ASM.load_immediate(5, 0))
-            emit(ASM.load_immediate(6, 0))
-            emit_number(8, OAM_START + OAM_SIZE)
+            @emitter.emit_number(TMP, held.copy)
+            @emitter.emit_number(SPARE, held.copy + (held.rows * 8))
+            @emitter.emit_number(HIGH, first_game_row)
+            @emitter.emit_number(4, held.came_from)
+            @emitter.emit(ASM.load_immediate(5, 0))
+            @emitter.emit(ASM.load_immediate(6, 0))
+            @emitter.emit_number(8, OAM_START + OAM_SIZE)
             # In a border, a frame `hide_sprites` asked for copies none of the game's rows, so the
             # hiding below reaches every row the last frame showed (#emit_switch_sprite_layer).
-            copied = gensym
+            copied = @emitter.gensym
             if border && hides_sprites?
-              load_var(7, SPRITES_HIDDEN)
-              emit(ASM.cmp_imm(7, SPRITES_OFF))
-              emit_branch(:bcond, copied, cond: :eq)
+              @primitives.load_var(7, SPRITES_HIDDEN)
+              @emitter.emit(ASM.cmp_imm(7, SPRITES_OFF))
+              @emitter.emit_branch(:bcond, copied, cond: :eq)
             end
-            place_label(look)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.and_imm(7, ACC, OBJ_ROTSCALE | OBJ_HIDDEN_ATTR0))
-            emit(ASM.cmp_imm(7, OBJ_HIDDEN_ATTR0))
-            emit_branch(:bcond, passed, cond: :eq)
-            emit(ASM.cmp_reg(HIGH, 8))
-            emit_branch(:bcond, full, cond: :hs)
+            @emitter.place_label(look)
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit(ASM.and_imm(7, ACC, OBJ_ROTSCALE | OBJ_HIDDEN_ATTR0))
+            @emitter.emit(ASM.cmp_imm(7, OBJ_HIDDEN_ATTR0))
+            @emitter.emit_branch(:bcond, passed, cond: :eq)
+            @emitter.emit(ASM.cmp_reg(HIGH, 8))
+            @emitter.emit_branch(:bcond, full, cond: :hs)
             # In a border, each place is moved to where the game's screen is (BorderSprites).
             border&.emit_row_moved_by_corner(7)
-            emit(ASM.store_halfword(ACC, HIGH))
+            @emitter.emit(ASM.store_halfword(ACC, HIGH))
             [2, 4].each do |half|
-              emit(ASM.load_halfword_offset(ACC, TMP, half))
+              @emitter.emit(ASM.load_halfword_offset(ACC, TMP, half))
               border.emit_column_moved_by_corner(7) if border && half == 2
-              emit(ASM.store_halfword_offset(ACC, HIGH, half))
+              @emitter.emit(ASM.store_halfword_offset(ACC, HIGH, half))
             end
-            emit(ASM.store_halfword(5, 4))
-            emit(ASM.add_imm(HIGH, HIGH, 8))
-            emit(ASM.add_imm(4, 4, 2))
-            emit_branch(:b, passed)
-            place_label(full)
-            emit(ASM.add_imm(6, 6, 1))
-            place_label(passed)
-            emit(ASM.add_imm(TMP, TMP, 8))
-            emit(ASM.add_imm(5, 5, 1))
-            emit(ASM.cmp_reg(TMP, SPARE))
-            emit_branch(:bcond, look, cond: :ne)
-            place_label(copied)
-            load_var(ACC, LEFT_OUT)
-            emit(ASM.add_reg(ACC, ACC, 6))
-            store_var(ACC, LEFT_OUT)
-            load_var(7, HELD_SHOWN_TO)
-            store_var(HIGH, HELD_SHOWN_TO)
-            emit_number(ACC, OBJ_HIDDEN_ATTR0)
-            place_label(hide)
-            emit(ASM.cmp_reg(HIGH, 7))
-            emit_branch(:bcond, hidden, cond: :hs)
-            emit(ASM.store_halfword(ACC, HIGH))
-            emit(ASM.add_imm(HIGH, HIGH, 8))
-            emit_branch(:b, hide)
-            place_label(hidden)
-            emit(ASM.pop(4, 5, 6, 7, 8, 15))
-            place_label(DerivedNames.routine_end(HELD_TABLE_ROUTINE))
+            @emitter.emit(ASM.store_halfword(5, 4))
+            @emitter.emit(ASM.add_imm(HIGH, HIGH, 8))
+            @emitter.emit(ASM.add_imm(4, 4, 2))
+            @emitter.emit_branch(:b, passed)
+            @emitter.place_label(full)
+            @emitter.emit(ASM.add_imm(6, 6, 1))
+            @emitter.place_label(passed)
+            @emitter.emit(ASM.add_imm(TMP, TMP, 8))
+            @emitter.emit(ASM.add_imm(5, 5, 1))
+            @emitter.emit(ASM.cmp_reg(TMP, SPARE))
+            @emitter.emit_branch(:bcond, look, cond: :ne)
+            @emitter.place_label(copied)
+            @primitives.load_var(ACC, LEFT_OUT)
+            @emitter.emit(ASM.add_reg(ACC, ACC, 6))
+            @primitives.store_var(ACC, LEFT_OUT)
+            @primitives.load_var(7, HELD_SHOWN_TO)
+            @primitives.store_var(HIGH, HELD_SHOWN_TO)
+            @emitter.emit_number(ACC, OBJ_HIDDEN_ATTR0)
+            @emitter.place_label(hide)
+            @emitter.emit(ASM.cmp_reg(HIGH, 7))
+            @emitter.emit_branch(:bcond, hidden, cond: :hs)
+            @emitter.emit(ASM.store_halfword(ACC, HIGH))
+            @emitter.emit(ASM.add_imm(HIGH, HIGH, 8))
+            @emitter.emit_branch(:b, hide)
+            @emitter.place_label(hidden)
+            @emitter.emit(ASM.pop(4, 5, 6, 7, 8, 15))
+            @emitter.place_label(DerivedNames.routine_end(HELD_TABLE_ROUTINE))
           end
 
           # The routine that writes one scene's moving sprites (see GBA#prepare_scene_sprites).
@@ -822,12 +821,12 @@ module VBlank
 
           # Emit the block's code to run only while +state+ holds +value+: while that scene is up.
           def emit_while_scene_up(state, value)
-            skip = gensym
+            skip = @emitter.gensym
             @lowering.value(Build.binop(:==, Build.var_ref(state), Build.int(value)))
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, skip, cond: :eq)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :eq)
             yield
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # Hide every row a scene's sprites can be in, on the frame the scene changes, before
@@ -851,14 +850,14 @@ module VBlank
           def emit_hide_scene_rows_on_change
             @layout.gated_sprites.map(&:state).uniq.each do |state|
               remembered = self.class.scene_rows_hidden_for(state)
-              same = gensym
-              load_var(ACC, state)
-              load_var(TMP, remembered)
-              emit(ASM.cmp_reg(ACC, TMP))
-              emit_branch(:bcond, same, cond: :eq)
-              store_var(ACC, remembered)
+              same = @emitter.gensym
+              @primitives.load_var(ACC, state)
+              @primitives.load_var(TMP, remembered)
+              @emitter.emit(ASM.cmp_reg(ACC, TMP))
+              @emitter.emit_branch(:bcond, same, cond: :eq)
+              @primitives.store_var(ACC, remembered)
               @lowering.statement(Build.call(self.class.hide_rows_routine(state)))
-              place_label(same)
+              @emitter.place_label(same)
             end
           end
 
@@ -895,19 +894,19 @@ module VBlank
           def emit_scene_colors_on_change
             picked = @layout.screen.scene_colors_picker or return
 
-            changed = gensym
-            same = gensym
-            load_var(ACC, picked.state)
-            load_var(TMP, SCENE_PICK_SENT_FOR)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, changed, cond: :ne)
-            load_var(TMP, SCENE_COLORS_SENT)
-            emit(ASM.cmp_imm(TMP, 0))
-            emit_branch(:bcond, same, cond: :ne)
-            place_label(changed)
-            store_var(ACC, SCENE_PICK_SENT_FOR)
+            changed = @emitter.gensym
+            same = @emitter.gensym
+            @primitives.load_var(ACC, picked.state)
+            @primitives.load_var(TMP, SCENE_PICK_SENT_FOR)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, changed, cond: :ne)
+            @primitives.load_var(TMP, SCENE_COLORS_SENT)
+            @emitter.emit(ASM.cmp_imm(TMP, 0))
+            @emitter.emit_branch(:bcond, same, cond: :ne)
+            @emitter.place_label(changed)
+            @primitives.store_var(ACC, SCENE_PICK_SENT_FOR)
             @lowering.statement(Build.call(SCENE_COLORS_ROUTINE))
-            place_label(same)
+            @emitter.place_label(same)
           end
 
           # The body of that routine: the table of the scene +picked+'s variable picks now, through
@@ -920,13 +919,13 @@ module VBlank
                 @palette_tint.emit_send_scene_obj_palette(pick.blob, @layout.screen.obj_palette_units, pick.scene)
               end
             end
-            store_word_immediate(1, var_addr(SCENE_COLORS_SENT))
+            @primitives.store_word_immediate(1, @primitives.var_addr(SCENE_COLORS_SENT))
           end
 
           # Note that no scene's table has gone in: at power-on, whatever screen the game starts on,
           # and wherever the table every screen shows is sent again.
           def emit_no_scene_colors_sent
-            store_word_immediate(0, var_addr(SCENE_COLORS_SENT)) if @layout.screen.scene_colors_picker
+            @primitives.store_word_immediate(0, @primitives.var_addr(SCENE_COLORS_SENT)) if @layout.screen.scene_colors_picker
           end
 
           # Every address a row of sprite +name+ is written at: its rows in the table, the copy
@@ -942,14 +941,14 @@ module VBlank
           # Mark each row at +addresses+ unused. A store reaches 255 bytes on from the address in
           # its register, so the address is loaded again only when the next row is past that.
           def emit_hide_rows_at(addresses)
-            emit_number(ACC, OBJ_HIDDEN_ATTR0)
+            @emitter.emit_number(ACC, OBJ_HIDDEN_ATTR0)
             base = nil
             addresses.each do |address|
               unless base && address - base < 256
                 base = address
-                emit_number(TMP, base)
+                @emitter.emit_number(TMP, base)
               end
-              emit(ASM.store_halfword_offset(ACC, TMP, address - base))
+              @emitter.emit(ASM.store_halfword_offset(ACC, TMP, address - base))
             end
           end
 
@@ -1017,26 +1016,26 @@ module VBlank
           # sprites with nothing to show are passed over first, a store a row
           # (#emit_hide_places_left_over), and the walk starts at the first that shows something.
           def emit_sprite_repeat(repeat)
-            again = gensym
-            done = gensym
-            emit_number(ACC, repeat.first_index)
-            store_var(ACC, SpriteRepeats::INDEX)
-            emit_number(ACC, repeat.first_row)
-            store_var(ACC, REPEAT_ROW)
+            again = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit_number(ACC, repeat.first_index)
+            @primitives.store_var(ACC, SpriteRepeats::INDEX)
+            @emitter.emit_number(ACC, repeat.first_row)
+            @primitives.store_var(ACC, REPEAT_ROW)
             live = live_count_var(repeat)
             emit_hide_places_left_over(repeat, live, done) if live
-            place_label(again)
+            @emitter.place_label(again)
             emit_present_object(repeat.sprite, rows: Array.new(repeat.sprite.pieces) { |piece| MovingRow.new(offset: piece * 8) })
-            load_var(ACC, REPEAT_ROW)
-            emit_add_const(ACC, ACC, repeat.row_step, TMP)
-            store_var(ACC, REPEAT_ROW)
-            load_var(ACC, SpriteRepeats::INDEX)
-            emit_add_const(ACC, ACC, repeat.index_step, TMP)
-            store_var(ACC, SpriteRepeats::INDEX)
-            emit_number(TMP, repeat.index_after)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, again, cond: :ne)
-            place_label(done)
+            @primitives.load_var(ACC, REPEAT_ROW)
+            @primitives.emit_add_const(ACC, ACC, repeat.row_step, TMP)
+            @primitives.store_var(ACC, REPEAT_ROW)
+            @primitives.load_var(ACC, SpriteRepeats::INDEX)
+            @primitives.emit_add_const(ACC, ACC, repeat.index_step, TMP)
+            @primitives.store_var(ACC, SpriteRepeats::INDEX)
+            @emitter.emit_number(TMP, repeat.index_after)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
+            @emitter.place_label(done)
           end
 
           # A pool's sprites, and how many of them show. Each of a pool's sprites shows a place
@@ -1086,48 +1085,48 @@ module VBlank
           # held across it.
           def emit_hide_places_left_over(repeat, live, done)
             place, row, stop = SPARE, HIGH, TMP
-            walk = gensym
-            next_place = gensym
-            past_empty = gensym
-            load_var(stop, live)
-            emit_number(ACC, repeat.index_after + 1)
-            emit(ASM.cmp_reg(stop, ACC))
-            emit_branch(:bcond, walk, cond: :ge)
+            walk = @emitter.gensym
+            next_place = @emitter.gensym
+            past_empty = @emitter.gensym
+            @primitives.load_var(stop, live)
+            @emitter.emit_number(ACC, repeat.index_after + 1)
+            @emitter.emit(ASM.cmp_reg(stop, ACC))
+            @emitter.emit_branch(:bcond, walk, cond: :ge)
             # Fewer things than this repeat's first place: nothing in it shows, so the walk stops
             # at its last place. (A pool's sprites can be several repeats.)
-            emit(ASM.mov_reg(stop, ACC))
-            place_label(walk)
-            emit_number(place, repeat.first_index)
-            emit_number(row, repeat.first_row)
-            emit_number(ACC, OBJ_HIDDEN_ATTR0)
-            place_label(next_place)
-            emit(ASM.cmp_reg(place, stop))
-            emit_branch(:bcond, past_empty, cond: :lt)
-            repeat.sprite.pieces.times { |piece| emit(ASM.store_halfword_offset(ACC, row, piece * 8)) }
-            emit_add_const(row, row, repeat.row_step, ADDR)
-            emit(ASM.sub_imm(place, place, 1))
-            emit_branch(:b, next_place)
-            place_label(past_empty)
-            store_var(place, SpriteRepeats::INDEX)
-            store_var(row, REPEAT_ROW)
-            emit_number(ACC, repeat.index_after)
-            emit(ASM.cmp_reg(place, ACC))
-            emit_branch(:bcond, done, cond: :eq)
+            @emitter.emit(ASM.mov_reg(stop, ACC))
+            @emitter.place_label(walk)
+            @emitter.emit_number(place, repeat.first_index)
+            @emitter.emit_number(row, repeat.first_row)
+            @emitter.emit_number(ACC, OBJ_HIDDEN_ATTR0)
+            @emitter.place_label(next_place)
+            @emitter.emit(ASM.cmp_reg(place, stop))
+            @emitter.emit_branch(:bcond, past_empty, cond: :lt)
+            repeat.sprite.pieces.times { |piece| @emitter.emit(ASM.store_halfword_offset(ACC, row, piece * 8)) }
+            @primitives.emit_add_const(row, row, repeat.row_step, ADDR)
+            @emitter.emit(ASM.sub_imm(place, place, 1))
+            @emitter.emit_branch(:b, next_place)
+            @emitter.place_label(past_empty)
+            @primitives.store_var(place, SpriteRepeats::INDEX)
+            @primitives.store_var(row, REPEAT_ROW)
+            @emitter.emit_number(ACC, repeat.index_after)
+            @emitter.emit(ASM.cmp_reg(place, ACC))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
           end
 
           # Store the low half of r0 in the half of +row+ that starts +half+ bytes into it.
           def emit_store_acc_in_row(row, half)
-            return store_halfword_acc(row.address + half) if row.is_a?(FixedRow)
+            return @primitives.store_halfword_acc(row.address + half) if row.is_a?(FixedRow)
 
-            load_var(TMP, REPEAT_ROW)
-            emit(ASM.store_halfword_offset(ACC, TMP, row.offset + half))
+            @primitives.load_var(TMP, REPEAT_ROW)
+            @emitter.emit(ASM.store_halfword_offset(ACC, TMP, row.offset + half))
           end
 
           # Store +number+, settled while building, in that half of +row+.
           def emit_store_number_in_row(row, half, number)
-            return write_reg16(row.address + half, number) if row.is_a?(FixedRow)
+            return @emitter.write_reg16(row.address + half, number) if row.is_a?(FixedRow)
 
-            emit_number(ACC, number)
+            @emitter.emit_number(ACC, number)
             emit_store_acc_in_row(row, half)
           end
 
@@ -1146,21 +1145,21 @@ module VBlank
             return if @layout.movement.still.empty?
 
             watching = @layout.movement.watching
-            watching ? load_var(ACC, watching) : emit_number(ACC, NOTHING_TO_WATCH)
-            settled = gensym
-            write = gensym
-            load_var(TMP, STILL_STATE)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, write, cond: :ne) # a different scene: they need writing again
-            load_var(TMP, STILL_UP)
-            emit(ASM.cmp_imm(TMP, 0))
-            emit_branch(:bcond, settled, cond: :ne) # ...and they are in the table already
-            place_label(write)
-            store_var(ACC, STILL_STATE)
-            emit_number(TMP, 1)
-            store_var(TMP, STILL_UP)
+            watching ? @primitives.load_var(ACC, watching) : @emitter.emit_number(ACC, NOTHING_TO_WATCH)
+            settled = @emitter.gensym
+            write = @emitter.gensym
+            @primitives.load_var(TMP, STILL_STATE)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, write, cond: :ne) # a different scene: they need writing again
+            @primitives.load_var(TMP, STILL_UP)
+            @emitter.emit(ASM.cmp_imm(TMP, 0))
+            @emitter.emit_branch(:bcond, settled, cond: :ne) # ...and they are in the table already
+            @emitter.place_label(write)
+            @primitives.store_var(ACC, STILL_STATE)
+            @emitter.emit_number(TMP, 1)
+            @primitives.store_var(TMP, STILL_UP)
             @lowering.statement(Build.call(STILL_ROUTINE))
-            place_label(settled)
+            @emitter.place_label(settled)
           end
 
           # The routine that writes the still sprites: the ones every scene shows, and then each
@@ -1203,18 +1202,18 @@ module VBlank
           def emit_present_object(obj, twin: nil, name: nil, rows: nil)
             rows ||= Array.new(obj.pieces) { |piece| FixedRow.new(address: row_address(obj.slot, piece)) }
             @lowering.value(obj.active)
-            emit(ASM.cmp_imm(ACC, 0))
-            draw = gensym
-            done = gensym
-            emit_branch(:bcond, draw, cond: :ne)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            draw = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit_branch(:bcond, draw, cond: :ne)
             obj.pieces.times do |piece|
               emit_store_number_in_row(rows[piece], 0, OBJ_HIDDEN_ATTR0) # active == 0: mark it unused
-              write_reg16(oam_slot(twin.slot, piece), OBJ_HIDDEN_ATTR0) if twin # ...and its window
+              @emitter.write_reg16(oam_slot(twin.slot, piece), OBJ_HIDDEN_ATTR0) if twin # ...and its window
             end
             emit_let_go_of_shared_room(obj) if obj.rooms
-            emit_branch(:b, done)
+            @emitter.emit_branch(:b, done)
 
-            place_label(draw)
+            @emitter.place_label(draw)
             emit_store_object_picked_attr2(obj) if obj.picks_attr2?
             if obj.rooms
               emit_take_shared_room(obj)
@@ -1235,7 +1234,7 @@ module VBlank
               end
             end
             emit_hide_twin_unless_faded(twin, obj.pieces) if twin
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           def oam_slot(first, piece)
@@ -1263,14 +1262,14 @@ module VBlank
               emit_borrow_group_if_lent(obj) if obj.recolor_banks.lends
             end
             if obj.layer_depths
-              store_var(ACC, OBJ_PICKED_ATTR2) if obj.recolor_banks
+              @primitives.store_var(ACC, OBJ_PICKED_ATTR2) if obj.recolor_banks
               emit_pick_layer_depth(obj.layer_pick, obj.layer_depths)
               if obj.recolor_banks
-                load_var(TMP, OBJ_PICKED_ATTR2)
-                emit(ASM.orr_reg(ACC, ACC, TMP))
+                @primitives.load_var(TMP, OBJ_PICKED_ATTR2)
+                @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
               end
             end
-            store_var(ACC, OBJ_PICKED_ATTR2)
+            @primitives.store_var(ACC, OBJ_PICKED_ATTR2)
           end
 
           # r0 = the word +choice+ picks out of +table+. A number past the last entry, or
@@ -1278,10 +1277,10 @@ module VBlank
           # which is what the sprite was declared with.
           def emit_pick_from_table(choice, table)
             @lowering.value(choice)
-            emit(ASM.cmp_imm(ACC, table.own))
-            emit(ASM.mov_imm_cond(:hs, ACC, table.own))
-            emit_load_data_address(TMP, table.table)
-            emit(ASM.ldr_reg_lsl(ACC, TMP, ACC, 2))
+            @emitter.emit(ASM.cmp_imm(ACC, table.own))
+            @emitter.emit(ASM.mov_imm_cond(:hs, ACC, table.own))
+            @emitter.emit_load_data_address(TMP, table.table)
+            @emitter.emit(ASM.ldr_reg_lsl(ACC, TMP, ACC, 2))
           end
 
           # r0 = the depth the sprite's picked layer puts it at, on the screen that is up. Where
@@ -1292,16 +1291,16 @@ module VBlank
             return emit_pick_from_table(choice, depths) unless depths.scene_var
 
             @lowering.value(choice)
-            emit(ASM.cmp_imm(ACC, depths.own))
-            emit(ASM.mov_imm_cond(:hs, ACC, depths.own))
-            load_var(TMP, depths.scene_var)
-            emit(ASM.cmp_imm(TMP, depths.scene_count))
-            emit(ASM.mov_imm_cond(:hs, TMP, depths.scene_count))
-            emit_number(2, depths.own + 1)  # r2 = one row: each layer, then its own
-            emit(ASM.mul(3, TMP, 2))                       # r3 = the screen's row (rd must differ from rm)
-            emit(ASM.add_reg(ACC, ACC, 3))
-            emit_load_data_address(TMP, depths.table)
-            emit(ASM.ldr_reg_lsl(ACC, TMP, ACC, 2))
+            @emitter.emit(ASM.cmp_imm(ACC, depths.own))
+            @emitter.emit(ASM.mov_imm_cond(:hs, ACC, depths.own))
+            @primitives.load_var(TMP, depths.scene_var)
+            @emitter.emit(ASM.cmp_imm(TMP, depths.scene_count))
+            @emitter.emit(ASM.mov_imm_cond(:hs, TMP, depths.scene_count))
+            @emitter.emit_number(2, depths.own + 1)  # r2 = one row: each layer, then its own
+            @emitter.emit(ASM.mul(3, TMP, 2))                       # r3 = the screen's row (rd must differ from rm)
+            @emitter.emit(ASM.add_reg(ACC, ACC, 3))
+            @emitter.emit_load_data_address(TMP, depths.table)
+            @emitter.emit(ASM.ldr_reg_lsl(ACC, TMP, ACC, 2))
           end
 
           # OR this frame's picked part into the third word being worked out in r0, for a
@@ -1309,8 +1308,8 @@ module VBlank
           def orr_picked_attr2(obj)
             return unless obj.picks_attr2?
 
-            load_var(TMP, OBJ_PICKED_ATTR2)
-            emit(ASM.orr_reg(ACC, ACC, TMP))
+            @primitives.load_var(TMP, OBJ_PICKED_ATTR2)
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
           end
 
           # Which pose's pictures are sitting in a sprite's room right now, for a sprite that
@@ -1331,7 +1330,7 @@ module VBlank
           end
 
           def emit_reset_resident_frames(objects)
-            objects.each { |obj| store_word_immediate(NO_FRAME, var_addr(resident_frame_var(obj))) if obj.frames }
+            objects.each { |obj| @primitives.store_word_immediate(NO_FRAME, @primitives.var_addr(resident_frame_var(obj))) if obj.frames }
             objects.filter_map(&:rooms).uniq.each { |rooms| emit_empty_shared_rooms(rooms) }
           end
 
@@ -1352,9 +1351,9 @@ module VBlank
           # since another scene's pictures went into the same memory.
           def emit_empty_shared_rooms(rooms)
             rooms.count.times do |room|
-              store_word_immediate(NO_FRAME, room_pose_at(rooms, room))
-              store_word_immediate(0, room_sprite_count_at(rooms, room))
-              store_word_immediate(rooms.count, room_held_at(rooms, room)) # a sprite each, as many as rooms
+              @primitives.store_word_immediate(NO_FRAME, room_pose_at(rooms, room))
+              @primitives.store_word_immediate(0, room_sprite_count_at(rooms, room))
+              @primitives.store_word_immediate(rooms.count, room_held_at(rooms, room)) # a sprite each, as many as rooms
             end
           end
 
@@ -1364,20 +1363,20 @@ module VBlank
           # showed last frame, does a compare and the sum below.
           def emit_take_shared_room(obj)
             rooms = obj.rooms
-            held = gensym
+            held = @emitter.gensym
             @lowering.value(obj.pose)
-            load_var(TMP, resident_frame_var(obj))
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, held, cond: :eq)
-            store_var(ACC, resident_frame_var(obj))
-            emit_number(TMP, obj.room_member)
+            @primitives.load_var(TMP, resident_frame_var(obj))
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, held, cond: :eq)
+            @primitives.store_var(ACC, resident_frame_var(obj))
+            @emitter.emit_number(TMP, obj.room_member)
             emit_call_cold_routine(shared_room_label(rooms, :take))
-            place_label(held)
-            emit_number(TMP, room_held_at(rooms, obj.room_member))
-            emit(ASM.ldr(ACC, TMP))
-            emit_number(TMP, rooms.units)
-            emit(ASM.mul(2, ACC, TMP))
-            store_var(2, OBJ_ROOM_TILES)
+            @emitter.place_label(held)
+            @emitter.emit_number(TMP, room_held_at(rooms, obj.room_member))
+            @emitter.emit(ASM.ldr(ACC, TMP))
+            @emitter.emit_number(TMP, rooms.units)
+            @emitter.emit(ASM.mul(2, ACC, TMP))
+            @primitives.store_var(2, OBJ_ROOM_TILES)
           end
 
           # A sprite that is not shown lets go of its room, so another pose can have it. The room
@@ -1385,15 +1384,15 @@ module VBlank
           # when it is shown.
           def emit_let_go_of_shared_room(obj)
             rooms = obj.rooms
-            none = gensym
-            emit_number(TMP, room_held_at(rooms, obj.room_member))
-            emit(ASM.ldr(ACC, TMP))
-            emit(ASM.cmp_imm(ACC, rooms.count))
-            emit_branch(:bcond, none, cond: :hs)
-            store_word_immediate(NO_FRAME, var_addr(resident_frame_var(obj)))
-            emit_number(TMP, obj.room_member)
+            none = @emitter.gensym
+            @emitter.emit_number(TMP, room_held_at(rooms, obj.room_member))
+            @emitter.emit(ASM.ldr(ACC, TMP))
+            @emitter.emit(ASM.cmp_imm(ACC, rooms.count))
+            @emitter.emit_branch(:bcond, none, cond: :hs)
+            @primitives.store_word_immediate(NO_FRAME, @primitives.var_addr(resident_frame_var(obj)))
+            @emitter.emit_number(TMP, obj.room_member)
             emit_call_cold_routine(shared_room_label(rooms, :let_go))
-            place_label(none)
+            @emitter.place_label(none)
           end
 
           def shared_room_label(rooms, part)
@@ -1413,8 +1412,8 @@ module VBlank
           def emit_shared_room_routines
             @layout.room_tables.each_key do |rooms|
               emit_shared_room_routine(rooms, :let_go) do
-                emit_number(TMP, rooms.count)
-                emit(ASM.str(TMP, 4)) # it holds no room now
+                @emitter.emit_number(TMP, rooms.count)
+                @emitter.emit(ASM.str(TMP, 4)) # it holds no room now
               end
               emit_shared_room_routine(rooms, :take) { emit_give_room_holding_pose(rooms) }
             end
@@ -1434,19 +1433,19 @@ module VBlank
           # held while it was on the screen goes back after a frame, as one does when the thing
           # wearing it is hidden.
           def emit_borrow_group_if_lent(obj)
-            bank = gensym
-            off_screen = gensym
-            emit(ASM.cmp_imm(ACC, ScreenLayout::LENT_MARK))
-            emit_branch(:bcond, bank, cond: :lo)
-            store_var(ACC, OBJ_PICKED_ATTR2)
+            bank = @emitter.gensym
+            off_screen = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(ACC, ScreenLayout::LENT_MARK))
+            @emitter.emit_branch(:bcond, bank, cond: :lo)
+            @primitives.store_var(ACC, OBJ_PICKED_ATTR2)
             emit_branch_if_off_screen(obj.y, *object_reach(obj, :y), SCREEN_HEIGHT, off_screen)
             emit_branch_if_off_screen(obj.x, *object_reach(obj, :x), SCREEN_WIDTH, off_screen)
-            load_var(ACC, OBJ_PICKED_ATTR2)
+            @primitives.load_var(ACC, OBJ_PICKED_ATTR2)
             emit_call_cold_routine(LEND_COLORS)
-            emit_branch(:b, bank)
-            place_label(off_screen)
-            emit_number(ACC, @layout.screen.lending.banks.first << OBJ_BANK_SHIFT)
-            place_label(bank)
+            @emitter.emit_branch(:b, bank)
+            @emitter.place_label(off_screen)
+            @emitter.emit_number(ACC, @layout.screen.lending.banks.first << OBJ_BANK_SHIFT)
+            @emitter.place_label(bank)
           end
 
           # How far before and how far past a sprite's place, across (+axis+ :x) or down (:y),
@@ -1472,14 +1471,14 @@ module VBlank
           def emit_branch_if_off_screen(place, before, past, edge, off_screen)
             span = edge + before + past - 1
             @lowering.value(place)
-            emit_add_const(ACC, ACC, past - 1, TMP)
+            @primitives.emit_add_const(ACC, ACC, past - 1, TMP)
             if ASM.encode_rotated_immediate(span)
-              emit(ASM.cmp_imm(ACC, span))
+              @emitter.emit(ASM.cmp_imm(ACC, span))
             else
-              emit_number(TMP, span)
-              emit(ASM.cmp_reg(ACC, TMP))
+              @emitter.emit_number(TMP, span)
+              @emitter.emit(ASM.cmp_reg(ACC, TMP))
             end
-            emit_branch(:bcond, off_screen, cond: :hs)
+            @emitter.emit_branch(:bcond, off_screen, cond: :hs)
           end
 
           LEND_COLORS = :__lend_sprite_colors
@@ -1496,9 +1495,9 @@ module VBlank
           def emit_count_lending_frame
             return unless @layout.screen.lending
 
-            load_var(ACC, LENT_COLORS_FRAME)
-            emit(ASM.add_imm(ACC, ACC, 1))
-            store_var(ACC, LENT_COLORS_FRAME)
+            @primitives.load_var(ACC, LENT_COLORS_FRAME)
+            @emitter.emit(ASM.add_imm(ACC, ACC, 1))
+            @primitives.store_var(ACC, LENT_COLORS_FRAME)
           end
 
           # At power-on no group is lent to any list, and nothing has been drawn.
@@ -1506,14 +1505,14 @@ module VBlank
             lending = @layout.screen.lending
             return unless lending
 
-            emit_number(ACC, 0)
-            [LENT_COLORS_FRAME, LENT_COLORS_MISSED, LENT_COLORS_MISSED_LIST].each { |name| store_var(ACC, name) }
+            @emitter.emit_number(ACC, 0)
+            [LENT_COLORS_FRAME, LENT_COLORS_MISSED, LENT_COLORS_MISSED_LIST].each { |name| @primitives.store_var(ACC, name) }
             lending.banks.each_index do |k|
-              store_var(ACC, lending.last_drawn_var(k))
-              store_var(ACC, lending.source_var(k))
+              @primitives.store_var(ACC, lending.last_drawn_var(k))
+              @primitives.store_var(ACC, lending.source_var(k))
             end
-            emit_number(ACC, -1)
-            lending.banks.each_index { |k| store_var(ACC, lending.holder_var(k)) }
+            @emitter.emit_number(ACC, -1)
+            lending.banks.each_index { |k| @primitives.store_var(ACC, lending.holder_var(k)) }
           end
 
           # Lend a group of sprite colours to the list a sprite is wearing, the way the console's
@@ -1565,68 +1564,68 @@ module VBlank
             return unless lending
 
             groups = lending.banks.each_index.to_a
-            held = groups.map { gensym }
-            free = groups.map { gensym }
-            copy = gensym
-            lent = gensym
-            done = gensym
-            emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
-            place_label(LEND_COLORS)
-            emit(ASM.push(1, 2, 3))
-            emit(ASM.sub_imm(1, ACC, ScreenLayout::LENT_MARK))
-            load_var(2, LENT_COLORS_FRAME)
+            held = groups.map { @emitter.gensym }
+            free = groups.map { @emitter.gensym }
+            copy = @emitter.gensym
+            lent = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+            @emitter.place_label(LEND_COLORS)
+            @emitter.emit(ASM.push(1, 2, 3))
+            @emitter.emit(ASM.sub_imm(1, ACC, ScreenLayout::LENT_MARK))
+            @primitives.load_var(2, LENT_COLORS_FRAME)
             groups.each do |k|
-              load_var(3, lending.holder_var(k))
-              emit(ASM.cmp_reg(3, 1))
-              emit_branch(:bcond, held[k], cond: :eq)
+              @primitives.load_var(3, lending.holder_var(k))
+              @emitter.emit(ASM.cmp_reg(3, 1))
+              @emitter.emit_branch(:bcond, held[k], cond: :eq)
             end
-            emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
+            @emitter.emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
             groups.each do |k|
-              load_var(3, lending.holder_var(k))
-              emit(ASM.cmp_imm(3, 0))
-              emit_branch(:bcond, free[k], cond: :lt)
-              load_var(3, lending.last_drawn_var(k))
-              emit(ASM.add_imm(3, 3, 1))
-              emit(ASM.cmp_reg(3, 2))
-              emit_branch(:bcond, free[k], cond: :lo)
+              @primitives.load_var(3, lending.holder_var(k))
+              @emitter.emit(ASM.cmp_imm(3, 0))
+              @emitter.emit_branch(:bcond, free[k], cond: :lt)
+              @primitives.load_var(3, lending.last_drawn_var(k))
+              @emitter.emit(ASM.add_imm(3, 3, 1))
+              @emitter.emit(ASM.cmp_reg(3, 2))
+              @emitter.emit_branch(:bcond, free[k], cond: :lo)
             end
             emit_take_family_group(lending, free) if lending.families
-            load_var(3, LENT_COLORS_MISSED)
-            emit(ASM.add_imm(3, 3, 1))
-            store_var(3, LENT_COLORS_MISSED)
-            store_var(1, LENT_COLORS_MISSED_LIST) # only when out of groups, so the usual call pays nothing
-            emit_number(ACC, lending.banks.first << OBJ_BANK_SHIFT)
-            emit_branch(:b, lent)
+            @primitives.load_var(3, LENT_COLORS_MISSED)
+            @emitter.emit(ASM.add_imm(3, 3, 1))
+            @primitives.store_var(3, LENT_COLORS_MISSED)
+            @primitives.store_var(1, LENT_COLORS_MISSED_LIST) # only when out of groups, so the usual call pays nothing
+            @emitter.emit_number(ACC, lending.banks.first << OBJ_BANK_SHIFT)
+            @emitter.emit_branch(:b, lent)
             groups.each do |k|
-              place_label(free[k])
-              store_var(1, lending.holder_var(k))
-              store_var(2, lending.last_drawn_var(k))
-              emit_load_data_address(ACC, lending.blob)
-              emit(ASM.lsl_imm(3, 1, COLOR_SET_SHIFT))
-              emit(ASM.add_reg(ACC, ACC, 3))
-              store_var(ACC, lending.source_var(k))
-              emit_number(11, lending.banks[k] << OBJ_BANK_SHIFT)
-              emit_number(3, lending.group_at(k))
-              emit_branch(:b, copy)
+              @emitter.place_label(free[k])
+              @primitives.store_var(1, lending.holder_var(k))
+              @primitives.store_var(2, lending.last_drawn_var(k))
+              @emitter.emit_load_data_address(ACC, lending.blob)
+              @emitter.emit(ASM.lsl_imm(3, 1, COLOR_SET_SHIFT))
+              @emitter.emit(ASM.add_reg(ACC, ACC, 3))
+              @primitives.store_var(ACC, lending.source_var(k))
+              @emitter.emit_number(11, lending.banks[k] << OBJ_BANK_SHIFT)
+              @emitter.emit_number(3, lending.group_at(k))
+              @emitter.emit_branch(:b, copy)
             end
-            place_label(copy)
+            @emitter.place_label(copy)
             @palette_tint.emit_colors_into_bank_held(PaletteTint::COLORS_IN_A_BANK)
-            emit(ASM.mov_reg(ACC, 11))
-            place_label(lent)
-            emit(ASM.pop(4, 5, 6, 7, 8, 9, 10, 11, 14))
-            emit_branch(:b, done)
+            @emitter.emit(ASM.mov_reg(ACC, 11))
+            @emitter.place_label(lent)
+            @emitter.emit(ASM.pop(4, 5, 6, 7, 8, 9, 10, 11, 14))
+            @emitter.emit_branch(:b, done)
             groups.each do |k|
-              place_label(held[k])
-              store_var(2, lending.last_drawn_var(k))
-              emit_number(ACC, lending.banks[k] << OBJ_BANK_SHIFT)
-              emit_branch(:b, done) unless k == groups.last
+              @emitter.place_label(held[k])
+              @primitives.store_var(2, lending.last_drawn_var(k))
+              @emitter.emit_number(ACC, lending.banks[k] << OBJ_BANK_SHIFT)
+              @emitter.emit_branch(:b, done) unless k == groups.last
             end
-            place_label(done)
-            emit(ASM.pop(1, 2, 3))
-            emit(ASM.bx(14))
+            @emitter.place_label(done)
+            @emitter.emit(ASM.pop(1, 2, 3))
+            @emitter.emit(ASM.bx(14))
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
-            place_label(DerivedNames.routine_end(LEND_COLORS))
+            @emitter.place_label(DerivedNames.routine_end(LEND_COLORS))
           end
 
           # A list that found no group free, in a game where sprites step through lists of their
@@ -1641,60 +1640,60 @@ module VBlank
           #   r5  the family of the list asking
           #   r6  a group's frame, then its list's family
           def emit_take_family_group(lending, free)
-            none = gensym
-            emit_load_data_address(4, lending.families)
-            emit(ASM.lsl_imm(5, 1, 2))
-            emit(ASM.add_reg(5, 5, 4))
-            emit(ASM.ldr(5, 5))
-            emit(ASM.cmp_imm(5, 0))
-            emit_branch(:bcond, none, cond: :eq)
+            none = @emitter.gensym
+            @emitter.emit_load_data_address(4, lending.families)
+            @emitter.emit(ASM.lsl_imm(5, 1, 2))
+            @emitter.emit(ASM.add_reg(5, 5, 4))
+            @emitter.emit(ASM.ldr(5, 5))
+            @emitter.emit(ASM.cmp_imm(5, 0))
+            @emitter.emit_branch(:bcond, none, cond: :eq)
             lending.banks.each_index do |k|
-              other = gensym
-              load_var(3, lending.holder_var(k))
-              emit(ASM.cmp_imm(3, 0))
-              emit_branch(:bcond, other, cond: :lt)
-              load_var(6, lending.last_drawn_var(k))
-              emit(ASM.cmp_reg(6, 2))
-              emit_branch(:bcond, other, cond: :eq)
-              emit(ASM.lsl_imm(6, 3, 2))
-              emit(ASM.add_reg(6, 6, 4))
-              emit(ASM.ldr(6, 6))
-              emit(ASM.cmp_reg(6, 5))
-              emit_branch(:bcond, free[k], cond: :eq)
-              place_label(other)
+              other = @emitter.gensym
+              @primitives.load_var(3, lending.holder_var(k))
+              @emitter.emit(ASM.cmp_imm(3, 0))
+              @emitter.emit_branch(:bcond, other, cond: :lt)
+              @primitives.load_var(6, lending.last_drawn_var(k))
+              @emitter.emit(ASM.cmp_reg(6, 2))
+              @emitter.emit_branch(:bcond, other, cond: :eq)
+              @emitter.emit(ASM.lsl_imm(6, 3, 2))
+              @emitter.emit(ASM.add_reg(6, 6, 4))
+              @emitter.emit(ASM.ldr(6, 6))
+              @emitter.emit(ASM.cmp_reg(6, 5))
+              @emitter.emit_branch(:bcond, free[k], cond: :eq)
+              @emitter.place_label(other)
             end
-            place_label(none)
+            @emitter.place_label(none)
           end
 
           def emit_shared_room_routine(rooms, part)
             label = shared_room_label(rooms, part)
-            emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
-            place_label(label)
-            emit(ASM.push(4, 5, 14))
-            emit(ASM.lsl_imm(4, TMP, ROOMS::HELD_WORD_SHIFT))
-            emit_number(5, room_held_at(rooms, 0))
-            emit(ASM.add_reg(4, 4, 5))
-            emit_number(2, room_table(rooms))
+            @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+            @emitter.place_label(label)
+            @emitter.emit(ASM.push(4, 5, 14))
+            @emitter.emit(ASM.lsl_imm(4, TMP, ROOMS::HELD_WORD_SHIFT))
+            @emitter.emit_number(5, room_held_at(rooms, 0))
+            @emitter.emit(ASM.add_reg(4, 4, 5))
+            @emitter.emit_number(2, room_table(rooms))
             emit_drop_one_room_user(rooms)
             yield
-            emit(ASM.pop(4, 5, 15))
+            @emitter.emit(ASM.pop(4, 5, 15))
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
-            place_label(DerivedNames.routine_end(label))
+            @emitter.place_label(DerivedNames.routine_end(label))
           end
 
           # One fewer sprite draws from the room the asking sprite holds, if it holds one.
           def emit_drop_one_room_user(rooms)
-            none = gensym
-            emit(ASM.ldr(3, 4))
-            emit(ASM.cmp_imm(3, rooms.count))
-            emit_branch(:bcond, none, cond: :hs)
-            emit(ASM.lsl_imm(5, 3, ROOMS::ROOM_WORDS_SHIFT))
-            emit(ASM.add_reg(5, 5, 2))
-            emit(ASM.ldr_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
-            emit(ASM.sub_imm(ADDR, ADDR, 1))
-            emit(ASM.str_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
-            place_label(none)
+            none = @emitter.gensym
+            @emitter.emit(ASM.ldr(3, 4))
+            @emitter.emit(ASM.cmp_imm(3, rooms.count))
+            @emitter.emit_branch(:bcond, none, cond: :hs)
+            @emitter.emit(ASM.lsl_imm(5, 3, ROOMS::ROOM_WORDS_SHIFT))
+            @emitter.emit(ASM.add_reg(5, 5, 2))
+            @emitter.emit(ASM.ldr_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
+            @emitter.emit(ASM.sub_imm(ADDR, ADDR, 1))
+            @emitter.emit(ASM.str_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
+            @emitter.place_label(none)
           end
 
           # Give the asking sprite a room holding the pose, and count it among the room's users: the
@@ -1703,48 +1702,48 @@ module VBlank
           # those (see SpriteLayout::SharedRooms), so the second walk always stops at one; it is
           # held to the rooms there are all the same, and would take the last of them.
           def emit_give_room_holding_pose(rooms)
-            found = gensym
-            take = gensym
-            emit_walk_rooms(rooms, 0, found) { emit(ASM.cmp_reg(ADDR, ACC)) }
-            emit_walk_rooms(rooms, ROOMS::SPRITE_COUNT_OFFSET, take) { emit(ASM.cmp_imm(ADDR, 0)) }
-            emit(ASM.sub_imm(5, 5, ROOMS::ROOM_WORDS_BYTES))
-            emit(ASM.sub_imm(3, 3, 1))
-            place_label(take)
-            emit(ASM.str(ACC, 5)) # the room holds this pose now
-            emit_number(ADDR, rooms.frame_bytes)
-            emit(ASM.mul(TMP, ACC, ADDR))
-            emit_load_data_address(ACC, rooms.frames)
-            emit(ASM.add_reg(ACC, ACC, TMP)) # from the pose's frame in the cartridge
-            emit_number(ADDR, rooms.units * 32)
-            emit(ASM.mul(2, 3, ADDR))
-            emit_number(ADDR, OBJ_TILE_BASE + (rooms.first * 32))
-            emit(ASM.add_reg(2, 2, ADDR)) # ...to the room
+            found = @emitter.gensym
+            take = @emitter.gensym
+            emit_walk_rooms(rooms, 0, found) { @emitter.emit(ASM.cmp_reg(ADDR, ACC)) }
+            emit_walk_rooms(rooms, ROOMS::SPRITE_COUNT_OFFSET, take) { @emitter.emit(ASM.cmp_imm(ADDR, 0)) }
+            @emitter.emit(ASM.sub_imm(5, 5, ROOMS::ROOM_WORDS_BYTES))
+            @emitter.emit(ASM.sub_imm(3, 3, 1))
+            @emitter.place_label(take)
+            @emitter.emit(ASM.str(ACC, 5)) # the room holds this pose now
+            @emitter.emit_number(ADDR, rooms.frame_bytes)
+            @emitter.emit(ASM.mul(TMP, ACC, ADDR))
+            @emitter.emit_load_data_address(ACC, rooms.frames)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP)) # from the pose's frame in the cartridge
+            @emitter.emit_number(ADDR, rooms.units * 32)
+            @emitter.emit(ASM.mul(2, 3, ADDR))
+            @emitter.emit_number(ADDR, OBJ_TILE_BASE + (rooms.first * 32))
+            @emitter.emit(ASM.add_reg(2, 2, ADDR)) # ...to the room
             sharers = @layout.screen.objects.filter_map { |name, obj| ":#{declared_name(name)}" if obj.rooms == rooms }.uniq
             @emitter.note_video_copy("sending sprite #{sharers.join(', ')} its next frame", rooms.frame_bytes)
-            emit_start_copy_engine(from: in_register(ACC), to: in_register(2),
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: Primitives::InRegister.new(2),
                                    control: (rooms.frame_bytes / 4) | DMA_ENABLE | DMA_32BIT)
-            place_label(found)
-            emit(ASM.ldr_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
-            emit(ASM.add_imm(ADDR, ADDR, 1))
-            emit(ASM.str_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
-            emit(ASM.str(3, 4)) # the asking sprite holds it
+            @emitter.place_label(found)
+            @emitter.emit(ASM.ldr_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
+            @emitter.emit(ASM.add_imm(ADDR, ADDR, 1))
+            @emitter.emit(ASM.str_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
+            @emitter.emit(ASM.str(3, 4)) # the asking sprite holds it
           end
 
           # Walk the rooms from the first, r3 counting them and r5 at each one's two words, until
           # the word +offset+ into one passes the test the block makes, and go to +stop+ there.
           # Falls through past the last room.
           def emit_walk_rooms(rooms, offset, stop)
-            again = gensym
-            emit_number(3, 0)
-            emit(ASM.mov_reg(5, 2))
-            place_label(again)
-            emit(ASM.ldr_offset(ADDR, 5, offset))
+            again = @emitter.gensym
+            @emitter.emit_number(3, 0)
+            @emitter.emit(ASM.mov_reg(5, 2))
+            @emitter.place_label(again)
+            @emitter.emit(ASM.ldr_offset(ADDR, 5, offset))
             yield
-            emit_branch(:bcond, stop, cond: :eq)
-            emit(ASM.add_imm(5, 5, ROOMS::ROOM_WORDS_BYTES))
-            emit(ASM.add_imm(3, 3, 1))
-            emit(ASM.cmp_imm(3, rooms.count))
-            emit_branch(:bcond, again, cond: :ne)
+            @emitter.emit_branch(:bcond, stop, cond: :eq)
+            @emitter.emit(ASM.add_imm(5, 5, ROOMS::ROOM_WORDS_BYTES))
+            @emitter.emit(ASM.add_imm(3, 3, 1))
+            @emitter.emit(ASM.cmp_imm(3, rooms.count))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
           end
 
           # Copy the frame this sprite is showing into its room, when it is not the one already
@@ -1754,20 +1753,20 @@ module VBlank
           # the screen is drawn, with the rest of the sprite table, so the frame and the table
           # entry pointing at it change together.
           def emit_send_object_frame(obj, name)
-            already = gensym
+            already = @emitter.gensym
             @lowering.value(obj.pose)
-            load_var(TMP, resident_frame_var(obj))
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, already, cond: :eq)
-            store_var(ACC, resident_frame_var(obj))
-            emit_number(TMP, obj.frame_bytes)
-            emit(ASM.mul(2, ACC, TMP))                    # r2 = where this frame starts in the blob
-            emit_load_data_address(ACC, obj.frames)
-            emit(ASM.add_reg(ACC, ACC, 2))                # from the frame in the cartridge
+            @primitives.load_var(TMP, resident_frame_var(obj))
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, already, cond: :eq)
+            @primitives.store_var(ACC, resident_frame_var(obj))
+            @emitter.emit_number(TMP, obj.frame_bytes)
+            @emitter.emit(ASM.mul(2, ACC, TMP))                    # r2 = where this frame starts in the blob
+            @emitter.emit_load_data_address(ACC, obj.frames)
+            @emitter.emit(ASM.add_reg(ACC, ACC, 2))                # from the frame in the cartridge
             @emitter.note_video_copy("sending sprite :#{declared_name(name)} its next frame", obj.frame_bytes)
-            emit_start_copy_engine(from: in_register(ACC), to: OBJ_TILE_BASE + (obj.tile_index * 32),
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: OBJ_TILE_BASE + (obj.tile_index * 32),
                                    control: (obj.frame_bytes / 4) | DMA_ENABLE | DMA_32BIT)
-            place_label(already)
+            @emitter.place_label(already)
           end
 
           # A sprite named the way the author named it, for the build's list of what is copied when;
@@ -1781,8 +1780,8 @@ module VBlank
           def emit_add_room_tiles(obj)
             return unless obj.rooms
 
-            load_var(TMP, OBJ_ROOM_TILES)
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @primitives.load_var(TMP, OBJ_ROOM_TILES)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
           end
 
           # Copy a pool's pose into sprite memory the first time one of its things shows it since
@@ -1795,41 +1794,41 @@ module VBlank
           #   r2  its word in the table, then the copy's size and how it is told to run
           #   r3  where its tiles go in sprite memory
           def emit_send_pose_first_shown(pool, pose)
-            done = gensym
+            done = @emitter.gensym
             @lowering.value(pose)
-            emit_number(TMP, pool.count)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, done, cond: :hs) # a pose the pool does not have shows nothing new
-            emit_number(TMP, @layout.pose_sent_bytes.fetch(pool.blob))
-            emit(ASM.add_reg(TMP, TMP, ACC))
-            emit(ASM.ldrb_offset(2, TMP, 0))
-            emit(ASM.cmp_imm(2, 0))
-            emit_branch(:bcond, done, cond: :ne) # sent already
-            emit_number(2, 1)
-            emit(ASM.strb(2, TMP))
-            emit_load_data_address(TMP, pool.table)
-            emit(ASM.ldr_reg_lsl(2, TMP, ACC, 2))
-            emit(ASM.lsl_imm(3, 2, 16))
-            emit(ASM.lsr_imm(3, 3, 11))                  # r3 = how far into the set, in bytes
-            emit_load_data_address(ACC, pool.blob)
-            emit(ASM.add_reg(ACC, ACC, 3))
-            emit_number(TMP, OBJ_TILE_BASE + (pool.tile_index * 32))
-            emit(ASM.add_reg(3, 3, TMP))
-            emit(ASM.lsr_imm(2, 2, 16))
-            emit(ASM.lsl_imm(2, 2, 3))                   # its tiles, eight words each
-            emit(ASM.cmp_imm(2, 0))
-            emit_branch(:bcond, done, cond: :eq)         # a count of nought would copy the most there is
-            emit_number(TMP, DMA_ENABLE | DMA_32BIT)
-            emit(ASM.orr_reg(2, 2, TMP))
-            emit_start_copy_engine(from: in_register(ACC), to: in_register(3), control: in_register(2))
-            place_label(done)
+            @emitter.emit_number(TMP, pool.count)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, done, cond: :hs) # a pose the pool does not have shows nothing new
+            @emitter.emit_number(TMP, @layout.pose_sent_bytes.fetch(pool.blob))
+            @emitter.emit(ASM.add_reg(TMP, TMP, ACC))
+            @emitter.emit(ASM.ldrb_offset(2, TMP, 0))
+            @emitter.emit(ASM.cmp_imm(2, 0))
+            @emitter.emit_branch(:bcond, done, cond: :ne) # sent already
+            @emitter.emit_number(2, 1)
+            @emitter.emit(ASM.strb(2, TMP))
+            @emitter.emit_load_data_address(TMP, pool.table)
+            @emitter.emit(ASM.ldr_reg_lsl(2, TMP, ACC, 2))
+            @emitter.emit(ASM.lsl_imm(3, 2, 16))
+            @emitter.emit(ASM.lsr_imm(3, 3, 11))                  # r3 = how far into the set, in bytes
+            @emitter.emit_load_data_address(ACC, pool.blob)
+            @emitter.emit(ASM.add_reg(ACC, ACC, 3))
+            @emitter.emit_number(TMP, OBJ_TILE_BASE + (pool.tile_index * 32))
+            @emitter.emit(ASM.add_reg(3, 3, TMP))
+            @emitter.emit(ASM.lsr_imm(2, 2, 16))
+            @emitter.emit(ASM.lsl_imm(2, 2, 3))                   # its tiles, eight words each
+            @emitter.emit(ASM.cmp_imm(2, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)         # a count of nought would copy the most there is
+            @emitter.emit_number(TMP, DMA_ENABLE | DMA_32BIT)
+            @emitter.emit(ASM.orr_reg(2, 2, TMP))
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: Primitives::InRegister.new(3), control: Primitives::InRegister.new(2))
+            @emitter.place_label(done)
           end
 
           # Nothing of a pool's poses is in sprite memory yet, as its scene takes over: every
           # pose's byte back to nought, and the blank tile its filler pieces draw cleared (see
           # PoseSends). Nought is loaded once and stored a word at a time, since both are a few words.
           def emit_forget_poses_sent(pool)
-            emit_number(ACC, 0)
+            @emitter.emit_number(ACC, 0)
             at = @layout.pose_sent_bytes.fetch(pool.blob)
             words = (0...pool.count).step(4).map { |offset| at + offset }
             if pool.blank_at
@@ -1837,8 +1836,8 @@ module VBlank
               words += (0...pool.blank_bytes).step(4).map { |offset| blank + offset }
             end
             words.each do |address|
-              emit_number(TMP, address)
-              emit(ASM.str(ACC, TMP))
+              @emitter.emit_number(TMP, address)
+              @emitter.emit(ASM.str(ACC, TMP))
             end
           end
 
@@ -1850,7 +1849,7 @@ module VBlank
             # sits inside the canvas it was drawn on — added back so trimming the blank
             # away cannot move the picture (see SpriteCut#pose_box).
             @lowering.value(obj.y)
-            emit_add_const(ACC, ACC, obj.offset_y, TMP) unless obj.offset_y.zero?
+            @primitives.emit_add_const(ACC, ACC, obj.offset_y, TMP) unless obj.offset_y.zero?
             emit_move_far_place_off_screen(ROWS_DRAWN_AS_PUT, SCREEN_HEIGHT) unless drawn_as_put?(obj.y, ROWS_DRAWN_AS_PUT, obj.offset_y)
             mask_into_acc(0xFF)
             orr_acc(obj.attr0_base)
@@ -1858,16 +1857,16 @@ module VBlank
             emit_copy_attr0_to_twin(mirror)
             # attr1 = (x & 0x1FF) | size
             @lowering.value(obj.x)
-            emit_add_const(ACC, ACC, obj.offset_x, TMP) unless obj.offset_x.zero?
+            @primitives.emit_add_const(ACC, ACC, obj.offset_x, TMP) unless obj.offset_x.zero?
             emit_move_far_place_off_screen(COLUMNS_DRAWN_AS_PUT, SCREEN_WIDTH) unless drawn_as_put?(obj.x, COLUMNS_DRAWN_AS_PUT, obj.offset_x)
             mask_into_acc(0x1FF)
             orr_acc(obj.attr1_base)
             emit_store_acc_in_row(row, 2)
-            store_halfword_acc(mirror + 2) if mirror
+            @primitives.store_halfword_acc(mirror + 2) if mirror
             # attr2 = which tiles to draw = this sprite's base tile + pose * stride
             # (palette bank/priority left at 0). A fixed pose folds to a constant.
             emit_object_tile_number(obj, row)
-            store_halfword_acc(mirror + 4) if mirror
+            @primitives.store_halfword_acc(mirror + 4) if mirror
           end
 
           # A sprite whose poses came out different sizes. Four things then move with the
@@ -1893,9 +1892,9 @@ module VBlank
 
           def emit_stash_object_position(obj)
             @lowering.value(obj.y)
-            store_var(ACC, POSE_DRAW_Y)
+            @primitives.store_var(ACC, POSE_DRAW_Y)
             @lowering.value(obj.x)
-            store_var(ACC, POSE_DRAW_X)
+            @primitives.store_var(ACC, POSE_DRAW_X)
           end
 
           def emit_draw_object_sized_poses(obj, row, mirror = nil, piece = 0)
@@ -1903,43 +1902,43 @@ module VBlank
             emit_stash_object_position(obj) if obj.pieces == 1
             emit_load_pose_word(obj, piece)
             # attr0 = (y + how far down) & 0xFF, then the shape out of bits 10..11.
-            load_var(ACC, POSE_DRAW_Y)
-            emit(ASM.lsr_imm(TMP, POSE_WORD, 22))
+            @primitives.load_var(ACC, POSE_DRAW_Y)
+            @emitter.emit(ASM.lsr_imm(TMP, POSE_WORD, 22))
             # The two bits above the distance set which way round the pose is drawn, and
             # are set only for a sprite with a pose that is. The test of how far off the
             # screen the row is reads the whole sum, so they are taken off before it.
-            emit(ASM.and_imm(TMP, TMP, POSE_DISTANCE)) if obj.mirrors&.any?
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.emit(ASM.and_imm(TMP, TMP, POSE_DISTANCE)) if obj.mirrors&.any?
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
             emit_move_far_place_off_screen(ROWS_DRAWN_AS_PUT, SCREEN_HEIGHT) unless drawn_as_put?(obj.y, ROWS_DRAWN_AS_PUT, 0, POSE_DISTANCE)
             mask_into_acc(0xFF)
-            emit(ASM.and_imm(TMP, POSE_WORD, 0x0C00))   # shape, still at bit 10
-            emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 4))     # ...into bit 14
+            @emitter.emit(ASM.and_imm(TMP, POSE_WORD, 0x0C00))   # shape, still at bit 10
+            @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 4))     # ...into bit 14
             orr_acc(obj.attr0_base) unless obj.attr0_base.zero?
             emit_store_acc_in_row(row, 0)
             emit_copy_attr0_to_twin(mirror)
             # attr1 = (x + how far right) & 0x1FF, then the size out of bits 12..13.
-            load_var(ACC, POSE_DRAW_X)
-            emit(ASM.lsr_imm(TMP, POSE_WORD, 14))
-            emit(ASM.and_imm(TMP, TMP, POSE_DISTANCE))
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            @primitives.load_var(ACC, POSE_DRAW_X)
+            @emitter.emit(ASM.lsr_imm(TMP, POSE_WORD, 14))
+            @emitter.emit(ASM.and_imm(TMP, TMP, POSE_DISTANCE))
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
             emit_move_far_place_off_screen(COLUMNS_DRAWN_AS_PUT, SCREEN_WIDTH) unless drawn_as_put?(obj.x, COLUMNS_DRAWN_AS_PUT, 0, POSE_DISTANCE)
             mask_into_acc(0x1FF)
-            emit(ASM.and_imm(TMP, POSE_WORD, 0x3000))   # size, still at bit 12
-            emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 2))     # ...into bit 14
+            @emitter.emit(ASM.and_imm(TMP, POSE_WORD, 0x3000))   # size, still at bit 12
+            @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 2))     # ...into bit 14
             emit_pose_flip_bits if obj.mirrors&.any?
             orr_acc(obj.attr1_base) unless obj.attr1_base.zero?
             emit_store_acc_in_row(row, 2)
-            store_halfword_acc(mirror + 2) if mirror
+            @primitives.store_halfword_acc(mirror + 2) if mirror
             # attr2 = the pose's own first tile, out of bits 0..9. Two shifts rather than a
             # mask: a ten-bit mask is not one of the immediates this chip can carry.
-            emit(ASM.lsl_imm(ACC, POSE_WORD, 22))
-            emit(ASM.lsr_imm(ACC, ACC, 22))
+            @emitter.emit(ASM.lsl_imm(ACC, POSE_WORD, 22))
+            @emitter.emit(ASM.lsr_imm(ACC, ACC, 22))
             emit_add_room_tiles(obj)
             orr_acc(obj.attr2_base) unless obj.attr2_base.zero?
             orr_picked_attr2(obj)
             emit_orr_piece_bank(obj, piece)
             emit_store_acc_in_row(row, 4)
-            store_halfword_acc(mirror + 4) if mirror
+            @primitives.store_halfword_acc(mirror + 4) if mirror
           end
 
           # The register a piece's own bank bits are held in from the load of its pose word to the
@@ -1953,7 +1952,7 @@ module VBlank
           def emit_orr_piece_bank(obj, piece)
             return unless obj.piece_banks
 
-            fixed = const_int(obj.pose)
+            fixed = @primitives.const_int(obj.pose)
             if fixed
               row = piece * obj.pose_count
               bits = obj.piece_banks[fixed.between?(0, obj.pose_count - 1) ? row + fixed : row]
@@ -1961,7 +1960,7 @@ module VBlank
 
               return
             end
-            emit(ASM.orr_reg(ACC, ACC, PIECE_BANK))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, PIECE_BANK))
           end
 
           # Carry "draw this one backwards" and "draw it upside down" from the pose word into
@@ -1969,9 +1968,9 @@ module VBlank
           # both. Only emitted for a sprite that actually has a turned pose, so a sprite whose
           # poses merely differ in size pays nothing for it.
           def emit_pose_flip_bits
-            emit(ASM.lsr_imm(TMP, POSE_WORD, 18))                  # bits 30 and 31 down to 12 and 13...
-            emit(ASM.and_imm(TMP, TMP, OBJ_HFLIP | OBJ_VFLIP))     # ...and nothing else with them
-            emit(ASM.orr_reg(ACC, ACC, TMP))
+            @emitter.emit(ASM.lsr_imm(TMP, POSE_WORD, 18))                  # bits 30 and 31 down to 12 and 13...
+            @emitter.emit(ASM.and_imm(TMP, TMP, OBJ_HFLIP | OBJ_VFLIP))     # ...and nothing else with them
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
           end
 
           # How far a load can reach from a register on its own (the instruction carries a
@@ -1987,16 +1986,16 @@ module VBlank
           def emit_load_pose_word(obj, piece = 0)
             words = obj.pose_words
             row = piece * obj.pose_count
-            fixed = const_int(obj.pose)
+            fixed = @primitives.const_int(obj.pose)
             if fixed
               at = fixed.between?(0, obj.pose_count - 1) ? row + fixed : row
-              return emit_number(POSE_WORD, words[at])
+              return @emitter.emit_number(POSE_WORD, words[at])
             end
 
             @lowering.value(obj.pose)
-            emit(ASM.lsl_imm(ACC, ACC, 2)) # a word each
-            emit_load_data_address(TMP, obj.pose_table)
-            emit(ASM.add_reg(TMP, TMP, ACC))
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, 2)) # a word each
+            @emitter.emit_load_data_address(TMP, obj.pose_table)
+            @emitter.emit(ASM.add_reg(TMP, TMP, ACC))
             offset = row * 4
             moved = emit_load_word_at(POSE_WORD, offset)
             # A piece's own bank is the word as far past its pose word as the pose words are long
@@ -2008,11 +2007,11 @@ module VBlank
           # too far for one load (ACC is spent by then: the pose is already added in). Hands back
           # how far TMP was moved.
           def emit_load_word_at(register, offset)
-            return emit(ASM.ldr(register, TMP)).then { 0 } if offset.zero?
-            return emit(ASM.ldr_offset(register, TMP, offset)).then { 0 } if offset < LDR_OFFSET_LIMIT
+            return @emitter.emit(ASM.ldr(register, TMP)).then { 0 } if offset.zero?
+            return @emitter.emit(ASM.ldr_offset(register, TMP, offset)).then { 0 } if offset < LDR_OFFSET_LIMIT
 
-            emit_add_const(TMP, TMP, offset, ACC)
-            emit(ASM.ldr(register, TMP))
+            @primitives.emit_add_const(TMP, TMP, offset, ACC)
+            @emitter.emit(ASM.ldr(register, TMP))
             offset
           end
 
@@ -2023,7 +2022,7 @@ module VBlank
             return unless mirror
 
             orr_acc(OBJ_WINDOW_MODE)
-            store_halfword_acc(mirror)
+            @primitives.store_halfword_acc(mirror)
           end
 
           # Put the window away when the fade in force is not behind this sprite — a fade
@@ -2033,11 +2032,11 @@ module VBlank
           # the whole picture. Asked once for all of them, after they are drawn.
           def emit_hide_twin_unless_faded(twin, pieces)
             @lowering.value(twin.gate)
-            emit(ASM.cmp_imm(ACC, 0))
-            keeps = gensym
-            emit_branch(:bcond, keeps, cond: :ne)
-            pieces.times { |piece| write_reg16(oam_slot(twin.slot, piece), OBJ_HIDDEN_ATTR0) }
-            place_label(keeps)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            keeps = @emitter.gensym
+            @emitter.emit_branch(:bcond, keeps, cond: :ne)
+            pieces.times { |piece| @emitter.write_reg16(oam_slot(twin.slot, piece), OBJ_HIDDEN_ATTR0) }
+            @emitter.place_label(keeps)
           end
 
           # A turning or resizing sprite: the console draws it through its affine group in
@@ -2050,7 +2049,7 @@ module VBlank
             half_h = obj.height / 2
             # attr0 = ((y - half_h) & 0xFF) | rotate/scale + double-size + shape/color
             @lowering.value(obj.y)
-            emit(ASM.sub_imm(ACC, ACC, half_h)) unless half_h.zero?
+            @emitter.emit(ASM.sub_imm(ACC, ACC, half_h)) unless half_h.zero?
             if obj.height * 2 > TALLEST_BOX_UNSEEN_BELOW
               emit_tall_box_attr0(obj)
             else
@@ -2062,16 +2061,16 @@ module VBlank
             emit_copy_attr0_to_twin(mirror)
             # attr1 = ((x - half_w) & 0x1FF) | size | affine-group index (bits 9..13)
             @lowering.value(obj.x)
-            emit(ASM.sub_imm(ACC, ACC, half_w)) unless half_w.zero?
+            @emitter.emit(ASM.sub_imm(ACC, ACC, half_w)) unless half_w.zero?
             emit_move_far_place_off_screen(TURNED_COLUMNS_DRAWN_AS_PUT, SCREEN_WIDTH)
             mask_into_acc(0x1FF)
             orr_acc(obj.attr1_base | (obj.affine_slot << 9))
             emit_store_acc_in_row(row, 2)
             # The twin points at the same affine group, so it turns and resizes with the
             # sprite and the hole stays the shape of the picture.
-            store_halfword_acc(mirror + 2) if mirror
+            @primitives.store_halfword_acc(mirror + 2) if mirror
             emit_object_tile_number(obj, row)
-            store_halfword_acc(mirror + 4) if mirror
+            @primitives.store_halfword_acc(mirror + 4) if mirror
             emit_object_affine_matrix(obj)
           end
 
@@ -2087,20 +2086,24 @@ module VBlank
             group = OAM_START + (obj.affine_slot * 32)
             emit_object_scale_reciprocal(obj) if obj.scales # do the divide first: it clobbers everything
             @lowering.value(obj.angle)                      # r0 = angle in degrees (0..359)
-            emit_load_data_address(TMP, OBJ_SINE_BLOB)   # r1 = sine table base
-            emit(ASM.lsl_imm(2, ACC, 1))                 # r2 = angle * 2 (halfword offset)
-            emit(ASM.add_reg(ADDR, TMP, 2))
-            emit(ASM.ldrsh(2, ADDR))                     # r2 = sin(angle)
-            emit(ASM.add_imm(3, ACC, 90))                # r3 = angle + 90
-            emit(ASM.lsl_imm(3, 3, 1))
-            emit(ASM.add_reg(ADDR, TMP, 3))
-            emit(ASM.ldrsh(3, ADDR))                     # r3 = sin(angle + 90) = cos(angle)
+            @emitter.emit_load_data_address(TMP, OBJ_SINE_BLOB)   # r1 = sine table base
+            @emitter.emit(ASM.lsl_imm(2, ACC, 1))                 # r2 = angle * 2 (halfword offset)
+            @emitter.emit(ASM.add_reg(ADDR, TMP, 2))
+            @emitter.emit(ASM.ldrsh(2, ADDR))                     # r2 = sin(angle)
+            @emitter.emit(ASM.add_imm(3, ACC, 90))                # r3 = angle + 90
+            @emitter.emit(ASM.lsl_imm(3, 3, 1))
+            @emitter.emit(ASM.add_reg(ADDR, TMP, 3))
+            @emitter.emit(ASM.ldrsh(3, ADDR))                     # r3 = sin(angle + 90) = cos(angle)
             emit_scale_sine_and_cosine if obj.scales   # r2, r3 *= one over the size
-            emit(ASM.rsb_imm(ACC, 2, 0))                 # r0 = -sin(angle)
-            store_halfword_reg(3, group + 6)             # PA =  cos
-            store_halfword_reg(2, group + 14)            # PB =  sin
-            store_halfword_reg(ACC, group + 22)          # PC = -sin
-            store_halfword_reg(3, group + 30)            # PD =  cos
+            @emitter.emit(ASM.rsb_imm(ACC, 2, 0))                 # r0 = -sin(angle)
+            @emitter.emit_number(TMP, group + 6)
+            @emitter.emit(ASM.store_halfword(3, TMP))             # PA =  cos
+            @emitter.emit_number(TMP, group + 14)
+            @emitter.emit(ASM.store_halfword(2, TMP))            # PB =  sin
+            @emitter.emit_number(TMP, group + 22)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))          # PC = -sin
+            @emitter.emit_number(TMP, group + 30)
+            @emitter.emit(ASM.store_halfword(3, TMP))            # PD =  cos
           end
 
           # Work out one over this sprite's size and park it in a scratch variable.
@@ -2115,25 +2118,25 @@ module VBlank
           # routine uses every scratch register there is.
           def emit_object_scale_reciprocal(obj)
             @lowering.value(obj.scale)                             # r0 = size, in SCALE_ONE-ths
-            emit(ASM.cmp_imm(ACC, Affine::MIN_SCALE))
-            emit(ASM.mov_imm_cond(:lt, ACC, Affine::MIN_SCALE)) # a size of 0 has no reciprocal
-            emit_number(Divide::DIV_NUM, Build::SCALE_ONE * Affine::ONE_TH)
-            emit_call_divide_routine                            # r0 = SCALE_ONE * 256 / size
-            emit_number(TMP, Affine::MAX)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit(ASM.mov_reg_cond(:gt, ACC, TMP))               # too tiny to fit: hold at the largest
-            store_var(ACC, OBJ_SCALE_RECIP)
+            @emitter.emit(ASM.cmp_imm(ACC, Affine::MIN_SCALE))
+            @emitter.emit(ASM.mov_imm_cond(:lt, ACC, Affine::MIN_SCALE)) # a size of 0 has no reciprocal
+            @emitter.emit_number(Divide::DIV_NUM, Build::SCALE_ONE * Affine::ONE_TH)
+            @divide.emit_call_divide_routine                            # r0 = SCALE_ONE * 256 / size
+            @emitter.emit_number(TMP, Affine::MAX)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit(ASM.mov_reg_cond(:gt, ACC, TMP))               # too tiny to fit: hold at the largest
+            @primitives.store_var(ACC, OBJ_SCALE_RECIP)
           end
 
           # Scale the sine and cosine in r2/r3 by the reciprocal worked out above, back
           # down into 256ths. A shift, not a divide, so the rounding matches
           # Affine.matrix — which rounds down for the same reason.
           def emit_scale_sine_and_cosine
-            load_var(4, OBJ_SCALE_RECIP)
-            emit(ASM.mul(5, 2, 4)) # rd must differ from rm, so the product lands elsewhere
-            emit(ASM.asr_imm(2, 5, 8))
-            emit(ASM.mul(5, 3, 4))
-            emit(ASM.asr_imm(3, 5, 8))
+            @primitives.load_var(4, OBJ_SCALE_RECIP)
+            @emitter.emit(ASM.mul(5, 2, 4)) # rd must differ from rm, so the product lands elsewhere
+            @emitter.emit(ASM.asr_imm(2, 5, 8))
+            @emitter.emit(ASM.mul(5, 3, 4))
+            @emitter.emit(ASM.asr_imm(3, 5, 8))
           end
 
           # Write a sprite's tile number (attr2) for this frame. The sprite's poses sit
@@ -2142,19 +2145,19 @@ module VBlank
           # variable pose (facing / animation) is computed at run time. It is the third half
           # of the sprite's +row+.
           def emit_object_tile_number(obj, row)
-            fixed = const_int(obj.pose)
+            fixed = @primitives.const_int(obj.pose)
             if fixed && !obj.picks_attr2? && !obj.rooms
               emit_store_number_in_row(row, 4, obj.tile_index + (fixed * obj.per_pose) | obj.attr2_base)
             elsif fixed
-              emit_number(ACC, obj.tile_index + (fixed * obj.per_pose) | obj.attr2_base)
+              @emitter.emit_number(ACC, obj.tile_index + (fixed * obj.per_pose) | obj.attr2_base)
               emit_add_room_tiles(obj)
               orr_picked_attr2(obj)
               emit_store_acc_in_row(row, 4)
             else
               @lowering.value(obj.pose)                          # r0 = pose index
-              emit_number(TMP, obj.per_pose)   # r1 = stride between poses
-              emit(ASM.mul(2, ACC, TMP))                      # r2 = pose * stride (rd must differ from rm)
-              emit_add_const(ACC, 2, obj.tile_index, TMP)   # r0 = r2 + base tile
+              @emitter.emit_number(TMP, obj.per_pose)   # r1 = stride between poses
+              @emitter.emit(ASM.mul(2, ACC, TMP))                      # r2 = pose * stride (rd must differ from rm)
+              @primitives.emit_add_const(ACC, 2, obj.tile_index, TMP)   # r0 = r2 + base tile
               emit_add_room_tiles(obj)
               orr_acc(obj.attr2_base) unless obj.attr2_base.zero?
               orr_picked_attr2(obj)
@@ -2173,9 +2176,9 @@ module VBlank
           # still below nought once the room above or to the left is added, and reads as a
           # very large number. Three instructions, none of them a branch.
           def emit_move_far_place_off_screen(places, edge)
-            emit(ASM.add_imm(TMP, ACC, -places.begin))
-            emit(ASM.cmp_imm(TMP, places.size))
-            emit(ASM.mov_imm_cond(:hs, ACC, edge))
+            @emitter.emit(ASM.add_imm(TMP, ACC, -places.begin))
+            @emitter.emit(ASM.cmp_imm(TMP, places.size))
+            @emitter.emit(ASM.mov_imm_cond(:hs, ACC, edge))
           end
 
           # The first word of a sprite whose box no row keeps off the screen: 128 rows, where
@@ -2201,15 +2204,15 @@ module VBlank
           # (see Reference::TurnedBox, which draws the same).
           def emit_tall_box_attr0(obj)
             reached = Affine.rows_reached(obj.width, obj.height, scales: obj.scales)
-            emit(ASM.add_imm(TMP, ACC, reached.end - 1))
-            emit_number(ADDR, reached.size - 1 + SCREEN_HEIGHT) # can be more bits than a compare carries
-            emit(ASM.cmp_reg(TMP, ADDR))
-            emit(ASM.mov_imm_cond(:hs, ACC, SCREEN_HEIGHT))
+            @emitter.emit(ASM.add_imm(TMP, ACC, reached.end - 1))
+            @emitter.emit_number(ADDR, reached.size - 1 + SCREEN_HEIGHT) # can be more bits than a compare carries
+            @emitter.emit(ASM.cmp_reg(TMP, ADDR))
+            @emitter.emit(ASM.mov_imm_cond(:hs, ACC, SCREEN_HEIGHT))
             mask_into_acc(0xFF)
-            emit_number(TMP, obj.attr0_base | OBJ_ROTSCALE | OBJ_DOUBLE_SIZE)
-            emit_number(ADDR, obj.attr0_base)
-            emit(ASM.mov_reg_cond(:hs, TMP, ADDR))
-            emit(ASM.orr_reg(ACC, ACC, TMP))
+            @emitter.emit_number(TMP, obj.attr0_base | OBJ_ROTSCALE | OBJ_DOUBLE_SIZE)
+            @emitter.emit_number(ADDR, obj.attr0_base)
+            @emitter.emit(ASM.mov_reg_cond(:hs, TMP, ADDR))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
           end
 
           # Is +place+ a number settled while building, and one a box is drawn at as put
@@ -2217,21 +2220,21 @@ module VBlank
           # stands? Then it needs no test: the letters of a line of text, whose places are
           # written in the program.
           def drawn_as_put?(place, places, nearest, furthest = nearest)
-            fixed = const_int(place)
+            fixed = @primitives.const_int(place)
             !fixed.nil? && places.cover?(fixed + nearest) && places.cover?(fixed + furthest)
           end
 
           # r0 &= mask, using a scratch register so any mask width is fine.
           def mask_into_acc(mask)
-            emit_number(TMP, mask)
-            emit(ASM.and_reg(ACC, ACC, TMP))
+            @emitter.emit_number(TMP, mask)
+            @emitter.emit(ASM.and_reg(ACC, ACC, TMP))
           end
 
           # r0 |= value, via a scratch register (values here have bits too high for an
           # inline immediate).
           def orr_acc(value)
-            emit_number(TMP, value)
-            emit(ASM.orr_reg(ACC, ACC, TMP))
+            @emitter.emit_number(TMP, value)
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
           end
         end
       end
