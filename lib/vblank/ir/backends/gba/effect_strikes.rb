@@ -38,8 +38,10 @@ module VBlank
         #
         # Everything that reads or writes the list runs inside the screen's interrupt or another
         # interrupt, which the console never lets in while one is running, so the list needs no lock.
-        # The one cost of that is a long mix of recordings: an alarm that comes while it runs waits for
-        # it to finish, longer the more recordings sound at once.
+        # The one cost of that is the mix of recordings, which runs in an interrupt for much of the
+        # frame: an alarm that comes while it runs would wait for it to finish, longer the more
+        # recordings sound at once. So the mix looks for the alarm between voices and answers it there
+        # (#emit_alarm_polled).
         #
         # ### Writes at the frame boundary
         #
@@ -139,6 +141,29 @@ module VBlank
             @emitter.emit_branch(:bl, DUE)
           end
 
+          # Where ANSWERED runs, as setting up finds it: the mix of recordings, which runs from a copy
+          # of its own in the quick memory, calls it through this.
+          ANSWERED = :__strikes_answered # the alarm's interrupt acknowledged and answered, outside the dispatcher
+          ANSWERED_ADDRESS = :__strikes_answered_address
+
+          # The alarm, looked for between two of the mix's voices (Mixer#between_voices). The mix runs
+          # in an interrupt for much of the frame and the console lets no other in while it does, so
+          # an alarm that has come is answered here, through ANSWERED_ADDRESS. Uses r0, r1 and r12;
+          # keeps lr, which holds where the mix returns to.
+          def emit_alarm_polled
+            e = @emitter
+            quiet = e.gensym
+            e.emit(ASM.load_immediate(TMP, REG_IF))
+            e.emit(ASM.load_halfword(ACC, TMP))
+            e.emit(ASM.tst_imm(ACC, interrupt_bit))
+            e.emit_branch(:bcond, quiet, cond: :eq)
+            e.emit(ASM.push(LR))
+            @primitives.load_var(ACC, ANSWERED_ADDRESS)
+            e.emit_call_through(ACC)
+            e.emit(ASM.pop(LR))
+            e.place_label(quiet)
+          end
+
           # --- in the frame's music ---
 
           # As the frame's music begins, inline, before the effects' count moves on (+clock+ is the
@@ -179,6 +204,7 @@ module VBlank
           # (r2) into the wave voice; nil in a game whose effects play no wave voice.
           def emit_routines(score:, emit_upload_wave:)
             emit_put
+            emit_answered
             emit_due(score, emit_upload_wave)
             emit_fold
           end
@@ -218,6 +244,21 @@ module VBlank
             e.emit(ASM.str(TMP, 4))
             e.emit(ASM.str_offset(ACC, 4, 4))
             e.emit(ASM.pop(2, 3, 4, PC))
+          end
+
+          # ANSWERED: the alarm's interrupt acknowledged, so it does not come again, then answered as
+          # the dispatcher answers it, on into DUE. Keeps every register but r0, r1 and r12.
+          def emit_answered
+            @emitter.place_label(ANSWERED)
+            @emitter.emit(ASM.load_immediate(TMP, REG_IF))
+            @emitter.emit(ASM.load_immediate(ACC, interrupt_bit))
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
+            if alarm == :timer
+              @emitter.emit(ASM.load_immediate(TMP, timer_control))
+              @emitter.emit(ASM.load_immediate(ACC, 0))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
+            end
+            @emitter.emit_branch(:b, DUE)
           end
 
           # +reg+, a place in the list one entry on, kept inside the list.

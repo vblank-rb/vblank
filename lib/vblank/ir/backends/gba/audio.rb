@@ -1147,7 +1147,7 @@ module VBlank
           # is free, asked once the build knows.
           def prepare_effect_strikes(timers:, line_free:)
             @strikes = nil
-            return unless plays_sound_effects? && @effect_clock_step
+            return unless effects_on_timer?
 
             @strikes = EffectStrikes.new(emitter: @emitter, primitives: @primitives, memory: @memory,
                                          step: @effect_clock_step, line_free: line_free,
@@ -1155,6 +1155,9 @@ module VBlank
           end
 
           attr_reader :strikes
+
+          # Are the game's sound effects on a timer (IR::Tunes.effect_clock_step)?
+          def effects_on_timer? = plays_sound_effects? && !@effect_clock_step.nil?
 
           # Are the effects' notes struck inside the frame?
           def striking? = @strikes&.striking? || false

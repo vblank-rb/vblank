@@ -347,6 +347,14 @@ module VBlank
             @songs_have_recorded_parts = false # ...a song's, in particular?
             @uses_envelopes = false # does any note in it have a shape (see #emit_envelope_step)?
             @effect_marks = {}      # a sound effect's part's mark -> [effect, part], when its notes rank
+            @between_voices = nil   # writes what the mix does between two voices, or nil for nothing
+          end
+
+          # What the mix does between two voices, written by the block, which may use r0, r1, r12 and
+          # lr: the sound effects' strikes, whose interrupt the mix would otherwise hold off for as long
+          # as it runs (EffectStrikes#emit_alarm_polled).
+          def between_voices(&block)
+            @between_voices = block
           end
 
           # The output rate the mix runs at, settled by #prepare_mixer.
@@ -506,7 +514,7 @@ module VBlank
             # ...and in a game whose notes can find no voice at all, one slot more past the end,
             # which nothing mixes: where such a note is written (see #unmixed_slot_address).
             @voice_base = @memory.alloc_roomy(Mixer.voice_slots_bytes(ranks_voices?))
-            @mix_routine_iwram = @memory.alloc(MIX_ROUTINE_IWRAM_MAX) # the mix routine is copied here from ROM at boot
+            @mix_routine_iwram = @memory.alloc(mix_routine_bytes) # the mix routine is copied here from ROM at boot
             @timers.reserve!(COUNT_TIMER + 1, because: "Sampled sound uses two of them: one to play the " \
                                                        "sound, and one to count how much of it has played.")
           end
@@ -1718,6 +1726,7 @@ module VBlank
             e.emit(ASM.str_offset(12, 4, SLOT_GAIN)) if @uses_envelopes # ...and where its gain slid to
 
             e.place_label(next_voice)
+            @between_voices&.call
             e.emit(ASM.add_imm(4, 4, SLOT_BYTES))             # next slot
             e.emit(ASM.subs_imm(5, 5, 1))
             e.emit_branch(:bcond, voice, cond: :ne)
@@ -1762,12 +1771,20 @@ module VBlank
             e.place_label(DerivedNames.routine_end(ROUTINE))
 
             size = @emitter.pos - start
-            return unless size > MIX_ROUTINE_IWRAM_MAX
+            return unless size > mix_routine_bytes
 
             raise LoweringError,
-                  "the mix routine is #{size} bytes but only #{MIX_ROUTINE_IWRAM_MAX} are reserved for it " \
-                  "(raise MIX_ROUTINE_IWRAM_MAX)"
+                  "the mix routine is #{size} bytes but only #{mix_routine_bytes} are reserved for it " \
+                  "(raise MIX_ROUTINE_IWRAM_MAX or BETWEEN_VOICES_BYTES)"
           end
+
+          # The quick memory the mix routine is copied to: MIX_ROUTINE_IWRAM_MAX, and room for what it
+          # does between voices where it does something (#between_voices).
+          def mix_routine_bytes = MIX_ROUTINE_IWRAM_MAX + (@between_voices ? BETWEEN_VOICES_BYTES : 0)
+
+          # What the strikes' look between voices takes (EffectStrikes#emit_alarm_polled): a read of the
+          # interrupts waiting, a test, and a call through a variable.
+          BETWEEN_VOICES_BYTES = 48
 
           private
 

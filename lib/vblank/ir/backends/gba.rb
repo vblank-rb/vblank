@@ -953,6 +953,8 @@ module VBlank
           register_frame_routine(program) # the game loop's body counts as a routine once it moves
           @mixer.prepare_direct_sound(program) # embed the program's samples as ROM data
           @audio.prepare_music(program) # number its tunes, and keep the mixer voices they play on
+          # ...and the mix looks for the sound effects' strikes between its voices, before it is sized
+          @mixer.between_voices { @audio.strikes.emit_alarm_polled if @audio.striking? } if @audio.effects_on_timer?
           @uses_vblank = program.walk.any? { |node| node.kind == :wait_vblank }
           @lowering.gap_ends = IR::Frames.gap_ends(program) # where a measured run reads how late each gap ended
           @clock_chip.prepare(program) # whether anything reads the clock
@@ -1461,7 +1463,19 @@ module VBlank
             emit_load_label_address(ACC, IRQ_HANDLER_LABEL)
           end
           emit(ASM.str(ACC, TMP))
+          emit_strikes_answered_address if @audio.striking? && @mixer.plays_samples?
           write_io_halfword(REG_IME, 1)                          # interrupts on
+        end
+
+        # Where the strikes' ANSWERED routine runs, kept for the mix, which runs from its own copy and
+        # calls it between voices (EffectStrikes#emit_alarm_polled).
+        def emit_strikes_answered_address
+          if irq_runs_fast?
+            emit_load_fast_address(ACC, EffectStrikes::ANSWERED)
+          else
+            emit_load_label_address(ACC, EffectStrikes::ANSWERED)
+          end
+          store_var(ACC, EffectStrikes::ANSWERED_ADDRESS)
         end
 
         # The frames shown while the game sets up are counted, for a game that reads frames since

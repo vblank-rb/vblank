@@ -11,8 +11,10 @@ require "test_helper"
 # Status").
 #
 # Measured in the emulator's sound: where each note is first heard, rising out of the silence the
-# one before it left, counted in sample pairs from power-on, and the pairs a second the emulator
-# gives out, from how many its frames held.
+# one before it left, in frames from power-on: the frame whose sound holds it, and how far through
+# that frame's sample pairs it is. The emulator gives a frame's sound out over a few pairs more or
+# fewer from frame to frame, so a place counted in pairs from power-on drifts against the console's
+# own clock, and a place in its frame does not.
 class TestGBAEffectStrikesInFrame < Minitest::Test
   Score = VBlank::Audio::Score
   Part = Score::Part
@@ -22,18 +24,19 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
   SILENCE = 120 # pairs no louder than that in a row: longer than any wave of the note passing nought
   PLAYED_ON = 10
   FRAMES = 120
-  # Within this many pairs of the tick's own time, about a millisecond: a line is some 73
-  # microseconds, and a note is first heard above HEARD_ABOVE up to half a wave after it starts,
-  # some 33 pairs at E5, by where in its wave the voice begins. Frames would put a note out by a
-  # fifth of a frame or more, some 150.
-  NEAR = 48
+  # Within a millisecond of the tick's own time: a line is some 73 microseconds, and a note is
+  # first heard above HEARD_ABOVE up to half a wave after it starts, some 0.7 milliseconds at E5, by
+  # where in its wave the voice begins. Frames would put a note out by a fifth of a frame or more,
+  # 3 milliseconds.
+  NEAR_SECONDS = Rational(1, 1000)
   # The pass of a game that does this much work in each takes two frames or more (the test checks).
   SLOW_WORK = 100_000
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second.
   # With +work+ each pass of the game counts that high first. The effect plays on pass +played_on+.
   # +timers+ named timers the game counts with, which take the hardware's every timer at 2.
-  private def game(rate:, apart:, lasting:, notes: 5, work: 0, timers: 0)
+  # +recordings+ silent recordings looping from the second pass, which the mix works through.
+  private def game(rate:, apart:, lasting:, notes: 5, work: 0, timers: 0, recordings: 0)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: :E5, length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
@@ -44,8 +47,10 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
       busy = var :busy, 0
       seen = var :seen, 0
       clocks = Array.new(timers) { |n| timer :"clock#{n}", per_second: 1000 }
+      loops = Array.new(recordings) { |n| sample :"quiet#{n}", pcm: Array.new(3001 + n, 0), rate: 16_000 }
       game_loop do
         pass += 1
+        loops.each { |clip| clip.play(loop: true) } if pass == 2
         sfx.play :chime if pass == PLAYED_ON
         repeat(work) { busy += 1 } if work.positive?
         clocks.each { |clock| seen.store! clock.ticks }
@@ -53,25 +58,23 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
     end
   end
 
-  Heard = Data.define(:onsets, :pairs_a_second, :passes, :pairs)
+  Heard = Data.define(:onsets, :passes)
 
-  # The sample pair, counted from power-on, each note is first heard at, the pairs a second, how
-  # many passes the game played, and each pair's loudness.
+  # The frame, with the share of it gone by, each note is first heard at, and how many passes the
+  # game played.
   private def heard(cartridge, frames: FRAMES)
     reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
-    pairs = []
-    frames.times do
-      reader.step(1)
-      pairs.concat(reader.last_frame_samples.each_slice(2).map { |pair| pair.map(&:abs).max })
-    end
     quiet_for = SILENCE
-    onsets = pairs.each_with_index.filter_map do |loudness, at|
-      rises = quiet_for >= SILENCE && loudness > HEARD_ABOVE
-      quiet_for = loudness > HEARD_ABOVE ? 0 : quiet_for + 1
-      at if rises
+    onsets = []
+    frames.times do |frame|
+      reader.step(1)
+      pairs = reader.last_frame_samples.each_slice(2).map { |pair| pair.map(&:abs).max }
+      pairs.each_with_index do |loudness, at|
+        onsets << (frame + Rational(at, pairs.size)) if quiet_for >= SILENCE && loudness > HEARD_ABOVE
+        quiet_for = loudness > HEARD_ABOVE ? 0 : quiet_for + 1
+      end
     end
-    Heard.new(onsets: onsets, pairs_a_second: Rational(pairs.size, frames) / VBlank::Console::ADVANCE.frame_seconds,
-              passes: reader.var(:pass), pairs: pairs)
+    Heard.new(onsets: onsets, passes: reader.var(:pass))
   ensure
     reader&.close
   end
@@ -79,12 +82,14 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
   private def assert_struck_apart(rate:, apart:, lasting:, notes: 5, **)
     sound = heard(game(rate: rate, apart: apart, lasting: lasting, notes: notes, **))
     yield sound if block_given?
-    expected = apart * sound.pairs_a_second / rate
+    frame_seconds = VBlank::Console::ADVANCE.frame_seconds
+    expected = Rational(apart, rate) / frame_seconds
+    shown = sound.onsets.map { |at| at.to_f.round(3) }
 
-    assert_equal notes, sound.onsets.size, "every note heard on its own: #{sound.onsets.inspect}"
+    assert_equal notes, sound.onsets.size, "every note heard on its own: #{shown.inspect}"
     sound.onsets.each_cons(2) do |was, now|
-      assert_in_delta expected, now - was, NEAR,
-                      "notes #{apart} ticks apart at #{rate} a second, #{expected.round} pairs: #{sound.onsets.inspect}"
+      assert_in_delta expected, now - was, NEAR_SECONDS / frame_seconds,
+                      "notes #{apart} ticks apart at #{rate} a second, #{expected.to_f.round(3)} frames: #{shown.inspect}"
     end
   end
 
@@ -111,6 +116,13 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
   # their lines on the line-match interrupt instead.
   def test_a_game_holding_every_timer_strikes_its_notes_on_their_lines
     assert_struck_apart(rate: 50, apart: 3, lasting: 1, timers: 2)
+  end
+
+  # The mix of recordings runs in an interrupt of its own for much of the frame, and holds the
+  # strikes' interrupt off while it does: it looks for one between voices. Eight recordings
+  # mixing held a strike off by some 3 milliseconds.
+  def test_a_game_mixing_recordings_strikes_its_notes_while_the_mix_runs
+    assert_struck_apart(rate: 50, apart: 3, lasting: 1, notes: 6, recordings: 8)
   end
 
   # A note struck part way through a frame on a voice still sounding the note before, the new one
