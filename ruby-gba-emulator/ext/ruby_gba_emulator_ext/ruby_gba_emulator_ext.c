@@ -1305,25 +1305,30 @@ read_sound_trailer(struct mCore *core, struct VFile *vf)
     if (vf->read(vf, &trailer, sizeof(trailer)) != (ssize_t)sizeof(trailer)) return;
     if (memcmp(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark)) != 0) return;
 
-    if (trailer.voices_bytes != VOICES_BYTES) return;
-    voices->ch1 = trailer.square1;
-    voices->ch2 = trailer.square2;
-    voices->ch3 = trailer.wave;
-    voices->ch4 = trailer.noise;
-    int32_t now = mTimingCurrentTime(parts.timing);
-    voices->ch1.lastUpdate = now - trailer.since[0];
-    voices->ch2.lastUpdate = now - trailer.since[1];
-    voices->ch3.nextUpdate = now - trailer.since[2];
-    voices->ch4.lastEvent = (uint32_t)(now - trailer.since[3]);
-
+    /* Every size is checked and both buffers read before anything is put back: a voice put back
+     * without the mix it was mixed into is a click of its own. */
     size_t bytes = blip_buffer_bytes(voices->left);
-    if ((size_t)trailer.buffer_bytes != bytes || trailer.left.size != ((struct BlipBuffer *)voices->left)->size) return;
+    if (trailer.voices_bytes != VOICES_BYTES) return;
+    if ((size_t)trailer.buffer_bytes != bytes) return;
+    if (trailer.left.size != ((struct BlipBuffer *)voices->left)->size) return;
+    if (trailer.right.size != ((struct BlipBuffer *)voices->right)->size) return;
+    if (blip_buffer_bytes(voices->right) != bytes) return;
     if (size < (ssize_t)(sizeof(trailer) + 2 * bytes)) return;
     void *left = malloc(bytes);
     void *right = malloc(bytes);
-    if (left && right &&
-        vf->seek(vf, -(off_t)(sizeof(trailer) + 2 * bytes), SEEK_END) >= 0 &&
-        vf->read(vf, left, bytes) == (ssize_t)bytes && vf->read(vf, right, bytes) == (ssize_t)bytes) {
+    bool read = left && right &&
+                vf->seek(vf, -(off_t)(sizeof(trailer) + 2 * bytes), SEEK_END) >= 0 &&
+                vf->read(vf, left, bytes) == (ssize_t)bytes && vf->read(vf, right, bytes) == (ssize_t)bytes;
+    if (read) {
+        voices->ch1 = trailer.square1;
+        voices->ch2 = trailer.square2;
+        voices->ch3 = trailer.wave;
+        voices->ch4 = trailer.noise;
+        int32_t now = mTimingCurrentTime(parts.timing);
+        voices->ch1.lastUpdate = now - trailer.since[0];
+        voices->ch2.lastUpdate = now - trailer.since[1];
+        voices->ch3.nextUpdate = now - trailer.since[2];
+        voices->ch4.lastEvent = (uint32_t)(now - trailer.since[3]);
         put_back_blip(voices->left, &trailer.left, left);
         put_back_blip(voices->right, &trailer.right, right);
         *parts.clock = trailer.clock;
