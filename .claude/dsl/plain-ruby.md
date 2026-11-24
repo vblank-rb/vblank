@@ -231,8 +231,10 @@ instance variables.
   Ruby's Array starts again each pass, the list would not. A part made above `VBlank.game` works for
   one game; a second game using it stops with a raw FrozenError, as on main. A method answering a copy (`@counts.dup`) is left alone, and
   an index the game works out into a copy stops with words saying the game does not keep that
-  Array. Part of a named Array (`counts[0..]`, `counts[1, 2]`) is refused: it would hold the same
-  variables. One Ruby Array two instance variables hold (handed to two parts) is refused where the
+  Array. Part of a named Array (`counts[0..]`, `counts[1, 2]`, `first(2)`, `last(2)`, `take`,
+  `drop`) and a copy of one (`dup`, `clone`, `reverse`, `rotate`, `values_at`, `+`) are refused
+  (`KeyedArray#part_taken_message`, `#copy_taken_message`), even where only read: either would hold
+  the same variables, and a write through an item reaches the variable itself (`Writes.change`). One Ruby Array two instance variables hold (handed to two parts) is refused where the
   second is made a list, or hands it out after the first was (`Uses#refuse_array_kept_twice!`):
   each list is its own, where Ruby shares. Such a list holds
   its items and room for no more, holds fractions where a start is a Float, and a profile reads it

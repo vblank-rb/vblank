@@ -432,6 +432,91 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A copy of a named Array would hold its game variables too, where Ruby's copy is its own.
+  def test_copy_of_a_named_array_is_refused
+    refused("c = sizes.counts.dup; c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.dup
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+    refused("c = sizes.counts.clone; c[1] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.clone
+        copy[1] += 5
+        n = sizes.counts[1]
+      end
+    end
+    refused("c = sizes.counts.reverse; c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.reverse
+        copy[0] += 5
+        n = sizes.counts[1]
+      end
+    end
+    refused("c = sizes.counts.rotate; c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.rotate
+        copy[0] += 5
+        n = sizes.counts[1]
+      end
+    end
+    refused("c = sizes.counts.values_at(1, 0); c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.values_at(1, 0)
+        copy[0] += 5
+        n = sizes.counts[1]
+      end
+    end
+    refused("c = sizes.counts + [0]; c[0] += 5", /a copy of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts + [0]
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+    refused("c = sizes.counts.first(2); c[0] += 5", /a part of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        part = sizes.counts.first(2)
+        part[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+    refused("c = sizes.counts.take(1); c[0] += 5", /a part of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        part = sizes.counts.take(1)
+        part[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+  end
+
+  # The first or last item alone is one of the Array's numbers, not a part of it.
+  def test_first_and_last_item_of_a_named_array_agree
+    agrees("sizes.counts.first + sizes.counts.last", reads: %i[n], passes: 2) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop { n = sizes.counts.first + sizes.counts.last }
+    end
+  end
+
   # A game built after one that reads `counts` at a worked-out place builds as it does alone.
   def test_a_game_built_after_another_builds_as_it_does_alone
     alone = proc do

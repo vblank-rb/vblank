@@ -310,7 +310,8 @@ A list is named after its local, so a test or a profile reads `trail` by that na
 | A Ruby method an Array the game keeps does not have | The methods in the table above, or a `while` loop |
 | A setting on `Array.new` other than `capacity:`, `width:`, `fast:` | One of those three |
 | An instance variable's Array read through another object, `part.counts[which]`, after a line that read it first, or one named with `game_variables` | Read it in a method of that class, and call the method |
-| A part of an Array of named numbers, `counts[0..]` or `counts[1, 2]` | Read the items one at a time, `counts[0]` |
+| A part of an Array of named numbers, `counts[0..]`, `counts[1, 2]`, `counts.first(2)`, `take` or `drop` | Read the items one at a time, `counts[0]` |
+| A copy of an Array of named numbers, or a new Array made from its items: `dup`, `clone`, `reverse`, `rotate`, `values_at`, `+` | Read the items one at a time, `first = counts[0]` |
 | A part whose Array the game keeps, made while no game is being built: above `VBlank.game`, or after a build. One whose own class indexes the Array is refused; one indexed through its reader works for one game, but a second game using the same part stops with a raw Ruby error | Make the part inside the `VBlank.game` block |
 
 Each refused limit is refused before the game is built, naming the line. Several are shown with their messages under "What is refused, and what to write instead".
@@ -719,7 +720,6 @@ end
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 - `h[key] += n` on a Hash of game numbers answers the number before the change where it is used as a value (`m = (h[:a] += 3)`). Write the change on its own line, then read `h[:a]`.
 - `==` between an Array of game numbers and another Array answers while building, from Ruby's numbers then. Compare the items one at a time.
-- A copy of an Array of named numbers (`dup`, `clone`, `first(2)`) holds the same numbers, so a change to the copy changes the Array too. Read the items one at a time into locals.
 - An Array a part holds, that game code outside its class puts things into (`flock.dots << Dot.new(...)` in the game loop), stays a Ruby Array: the line puts its thing in once, while building. Put things in with a method of its class that writes `@dots << Dot.new(...)`, or put them in above the game loop.
 - An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]`, then `tally = Tally.new(src)`), and read through that local after game code changes it through the part (`tally.counts[at] += 1`, then `src[1]`), answers the number Ruby gave it while building. Read it through the part, `tally.counts[1]`, or hand the part a constant.
 - An Array a part holds, that game code adds to or turns as a whole through its reader (`part.counts << 7`, `part.counts.rotate!`), changes once, while building. Do it in a method of its class.

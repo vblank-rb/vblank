@@ -824,8 +824,43 @@ module VBlank
 
           def slice(*keys) = self[*keys]
 
+          # The first or last items as a new Array are a part too; the first or last item alone is
+          # one of the variables, as `counts[0]` is.
+          def first(*count)
+            Steps.refuse_game_code!(part_taken_message) unless count.empty?
+
+            super
+          end
+
+          def last(*count)
+            Steps.refuse_game_code!(part_taken_message) unless count.empty?
+
+            super
+          end
+
+          def take(*) = Steps.refuse_game_code!(part_taken_message)
+          def drop(*) = Steps.refuse_game_code!(part_taken_message)
+
+          # A copy, or a new Array made from the items, would hold the same game variables, as a
+          # part would. A write through it reaches the variable itself (Writes.change), so the Array
+          # it came from would change where Ruby's would not; refused even where it is only read.
+          def dup = Steps.refuse_game_code!(copy_taken_message)
+          def clone(*) = Steps.refuse_game_code!(copy_taken_message)
+          def reverse = Steps.refuse_game_code!(copy_taken_message)
+          def rotate(*) = Steps.refuse_game_code!(copy_taken_message)
+          def values_at(*) = Steps.refuse_game_code!(copy_taken_message)
+          def +(*) = Steps.refuse_game_code!(copy_taken_message)
+
+          def copy_taken_message
+            "This Array holds game variables, and this line takes a copy of it, like `counts.dup` or " \
+              "`counts.reverse`. In Ruby the copy is its own. Here the copy would hold the same variables, " \
+              "so a change to it would change the Array too. To fix this, read the items one at a time, " \
+              "like `first = counts[0]`."
+          end
+
           def part_taken_message
-            "This Array holds game variables, and this line takes a part of it, like `counts[0..]`. In Ruby " \
+            "This Array holds game variables, and this line takes a part of it, like `counts[0..]` or " \
+              "`counts.first(2)`. In Ruby " \
               "the part is a copy, but here it would hold the same variables, so a change to it would change " \
               "the Array too. To fix this, read the items one at a time, like `counts[0]`."
           end
