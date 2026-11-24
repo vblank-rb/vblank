@@ -16,14 +16,19 @@ class TestShownSortLowestNumber < Minitest::Test
   # lowering asks as one run: sprite n shows while `lives > first_rank + n`. The DSL makes that
   # shape only for a pool's places, whose count is never below nothing, so the game is built
   # with the DSL and the three tests are put in its tree here.
-  private def hearts_game(lives_at, first_rank:)
+  private def hearts_game(lives_at, first_rank:, lives_later: lives_at)
     program = VBlank.game("HEARTS", consoles: %i[gba]) do
       screen :tiled
       image(:heart, "#" => :red) { Array.new(8) { "#" * 8 }.join("\n") }
-      var :lives, lives_at
+      lives = var :lives, lives_at
+      passes = var :passes, 0
       hearts = Array.new(3) { |n| sprite(:heart, at: [(n * 20) + 20, 40]) }
       draw_in_order(*hearts)
-      game_loop { wait_vblank }
+      game_loop do
+        passes += 1
+        lives = lives_later if passes == 3
+        wait_vblank
+      end
     end.program
     count_tests = Array.new(3) { |n| VBlank::IR::Build.binop(:>, VBlank::IR::Build.var_ref(:lives), VBlank::IR::Build.int(first_rank + n)) }
     program.walk.select { |node| node.kind == :object }.each_with_index { |node, n| node.active = count_tests[n].copy }
@@ -33,6 +38,10 @@ class TestShownSortLowestNumber < Minitest::Test
 
   def test_a_count_at_the_lowest_number_shows_no_heart
     assert_backends_agree(hearts_game(LOWEST, first_rank: 1), frames: 6, name: "HEARTLOW")
+  end
+
+  def test_hearts_shown_then_dropped_to_the_lowest_number_all_go
+    assert_backends_agree(hearts_game(3, first_rank: 1, lives_later: LOWEST), frames: 8, name: "HEARTDROP")
   end
 
   def test_a_count_just_above_the_lowest_number_shows_no_heart
