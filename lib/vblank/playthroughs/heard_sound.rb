@@ -17,20 +17,33 @@ module VBlank
     # power-on (HeardComparison.play's `starting_after:`). The measures are of the frames after it
     # alone, and still counted from power-on: a sound that began before it is heard from the frame
     # after it, and a frame before it is silent.
-    HeardSound = Data.define(:loudest_by_frame, :heard_above, :starts_after) do
-      def initialize(loudest_by_frame:, heard_above:, starts_after: 0) = super
+    #
+    # +pitch_by_frame+ is the pitch each of those frames is heard at, in hertz, nil for a frame with
+    # none (Diagnostics::FramePitch); nil where the pitch was not asked for, which is wherever more
+    # than one voice may be heard.
+    HeardSound = Data.define(:loudest_by_frame, :heard_above, :starts_after, :pitch_by_frame) do
+      def initialize(loudest_by_frame:, heard_above:, starts_after: 0, pitch_by_frame: nil) = super
 
       # The sound of +played+ (what Playthrough#play or Tape#play handed back, the cartridge in the
       # emulator): its counted frames, without a lead-in's, or the frames after +starts_after+.
       # +speaker+ :left or :right hears that speaker alone (Verifier#loudest_on_speaker_by_frame).
-      def self.of(played, heard_above:, speaker: nil, starts_after: 0)
+      # +pitch+ true reads each frame's pitch too (Verifier#pitch_by_frame), for one voice alone.
+      def self.of(played, heard_above:, speaker: nil, starts_after: 0, pitch: false)
         loudest = speaker ? played.game.loudest_on_speaker_by_frame(speaker) : played.game.loudest_by_frame
-        new(loudest_by_frame: loudest.last(played.frames - starts_after).freeze, heard_above: heard_above,
-            starts_after: starts_after)
+        counted = played.frames - starts_after
+        new(loudest_by_frame: loudest.last(counted).freeze, heard_above: heard_above, starts_after: starts_after,
+            pitch_by_frame: (played.game.pitch_by_frame(heard_above: heard_above).last(counted).freeze if pitch))
       end
 
       # How many frames were heard: the frames after the start.
       def frames = loudest_by_frame.size
+
+      # The pitch on +frame+ in hertz, nil for a frame with none, before the start or past the end.
+      def pitch_on(frame)
+        return if pitch_by_frame.nil? || frame <= starts_after
+
+        pitch_by_frame[frame - starts_after - 1]
+      end
 
       # The loudest sample on +frame+, 0 for a frame before the start or past the end.
       def loudest_on(frame)

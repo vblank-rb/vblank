@@ -464,6 +464,51 @@ module HeardVoiceTests
     end
   end
 
+  # How far apart in pitch two notes may be and be the same note: a quarter of a semitone either way,
+  # where the next note up or down is a whole semitone, 100 cents.
+  PITCH_CENTS_APART = 25
+
+  private def pitch_settings = alike_settings.merge(pitch_cents_apart: PITCH_CENTS_APART)
+
+  # A semitone is 100 cents, so a note's pitch over another's in cents.
+  private def cents_apart(one, other) = (1200 * Math.log2(one / other)).abs
+
+  def test_two_builds_of_one_game_are_heard_at_the_same_pitch_on_every_voice
+    as_a_file(tune_game) do |path|
+      compared = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **pitch_settings)
+
+      assert_predicate compared, :alike?
+      lead = compared.voices.fetch(part_voices.first)
+      a4 = lead.first.first_heard + 5
+      assert_in_delta 0, cents_apart(lead.first.pitch_on(a4), 440), 10, "the first note is an A, 440 Hz"
+    end
+  end
+
+  # The second note an E where ours plays a C, as loud: the loudest sample a frame cannot tell them
+  # apart, and each voice's pitch names the voice and the frame the wrong note starts on.
+  def test_a_wrong_note_fails_naming_the_frame_and_the_voice
+    as_a_file(tune_game(second_note: :E5)) do |path|
+      compared = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **pitch_settings)
+      wrong = compared.differences.find { |found| found.what == :pitch }
+      lead = compared.voices.fetch(part_voices.first)
+      second_note = (lead.first.first_heard..TAPE_FRAMES).find { |frame| cents_apart(lead.first.pitch_on(frame) || 440, 440) > 50 }
+
+      assert_equal part_voices.first, wrong.voice
+      assert_in_delta second_note, wrong.frame, 1, "the frame the second note starts on"
+      assert_in_delta 0, cents_apart(lead.first.pitch_on(second_note + 5), 523.25), 10, "ours is a C"
+      assert_in_delta 0, cents_apart(lead.second.pitch_on(second_note + 5), 659.26), 10, "the original's an E"
+      message = VBlank::Testing::HeardAlike.difference_message(compared)
+      assert_match "On the #{part_voices.first} voice alone: The two cartridges are heard at different pitches", message
+      assert_match(/They first differ on frame #{wrong.frame}/, message)
+    end
+  end
+
+  def test_a_pitch_setting_that_makes_no_sense_is_refused
+    error = assert_raises(ArgumentError) { VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **alike_settings, pitch_cents_apart: -1) }
+
+    assert_match "pitch_cents_apart", error.message
+  end
+
   # Voices the game chose on each side are chosen on the console put back from the snapshot.
   def test_voices_chosen_on_each_side_are_heard_from_a_snapshot_as_from_power_on
     ours = two_part_game

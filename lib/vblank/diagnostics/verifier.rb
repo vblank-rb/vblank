@@ -936,6 +936,14 @@ module VBlank
         @sound.loudest_on_speaker_by_frame(speaker)
       end
 
+      # The pitch each frame played so far was heard at, in hertz, or nil for a frame at or under
+      # +heard_above+, a noise, or notes sounding together (RecordedSound#pitch_by_frame). For one
+      # voice heard alone (#hearing).
+      def pitch_by_frame(heard_above:)
+        ensure_rendered!
+        @sound.pitch_by_frame(rate: SoundRecording::CARTRIDGE_RATES.fetch(console), heard_above: heard_above)
+      end
+
       # True when the run produced no sound at all (energy exactly 0).
       def silent?
         audio_energy.zero?

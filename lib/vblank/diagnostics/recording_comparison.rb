@@ -319,45 +319,6 @@ module VBlank
         def decibels(power) = power.positive? ? [10 * Math.log10(power), SILENCE_DB].max : SILENCE_DB
       end
       private_constant :MomentSpectra
-
-      # The fast fourier transform, the radix-2 one: +real+ (a power of two long) as the frequencies it
-      # holds, the real and the imaginary part of each. Cooley and Tukey's, done in place over the
-      # numbers put in +order+ (FastFourier.order: each place's number with its bits reversed).
-      module FastFourier
-        def self.transform(real, order)
-          size = real.size
-          real = order.map { |at| real[at] }
-          imaginary = Array.new(size, 0.0)
-          span = 2
-          while span <= size
-            half = span / 2
-            step = -2 * Math::PI / span
-            (0...half).each do |turn|
-              cos = Math.cos(step * turn)
-              sin = Math.sin(step * turn)
-              (turn...size).step(span) do |at|
-                other = at + half
-                re = (real[other] * cos) - (imaginary[other] * sin)
-                im = (real[other] * sin) + (imaginary[other] * cos)
-                real[other] = real[at] - re
-                imaginary[other] = imaginary[at] - im
-                real[at] += re
-                imaginary[at] += im
-              end
-            end
-            span *= 2
-          end
-          [real, imaginary]
-        end
-
-        # The places 0 to +size+ - 1, each with its bits reversed: the order the transform reads its
-        # numbers in.
-        def self.order(size)
-          bits = Math.log2(size).to_i
-          Array.new(size) { |at| at.to_s(2).rjust(bits, "0").reverse.to_i(2) }
-        end
-      end
-      private_constant :FastFourier
     end
   end
 end

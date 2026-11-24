@@ -15,6 +15,8 @@ require_relative "diagnostics/missing_emulator"  # Why the emulator would not lo
 require_relative "diagnostics/emulator"          # The one seam to the emulator backend; swap emulators here
 require_relative "diagnostics/screen_questions"  # A whole screen's questions in Ruby, for an emulator not the Advance's
 require_relative "diagnostics/frame_sound"       # One frame's samples and the loudest of them
+require_relative "diagnostics/fast_fourier"      # Samples as the frequencies they hold, and back
+require_relative "diagnostics/frame_pitch"       # The pitch a stretch of one voice's sound is heard at
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
 require_relative "diagnostics/played_cartridge_file" # A reader's cartridge file and its emulator, shut in order
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator

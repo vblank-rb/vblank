@@ -12,4 +12,15 @@ class TestHeardAlikeOnThePlayStation < Minitest::Test
   private def console = :ps1
 
   private def voices_heard_alone? = false
+
+  # Pitch is held a voice at a time, and no voice plays alone here, so it is refused before anything
+  # is played.
+  def test_pitch_is_refused_saying_no_voice_plays_alone
+    error = assert_raises(ArgumentError) do
+      VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **alike_settings, pitch_cents_apart: 25)
+    end
+
+    assert_match "pitch_cents_apart", error.message
+    assert_match "cannot play a voice alone", error.message
+  end
 end

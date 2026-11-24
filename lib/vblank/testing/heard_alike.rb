@@ -30,6 +30,10 @@ module VBlank
     #                              sounds may take to fall silent
     #   lead_ins:                  a playthrough for each to play first, not counted (optional)
     #   level_stretch_frames:      hold the level this many frames at a time, not as one average (optional)
+    #   pitch_cents_apart:         how far apart in pitch each voice may be on a frame both are heard on,
+    #                              in cents (a semitone is 100), so a wrong note fails naming the voice
+    #                              and the frame (optional); each voice is played alone on both to hear
+    #                              it, on a console whose emulator plays a voice alone
     #   each_speaker: false        compare the speakers mixed alone, for two that place their sound
     #                              differently on purpose (each speaker is compared too unless set)
     #   each_voice: false          after a difference, do not play each voice alone to name the one
@@ -160,8 +164,9 @@ module VBlank
       # which voices differ and how.
       def self.difference_message(compared)
         lines = compared.differences.map do |difference|
-          speaker = "On the #{difference.speaker} speaker alone: " if difference.speaker
-          "#{speaker}#{[measure_words(difference, compared), frame_words(difference)].compact.join(' ')}"
+          alone = "On the #{difference.speaker} speaker alone: " if difference.speaker
+          alone = "On the #{difference.voice} voice alone: " if difference.voice
+          "#{alone}#{[measure_words(difference, compared), frame_words(difference)].compact.join(' ')}"
         end
         (hearing_lines(compared.hearing) + lines + voice_lines(compared.voices)).join("\n")
       end
@@ -207,7 +212,17 @@ module VBlank
           "The two cartridges are last heard on different frames: frame #{one} on the first and frame #{other} on the second."
         when :fall
           "The last sound takes a different time to fall silent: #{one} frames on the first cartridge and #{other} on the second."
+        when :pitch then pitch_words(difference)
         end
+      end
+
+      # Both pitches on the first frame out, how far apart they are, and on how many frames.
+      def self.pitch_words(difference)
+        one, other = difference.measured
+        "The two cartridges are heard at different pitches on #{difference.frames_over} " \
+          "#{difference.frames_over == 1 ? 'frame' : 'frames'}: #{format('%.1f', one)} Hz on the first and " \
+          "#{format('%.1f', other)} Hz on the second, #{Playthroughs::HeardComparison.cents_apart(one, other).round} cents " \
+          "apart. A semitone is 100 cents."
       end
 
       # Both levels, and how many times as loud the louder is: a share of the louder reads oddly where
@@ -248,7 +263,7 @@ module VBlank
         "They first differ on frame #{difference.frame}: the loudest sample is #{difference.loudest[0]} on the first " \
           "and #{difference.loudest[1]} on the second."
       end
-      private_class_method :hearing_lines, :voice_list_words, :voice_lines, :measure_words, :level_words, :times_as_loud_words, :never_heard_words, :frame_words,
+      private_class_method :hearing_lines, :voice_list_words, :voice_lines, :measure_words, :level_words, :pitch_words, :times_as_loud_words, :never_heard_words, :frame_words,
                            :recording_measure_words, :over_words, :recording_measures_words, :decibel_words
     end
   end
