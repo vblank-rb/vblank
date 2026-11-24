@@ -122,8 +122,10 @@ class TestFractionDivision < Minitest::Test
         screen :bitmap
         a = var :a, numerator
         b = var :b, divisor
-        out = var :out, starts_as
-        game_loop { count.times { out = worked_out.call(a, b) } }
+        # A number of its own for each divide, so the rounds differ and stay written out: rounds
+        # alike are made one loop, whose own count and test would be counted as the divide's.
+        outs = Array.new(count) { |n| var :"out#{n}", starts_as }
+        game_loop { count.times { |n| outs[n] = worked_out.call(a, b) } }
       end
       backend = GBA.new
       rom = ROM.assemble(backend.lower(program), title: "#{title}#{count}", built: backend.build_record(program))
