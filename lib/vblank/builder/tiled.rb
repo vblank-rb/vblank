@@ -61,6 +61,10 @@ module VBlank
     # these verbs.
     #++
     module Tiled
+      # A tile-image map addressable by the tileset's own keys (+by_key+) or by number (+by_number+, a
+      # sheet's cells), the size of each tile, and the images of the tiles the game marked solid.
+      Tileset = Data.define(:by_key, :by_number, :tile_w, :tile_h, :solid_images)
+
       # What the build knows about one background, from the line that declares it to the
       # last pass before the tree is handed over.
       #
@@ -210,9 +214,9 @@ module VBlank
         # Number the tiles 1, 2, 3… in the order they're listed, so this same tileset
         # can also be drawn from a CSV map of numbers (not only from its own keys).
         by_number = tile_map.values.each_with_index.to_h { |img, i| [i + 1, img] }
-        @tilesets[name] = { by_key: tile_map.dup, by_number: by_number,
-                            tile_w: sizes.first[0], tile_h: sizes.first[1],
-                            solid_images: solid.map { |key| tile_map[key] }.uniq }
+        @tilesets[name] = Tileset.new(by_key: tile_map.dup, by_number: by_number,
+                                      tile_w: sizes.first[0], tile_h: sizes.first[1],
+                                      solid_images: solid.map { |key| tile_map[key] }.uniq)
       end
 
       private def refuse_unknown_black!(name, black)
@@ -611,7 +615,7 @@ module VBlank
         declared.node =
           record(Build.background(name, tiles: tile_names, map: grids.first,
                                         maps: map_names.size > 1 ? grids : [], choice: choice,
-                                        tile_w: set[:tile_w], tile_h: set[:tile_h],
+                                        tile_w: set.tile_w, tile_h: set.tile_h,
                                         scene: declaring_scene, bar_top: bar_top, above_row: above_row,
                                         alone: alone != false, hides_sprites: alone == :without_sprites,
                                         affine: @screen_mode == :rotozoom, **(sets || {})))
@@ -664,13 +668,13 @@ module VBlank
                              # ...and which tiles are walls, so a cell set_tile changes takes
                              # its tile's: walls written apart with `walls:` set nothing about tiles.
                              solid_tiles: walls.nil? && !tiles.is_a?(Hash) ? solid_tile_numbers(tile_names, set) : nil,
-                             tile_size: [set[:tile_w], set[:tile_h]],
+                             tile_size: [set.tile_w, set.tile_h],
                              # Areas, though all of one set of tiles (#background_from_sets).
                              walks_areas: tiles.is_a?(Hash),
                              # ...and each area's keys, so set_tile names a tile of the area showing.
                              area_tiles: area_tiles,
                              held: held,
-                             tile_pictures: tiles.is_a?(Hash) ? tile_names.uniq : (set[:by_key].values + set[:by_number].values).uniq)
+                             tile_pictures: tiles.is_a?(Hash) ? tile_names.uniq : (set.by_key.values + set.by_number.values).uniq)
         @background_handles.last
       end
 
@@ -842,7 +846,7 @@ module VBlank
       # map used it or not, so a door can be drawn in the tileset and only ever appear
       # once something opens it.
       def tile_lookup(set, index_of)
-        named = set[:by_key].empty? ? (set[:by_number] || {}) : set[:by_key]
+        named = set.by_key.empty? ? set.by_number : set.by_key
         named.to_h { |key, image| [key, index_of[image]] }.compact
       end
 
@@ -893,8 +897,8 @@ module VBlank
                 "The sheet holds tiles #{by_number.keys.min}..#{by_number.keys.max}."
         end
 
-        @tilesets[name] = { by_key: {}, by_number: by_number, tile_w: tile_w, tile_h: tile_h,
-                            solid_images: solid_numbers.map { |n| by_number[n] }.uniq }
+        @tilesets[name] = Tileset.new(by_key: {}, by_number: by_number, tile_w: tile_w, tile_h: tile_h,
+                                      solid_images: solid_numbers.map { |n| by_number[n] }.uniq)
       end
 
       # Every map this background can show, as [names, drawn] — the names in the order they
@@ -981,8 +985,8 @@ module VBlank
         refuse_map_named_twice!(name, map_names)
 
         every = sets.values
-        merged = { by_key: {}, by_number: {}, tile_w: every.first[:tile_w], tile_h: every.first[:tile_h],
-                   solid_images: every.flat_map { |set| set[:solid_images] || [] }.uniq }
+        merged = Tileset.new(by_key: {}, by_number: {}, tile_w: every.first.tile_w, tile_h: every.first.tile_h,
+                             solid_images: every.flat_map(&:solid_images).uniq)
         walked = { sets: set_names, set_starts: set_starts, map_sets: map_sets } unless set_names.one?
         [merged, map_names, drawn, tile_names, grids, walked, area_tiles_by_key]
       end
@@ -1002,7 +1006,7 @@ module VBlank
       end
 
       def refuse_tile_sets_of_two_sizes!(name, tiles, sets)
-        sizes = sets.transform_values { |set| [set[:tile_w], set[:tile_h]] }
+        sizes = sets.transform_values { |set| [set.tile_w, set.tile_h] }
         return if sizes.values.uniq.size == 1
 
         first, other = sizes.keys.first, sizes.keys.find { |area| sizes[area] != sizes.values.first }
@@ -1127,7 +1131,7 @@ module VBlank
       # it is worth its own error: the characters it is written in mean nothing there, so
       # every cell would be wrong rather than one of them.
       def tiles_by_key(name, tiles, set, rows)
-        by_key = set[:by_key]
+        by_key = set.by_key
         return by_key unless by_key.empty?
 
         if character_map?(rows)
@@ -1136,7 +1140,7 @@ module VBlank
                 "A character map: cannot select its tiles. " \
                 "Write the map as rows of its tile numbers, or give from: a CSV file."
         end
-        set[:by_number]
+        set.by_number
       end
 
       # A map written as characters, judged on the cells rather than on the shape it
@@ -1155,7 +1159,7 @@ module VBlank
       # Turn a CSV tilemap (a grid of tile numbers) into a grid of tile-image names. A
       # `0` is a blank cell; any other number picks a tile by the tileset's numbering.
       def csv_image_grid(name, tiles, set, path)
-        by_number = set[:by_number]
+        by_number = set.by_number
         numbers = parse_csv_tilemap(name, File.read(resolve_asset_path(path)))
 
         img_rows = numbers.map do |row|
@@ -1210,7 +1214,7 @@ module VBlank
         return [] if grid.nil?
 
         merge_solid_cells(grid).map do |col, row, w, h|
-          [col * set[:tile_w], row * set[:tile_h], w * set[:tile_w], h * set[:tile_h]]
+          [col * set.tile_w, row * set.tile_h, w * set.tile_w, h * set.tile_h]
         end
       end
 
@@ -1226,11 +1230,11 @@ module VBlank
       # a mover blocked by this background is not blocked by anything.
       # The numbers of a tileset's tiles marked `solid:`, as a map numbers its cells.
       def solid_tile_numbers(tile_names, set)
-        tile_names.each_index.select { |index| set[:solid_images].include?(tile_names[index]) }
+        tile_names.each_index.select { |index| set.solid_images.include?(tile_names[index]) }
       end
 
       def solid_cell_grid(img_rows, set)
-        solid = set[:solid_images]
+        solid = set.solid_images
         return nil if solid.empty?
 
         img_rows.map { |row| row.map { |img| !img.nil? && solid.include?(img) } }

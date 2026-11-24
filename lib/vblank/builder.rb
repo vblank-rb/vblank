@@ -230,7 +230,7 @@ module VBlank
       @sprite_recolors = []    # every sprite's and pool's other colours, to find who draws with a changing list
       @lists_in_use = []       # each set of lists `colors_in_use` named, in the order the game counts them
       @lists_backgrounds_draw_with = {} # `colors` name → the backgrounds drawn with it, which follow it if it changes
-      @tilesets = {}           # tileset name → { by_key:, by_number:, tile_w:, tile_h:, solid_images: } — a tile-image map addressable by the tileset's own keys or by number (a sheet cell)
+      @tilesets = {}           # tileset name → its Tiled::Tileset
       @screen_mode = nil       # the current display mode (set by `screen`), so `sprite` picks its backend
       @sprites = []            # live software sprites, repainted after every wait_vblank
       @sprite_repaints = []    # [wait node, the software sprites declared by then], one per frame boundary
