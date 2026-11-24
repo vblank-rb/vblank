@@ -612,6 +612,7 @@ Each is a friendly error naming the line.
 | an Array the game changes holding Arrays or Hashes (`[[0, 0], [0, 0]]`) | an Array for each row, or an Array of Structs |
 | `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
 | an Array method a list has no meaning for (`rotate!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
+| a part's Array its class does not change, added to or turned as a whole through a reader in game code (`flock.dots << dot`, `part.counts.rotate!`; `InstanceVariables.refuse_changed_from_outside!`, the rewrite's `whole_array_change?`) | a method of its class, `def add(dot) = @dots << dot` |
 | a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
@@ -655,12 +656,9 @@ Each is a friendly error naming the line.
   and read through `src[1]` after `t.xs[at] += 1` answers Ruby's number from while building: the
   part's instance variable holds the list, the local still the Ruby Array. A constant handed in
   works.
-- A part's Array that only code outside its class puts things into in game code
-  (`flock.dots << Dot.new(...)`), or that game code adds to or turns as a whole through its reader
-  (`part.counts << 7`, `rotate!`), stays Ruby's: the change happens once, while building. The
-  same-class scan (`LocalNames#instance_variable_things_made`) is the only thing that makes a
-  part's Array of Structs a pool; filled from outside while setting up, it stays a Ruby Array of
-  Structs whose fields are followed, which answers alike.
+- A part's Array of Structs filled from outside its class while setting up stays a Ruby Array of
+  Structs whose fields are followed, which answers alike: the same-class scan
+  (`LocalNames#instance_variable_things_made`) is the only thing that makes it a pool.
 - A field changed through a writer elsewhere (`dial.level += 3`) is followed by the writer's
   name (`changing_attributes_in_files`, process-wide): any object with that writer keeps the field
   as a game number. Cost and save layout, not answers.

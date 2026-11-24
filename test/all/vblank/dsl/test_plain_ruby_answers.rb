@@ -832,11 +832,10 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   # Game code outside the class puts things into a part's Array that its class body puts nothing
-  # into: it stays Ruby's, so the put happens once, while building. PLAIN_RUBY.md tells it.
+  # into: it is still Ruby's, so the put would happen once, while building. Refused, naming a
+  # method of its class as the fix.
   def test_a_part_array_of_structs_filled_in_game_code_from_outside_its_class
-    known_gap("flock.dots << Point.new(...) in the game loop",
-              gap: "A part's Array that only code outside its class puts things into stays a Ruby Array",
-              reads: %i[n], passes: 3) do
+    refused("flock.dots << Point.new(...) in the game loop", /a method of its class/) do
       flock = AnswerFlock.new
       n = 0
       at = 0
@@ -845,6 +844,44 @@ class TestPlainRubyAnswers < Minitest::Test
         flock.dots << AnswerPoint.new(at, 0, 0) if at < 3
         n = flock.dots.size
       end
+    end
+  end
+
+  # The same for a part's Array of numbers added to or turned from outside its class, named or not.
+  def test_a_part_array_of_numbers_changed_whole_from_outside_its_class_is_refused
+    refused("scores.scores << 7", /a method of its class/) do
+      scores = AnswerScores.new
+      n = 0
+      game_loop do
+        scores.scores << 7 if n < 6
+        n = scores.scores.size
+      end
+    end
+    refused("scores.scores.rotate!", /a method of its class/) do
+      scores = AnswerScores.new
+      n = 0
+      game_loop do
+        scores.scores.rotate!
+        n = scores.scores[0]
+      end
+    end
+    refused("sizes.counts.rotate!, counts named", /a method of its class/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        sizes.counts.rotate!
+        n = sizes.counts[0]
+      end
+    end
+  end
+
+  # Changing it while the game is set up is Ruby's, one time, as Ruby does it there.
+  def test_a_part_array_changed_from_outside_while_setting_up_agrees
+    agrees("scores.scores << 7 above the game loop", reads: %i[n]) do
+      scores = AnswerScores.new
+      scores.scores << 7
+      n = 0
+      game_loop { n = scores.scores.size }
     end
   end
 

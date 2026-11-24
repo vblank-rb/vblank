@@ -700,7 +700,7 @@ game_loop do
 end
 ```
 
-Other refusals, each with its own message: `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable a method sets outright in game code and another routine reads, which the source does not show (write `game_variables`); `floor`, `round`, `succ`, `divmod`, `**` and the like on a game number (use `to_i` for the whole part of a fraction); in a part's method, a local changed by a game number in a lambda handed with `&` or a block a helper yields to (walk the Array by its instance variable, `@things.each`); a constant from outside the game, `system`, `eval` and the like.
+Other refusals, each with its own message: a part's Array that its own class does not change, added to or turned as a whole from outside in game code (`flock.dots << Dot.new(...)`, `part.counts.rotate!`; do it in a method of its class, `def add(dot) = @dots << dot`, or above the game loop); `return`, `break` or `next` leaving a game block under a game test, rather than a loop inside it; `break` or `next` under a game test in a loop Ruby runs while building; a local set outside the game block and changed inside it; an instance variable a method sets outright in game code and another routine reads, which the source does not show (write `game_variables`); `floor`, `round`, `succ`, `divmod`, `**` and the like on a game number (use `to_i` for the whole part of a fraction); in a part's method, a local changed by a game number in a lambda handed with `&` or a block a helper yields to (walk the Array by its instance variable, `@things.each`); a constant from outside the game, `system`, `eval` and the like.
 
 ## What builds and means something else
 
@@ -721,9 +721,7 @@ end
 - A Struct made in a `game_loop`, a scene or a `func` under an `if`, and used after that `if` or in another routine (a `func` the loop calls, too), stops with a message, since Ruby can keep the one an earlier pass made. Make it above the game loop, or keep it with `@point ||= Point.new(...)`.
 - An Array the game pushes to when it is full, of numbers or of Structs, stops the game with an error naming it, where Ruby would grow it. Test `size` first, as the examples above do.
 - `h[key] += n` on a Hash of game numbers answers the number before the change where it is used as a value (`m = (h[:a] += 3)`). Write the change on its own line, then read `h[:a]`.
-- An Array a part holds, that game code outside its class puts things into (`flock.dots << Dot.new(...)` in the game loop), stays a Ruby Array: the line puts its thing in once, while building. Put things in with a method of its class that writes `@dots << Dot.new(...)`, or put them in above the game loop.
 - An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]`, then `tally = Tally.new(src)`), and read through that local after game code changes it through the part (`tally.counts[at] += 1`, then `src[1]`), answers the number Ruby gave it while building. Read it through the part, `tally.counts[1]`, or hand the part a constant.
-- An Array a part holds, that game code adds to or turns as a whole through its reader (`part.counts << 7`, `part.counts.rotate!`), changes once, while building. Do it in a method of its class.
 - A number or field another class changes through a writer (`dial.level += 3`) and that game code reads before that line stays the game's because of the writer's name: any part with a writer of that name in any game file loaded keeps that field as a game number. This changes what the game costs and how a save is laid out, not what it answers.
 
 ## When plain Ruby is not enough

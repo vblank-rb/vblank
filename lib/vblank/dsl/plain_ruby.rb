@@ -691,6 +691,7 @@ module VBlank
           return "#{STEPS}.opposite(#{argument(node.receiver)})" if node.name == :! && node.receiver
           return "#{ARRAYS}.taken(#{argument(node.receiver)}, :#{node.name})" if game_array_item_taken?(node)
           return index_write_text(node) if node.name == :[]= && node.receiver
+          return whole_array_change_text(node) if whole_array_change?(node)
           return attribute_write_text(node) if node.attribute_write? && node.receiver
           return "#{STEPS}.nil_test(#{argument(node.receiver)})" if node.name == :nil? && node.receiver
           return nil_comparison_text(node) if LocalNames.nil_comparison?(node)
@@ -782,6 +783,26 @@ module VBlank
         # `game_variables :busy`, which no object answers: InstanceVariables keeps the names.
         def game_variables_call?(node)
           @follows_instance_variables && node.name == :game_variables && node.receiver.nil? && node.block.nil?
+        end
+
+        # `flock.dots << dot` or `part.counts.rotate!`: an Array verb that changes the answer of a
+        # reader call as a whole. InstanceVariables.refuse_changed_from_outside! is handed the
+        # answer first, and refuses a part's Array its class does not change. A slot written
+        # (`part.counts[i] = 1`) is the index rewrite's. VBlank's own files are left as they are.
+        def whole_array_change?(node)
+          @follows_instance_variables && !node.receiver.nil? && node.name != :[]= &&
+            Arrays::CHANGING_VERBS.include?(node.name) && reader_call?(node.receiver)
+        end
+
+        # A call with a receiver, no arguments and no block, named as a reader is: `flock.dots`.
+        def reader_call?(node)
+          node.is_a?(Prism::CallNode) && !node.receiver.nil? && node.arguments.nil? && node.block.nil? &&
+            node.name.match?(/\A[a-z_]\w*\z/)
+        end
+
+        def whole_array_change_text(node)
+          "#{INSTANCE_VARIABLES}.refuse_changed_from_outside!(#{argument(node.receiver)}, :#{node.name})" \
+            "#{copied_text(node, from: node.receiver.location.end_offset)}"
         end
 
         # `[a, b].max`, `scores.count { |n| n > 5 }`: a question about the items of whatever the

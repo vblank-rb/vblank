@@ -377,10 +377,12 @@ module VBlank
           if uses.followed?(owner, label, current)
             variable = game_variable_of(owner, current, label)
             yield variable unless variable.equal?(current)
+            uses.note_ruby_array_read(variable, owner, label) if variable.is_a?(KeyedArray)
             return variable
           end
           unless in_text
             note_array_handed(owner, current, label, store)
+            uses.note_ruby_array_read(current, owner, label) if current.is_a?(Array)
             uses.note_read(owner, label, current)
             uses.note_flag_read(owner, label, current) if Uses::FLAGS.include?(current)
           end
@@ -748,6 +750,27 @@ module VBlank
           list = builder.declare_list(name, capacity: held.length, **settings)
           held.each { |item| list.push(item) }
           list
+        end
+
+        # +array+, the answer of a reader call that a line of game code changes as a whole with
+        # +verb+ (`flock.dots << dot`, `part.counts.rotate!`; Rewriter#whole_array_change_text). A
+        # part's Array becomes one the game keeps only where its own class changes it, so one
+        # changed only from outside is still a Ruby Array here, or a variable for each slot: the
+        # change would happen one time, while building. Refused where game code read it from an
+        # instance variable; anything else (a list or a pool, an Array a method made) is the
+        # line's as it is.
+        def refuse_changed_from_outside!(array, verb)
+          uses = Builder::Session.recording? && Builder::Session.builder.instance_variable_uses
+          holder = uses && (array.instance_of?(Array) || array.is_a?(KeyedArray)) && uses.instance_variable_holding(array)
+          return array unless holder
+
+          name = holder.label.to_s.delete_prefix("@")
+          raise Refused, "This line changes #{uses.kept_array_words(holder.owner, holder.label)} with `#{verb}`, " \
+                         "from outside its class. VBlank makes the game keep a part's Array only where code in its " \
+                         "class changes it. Here it is still a plain Ruby Array, so this line changes it one time, " \
+                         "while VBlank builds the game. To fix this, change the Array in a method of its class, " \
+                         "like `def add(item) = @#{name} << item`, and call that method here." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # +value+, refused where it is a named Array (KeyedArray) that a new Array would copy:
@@ -1387,6 +1410,7 @@ module VBlank
             @changing_attributes = Set.new
             @arrays_kept = {}.compare_by_identity
             @array_hand_outs = {}.compare_by_identity
+            @arrays_read_in_game_code = {}.compare_by_identity
             @changing_objects = {}.compare_by_identity
             @chosen_on_builder = {}
             @names_by_class = {}
@@ -1560,6 +1584,14 @@ module VBlank
                                                                 at: Messages::AuthorSource.author_file_and_line,
                                                                 in_game_code: in_game_code)
           end
+
+          # Game code read +array+, a Ruby Array, from +owner+'s +label+ (InstanceVariables.read_value).
+          def note_ruby_array_read(array, owner, label)
+            @arrays_read_in_game_code[array] = PartVariable.new(owner: owner, label: label)
+          end
+
+          # The instance variable game code read +array+ from, or nil.
+          def instance_variable_holding(array) = @arrays_read_in_game_code[array]
 
           # The hand-out of +array+ the line indexing it just made (InstanceVariables.indexed), taken
           # off the record; nil where none was noted.
