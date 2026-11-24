@@ -679,6 +679,27 @@ module VBlank
           end
         end
 
+        # `counts[0] &&= value` in game code, on a slot holding a number or true (+current+), or
+        # `counts[0] ||= value` on one holding false or a game's true or false. Ruby gives such a
+        # slot its value on every pass where the game would once, while building, so the slot would
+        # keep the number of that one run. Where Ruby never gives it one (`||=` on a number, which is
+        # never nil or false), or the slot holds nil or an object, the line runs as written
+        # (Rewriter#index_logic_write_text).
+        def refuse_logic_slot_write!(current, label, operator)
+          return unless Builder::Session.recording?
+
+          gives = if operator == "&&="
+                    current.is_a?(Value) || current.is_a?(Numeric) || true.equal?(current)
+                  else
+                    false.equal?(current) || Steps.game_test?(current)
+                  end
+          return unless gives
+
+          Steps.refuse_game_code!("This line changes `#{label}` with `#{operator}` as the game plays. VBlank cannot " \
+                                  "do this for a number or a true or false value. To fix this, write " \
+                                  "`#{label} = value`. To change it only some of the time, put that line under an `if`.")
+        end
+
         # A number given to a key that a Hash of game variables does not hold is a misspelt key: it
         # would go in as a plain Ruby number, and the game's variable would stay as it was.
         def refuse_new_slot!(collection, key, value)

@@ -595,6 +595,7 @@ Each is a friendly error naming the line.
 | a plain number the build could not follow to a game test (a slot at a key worked out on the line, `counts[i + 1] += 1`) changed under that test | a game variable where it is first set: `var :counts, 0` |
 | a new Hash key given a number under a game test | give it a number before the test |
 | a misspelt key of a Hash of game variables | one of the keys it has |
+| `counts[0] &&= value` on a number or true in game code, or `||=` on false or a game's true or false (`Writes.refuse_logic_slot_write!`; `||=` on a number is left alone, as Ruby does) | `counts[0] = value`, under an `if` where needed |
 | `store`, `merge!`, `delete` or another verb that changes many keys of a Hash of game variables at once | one key at a time, `h[:a] = 5` |
 | an instance variable that game code changes and reads back, where the source does not show the change (`@busy = 1` in a method a routine calls) | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable not marked, set outright by a method under a test the game makes (`r.reset if k == 2`), or worked out from a number another routine gave it, then read | `game_variables :n` in the class's body |

@@ -365,6 +365,7 @@ module VBlank
           when Prism::InstanceVariableWriteNode then instance_variable_write_text(node)
           when Prism::InstanceVariableOperatorWriteNode then change_text(node)
           when Prism::IndexOperatorWriteNode then place_change_text(node, index_text(node))
+          when Prism::IndexAndWriteNode, Prism::IndexOrWriteNode then index_logic_write_text(node)
           when Prism::CallOperatorWriteNode then attribute_change_text(node)
           when Prism::ReturnNode, Prism::BreakNode, Prism::NextNode then jump_text(node)
           when *OWN_SCOPES then own_scope_text(node)
@@ -1050,6 +1051,19 @@ module VBlank
         end
 
         def index_text(node) = "#{rewritten_text(node.receiver)}[#{node.arguments ? rewritten_text(node.arguments) : ''}]"
+
+        # `counts[0] &&= value` and `||=`: Ruby's own, with the receiver and keys worked out once,
+        # after Writes.refuse_logic_slot_write! has looked at what the slot holds (a number the game
+        # keeps cannot take part).
+        def index_logic_write_text(node)
+          holder = fresh_name
+          held_keys = fresh_name
+          keys = node.arguments ? node.arguments.arguments.map { |key| argument(key) } : []
+          label = "#{node.receiver.slice}[#{node.arguments&.arguments.to_a.map(&:slice).join(', ')}]"
+          "(#{holder} = #{argument(node.receiver)}; #{held_keys} = [#{keys.join(', ')}]; " \
+            "#{WRITES}.refuse_logic_slot_write!(#{holder}[*#{held_keys}], #{label.inspect}, #{node.operator.inspect}); " \
+            "#{holder}[*#{held_keys}] #{node.operator} #{argument(node.value)})"
+        end
 
         # `+=` on a place. The block is what Ruby would do, for a place that holds no variable.
         # +field+ is the text naming the object and the attribute of `point.x += 1`, for Writes.change.

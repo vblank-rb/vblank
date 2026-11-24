@@ -1106,6 +1106,68 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  def test_an_item_given_a_number_with_and_or_or_in_game_code_is_refused
+    refused("counts[0] &&= counts[0] + 2 in the game loop", /`counts\[0\] = value`/) do
+      counts = [1, 2]
+      game_loop { counts[0] &&= counts[0] + 2 }
+    end
+    refused("h[:a] &&= 5 in the game loop", /`h\[:a\] = value`/) do
+      h = { a: 1, b: 2 }
+      game_loop do
+        h[:b] += 1
+        h[:a] &&= 5
+      end
+    end
+    refused("h[:a] ||= true on false in the game loop", /`h\[:a\] = value`/) do
+      h = { a: false, b: 2 }
+      game_loop do
+        h[:b] += 1
+        h[:a] ||= true
+      end
+    end
+  end
+
+  def test_a_hash_holding_true_or_false_switched_by_the_game
+    agrees("h[:open] = !h[:open] in the game loop", reads: %i[m n], passes: 3) do
+      h = { open: false, count: 0 }
+      m = n = 0
+      game_loop do
+        h[:count] += 1
+        h[:open] = !h[:open]
+        m = h[:open] ? 1 : 2
+        n += 1 if h[:open]
+      end
+    end
+  end
+
+  # A number is never nil or false, so Ruby's `||=` leaves it as it is, on every pass.
+  def test_an_item_holding_a_number_left_alone_by_or_in_game_code
+    agrees("h[:a] ||= 5 and counts[0] ||= 9 in the game loop", reads: %i[m], passes: 3) do
+      h = { a: 1, b: 2 }
+      counts = [3, 4]
+      m = 0
+      game_loop do
+        h[:b] += 1
+        counts[1] += 1
+        h[:a] ||= 5
+        counts[0] ||= 9
+        m = h[:a] + h[:b] + counts[0] + counts[1]
+      end
+    end
+  end
+
+  def test_an_item_given_a_number_with_and_or_or_while_building
+    agrees("counts[0] &&= 7 and h[:b] ||= 4 above the game loop", reads: %i[m], passes: 2) do
+      counts = [1, 2]
+      h = { a: nil, b: 2 }
+      counts[0] &&= 7
+      h[:a] ||= 4
+      h[:b] ||= 9
+      m = 0
+      game_loop { m = counts[0] + h[:a] + h[:b] }
+    end
+  end
+
   def test_a_hash_changed_while_building_then_by_the_game
     agrees("h[:a] += 10 above the game loop, h[:a] += 1 in it", reads: %i[m], passes: 3) do
       h = { a: 1, b: 2 }
