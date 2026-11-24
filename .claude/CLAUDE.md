@@ -41,8 +41,8 @@ worktrees under `.claude/worktrees/` (`git worktree list`) are the count.
 
 - A second item is one that touches different files: another milestone and another lowering
   than the first. Two branches in the same files collide when they land.
-- Each worktree runs its rake with `VBLANK_SUITE_LOCK=checkout`. One `rake test:golden` runs on
-  the machine at a time: two together take twice as long each.
+- Each worktree runs its rake with `VBLANK_SUITE_LOCK=checkout`, and its own nearby test files
+  only (see "Running Tests").
 - An item lands by cherry-picking its commits onto `main` once its own tests pass there, then
   its worktree and branch are removed.
 
@@ -107,16 +107,18 @@ needs a C compiler and a system libmgba (`brew install mgba` / `apt install libm
 
 ## Running Tests
 
-**Day to day, run `rake test:golden`, and `rake test:all` at most once a day and only after asking
-the operator.** `rake test:all` takes the machine for about four and three-quarter hours (measured
+**Day to day, run the nearby test files only**: the ones the change touches and those beside them,
+plus `rake emitted:check` where a cartridge's contents change. That is the check before a commit
+and before a close. **Never run `rake test:golden` unless the operator asks, and `rake test:all`
+at most once a day and only after asking.** `rake test:all` takes the machine for about four and three-quarter hours (measured
 2026-11-17: twenty runs of 3 to 21 minutes, the computer builds playing once per console) and stops work while
 it does, so never start it, or a whole lowering's run, without the operator's say-so. The golden
-path plays the core of each feature and a little of each lowering (`test/golden.txt`, a tenth of the
-tests or less) and 5% of the other test files drawn at random, on every run (`Testing::GoldenSample`).
-It says its seed first and last; a failure in the drawn part is played again with `GOLDEN_SEED=<seed>
-rake test:golden`, and is a fault to fix like any other. While working, run the test files the change touches, then
-`rake test:golden` before committing anything shared. Wherever this file says a change "wants"
-`rake test:all`, that means the golden path now and the next full run the operator agrees to.
+path, when the operator asks for it, plays the core of each feature and a little of each lowering
+(`test/golden.txt`, a tenth of the tests or less) and 5% of the other test files drawn at random
+(`Testing::GoldenSample`). It says its seed first and last; a failure in the drawn part is played
+again with `GOLDEN_SEED=<seed> rake test:golden`, and is a fault to fix like any other. Wherever
+this file says a change "wants" `rake test:all`, that means the nearby test files now and the next
+full run the operator agrees to.
 
 **`rake test:all` is the whole suite.** It plays the suite once for each lowering, one after
 the other: the GBA lowering's run (every game on the interpreter, the cartridge checked in the
@@ -137,7 +139,7 @@ with a line for each and fails if any did. It needs zig 0.17 (`mise use zig@0.17
 18 or later as well as the emulator, and SDL3 (`brew install sdl3`) for the tests that open a window.
 
 ```bash
-rake test:golden                                                # the golden path, on every lowering: the everyday run
+rake test:golden                                                # the golden path, on every lowering: only when the operator asks
 rake test:all                                                   # the suite, on every lowering: ask the operator first
 rake test TEST=test/all/vblank/dsl/test_thing.rb                    # one file, on every lowering that plays it
 rake test TEST=test/all/vblank/dsl/test_thing.rb TESTOPTS="--name=/pattern/"  # one test

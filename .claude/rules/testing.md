@@ -26,8 +26,9 @@ Which skill fits is "Skills" in `.claude/rules/shared/all-projects.md`. Here `td
 the altitude `.claude/CLAUDE.md` sets and in the folder the table below says; `code-review` is due for
 a change to shared code or a lowering's logic; `writing-for-agents` when editing these notes.
 
-The order around them: red test, fix, the touched test files, `rake test:golden`, `rake emitted:check`
-if a cartridge's contents changed, commit, review, its fixes folded into the commit.
+The order around them: red test, fix, the touched test files and those beside them,
+`rake emitted:check` if a cartridge's contents changed, commit, review, its fixes folded into the
+commit. Never `rake test:golden` unless the operator asks.
 
 ## Where a test file goes: the folder says which runs play it
 
