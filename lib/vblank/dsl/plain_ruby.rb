@@ -574,10 +574,15 @@ module VBlank
         # The node's text, with what is inside it rewritten. A heredoc's lines sit past the end
         # of the node that opened them, and the text around the node carries them, so they
         # are left out here. +from+ starts the copy further in, the children before it left out.
+        IMPLICIT_PARAMETERS = [Prism::ItParametersNode, Prism::NumberedParametersNode].freeze # A block's `it` and `_1`
+
         def copied_text(node, from: node.location.start_offset)
           at = from
           ends = node.location.end_offset
-          pieces = node.compact_child_nodes.sort_by { |child| child.location.start_offset }.map do |child|
+          # `it` and `_1` give a block an implicit parameters node that spans the whole block, so taken
+          # as a child it would copy the body as written: it has no text of its own to copy.
+          children = node.compact_child_nodes.reject { |child| IMPLICIT_PARAMETERS.any? { |kind| child.is_a?(kind) } }
+          pieces = children.sort_by { |child| child.location.start_offset }.map do |child|
             start = child.location.start_offset
             next "" if start < at || start >= ends
 

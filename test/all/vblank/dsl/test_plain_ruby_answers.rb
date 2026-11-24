@@ -22,6 +22,23 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # --- blocks ---
+
+  # A block that reads its argument as `it` or `_1` is game code like any other.
+  def test_a_block_reading_it_changes_a_game_number
+    agrees("[2].each { score += it }", reads: %i[score], passes: 3) do
+      score = 0
+      game_loop { [2].each { score += it } }
+    end
+  end
+
+  def test_a_block_reading_numbered_parameters_changes_a_game_number
+    agrees("[[2, 3]].each { score += _1 * _2 }", reads: %i[score], passes: 3) do
+      score = 0
+      game_loop { [[2, 3]].each { score += _1 * _2 } }
+    end
+  end
+
   # --- numbers ---
 
   def test_max_and_min_of_game_numbers
