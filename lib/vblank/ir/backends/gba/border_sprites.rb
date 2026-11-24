@@ -88,7 +88,6 @@ module VBlank
             new(program, console, emitter: emitter, primitives: primitives, uploads: uploads)
           end
 
-          include EmitterCalls
 
           def initialize(program, console, emitter:, primitives:, uploads:)
             @emitter = emitter
@@ -149,12 +148,12 @@ module VBlank
 
           # The scroll in ACC, made the register's: the corner taken off.
           def emit_corner_off_scroll(way)
-            emit(ASM.sub_imm(ACC, ACC, corner(way)))
+            @emitter.emit(ASM.sub_imm(ACC, ACC, corner(way)))
           end
 
           # ...and a painted screen's reference point in ACC, which counts in 256ths of a pixel.
           def emit_corner_off_reference(way)
-            emit(ASM.sub_imm(ACC, ACC, corner(way) * FIXED_ONE))
+            @emitter.emit(ASM.sub_imm(ACC, ACC, corner(way) * FIXED_ONE))
           end
 
           # Move a sprite's row by the corner, as it is copied into the console's table: the first half
@@ -163,19 +162,19 @@ module VBlank
           # count alone and the bits above it, which set how the sprite is drawn, are kept. +scratch+
           # is a register free to use.
           def emit_row_moved_by_corner(scratch)
-            emit(ASM.add_imm(scratch, ACC, @top))
-            emit(ASM.and_imm(scratch, scratch, 0xFF))
-            emit(ASM.bic_imm(ACC, ACC, 0xFF))
-            emit(ASM.orr_reg(ACC, ACC, scratch))
+            @emitter.emit(ASM.add_imm(scratch, ACC, @top))
+            @emitter.emit(ASM.and_imm(scratch, scratch, 0xFF))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 0xFF))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, scratch))
           end
 
           def emit_column_moved_by_corner(scratch)
-            emit(ASM.lsl_imm(scratch, ACC, 23))
-            emit(ASM.add_imm(scratch, scratch, @left << 23))
-            emit(ASM.lsr_imm(scratch, scratch, 23))
-            emit(ASM.bic_imm(ACC, ACC, 0xFF))
-            emit(ASM.bic_imm(ACC, ACC, 0x100))
-            emit(ASM.orr_reg(ACC, ACC, scratch))
+            @emitter.emit(ASM.lsl_imm(scratch, ACC, 23))
+            @emitter.emit(ASM.add_imm(scratch, scratch, @left << 23))
+            @emitter.emit(ASM.lsr_imm(scratch, scratch, 23))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 0xFF))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 0x100))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, scratch))
           end
 
           def corner(way) = way == :x ? @left : @top
@@ -193,42 +192,43 @@ module VBlank
             bottom = @top + @inner[1]
             if top
               top = top.clamp(0, @inner[1])
-              write_reg16(y_scroll, scroll_value(-top, :y))
-              write_reg16(REG_WIN0V, ((top + @top) << 8) | bottom)
+              @emitter.write_reg16(y_scroll, scroll_value(-top, :y))
+              @emitter.write_reg16(REG_WIN0V, ((top + @top) << 8) | bottom)
             else
-              emit(ASM.rsb_imm(scratch, ACC, 0)) # the map's top row is drawn at the bar's top row
-              emit(ASM.sub_imm(scratch, scratch, @top)) # ...which is the corner's rows further down
-              store_halfword_reg(scratch, y_scroll)
-              emit(ASM.add_imm(ACC, ACC, @top))
-              emit(ASM.lsl_imm(ACC, ACC, 8))
-              emit(ASM.orr_imm(ACC, ACC, bottom))
-              store_halfword_acc(REG_WIN0V)
+              @emitter.emit(ASM.rsb_imm(scratch, ACC, 0)) # the map's top row is drawn at the bar's top row
+              @emitter.emit(ASM.sub_imm(scratch, scratch, @top)) # ...which is the corner's rows further down
+              @emitter.emit_number(TMP, y_scroll)
+              @emitter.emit(ASM.store_halfword(scratch, TMP))
+              @emitter.emit(ASM.add_imm(ACC, ACC, @top))
+              @emitter.emit(ASM.lsl_imm(ACC, ACC, 8))
+              @emitter.emit(ASM.orr_imm(ACC, ACC, bottom))
+              @primitives.store_halfword_acc(REG_WIN0V)
             end
-            write_reg16(x_scroll, scroll_value(0, :x))
-            write_reg16(REG_WIN0H, (@left << 8) | (@left + @inner[0]))
-            write_reg16(REG_WININ, bar_window_layers(layer, WIN_OBJ) | (game_window_layers(layer) << WIN1_SHIFT))
+            @emitter.write_reg16(x_scroll, scroll_value(0, :x))
+            @emitter.write_reg16(REG_WIN0H, (@left << 8) | (@left + @inner[0]))
+            @emitter.write_reg16(REG_WININ, bar_window_layers(layer, WIN_OBJ) | (game_window_layers(layer) << WIN1_SHIFT))
           end
 
           # A bar that covers sprites, in a border: ACC holds the sprites' switch for the bar's window,
           # WIN_OBJ or nought, and the game's screen's window is written beside it unchanged.
           def emit_bar_covers(layer)
-            emit(ASM.orr_imm(ACC, ACC, bar_window_layers(layer, 0)))
-            emit(ASM.orr_imm(ACC, ACC, game_window_layers(layer) << WIN1_SHIFT))
-            store_halfword_acc(REG_WININ)
+            @emitter.emit(ASM.orr_imm(ACC, ACC, bar_window_layers(layer, 0)))
+            @emitter.emit(ASM.orr_imm(ACC, ACC, game_window_layers(layer) << WIN1_SHIFT))
+            @primitives.store_halfword_acc(REG_WININ)
           end
 
           # Every layer and the blend in the game's screen again, for a screen with no status bar.
-          def emit_game_window_without_bar = write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
+          def emit_game_window_without_bar = @emitter.write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
 
           private
 
           # Inside the game's screen's window: every layer, and the blend. Outside every window: the
           # sprites alone, unblended.
           def emit_window
-            write_reg16(REG_WIN1H, (@left << 8) | (@left + @inner[0]))
-            write_reg16(REG_WIN1V, (@top << 8) | (@top + @inner[1]))
-            write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
-            write_reg16(REG_WINOUT, WIN_OBJ)
+            @emitter.write_reg16(REG_WIN1H, (@left << 8) | (@left + @inner[0]))
+            @emitter.write_reg16(REG_WIN1V, (@top << 8) | (@top + @inner[1]))
+            @emitter.write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
+            @emitter.write_reg16(REG_WINOUT, WIN_OBJ)
           end
 
           # The layers the bar's window shows: its own, the sprites where +sprites+ is WIN_OBJ, and the
@@ -241,12 +241,12 @@ module VBlank
 
           # The painted screen upright and at its own size, with the picture's corner at the game's.
           def emit_painted_screen_corner
-            write_reg16(REG_BG2PA, FIXED_ONE)
-            write_reg16(REG_BG2PB, 0)
-            write_reg16(REG_BG2PC, 0)
-            write_reg16(REG_BG2PD, FIXED_ONE)
-            store_word_immediate(-@left * FIXED_ONE, REG_BG2X)
-            store_word_immediate(-@top * FIXED_ONE, REG_BG2Y)
+            @emitter.write_reg16(REG_BG2PA, FIXED_ONE)
+            @emitter.write_reg16(REG_BG2PB, 0)
+            @emitter.write_reg16(REG_BG2PC, 0)
+            @emitter.write_reg16(REG_BG2PD, FIXED_ONE)
+            @primitives.store_word_immediate(-@left * FIXED_ONE, REG_BG2X)
+            @primitives.store_word_immediate(-@top * FIXED_ONE, REG_BG2Y)
           end
 
           def tiles_for_pieces = @pieces.sum(&:tiles)
