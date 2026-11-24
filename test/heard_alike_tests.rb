@@ -437,6 +437,24 @@ module HeardAlikeTests
     end
   end
 
+  # A start no later than the frames an emulator's sound takes to settle after a load has no
+  # earlier frame to take its snapshot on, so it plays from power-on and hears what power-on hears.
+  def test_a_start_within_the_settling_frames_hears_what_power_on_hears
+    ours = tune_game
+    tape = listen.play(ours).tape
+    early = [VBlank::Console.for(console).frames_sound_settles_after_load, 1].max
+    with_snapshots do |snapshots|
+      heard = ->(**kept) { VBlank::Playthroughs::HeardComparison.play(tape, ours, ours, **started_settings, starting_after: early, **kept) }
+      cold = heard.call
+      heard.call(snapshots: snapshots)
+      warm = heard.call(snapshots: snapshots)
+
+      assert_heard_the_same cold, warm
+      settles = VBlank::Console.for(console).frames_sound_settles_after_load
+      assert_equal [settles.zero? ? TAPE_FRAMES - early : TAPE_FRAMES] * 2, warm.frames_stepped
+    end
+  end
+
   def test_a_start_that_cannot_be_kept_is_refused
     tape = listen.play(tune_game).tape
     with_snapshots do |snapshots|
@@ -446,6 +464,11 @@ module HeardAlikeTests
       assert_match "lead_ins", assert_raises(ArgumentError) { play.call(starting_after: START_AFTER, lead_ins: [lead_in, nil]) }.message
       assert_match "starting_after", assert_raises(ArgumentError) { play.call(snapshots: snapshots) }.message
       assert_match "starting_after", assert_raises(ArgumentError) { play.call(starting_after: TAPE_FRAMES) }.message
+      script = assert_raises(ArgumentError) do
+        VBlank::Playthroughs::HeardComparison.play(listen, tune_game, tune_game, **STRICT, starting_after: START_AFTER,
+                                                                                            snapshots: snapshots)
+      end
+      assert_match "tape", script.message
     end
   end
 

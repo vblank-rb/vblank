@@ -139,14 +139,18 @@ module VBlank
       # after. With +snapshots+ (a SnapshotCache) each is put on that frame from a snapshot of its
       # console, made the first time and loaded every time after, the same snapshot a picture
       # comparison or a probe started there loads (Comparison, Probe). So a comparison of a moment
-      # deep in a tape costs the frames it hears, for each voice played alone too. Without
-      # +snapshots+ each is played there from power-on.
+      # deep in a tape costs the frames it hears, for each voice played alone too (and, on a console
+      # below, a few frames before the start). Without +snapshots+ each is played there from
+      # power-on. A start takes a tape, not a playthrough, whose presses are known only once it has
+      # played every frame from power-on.
       #
       # On the Advance and the Color the sound after a snapshot is put back is the console's own,
-      # sample for sample. bsnes's and Genesis Plus GX's output comes back only after a frame or a
-      # few, so on the Super Nintendo and the Genesis the snapshot is of that many frames before the
-      # start, and they are played unheard (Console::Kit#frames_sound_settles_after_load); from
-      # there each frame's loudest sample is within a few thousandths of the console's.
+      # sample for sample. bsnes's and Genesis Plus GX's output does not come back at once, so on
+      # the Super Nintendo and the Genesis the snapshot is of a few frames before the start, which
+      # are played unheard (Console::Kit#frames_sound_settles_after_load says how many, and why).
+      # A start no later than those frames plays from power-on. What is left after them is a small
+      # drift in each frame's loudest sample, so a strict level_share_apart there can find a level
+      # a little apart from a warm start that it would not from a cold one.
       #
       # Every measure (first heard, level, last heard, fall) is of the frames after the start alone,
       # and frames are still counted from power-on. So a sound that started before the start is heard
@@ -172,12 +176,13 @@ module VBlank
         refuse_lead_ins_not_pair!(lead_ins)
         refuse_unusable_presses!(presses, lead_ins)
         refuse_hearing_not_pair!(hearing)
-        refuse_unusable_start!(starting_after, snapshots, lead_ins)
+        refuse_unusable_start!(presses, starting_after, snapshots, lead_ins)
         replays = [first, second].zip(lead_ins).map do |cartridge, lead_in|
           VoiceReplay.new(cartridge, lead_in, heard_above, snapshots: snapshots)
         end
         replays.zip(hearing) { |replay, voices| replay.refuse_unknown_voices!(voices) } if hearing
         from_power_on = starting_after.nil? && !(hearing && presses.is_a?(Tape))
+        # A start is given a tape (refuse_unusable_start!), so it plays nothing here.
         played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0]) if from_power_on || presses.is_a?(Playthrough)
         tape = presses.is_a?(Tape) ? presses : played.tape
         start = start_frame_on(tape, starting_after)
@@ -296,9 +301,11 @@ module VBlank
       end
       private_class_method :refuse_hearing_not_pair!
 
-      # What a start after a frame cannot be given: snapshots with no start, and lead-ins, whose
-      # presses are not known until they have played, so nothing can say which snapshot they reach.
-      def self.refuse_unusable_start!(starting_after, snapshots, lead_ins)
+      # What a start after a frame cannot be given: snapshots with no start, lead-ins, and a
+      # playthrough in place of a tape. A lead-in's or a playthrough's presses are not known until
+      # it has played from power-on, so nothing can say which snapshot they reach, and playing it
+      # would cost every frame before the start the snapshot is there to save.
+      def self.refuse_unusable_start!(presses, starting_after, snapshots, lead_ins)
         if snapshots && !snapshots.is_a?(SnapshotCache)
           raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
                                "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
@@ -313,10 +320,15 @@ module VBlank
           raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
                                "number 1 or more, or the name of one of its moments."
         end
-        return if lead_ins.compact.empty?
+        unless lead_ins.compact.empty?
+          raise ArgumentError, "The comparison was given `starting_after:` and `lead_ins:`. The frames before the start " \
+                               "are not heard, so a lead-in is not needed. Remove `lead_ins:`, or remove `starting_after:`."
+        end
+        return if presses.is_a?(Tape)
 
-        raise ArgumentError, "The comparison was given `starting_after:` and `lead_ins:`. The frames before the start " \
-                             "are not heard, so a lead-in is not needed. Remove `lead_ins:`, or remove `starting_after:`."
+        raise ArgumentError, "The comparison was given `starting_after:` and a playthrough. A playthrough's presses are " \
+                             "known only after it plays every frame from power-on. To fix this, give a tape: " \
+                             "`playthrough.play(ours).tape`, or `Tape.read(path)`."
       end
 
       # The frame of +tape+ the sound is heard after, 0 for power-on: a number, or a moment's frame.
@@ -423,12 +435,13 @@ module VBlank
           end
           return open.call.tap { |reader| @lead_in&.play_as_lead_in(reader) } if start.zero?
 
-          return open.call.tap { |reader| step_through(reader, tape, 1..start) } unless @snapshots
-
           # An emulator whose sound comes back only after a few frames is put back that many frames
           # before the start, and plays them unheard (Console::Kit#frames_sound_settles_after_load).
+          # A start no later than that has no frame to put it back on, and plays from power-on.
+          snapshot_frame = start - Console.for(cartridge.console).frames_sound_settles_after_load
+          return open.call.tap { |reader| step_through(reader, tape, 1..start) } unless @snapshots && snapshot_frame.positive?
+
           refuse_snapshot_without_save_memory!
-          snapshot_frame = [start - Console.for(cartridge.console).frames_sound_settles_after_load, 1].max
           presses = SnapshotCache.presses_up_to(tape, snapshot_frame)
           @snapshots.console_after(presses, cartridge, hearing: voices, &open)
                     .tap { |reader| step_through(reader, tape, (snapshot_frame + 1)..start) }

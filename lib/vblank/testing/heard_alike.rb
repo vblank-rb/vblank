@@ -45,7 +45,11 @@ module VBlank
     #                              to unheard and compare from the frame after (optional), with
     #   snapshots:                 a Playthroughs::SnapshotCache that keeps each console on that frame,
     #                              so a moment deep in a tape costs the frames heard; every measure is
-    #                              of the frames after the start, counted from power-on
+    #                              of the frames after the start, counted from power-on. Give a tape,
+    #                              not a playthrough. On the Super Nintendo and the Genesis the
+    #                              emulator's sound after a snapshot drifts a little from the
+    #                              console's, so a strict level_share_apart can find a level apart
+    #                              warm that it would not cold
     #   wav:                       a path to write both sounds to, for a person to hear (optional), with
     #   wav_layout:                :in_turn (the first, then the second) or :side_by_side (the first on
     #                              the left speaker, the second on the right); :in_turn if left out

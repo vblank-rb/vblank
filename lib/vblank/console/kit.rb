@@ -170,9 +170,10 @@ module VBlank
       def snapshot_leaves_out_save_memory?(_cartridge) = false
 
       # How many frames the emulator's sound takes to come back to what it would have been after a
-      # snapshot is put back, so a start heard from a snapshot is made that many frames earlier and
-      # those frames are played unheard (Playthroughs::HeardComparison). libmgba's state, with what
-      # ruby-gba-emulator keeps beside it, gives the sound back sample for sample: none.
+      # snapshot is put back. A sound comparison started from a snapshot (Playthroughs::HeardComparison)
+      # takes the snapshot that many frames before its start and plays them unheard, so the frames
+      # it hears are not the emulator catching up. libmgba's state, with what ruby-gba-emulator
+      # keeps beside it, gives the sound back sample for sample: none.
       def frames_sound_settles_after_load = 0
 
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
@@ -368,8 +369,9 @@ module VBlank
       def multitap_name = "Super Multitap"
       def load_emulator! = Diagnostics::Emulator.load_snes!
       def emulator_build = Diagnostics::Emulator.snes_build
-      # bsnes's first frame after a load is a sixteenth louder than the console made it, and the
-      # frames after are within a few thousandths: its output stage is not in its state.
+      # bsnes's output stage, between its sound chip and the samples it hands over, is not in its
+      # state, so the first frame after a load is louder than the console made it. Two frames cover
+      # it, measured in bsnes, and the number goes to nought once the stage is kept with the state.
       def frames_sound_settles_after_load = 2
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
@@ -429,8 +431,8 @@ module VBlank
       def emulator_build = Diagnostics::Emulator.genesis_build
 
       # Genesis Plus GX starts its sound output again from silence as it loads a state, so the first
-      # frames after are a click that falls away over five frames or so; after that the loudest
-      # sample of a frame is within one or two of what the console made.
+      # frames after are a click that falls away. Eight frames cover it with room to spare, measured
+      # in Genesis Plus GX, and the number goes to nought once the output is kept with the state.
       def frames_sound_settles_after_load = 8
 
       # Genesis Plus GX's state (state_save in its core/state.c) holds the work RAM, the Z80's, the
