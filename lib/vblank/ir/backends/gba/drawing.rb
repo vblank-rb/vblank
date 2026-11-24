@@ -1737,7 +1737,7 @@ module VBlank
                 end
                 stamp = Build.blit(tiles[index], c * tile_w, r * tile_h)
                 marked = picture.with_tile_see_through_marked
-                if @lowering.mode == :buffered && @buffered.stamp_in_pairs?(stamp, marked)
+                if @lowering.mode == :buffered && @buffered.stamp_by_pairs?(stamp, marked)
                   @buffered.emit_stamp_tile_buffered(stamp, marked)
                 else
                   emit_blit_of(stamp, marked)

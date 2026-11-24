@@ -1088,8 +1088,13 @@ module VBlank
           # has that half spliced in, and a pair with none is not touched. Pixels outside the draw
           # area are left out the same way, so nothing is written past the end of a line.
           #
-          # Must only be asked of a tile #stamp_in_pairs? accepts. A tile whose pixels all draw is
-          # blitted whole instead (#emit_blit_buffered).
+          # The pairs are the screen's: a tile at an odd column, or of an odd width, has a pixel of
+          # its own in a pair whose other half is another's. A pair both drawn whose two pixels sit
+          # on one halfword of the tile too is copied as it is; otherwise its two bytes are read
+          # one at a time and put together.
+          #
+          # Must only be asked of a tile #stamp_by_pairs? accepts. A tile whose pixels all draw, in
+          # whole pairs of the screen's, is blitted whole instead (#emit_blit_buffered).
           def emit_stamp_tile_buffered(node, see_through)
             x = const_int(node.x)
             y = const_int(node.y)
@@ -1102,45 +1107,69 @@ module VBlank
             end
           end
 
-          # Whether +picture+ (a tile with its see-through pixels marked) at the constant place +node+
-          # has to be, and can be, stamped by #emit_stamp_tile_buffered: some pixel of it is not
-          # drawn, it starts on an even column, and its row reaches by a halfword's short offset.
-          def stamp_in_pairs?(node, picture)
+          # Whether +picture+ (a tile with its see-through pixels marked) at the place +node+ has to be
+          # stamped by #emit_stamp_tile_buffered: the place is known while building, and some pixel of
+          # the tile is not drawn or the tile is not whole pairs of the screen's (an odd column or
+          # width), which a row copy cannot take.
+          def stamp_by_pairs?(node, picture)
             x = const_int(node.x)
-            y = const_int(node.y)
-            return false unless x && y && x.even? && picture.width.even? && picture.width <= 254
+            return false unless x && const_int(node.y)
+            return true if x.odd? || picture.width.odd?
 
             (0...(picture.width * picture.height)).any? { |at| !picture.drawn_at?(at) }
           end
 
-          def emit_stamp_row_in_pairs(picture, row, x, screen_row)
-            pairs = (0...(picture.width / 2)).filter_map do |pair|
-              low = stamped_pixel?(picture, row, pair * 2, x)
-              high = stamped_pixel?(picture, row, (pair * 2) + 1, x)
-              [pair * 2, low, high] if low || high
-            end
-            return if pairs.empty?
+          # How far, in pixels, one base address of a row's stamp reaches: a halfword's load and
+          # store take an offset of under 256 bytes, so a wider row is stamped from a new base
+          # every this many pixels.
+          STAMP_REACH = 240
 
-            emit_add_const(BLIT_FROM, BLIT_SRC, row * picture.width, SPARE)
-            emit_add_const(BLIT_LEFT, BLIT_TO, (screen_row * SCREEN_WIDTH) + x, SPARE)
-            pairs.each do |column, low, high|
-              if low && high
-                emit(ASM.load_halfword_offset(ACC, BLIT_FROM, column))
-                emit(ASM.store_halfword_offset(ACC, BLIT_LEFT, column))
-              else
-                emit(ASM.ldrb_offset(ACC, BLIT_FROM, column + (low ? 0 : 1)))
-                emit(ASM.load_halfword_offset(SPARE, BLIT_LEFT, column))
-                emit_splice_index_reg(SPARE, ACC, !low)
-                emit(ASM.store_halfword_offset(SPARE, BLIT_LEFT, column))
+          # One row of a see-through stamp. Both base registers point at the same screen column, the
+          # first of a pair, one on the page and one in the tile (a column before the tile's first,
+          # for a tile at an odd column), so a pixel's offset is the same from either.
+          def emit_stamp_row_in_pairs(picture, row, x, screen_row)
+            first = x & ~1
+            pairs = (first...(x + picture.width)).step(2).filter_map do |column|
+              low = stamped_pixel?(picture, row, column - x, column)
+              high = stamped_pixel?(picture, row, column + 1 - x, column + 1)
+              [column, low, high] if low || high
+            end
+            pairs.group_by { |column, _, _| (column - first) / STAMP_REACH }.each_value do |reach|
+              base = first + (((reach.first[0] - first) / STAMP_REACH) * STAMP_REACH)
+              tile_at = (row * picture.width) + base - x
+              emit_add_const(BLIT_FROM, BLIT_SRC, tile_at, SPARE)
+              emit_add_const(BLIT_LEFT, BLIT_TO, (screen_row * SCREEN_WIDTH) + base, SPARE)
+              reach.each do |column, low, high|
+                emit_stamp_pair(column - base, low, high, tile_halfword: tile_at.even?)
               end
             end
           end
 
-          # Whether the pixel at +column+ of a tile's +row+ is drawn, with the tile at +x+: it draws
-          # something and sits inside the draw area.
-          def stamped_pixel?(picture, row, column, x)
-            picture.drawn_at?((row * picture.width) + column) &&
-              (@framebuffer.clip_left...@framebuffer.clip_right).cover?(x + column)
+          # One pair of pixels of a stamp, +offset+ bytes past both bases: its +low+ and +high+ pixels
+          # each written where it is drawn. +tile_halfword+ is whether the pair is one halfword of the
+          # tile as well as of the page.
+          def emit_stamp_pair(offset, low, high, tile_halfword:)
+            if low && high && tile_halfword
+              emit(ASM.load_halfword_offset(ACC, BLIT_FROM, offset))
+            elsif low && high
+              emit(ASM.ldrb_offset(ACC, BLIT_FROM, offset))
+              emit(ASM.ldrb_offset(SPARE, BLIT_FROM, offset + 1))
+              emit(ASM.orr_reg_lsl(ACC, ACC, SPARE, 8))
+            else
+              emit(ASM.ldrb_offset(ACC, BLIT_FROM, offset + (low ? 0 : 1)))
+              emit(ASM.load_halfword_offset(SPARE, BLIT_LEFT, offset))
+              emit_splice_index_reg(SPARE, ACC, !low)
+              return emit(ASM.store_halfword_offset(SPARE, BLIT_LEFT, offset))
+            end
+            emit(ASM.store_halfword_offset(ACC, BLIT_LEFT, offset))
+          end
+
+          # Whether the tile's pixel at +column+ of its +row+, which lands on the screen's
+          # +screen_column+, is stamped: it is one of the tile's, draws something, and sits inside the
+          # draw area.
+          def stamped_pixel?(picture, row, column, screen_column)
+            (0...picture.width).cover?(column) && picture.drawn_at?((row * picture.width) + column) &&
+              (@framebuffer.clip_left...@framebuffer.clip_right).cover?(screen_column)
           end
 
           # Draw a whole picture on the hidden page.

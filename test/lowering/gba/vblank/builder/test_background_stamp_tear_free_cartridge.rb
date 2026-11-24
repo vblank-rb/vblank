@@ -33,6 +33,18 @@ class TestBackgroundStampTearFreeCartridge < Minitest::Test
     assert_backends_agree(stamped(dots), frames: 6, name: "STAMPDOT")
   end
 
+  # A tile five pixels wide lands on odd columns too, so a pair of the screen's pixels can hold
+  # the last of one tile and the first of the next, and a tile's two drawn pixels a pair of the
+  # screen apart from the tile's own pairs.
+  def test_tiles_of_an_odd_width_leave_their_black_pixels_see_through
+    art = ["##.##", "#...#", ".###.", "##.##", "#.#.#"].join("\n")
+    assert_backends_agree(stamped(art, cells: 5), frames: 6, name: "STAMPODD")
+  end
+
+  def test_solid_tiles_of_an_odd_width_cover_what_is_under_them
+    assert_backends_agree(stamped((["###"] * 3).join("\n"), cells: 7), frames: 6, name: "STAMPOD3")
+  end
+
   def test_a_tile_with_no_black_in_it_still_covers_what_is_under_it
     solid = (["########"] * 8).join("\n")
     assert_backends_agree(stamped(solid), frames: 6, name: "STAMPSOL")
