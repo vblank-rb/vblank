@@ -378,15 +378,24 @@ module VBlank
               Strikes.emit_timer_start(spc) if strikes
               spc.instance_eval do
                 label "wait"
-                call "strikes_clock" if strikes
+                if strikes
+                  mov :a, direct(Strikes::TIMER_0_COUNTER) # read, and so cleared
+                  beq "wait_mailbox"
+                  call "strikes_clock"
+                  label "wait_mailbox"
+                end
                 mov :a, direct(ports[0])
                 cmp :a, direct(LAST_ANSWERED)
                 beq "wait"
                 mov direct(LAST_ANSWERED), :a
                 if strikes
-                  call "strikes_mailbox"
-                  mov :a, direct(LAST_ANSWERED)
+                  # Answered as soon as the command is copied, so the console sets out the next one
+                  # while this one is done; the next is read only once this one is.
+                  mov direct(told[1]), direct(ports[1])
+                  mov direct(told[2]), direct(ports[2])
+                  mov direct(told[3]), direct(ports[3])
                   mov direct(ports[0]), :a
+                  call "strikes_mailbox"
                   bra "wait"
                   label "dispatch" # A the command, its numbers in Strikes::COMMAND_COPY
                 else
@@ -435,7 +444,7 @@ module VBlank
                 end
               end
               emit_whole_note_commands(spc, chip_envelopes: chip_envelopes, sides: sides, told: told) if whole_notes
-              emit_scene_load_commands(spc, scene_sources_from, returns: strikes) if scene_sources_from
+              emit_scene_load_commands(spc, scene_sources_from, returns: strikes, told: told) if scene_sources_from
               Strikes.emit_routines(spc) if strikes
               spc
             end
@@ -455,7 +464,7 @@ module VBlank
             # The console's side of a turn is shorter, and mostly done while the SPC700 stores.
             # +returns+ for a program that does each command as a routine (#driver's +strikes+); its
             # clock does not move while the turns come, so a note on its list waits until they end.
-            def emit_scene_load_commands(spc, sources_from, returns: false)
+            def emit_scene_load_commands(spc, sources_from, returns: false, told: PORTS)
               ports = PORTS
               dsp = DSPWrites
               fold = lambda do
@@ -472,7 +481,7 @@ module VBlank
               end
               spc.instance_eval do
                 label "load_at"
-                movw :ya, direct(ports[2])
+                movw :ya, direct(told[2])
                 movw direct(LOAD_PLACE), :ya
                 mov direct(KEPT_BITS), imm(0)
                 mov :x, imm((7 << 4) | dsp::SOURCE) # voice 7's source register, then each voice down
@@ -492,7 +501,7 @@ module VBlank
                 mov direct(DSP_DATA), :a
                 jmp "answer"
                 label "load_turns"
-                movw :ya, direct(ports[2])
+                movw :ya, direct(told[2]) # copied: with strikes the command was answered as it was copied
                 movw direct(LOAD_LEFT), :ya
                 mov :y, imm(0)
                 mov :a, direct(LAST_ANSWERED)

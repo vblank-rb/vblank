@@ -196,15 +196,12 @@ module VBlank
               end
               spc.instance_eval do
                 label "strikes_clock"
-                mov :a, direct(TIMER_0_COUNTER)
-                beq "strikes_clock_counted"
                 clrc
                 adc :a, direct(NOW)
                 mov direct(NOW), :a
-                mov :a, direct(NOW + 1)
-                adc :a, imm(0)
-                mov direct(NOW + 1), :a
-                label "strikes_clock_counted"
+                bcc "strikes_due"
+                inc direct(NOW + 1)
+                label "strikes_due"
                 mov :a, direct(LISTED)
                 beq "strikes_clock_done"
               end
@@ -240,9 +237,6 @@ module VBlank
             def emit_mailbox_command(spc)
               spc.instance_eval do
                 label "strikes_mailbox"
-                mov direct(COMMAND_COPY[1]), direct(Sound::PORTS[1])
-                mov direct(COMMAND_COPY[2]), direct(Sound::PORTS[2])
-                mov direct(COMMAND_COPY[3]), direct(Sound::PORTS[3])
                 mov :a, direct(COMMAND_COPY[1])
                 cmp :a, imm(TIMING)
                 bne "strikes_mailbox_not_timing"
@@ -320,7 +314,7 @@ module VBlank
                 ret
                 label "strikes_timing_until_now"
                 mov direct(LIST_INCOMING), imm(0)
-                ret
+                jmp "strikes_due" # what is due already, struck before a command after it is done at once
               end
             end
 
