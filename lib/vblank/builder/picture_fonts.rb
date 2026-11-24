@@ -429,7 +429,7 @@ module VBlank
       # The digit of +source+ at +place+, or +blank+ while the number is smaller than the place:
       # blank + (source >= place) * (digit - blank), with no test to branch on.
       def digit_or_blank(source, place, blank)
-        reached = Build.binop(:>=, Build.var_ref(source), Build.int(place))
+        reached = Build.binop(:>=, read_of_source(source), Build.int(place))
         Build.binop(:+, Build.int(blank), Build.binop(:*, reached, Build.binop(:-, digit_at(source, place), Build.int(blank))))
       end
 
@@ -439,14 +439,14 @@ module VBlank
       # a picture of nothing would have to share the numerals' colours, which a picture from a
       # data pack has only as the game runs.
       def draw_live_number_in_sprites(value, x, y, cell, numerals, blank, digits, leading_zeros)
-        source = hud_number_variable(value)
+        source = hud_number_source(value)
         digits.times do |i|
           place = 10**(digits - 1 - i)
           at = x + (i * cell)
           if blank
             hud_glyph_object(poses: [blank] + numerals, pose: hud_digit_pose(source, place), x: at, y: y)
           else
-            reached = place == 1 || leading_zeros ? Build.int(1) : Build.binop(:>=, Build.var_ref(source), Build.int(place))
+            reached = place == 1 || leading_zeros ? Build.int(1) : Build.binop(:>=, read_of_source(source), Build.int(place))
             hud_glyph_object(poses: numerals, pose: digit_at(source, place), x: at, y: y, shown_while: reached)
           end
         end

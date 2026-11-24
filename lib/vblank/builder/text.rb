@@ -591,8 +591,18 @@ module VBlank
 
       # source / place, skipping the divide for the ones column (place == 1).
       def source_over_place(source, place)
-        ref = Build.var_ref(source)
+        ref = read_of_source(source)
         place == 1 ? ref : Build.binop(:/, ref, Build.int(place))
+      end
+
+      # A read of +source+: a variable's name, or the value node a live tiled number follows
+      # (#hud_number_source). The node itself goes in the first place that reads it, which is how
+      # the build sees the game's read was used (Guardrails::Checks::OrphanedExpression), and a
+      # copy in each place after.
+      def read_of_source(source)
+        return Build.var_ref(source) if source.is_a?(Symbol)
+
+        source.parent ? source.copy : source
       end
 
       # The variable a live number's digits are read from: the number, copied once as the line
@@ -683,7 +693,7 @@ module VBlank
           return draw_text_tiled(text, x + pad * cell, y, [color], font, nil)
         end
 
-        source = hud_number_variable(value)
+        source = hud_number_source(value)
         poses = [blank_glyph_image] + ("0".."9").map { |d| glyph_image(font, d, color) }
         digits.times do |i|
           place = 10**(digits - 1 - i)
@@ -693,18 +703,23 @@ module VBlank
         nil
       end
 
-      # The variable a live tiled number tracks. A digit column reads it every frame,
-      # so it must be a plain variable (a Symbol, or a `var` handle), not a one-off
-      # expression — there's no per-frame place to recompute an expression into.
-      def hud_number_variable(value)
-        name = value.is_a?(Symbol) ? value : (value.node.name if value.node.kind == :var_ref)
-        return name if name
+      # What a live tiled number follows: a variable's name, or the read of an item of a list (a
+      # plain Ruby Array the game keeps, or a pool's field) as a value node. A digit column reads it
+      # every frame, so it must be a place that holds a number, not a one-off working-out, which
+      # has no place of its own to read again. An item's index is worked out again each frame too,
+      # so it may read only variables (IR::Unchanging.variables_read): no button, no list.
+      def hud_number_source(value)
+        return value if value.is_a?(Symbol)
+
+        node = value.node
+        return node.name if node.kind == :var_ref
+        return node if node.kind == :list_get && IR::Unchanging.variables_read(node.index)
 
         raise ArgumentError,
-              "On a tiled screen, draw_number follows a variable and updates itself each frame. " \
-              "Give it a variable (like :score), not an expression. Store the value in a variable " \
-              "first (for example `shown = var :shown, 0`, then `shown = hp - 1`). Then draw that " \
-              "variable."
+              "On a tiled screen, draw_number follows a variable or an item of an Array, and draws it " \
+              "again each frame. A working-out, like `hp - 1`, is not one. To fix this, keep the " \
+              "working-out in a name that the game loop changes, like `shown = hp - 1`. Then draw `shown`." \
+              "#{Messages::AuthorSource.at_author_line}"
       end
 
       # The sprite pose that shows the digit of +source+ at +place+ (1, 10, 100, …).
@@ -717,7 +732,7 @@ module VBlank
         show = Build.binop(:+, digit_at(source, place), Build.int(1))
         return show if place == 1 || leading_zeros
 
-        Build.binop(:*, Build.binop(:>=, Build.var_ref(source), Build.int(place)), show)
+        Build.binop(:*, Build.binop(:>=, read_of_source(source), Build.int(place)), show)
       end
 
       # Declare one glyph sprite (an object) at a fixed screen spot and remember it so
