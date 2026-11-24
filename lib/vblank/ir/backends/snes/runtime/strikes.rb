@@ -35,6 +35,13 @@ module VBlank
           # runs ahead of the frames the console shows. A note FROM names is due LEAD_COUNTS after
           # BASE and its offset, which is held below that frame.
           #
+          # Frames caught up on leave the ones after them late: a pass that took three frames has its
+          # last struck two frames after it was sent, and a frame after that one is later still. So
+          # the first frame of each pass (MARK's first number nought; the frames it caught up on say
+          # one) begins SHED_COUNTS less than a frame after the last BASE, if that is still after
+          # NOW: late frames come back to NOW an eighth of a frame at a time, their ticks that much
+          # closer together until they do, where one unit a frame would take seconds.
+          #
           # ### In the order they were played
           #
           # MARK goes in the line ahead like the rest, so the sound unit is told each frame's MARK,
@@ -101,6 +108,9 @@ module VBlank
             # How far behind its MARK a frame's notes are struck, in counts of the timer: four
             # milliseconds, time for a tick's few commands to be sent after the MARK.
             LEAD_COUNTS = 32
+            # How much sooner than a frame after the last a pass's first frame begins while frames run
+            # late: an eighth of a frame.
+            SHED_COUNTS = 16
             # How many looks at the mailbox a frame spends sending the line ahead before it gives up
             # (Sound#emit_ahead_sent_at_frame): room for the whole line, each command given as many
             # looks as a write is given for its answer (Sound::PATIENCE).
@@ -259,13 +269,25 @@ module VBlank
                 mov :a, direct(COMMAND_COPY[3])
                 cmp :a, imm(MARK)
                 bne "strikes_timing_from"
-                mov :a, direct(BASE) # a frame after the last BASE...
+                mov :a, direct(COMMAND_COPY[2])
+                bne "strikes_timing_caught_up"
+                mov :a, direct(BASE) # a pass's first frame: a frame less SHED_COUNTS after the last BASE...
+                clrc
+                adc :a, imm((frame - SHED_COUNTS) & 0xFF)
+                mov direct(WORK), :a
+                mov :a, direct(BASE + 1)
+                adc :a, imm((frame - SHED_COUNTS) >> 8)
+                mov direct(WORK + 1), :a
+                bra "strikes_timing_base"
+                label "strikes_timing_caught_up"
+                mov :a, direct(BASE) # a frame it caught up on: a frame after the last BASE...
                 clrc
                 adc :a, imm(frame & 0xFF)
                 mov direct(WORK), :a
                 mov :a, direct(BASE + 1)
                 adc :a, imm(frame >> 8)
                 mov direct(WORK + 1), :a
+                label "strikes_timing_base"
                 mov :a, direct(NOW) # ...or NOW, whichever is later
                 setc
                 sbc :a, direct(WORK)
@@ -493,6 +515,11 @@ module VBlank
               asm.lda(TIMING)
               asm.sta(asm.direct(Sound::R2))
               asm.stz(asm.direct(Sound::R0))
+              asm.lda(asm.abs(memory[Sound::TICKS_LEFT])) # a frame the pass caught up on, after its first
+              asm.cmp(asm.abs(memory[Frame::FRAMES_TAKEN]))
+              asm.beq("rt_strikes_mark_first")
+              asm.inc(asm.direct(Sound::R0))
+              asm.label("rt_strikes_mark_first")
               asm.lda(MARK)
               asm.sta(asm.direct(Sound::R1))
               asm.jsl(asm.long("rt_strikes_push"))

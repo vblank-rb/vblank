@@ -48,7 +48,8 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     builder.program.copy.tap { |program| program.console = :snes }
   end
 
-  private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON)
+  private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON,
+                          slow_once_on: nil)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
@@ -66,6 +67,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
       pass = var :pass, 0
       started = var :started, 0
       busy = var :busy, 0
+      slowed = var :slowed, 0
       game_loop do
         pass += 1
         if started == 0 && frames_since_power_on >= played_on
@@ -73,6 +75,12 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
           sfx.play :chime
         end
         repeat(work) { busy += 1 } if work.positive?
+        if slow_once_on
+          if slowed == 0 && frames_since_power_on >= slow_once_on
+            slowed = 1
+            repeat(SLOW_WORK) { busy += 1 }
+          end
+        end
       end
     end
   end
@@ -131,6 +139,23 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     assert_struck_apart(rate: 50, apart: 3, lasting: 1, notes: 8, keys: %i[A5 E5], work: SLOW_WORK) do |sound|
       assert_operator sound.passes, :<=, FRAMES / 2, "every pass takes two frames or more"
     end
+  end
+
+  # One pass that takes several frames sends their notes together, struck a frame apart, so they are
+  # late. The passes after it are each a frame again, and their notes come back to their ticks within
+  # SETTLED_FRAMES of it, rather than staying late by the frames the slow pass took.
+  SLOW_ONCE_ON = 24
+  SETTLED_FRAMES = 50
+  def test_notes_after_one_slow_pass_come_back_to_their_ticks
+    steady = heard(game(rate: 50, apart: 3, lasting: 1, notes: 24, keys: %i[A5 E5]))
+    slowed = heard(game(rate: 50, apart: 3, lasting: 1, notes: 24, keys: %i[A5 E5], slow_once_on: SLOW_ONCE_ON))
+    settled_from = (SLOW_ONCE_ON + SETTLED_FRAMES) * steady.pairs_a_second * VBlank::Console::SUPER_NINTENDO.frame_seconds
+    expected = steady.onsets.select { |at| at >= settled_from }
+    got = slowed.onsets.select { |at| at >= settled_from - NEAR }.first(expected.size)
+
+    refute_empty expected
+    assert_equal expected.size, got.size, "notes after the slow pass: #{got.inspect}, steady: #{expected.inspect}"
+    expected.zip(got).each { |want, have| assert_in_delta want, have, NEAR, "notes after the slow pass: #{got.inspect}, steady: #{expected.inspect}" }
   end
 
   # The length of the effect's voice's wave a little after each of +onsets+, in pairs: the middle
