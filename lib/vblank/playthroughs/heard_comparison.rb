@@ -88,8 +88,15 @@ module VBlank
     #
     # Chosen voices. +hearing+ is the voices heard on each side where the game chose them (the first
     # cartridge's list, then the second's), and nil where every voice was heard.
-    HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices, :hearing) do
-      def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil, hearing: nil) = super
+    #
+    # +frames_stepped+ is how many frames each cartridge's emulator stepped to make its sound, the
+    # first's and then the second's (Diagnostics::Verifier#frames_played): every frame of the tape
+    # from power-on, or the frames after the start where each was put there from a snapshot (and the
+    # few before it an emulator plays for its sound to settle, Console::Kit#frames_sound_settles_after_load).
+    # Nil for a comparison of HeardSounds made elsewhere (#between).
+    HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices, :hearing, :frames_stepped) do
+      def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil, hearing: nil,
+                     frames_stepped: nil) = super
     end
 
     class HeardComparison
@@ -124,39 +131,84 @@ module VBlank
       # frame it ends on. It needs a cartridge built here, whose build says where its player keeps
       # who holds each voice, for a console whose player moves an effect's notes between voices:
       # the Super Nintendo's. Heard so, it plays the tape twice.
+      #
+      # ### Starting after a frame
+      #
+      # +starting_after+ is a frame of the tape, by its number or by the name of one of its moments,
+      # that each cartridge is played to without being heard: the sound is compared from the frame
+      # after. With +snapshots+ (a SnapshotCache) each is put on that frame from a snapshot of its
+      # console, made the first time and loaded every time after, the same snapshot a picture
+      # comparison or a probe started there loads (Comparison, Probe). So a comparison of a moment
+      # deep in a tape costs the frames it hears, for each voice played alone too. Without
+      # +snapshots+ each is played there from power-on.
+      #
+      # On the Advance and the Color the sound after a snapshot is put back is the console's own,
+      # sample for sample. bsnes's and Genesis Plus GX's output comes back only after a frame or a
+      # few, so on the Super Nintendo and the Genesis the snapshot is of that many frames before the
+      # start, and they are played unheard (Console::Kit#frames_sound_settles_after_load); from
+      # there each frame's loudest sample is within a few thousandths of the console's.
+      #
+      # Every measure (first heard, level, last heard, fall) is of the frames after the start alone,
+      # and frames are still counted from power-on. So a sound that started before the start is heard
+      # from the frame after it: a test of a sound already playing at the start says so in its
+      # tolerances or starts earlier. A start takes no lead-ins: the frames before it are not heard,
+      # so a lead-in has nothing to keep out of the count.
+      #
+      # A voice played alone (+hearing+, each voice's replay, :sound_effects) is put on the start
+      # from a snapshot of its own, of a console that heard those voices alone from power-on: what
+      # an emulator has already mixed when the snapshot is taken is of the voices it heard, and from
+      # a snapshot of every voice the first frame after the start would carry the others. So each
+      # voice replayed costs the frames before the start once, the first time. The voices are chosen
+      # before the snapshot is put back, and kept as it loads (Diagnostics::Verifier#load_state).
+      #
+      # The :sound_effects side opens two consoles on the start, the one heard from a snapshot that
+      # heard nothing and the one a frame ahead from the mixed sound's, and the one ahead plays each
+      # frame first from there as it does from power-on. An effect sounding as the start comes is
+      # heard from the frame after it, as any sound is.
       def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], each_speaker: true, each_voice: true,
-                    hearing: nil, **tolerances)
+                    hearing: nil, starting_after: nil, snapshots: nil, **tolerances)
         tolerances = HeardTolerances.new(**tolerances)
         refuse_frames_not_count!(:heard_above, heard_above)
         refuse_lead_ins_not_pair!(lead_ins)
         refuse_unusable_presses!(presses, lead_ins)
         refuse_hearing_not_pair!(hearing)
-        replays = [first, second].zip(lead_ins).map { |cartridge, lead_in| VoiceReplay.new(cartridge, lead_in, heard_above) }
+        refuse_unusable_start!(starting_after, snapshots, lead_ins)
+        replays = [first, second].zip(lead_ins).map do |cartridge, lead_in|
+          VoiceReplay.new(cartridge, lead_in, heard_above, snapshots: snapshots)
+        end
         replays.zip(hearing) { |replay, voices| replay.refuse_unknown_voices!(voices) } if hearing
-        played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0]) unless hearing && presses.is_a?(Tape)
+        from_power_on = starting_after.nil? && !(hearing && presses.is_a?(Tape))
+        played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0]) if from_power_on || presses.is_a?(Playthrough)
         tape = presses.is_a?(Tape) ? presses : played.tape
-        sides = if hearing
-                  replays.zip(hearing).map { |replay, voices| replay.side(tape, voices) }
+        start = start_frame_on(tape, starting_after)
+        sides = if hearing || !from_power_on
+                  replays.zip(hearing || [nil, nil]).map { |replay, voices| replay.side(tape, voices, start) }
                 else
                   [Side.of(played, heard_above), Side.of(presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1]), heard_above)]
                 end
         compared = between(*sides.map(&:mixed), tolerances, recordings: sides.map(&:recording),
                                                             speakers: each_speaker ? Side.speakers(sides) : nil)
-                   .with(hearing: hearing)
+                   .with(hearing: hearing, frames_stepped: sides.map(&:frames_stepped))
         return compared if compared.alike? || !each_voice || hearing
 
         compared.with(voices: replays.first.voices.to_h do |voice|
-          [voice, between(*replays.map { |replay| replay.side(tape, [voice]).mixed }, tolerances)]
+          alone = replays.map { |replay| replay.side(tape, [voice], start) }
+          [voice, between(*alone.map(&:mixed), tolerances).with(frames_stepped: alone.map(&:frames_stepped))]
         end)
       end
 
-      # What one cartridge put out over the tape: the two speakers mixed, each alone, and the sound.
-      Side = Data.define(:mixed, :left, :right, :recording) do
-        # The Side of +played+ (a played playthrough or tape: its +game+ and its +frames+).
-        def self.of(played, heard_above)
-          by_speaker = SPEAKERS.to_h { |speaker| [speaker, HeardSound.of(played, heard_above: heard_above, speaker: speaker)] }
-          new(mixed: HeardSound.of(played, heard_above: heard_above), **by_speaker,
-              recording: Diagnostics::SoundRecording.heard_in(played.game, frames: played.frames))
+      # What one cartridge put out over the tape: the two speakers mixed, each alone, the sound, and
+      # how many frames its emulator stepped to make it (Verifier#frames_played).
+      Side = Data.define(:mixed, :left, :right, :recording, :frames_stepped) do
+        # The Side of +played+ (a played playthrough or tape: its +game+ and its +frames+), heard from
+        # the frame after +starts_after+.
+        def self.of(played, heard_above, starts_after = 0)
+          by_speaker = SPEAKERS.to_h do |speaker|
+            [speaker, HeardSound.of(played, heard_above: heard_above, speaker: speaker, starts_after: starts_after)]
+          end
+          new(mixed: HeardSound.of(played, heard_above: heard_above, starts_after: starts_after), **by_speaker,
+              recording: Diagnostics::SoundRecording.heard_in(played.game, frames: played.frames - starts_after),
+              frames_stepped: played.game.frames_played)
         end
 
         # Each speaker, :left and :right, to the two sides' HeardSounds on it.
@@ -244,6 +296,48 @@ module VBlank
       end
       private_class_method :refuse_hearing_not_pair!
 
+      # What a start after a frame cannot be given: snapshots with no start, and lead-ins, whose
+      # presses are not known until they have played, so nothing can say which snapshot they reach.
+      def self.refuse_unusable_start!(starting_after, snapshots, lead_ins)
+        if snapshots && !snapshots.is_a?(SnapshotCache)
+          raise ArgumentError, "`snapshots:` was #{snapshots.inspect}. It must be a SnapshotCache: " \
+                               "`snapshots: VBlank::Playthroughs::SnapshotCache.new(\".cache/snapshots\")`."
+        end
+        if starting_after.nil?
+          return unless snapshots
+
+          raise ArgumentError, "The comparison was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
+                               "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
+        end
+        unless starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
+          raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
+                               "number 1 or more, or the name of one of its moments."
+        end
+        return if lead_ins.compact.empty?
+
+        raise ArgumentError, "The comparison was given `starting_after:` and `lead_ins:`. The frames before the start " \
+                             "are not heard, so a lead-in is not needed. Remove `lead_ins:`, or remove `starting_after:`."
+      end
+
+      # The frame of +tape+ the sound is heard after, 0 for power-on: a number, or a moment's frame.
+      def self.start_frame_on(tape, starting_after)
+        return 0 if starting_after.nil?
+
+        frame = if starting_after.is_a?(Symbol)
+                  tape.moments.fetch(starting_after) do
+                    raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
+                                         "no moment of that name. Its moments are #{tape.moments.keys.map(&:inspect).join(', ')}."
+                  end
+                else
+                  starting_after
+                end
+        return frame if frame < tape.frames
+
+        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{tape.frames} frames. Nothing is " \
+                             "left to hear after it. Give a frame before the tape's last."
+      end
+      private_class_method :refuse_unusable_start!, :start_frame_on
+
       # One cartridge's tape played again with only some voices heard: switched on, told which voices
       # to hear (Verifier#hearing) before its first frame, led in, and pressed through the tape a
       # stretch of frames at a time, as a playthrough presses it.
@@ -251,10 +345,11 @@ module VBlank
         # A replay's reader and the frames it played: what Side.of reads of a playing.
         Played = Data.define(:game, :frames)
 
-        def initialize(cartridge, lead_in, heard_above)
+        def initialize(cartridge, lead_in, heard_above, snapshots: nil)
           @cartridge = cartridge
           @lead_in = lead_in
           @heard_above = heard_above
+          @snapshots = snapshots
         end
 
         # The voices this cartridge's emulator can play alone: none on a console whose emulator mixes
@@ -302,19 +397,61 @@ module VBlank
           reader&.close
         end
 
-        # The Side of +voices+ alone over +tape+'s frames, or of the sound effects alone (SOUND_EFFECTS).
-        def side(tape, voices)
-          return effects_side(tape) if voices == SOUND_EFFECTS
+        # The Side of +voices+ alone over +tape+'s frames after +start+, or of the sound effects alone
+        # (SOUND_EFFECTS), or of every voice where +voices+ is nil.
+        def side(tape, voices, start = 0)
+          return effects_side(tape, start) if voices == SOUND_EFFECTS
 
-          reader = Playthrough.power_on(@cartridge)
-          reader.hearing(only: voices)
-          @lead_in&.play_as_lead_in(reader)
-          tape.presses_within(1..tape.frames).each do |stretch|
+          reader = opened(tape, start, voices)
+          tape.presses_within((start + 1)..tape.frames).each do |stretch|
             reader.step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons))
           end
-          Side.of(Played.new(game: reader, frames: tape.frames), @heard_above)
+          Side.of(Played.new(game: reader, frames: tape.frames), @heard_above, start)
         ensure
           reader&.close
+        end
+
+        # A console of this cartridge hearing +voices+ (every voice where nil), on frame +start+ of
+        # +tape+: switched on and led in for 0, else put on that frame from a snapshot where there
+        # are +snapshots+, or played there. The voices are chosen as it is switched on, before a
+        # snapshot is put back: a Genesis's are chosen only before its first frame, and each reader
+        # keeps its choice as a state loads (Verifier#load_state). The snapshot is of a console that
+        # heard those voices alone from power-on (SnapshotCache#console_after's +hearing+).
+        def opened(tape, start, voices)
+          open = lambda do
+            Playthrough.power_on(@cartridge).tap { |reader| reader.hearing(only: voices) if voices }
+          end
+          return open.call.tap { |reader| @lead_in&.play_as_lead_in(reader) } if start.zero?
+
+          return open.call.tap { |reader| step_through(reader, tape, 1..start) } unless @snapshots
+
+          # An emulator whose sound comes back only after a few frames is put back that many frames
+          # before the start, and plays them unheard (Console::Kit#frames_sound_settles_after_load).
+          refuse_snapshot_without_save_memory!
+          snapshot_frame = [start - Console.for(cartridge.console).frames_sound_settles_after_load, 1].max
+          presses = SnapshotCache.presses_up_to(tape, snapshot_frame)
+          @snapshots.console_after(presses, cartridge, hearing: voices, &open)
+                    .tap { |reader| step_through(reader, tape, (snapshot_frame + 1)..start) }
+        end
+
+        # +reader+ pressed through +frames+ of +tape+ (none where the range is empty).
+        def step_through(reader, tape, frames)
+          return if frames.none?
+
+          tape.presses_within(frames).each { |stretch| reader.step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons)) }
+        end
+
+        # The cartridge, read once from its path where it was given by one.
+        def cartridge = @cartridge = Playthrough.cartridge_from(@cartridge)
+
+        # A cartridge whose console's snapshot would leave out what it saved, refused
+        # (Console::Kit#snapshot_leaves_out_save_memory?).
+        def refuse_snapshot_without_save_memory!
+          kit = Console.for(cartridge.console)
+          return unless kit.snapshot_leaves_out_save_memory?(cartridge)
+
+          raise ArgumentError, "A cartridge of the comparison keeps a save, and a snapshot of a #{kit.title} does not " \
+                               "hold what it saved. To fix this, remove `snapshots:`, and the cartridge is played to the start."
         end
 
         # The Side of the sound effects alone over +tape+'s frames.
@@ -330,18 +467,19 @@ module VBlank
         # tune's next note there, since a recording's place stays held for a frame after its last
         # sample. What is left is the few samples of a frame the chip plays before a change reaches
         # it, inside the frame either way.
-        def effects_side(tape)
-          heard = Playthrough.power_on(@cartridge)
-          ahead = Playthrough.power_on(@cartridge)
-          heard.hearing(only: [])
-          [heard, ahead].each { |reader| @lead_in&.play_as_lead_in(reader) }
-          tape.presses_within(1..tape.frames).each do |stretch|
+        #
+        # From a start both consoles are put on the start's frame: the one ahead plays each frame
+        # first there as well, so neither needs a snapshot of the frame after.
+        def effects_side(tape, start)
+          heard = opened(tape, start, [])
+          ahead = opened(tape, start, nil)
+          tape.presses_within((start + 1)..tape.frames).each do |stretch|
             keys = IR::Buttons.mask(stretch.buttons)
             stretch.frames.size.times do
               heard.hearing(only: ahead.step(1, keys: keys).sound_effect_voices).step(1, keys: keys)
             end
           end
-          Side.of(Played.new(game: heard, frames: tape.frames), @heard_above)
+          Side.of(Played.new(game: heard, frames: tape.frames), @heard_above, start)
         ensure
           heard&.close
           ahead&.close

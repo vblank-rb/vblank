@@ -5,32 +5,46 @@ module VBlank
     # How loud one cartridge was on each frame of a playing, and what that says of when it was heard.
     #
     # +loudest_by_frame+ is the loudest sample the cartridge put out on each frame
-    # (Diagnostics::FrameSound#loudest), frame 1 first. +heard_above+ is the level a frame's loudest
-    # sample must be over to count as heard, which the game gives: nought where the emulator's
-    # silence is exactly nought, more where a console's speaker is never quite still.
+    # (Diagnostics::FrameSound#loudest), the frame after +starts_after+ first. +heard_above+ is the
+    # level a frame's loudest sample must be over to count as heard, which the game gives: nought
+    # where the emulator's silence is exactly nought, more where a console's speaker is never quite
+    # still.
     #
     # The measures are the ones a port holds its sound to its original by. Frames are counted from 1,
     # as a tape counts them, and a cartridge never heard answers nil to each.
-    HeardSound = Data.define(:loudest_by_frame, :heard_above) do
+    #
+    # +starts_after+ is the frame of the tape the playing was heard from the frame after, 0 for
+    # power-on (HeardComparison.play's `starting_after:`). The measures are of the frames after it
+    # alone, and still counted from power-on: a sound that began before it is heard from the frame
+    # after it, and a frame before it is silent.
+    HeardSound = Data.define(:loudest_by_frame, :heard_above, :starts_after) do
+      def initialize(loudest_by_frame:, heard_above:, starts_after: 0) = super
+
       # The sound of +played+ (what Playthrough#play or Tape#play handed back, the cartridge in the
-      # emulator): its counted frames, without a lead-in's.
+      # emulator): its counted frames, without a lead-in's, or the frames after +starts_after+.
       # +speaker+ :left or :right hears that speaker alone (Verifier#loudest_on_speaker_by_frame).
-      def self.of(played, heard_above:, speaker: nil)
+      def self.of(played, heard_above:, speaker: nil, starts_after: 0)
         loudest = speaker ? played.game.loudest_on_speaker_by_frame(speaker) : played.game.loudest_by_frame
-        new(loudest_by_frame: loudest.last(played.frames).freeze, heard_above: heard_above)
+        new(loudest_by_frame: loudest.last(played.frames - starts_after).freeze, heard_above: heard_above,
+            starts_after: starts_after)
       end
 
+      # How many frames were heard: the frames after the start.
       def frames = loudest_by_frame.size
 
-      # The loudest sample on +frame+, 0 for a frame past the end.
-      def loudest_on(frame) = loudest_by_frame[frame - 1] || 0
+      # The loudest sample on +frame+, 0 for a frame before the start or past the end.
+      def loudest_on(frame)
+        return 0 if frame <= starts_after
+
+        loudest_by_frame[frame - starts_after - 1] || 0
+      end
 
       def heard_on?(frame) = loudest_on(frame) > heard_above
       def heard? = !first_heard.nil?
 
       # The first and the last frame it is heard on.
-      def first_heard = loudest_by_frame.index { |level| level > heard_above }&.succ
-      def last_heard = loudest_by_frame.rindex { |level| level > heard_above }&.succ
+      def first_heard = loudest_by_frame.index { |level| level > heard_above }&.+(starts_after + 1)
+      def last_heard = loudest_by_frame.rindex { |level| level > heard_above }&.+(starts_after + 1)
 
       # Its level: the loudest sample a frame, averaged over the frames from the first heard to the
       # last, the silent ones between them counted.
@@ -49,7 +63,7 @@ module VBlank
         return unless heard?
 
         half = loudest_by_frame.max / 2.0
-        loudest_by_frame.rindex { |level| level >= half } + 1
+        loudest_by_frame.rindex { |level| level >= half } + starts_after + 1
       end
 
       # How many frames its last sound takes to fall silent, from #fall_starts to the last frame heard.

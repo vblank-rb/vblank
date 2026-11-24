@@ -169,6 +169,12 @@ module VBlank
       # since. libmgba's and bsnes's states hold the cartridge's save memory.
       def snapshot_leaves_out_save_memory?(_cartridge) = false
 
+      # How many frames the emulator's sound takes to come back to what it would have been after a
+      # snapshot is put back, so a start heard from a snapshot is made that many frames earlier and
+      # those frames are played unheard (Playthroughs::HeardComparison). libmgba's state, with what
+      # ruby-gba-emulator keeps beside it, gives the sound back sample for sample: none.
+      def frames_sound_settles_after_load = 0
+
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
       # cartridge, so only the Advance's).
       def dumps_ir? = false
@@ -362,6 +368,9 @@ module VBlank
       def multitap_name = "Super Multitap"
       def load_emulator! = Diagnostics::Emulator.load_snes!
       def emulator_build = Diagnostics::Emulator.snes_build
+      # bsnes's first frame after a load is a sixteenth louder than the console made it, and the
+      # frames after are within a few thousandths: its output stage is not in its state.
+      def frames_sound_settles_after_load = 2
       def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
@@ -418,6 +427,11 @@ module VBlank
       def multitap_name = "Team Player"
       def load_emulator! = Diagnostics::Emulator.load_genesis!
       def emulator_build = Diagnostics::Emulator.genesis_build
+
+      # Genesis Plus GX starts its sound output again from silence as it loads a state, so the first
+      # frames after are a click that falls away over five frames or so; after that the loudest
+      # sample of a frame is within one or two of what the console made.
+      def frames_sound_settles_after_load = 8
 
       # Genesis Plus GX's state (state_save in its core/state.c) holds the work RAM, the Z80's, the
       # video and sound chips, both processors and the cartridge's mapper, and not the battery-backed

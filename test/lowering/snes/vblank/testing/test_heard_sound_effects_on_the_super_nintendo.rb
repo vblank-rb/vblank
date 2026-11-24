@@ -97,6 +97,35 @@ class TestHeardSoundEffectsOnTheSuperNintendo < Minitest::Test
     assert_match(/heard at different levels/, failure.message)
   end
 
+  # From a snapshot of a frame between two strikes, the effects alone are heard as from power-on: the
+  # console a frame ahead opens from the same snapshot and plays each frame first, as it does there.
+  def test_the_effects_alone_are_heard_from_a_snapshot_as_from_power_on
+    ours = game
+    original = game(tune: false)
+    tape = listen.play(ours).tape
+    Dir.mktmpdir("vblank-snapshots") do |folder|
+      snapshots = VBlank::Playthroughs::SnapshotCache.new(folder)
+      heard = lambda do |**kept|
+        VBlank::Playthroughs::HeardComparison.play(tape, ours, original, hearing: [:sound_effects, every_voice], starting_after: 95,
+                                                                         **EFFECT_HELD, **kept)
+      end
+      cold = heard.call
+      heard.call(snapshots: snapshots)
+      warm = heard.call(snapshots: snapshots)
+
+      assert_predicate cold, :alike?
+      assert_predicate warm, :alike?
+      assert_operator cold.first.first_heard, :>, 95, "frames are counted from power-on"
+      # bsnes's sound after a load is within a few thousandths of the console's (SNESKit#frames_sound_settles_after_load).
+      [[cold.first, warm.first], [cold.second, warm.second]].each do |from_power_on, from_snapshot|
+        assert_equal [from_power_on.first_heard, from_power_on.last_heard], [from_snapshot.first_heard, from_snapshot.last_heard]
+        assert_in_delta from_power_on.level, from_snapshot.level, from_power_on.level * 0.005
+      end
+      settle = VBlank::Console.for(:snes).frames_sound_settles_after_load
+      assert_equal [TAPE_FRAMES - 95 + settle] * 2, warm.frames_stepped
+    end
+  end
+
   # A cartridge file is only its bytes: nothing says where its sound player keeps who holds a voice.
   def test_a_cartridge_file_cannot_be_asked_for_its_sound_effects
     Dir.mktmpdir("cartridges") do |folder|

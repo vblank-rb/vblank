@@ -81,8 +81,14 @@ module VBlank
       # A console of +cartridge+ on the frame after +presses+ (a list of Presses), as +open+ (a block)
       # switches one on: the snapshot of it put back where one is kept, and else the presses played
       # on it and the snapshot written. +save+ is what the save memory held at power-on, nil for none.
-      def console_after(presses, cartridge, save: nil, &open)
-        path = File.join(@folder, "#{key_for(presses, cartridge, save)}#{EXTENSION}")
+      #
+      # +hearing+ is the voices the console +open+ hands back hears (Verifier#hearing), for a
+      # snapshot of a console that heard only those from power-on; nil for every voice. Each list
+      # is a snapshot of its own: what the emulator has mixed already, and is still mixing as the
+      # snapshot is taken, is of the voices heard, so a console hearing one voice put back from a
+      # snapshot of all of them would start with a frame of the others in its sound.
+      def console_after(presses, cartridge, save: nil, hearing: nil, &open)
+        path = File.join(@folder, "#{key_for(presses, cartridge, save, hearing)}#{EXTENSION}")
         FileUtils.mkdir_p(@folder)
         File.open("#{path}#{LOCK}", File::RDWR | File::CREAT) do |lock|
           lock.flock(File::LOCK_EX)
@@ -120,12 +126,14 @@ module VBlank
         game
       end
 
-      def key_for(presses, cartridge, save)
+      def key_for(presses, cartridge, save, hearing)
         console = cartridge.console
         multitap = cartridge.respond_to?(:multitap?) && cartridge.multitap?
         save_said = save && [Digest::SHA256.hexdigest(save.to_sav), (save.clock_state if save.respond_to?(:clock_state))]
         parts = [KEY_VERSION, console, Console.for(console).emulator_build, Digest::SHA256.hexdigest(cartridge.buffer),
                  multitap, save_said, presses.map { |held| [held.frames, held.keys] }]
+        # Every voice is the key it always was, so a sound's snapshot is the picture's and the probe's.
+        parts << [:hearing, hearing.sort] if hearing
         Digest::SHA256.hexdigest(parts.inspect)
       end
 

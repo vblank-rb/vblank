@@ -41,6 +41,11 @@ module VBlank
     #                              a side can be :sound_effects, that cartridge's effects alone on
     #                              whichever voices its player put them each frame
     #                              (`hearing: [:sound_effects, [:voice0]]`)
+    #   starting_after:            a frame of the tape, or the name of one of its moments, to play both
+    #                              to unheard and compare from the frame after (optional), with
+    #   snapshots:                 a Playthroughs::SnapshotCache that keeps each console on that frame,
+    #                              so a moment deep in a tape costs the frames heard; every measure is
+    #                              of the frames after the start, counted from power-on
     #   wav:                       a path to write both sounds to, for a person to hear (optional), with
     #   wav_layout:                :in_turn (the first, then the second) or :side_by_side (the first on
     #                              the left speaker, the second on the right); :in_turn if left out
