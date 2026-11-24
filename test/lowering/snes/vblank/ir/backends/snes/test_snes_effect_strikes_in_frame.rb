@@ -265,12 +265,13 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   # What a frame spends sending its line ahead to the sound unit (Sound#emit_ahead_sent_straight, its
   # rt_sound_ahead_ labels), in lines of the picture, at four ticks a frame, a note on each: the
-  # console's clocks there each frame, read from bsnes. Measured 43 lines (the frame's 13 commands,
-  # each waiting on the sound unit's some 150 cycles to list it), from 64 before the commands were
-  # answered as copied, sent straight from the line and closed once a frame. A Super Nintendo's own
-  # sound driver takes a frame's commands in under a line (fullsnes, "SNES APU Main CPU Communication
-  # Port"), so this budget holds the cost where it is, not where it belongs.
-  SENDING_LINES_A_FRAME = 46
+  # console's clocks there each frame, read from bsnes. Measured 15 lines: MARK and the first tick's
+  # notes, each command waiting on the sound unit's some 150 cycles to list it, the later ticks' sent
+  # from the game's wait (Strikes::HELD_OFFSET). From 64 before the commands were answered as copied,
+  # sent straight from the line, closed once a frame and the later ticks left to the wait. A Super
+  # Nintendo's own sound driver takes a frame's commands in under a line (fullsnes, "SNES APU Main
+  # CPU Communication Port"), so this budget holds the cost where it is, not where it belongs.
+  SENDING_LINES_A_FRAME = 16
   SENDING_FRAMES = ((EffectStrikesHeard::STARTED_ON + 2)...(EffectStrikesHeard::STARTED_ON + 12))
 
   def test_sending_four_ticks_a_frame_costs_the_frame_no_more_than_its_budget

@@ -53,7 +53,8 @@ module VBlank
           # (Sound#emit_ahead_sent_at_frame), so a game that has the time sends each MARK as its
           # frame's music has been played, and LEAD_COUNTS covers the commands that come after it
           # before a tick at the frame's start is due. Only when the line is full does MARK go at
-          # once, ahead of what is waiting.
+          # once, ahead of what is waiting. A pass of one frame waits only for MARK and the ticks
+          # before HELD_OFFSET; the later ticks go while the game waits for the screen.
           #
           # ### What it costs
           #
@@ -108,6 +109,12 @@ module VBlank
             # How far behind its MARK a frame's notes are struck, in counts of the timer: four
             # milliseconds, time for a tick's few commands to be sent after the MARK.
             LEAD_COUNTS = 32
+            # The offset, in counts, from which a frame's ticks are sent from the game's wait rather
+            # than holding its pass (Sound#emit_ahead_sent_straight): a quarter of a frame, so a pass
+            # waits only for MARK and its first tick's notes, and the later ticks', due at least a
+            # quarter of a frame and LEAD_COUNTS after MARK, go while the game waits for the screen.
+            # A pass that took more than a frame has no wait soon enough, and waits for them all.
+            HELD_OFFSET = 33
             # How much sooner than a frame after the last a pass's first frame begins while frames run
             # late: an eighth of a frame.
             SHED_COUNTS = 16
