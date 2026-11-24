@@ -55,7 +55,6 @@ module VBlank
           end
 
           include Console::Hardware
-          include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, raster:, palette_tint:,
                           layer_blend:, effects:, buffered:, uploads:, sprite_drawing:, background_drawing:,
@@ -313,8 +312,8 @@ module VBlank
           # goes in a byte at a time, since that is the most one instruction can hold.
           def emit_display_control_keeping(value, late)
             change_display_control do
-              emit(ASM.and_imm(ACC, ACC, late))
-              [value & 0x00FF, value & 0xFF00].reject(&:zero?).each { |byte| emit(ASM.orr_imm(ACC, ACC, byte)) }
+              @emitter.emit(ASM.and_imm(ACC, ACC, late))
+              [value & 0x00FF, value & 0xFF00].reject(&:zero?).each { |byte| @emitter.emit(ASM.orr_imm(ACC, ACC, byte)) }
               @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # TMP holds the register's address
             end
           end
@@ -323,7 +322,7 @@ module VBlank
             return unless late_layers?
 
             change_display_control do
-              emit(ASM.orr_imm(ACC, ACC, layer_enable_bit(background)))
+              @emitter.emit(ASM.orr_imm(ACC, ACC, layer_enable_bit(background)))
               @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # ...save one the game hid
             end
           end
@@ -355,10 +354,10 @@ module VBlank
           def emit_end_forced_blank
             return unless @layout.waits_for_frames
 
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.bic_imm(ACC, ACC, FORCED_BLANK))
-            emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, FORCED_BLANK))
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
           # Which of the console's tile arrangements this program needs, and which layers
@@ -707,7 +706,7 @@ module VBlank
               next @background_drawing.emit_walking_run_place(run_name, run, shown: run.shown_in?(name)) if run.walk
 
               at = run.places[name]
-              store_word_immediate(at ? VRAM_START + at : 0, @primitives.var_addr(ScreenLayout::PaintedRun.place_var(run_name)))
+              @primitives.store_word_immediate(at ? VRAM_START + at : 0, @primitives.var_addr(ScreenLayout::PaintedRun.place_var(run_name)))
             end
           end
 
@@ -783,12 +782,12 @@ module VBlank
             on = screen.on.reduce(0) { |bits, layer| bits | BG_ENABLES[layer] }
             return emit_with_layers_held_for_sending(on, name) { yield } if @background_drawing.holds_layers?
 
-            change_display_control { emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
+            change_display_control { @emitter.emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
             yield
             return if on.zero?
 
             change_display_control do
-              emit(ASM.orr_imm(ACC, ACC, on))
+              @emitter.emit(ASM.orr_imm(ACC, ACC, on))
               @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # TMP holds the register's address
             end
           end
@@ -804,20 +803,20 @@ module VBlank
             @scene_entry.emit_unless_scene_up(:art, name) { @sprite_drawing.emit_hide_game_rows } if art_follows && @layout.border
             @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
             yield
-            load_var(ACC, SCENE_SEND_DISPLAY)
-            emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK))
-            emit(ASM.orr_imm(ACC, ACC, on)) unless on.zero?
+            @primitives.load_var(ACC, SCENE_SEND_DISPLAY)
+            @emitter.emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK))
+            @emitter.emit(ASM.orr_imm(ACC, ACC, on)) unless on.zero?
             return @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name)) unless art_follows
 
             # The pictures are sent when the note of whose are up names another scene, as
             # SceneEntry#emit_once_on_arrival reads it: then the layers stay off for them.
-            store_var(ACC, SCENE_SEND_DISPLAY)
-            emit_number(ACC, 1)
-            store_var(ACC, SCENE_ART_FOLLOWS)
+            @primitives.store_var(ACC, SCENE_SEND_DISPLAY)
+            @emitter.emit_number(ACC, 1)
+            @primitives.store_var(ACC, SCENE_ART_FOLLOWS)
             @scene_entry.emit_if_scene_up(:art, name) do
-              emit_number(ACC, 0)
-              store_var(ACC, SCENE_ART_FOLLOWS)
-              load_var(ACC, SCENE_SEND_DISPLAY)
+              @emitter.emit_number(ACC, 0)
+              @primitives.store_var(ACC, SCENE_ART_FOLLOWS)
+              @primitives.load_var(ACC, SCENE_SEND_DISPLAY)
               @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name))
             end
           end
@@ -834,10 +833,10 @@ module VBlank
           # between the read and the write (SpriteDrawing#changing_display_control).
           def change_display_control(&change)
             @sprite_drawing.changing_display_control do
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.load_halfword(ACC, TMP))
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
               change.call
-              emit(ASM.store_halfword(ACC, TMP))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
           end
 
@@ -920,8 +919,8 @@ module VBlank
             elsif @layout.screen.hides_layers?
               @sprite_drawing.emit_screen_layers(value) do |reg|
                 @background_drawing.emit_without_switched_off_layers(reg)
-                emit_number(TMP, REG_DISPCNT)
-                emit(ASM.store_halfword(reg, TMP))
+                @emitter.emit_number(TMP, REG_DISPCNT)
+                @emitter.emit(ASM.store_halfword(reg, TMP))
               end
             else
               @sprite_drawing.emit_screen_layers(value)
@@ -1029,17 +1028,17 @@ module VBlank
           def emit_with_layers_held_for_art(name)
             return yield unless art_held?(name)
 
-            off = gensym
+            off = @emitter.gensym
             @sprite_drawing.emit_hide_game_rows if @layout.border
-            load_var(ACC, SCENE_ART_FOLLOWS)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, off, cond: :ne)
+            @primitives.load_var(ACC, SCENE_ART_FOLLOWS)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, off, cond: :ne)
             @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
-            place_label(off)
+            @emitter.place_label(off)
             yield
-            emit_number(ACC, 0)
-            store_var(ACC, SCENE_ART_FOLLOWS)
-            load_var(ACC, SCENE_SEND_DISPLAY)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, SCENE_ART_FOLLOWS)
+            @primitives.load_var(ACC, SCENE_SEND_DISPLAY)
             @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name))
             emit_game_rows_back_in_gap if @layout.border && !first_picture_held?(name)
           end
@@ -1119,13 +1118,13 @@ module VBlank
           # ended in the gap; one that ran into the picture leaves them hidden for it, and the next
           # pass copies them in the gap after (SpriteDrawing#emit_present_objects).
           def emit_game_rows_back_in_gap
-            past = gensym
-            emit_number(TMP, REG_VCOUNT)
-            emit(ASM.load_halfword(TMP, TMP))
-            emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
-            emit_branch(:bcond, past, cond: :lo)
+            past = @emitter.gensym
+            @emitter.emit_number(TMP, REG_VCOUNT)
+            @emitter.emit(ASM.load_halfword(TMP, TMP))
+            @emitter.emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            @emitter.emit_branch(:bcond, past, cond: :lo)
             @sprite_drawing.emit_game_rows_copied_in
-            place_label(past)
+            @emitter.place_label(past)
           end
 
           # End the pass a scene that loads first takes over on (see SceneEntry).
@@ -1147,8 +1146,8 @@ module VBlank
           # Copy the color table from the cartridge into background palette memory —
           # one DMA of `size` 16-bit entries, source and destination both advancing.
           def upload_palette
-            emit_load_data_address(ACC, PALETTE_BLOB) # r0 = table address in the cartridge
-            emit_start_copy_engine(from: in_register(ACC), to: BG_PALETTE, # the table, into palette memory
+            @emitter.emit_load_data_address(ACC, PALETTE_BLOB) # r0 = table address in the cartridge
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: BG_PALETTE, # the table, into palette memory
                                    control: @layout.palette.size | DMA_ENABLE) # 16-bit, both ends advancing
             @palette_tint.emit_tint_reset_if_tinting # the table now holds the originals again
           end
@@ -1221,31 +1220,31 @@ module VBlank
           def emit_skip_wait_for_late_page(shown)
             return unless @layout.late_pages.any?
 
-            wait = gensym
-            in_break = gensym
+            wait = @emitter.gensym
+            in_break = @emitter.gensym
             @frames.emit_branch_if_on_pace(wait)
-            load_var(ACC, LATE_PAGE_ROWS)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, wait, cond: :eq) # this screen waits
-            emit_number(TMP, REG_VCOUNT)
-            emit(ASM.load_halfword(TMP, TMP))
-            emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
-            emit_branch(:bcond, in_break, cond: :ge)
-            emit(ASM.add_imm(TMP, TMP, 1))
-            emit(ASM.cmp_reg(TMP, ACC))
-            emit_branch(:bcond, wait, cond: :ge) # below the row the game allows
+            @primitives.load_var(ACC, LATE_PAGE_ROWS)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, wait, cond: :eq) # this screen waits
+            @emitter.emit_number(TMP, REG_VCOUNT)
+            @emitter.emit(ASM.load_halfword(TMP, TMP))
+            @emitter.emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            @emitter.emit_branch(:bcond, in_break, cond: :ge)
+            @emitter.emit(ASM.add_imm(TMP, TMP, 1))
+            @emitter.emit(ASM.cmp_reg(TMP, ACC))
+            @emitter.emit_branch(:bcond, wait, cond: :ge) # below the row the game allows
             @frames.emit_branch_if_on_pace(wait, spent: true)
 
             @emitter.note_late_page_shown(tears: true)
             @frames.emit_note_break_spent(true)
-            emit_branch(:b, shown)
+            @emitter.emit_branch(:b, shown)
 
-            place_label(in_break)
+            @emitter.place_label(in_break)
             @emitter.note_late_page_shown(tears: false)
             @frames.emit_note_break_spent(false)
-            emit_branch(:b, shown)
+            @emitter.emit_branch(:b, shown)
 
-            place_label(wait)
+            @emitter.place_label(wait)
             @frames.emit_note_break_spent(false)
           end
 
@@ -1253,12 +1252,12 @@ module VBlank
           # live (a direct scene draws straight to the screen and has nothing to flip).
           # The runtime check costs a compare; the mode rarely changes.
           def emit_flip_if_buffered
-            load_var(ACC, MODE_STATE)
-            emit(ASM.cmp_imm(ACC, MODE_BUFFERED))
-            skip = gensym
-            emit_branch(:bcond, skip, cond: :ne)
+            @primitives.load_var(ACC, MODE_STATE)
+            @emitter.emit(ASM.cmp_imm(ACC, MODE_BUFFERED))
+            skip = @emitter.gensym
+            @emitter.emit_branch(:bcond, skip, cond: :ne)
             emit_flip
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # Present the page just drawn and start drawing the other one — the page
@@ -1267,17 +1266,17 @@ module VBlank
           # point the back buffer at the other page (its address is the pair's sum
           # minus the current one).
           def emit_flip
-            load_var(ACC, DISPCNT_STATE)
-            emit_number(TMP, DISPCNT_FRAME_SELECT)
-            emit(ASM.eor_reg(ACC, ACC, TMP))            # flip the page-select bit
-            store_var(ACC, DISPCNT_STATE)
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.store_halfword(ACC, TMP))          # the finished page is now shown
+            @primitives.load_var(ACC, DISPCNT_STATE)
+            @emitter.emit_number(TMP, DISPCNT_FRAME_SELECT)
+            @emitter.emit(ASM.eor_reg(ACC, ACC, TMP))            # flip the page-select bit
+            @primitives.store_var(ACC, DISPCNT_STATE)
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))          # the finished page is now shown
 
-            load_var(ACC, BACKBUF)
-            emit_number(TMP, PAGE_PAIR_SUM)
-            emit(ASM.sub_reg(ACC, TMP, ACC))            # the other page
-            store_var(ACC, BACKBUF)
+            @primitives.load_var(ACC, BACKBUF)
+            @emitter.emit_number(TMP, PAGE_PAIR_SUM)
+            @emitter.emit(ASM.sub_reg(ACC, TMP, ACC))            # the other page
+            @primitives.store_var(ACC, BACKBUF)
           end
 
           # Plot one pixel. With constant coordinates the VRAM address is known now,
@@ -1287,26 +1286,26 @@ module VBlank
             return @buffered.emit_pixel_buffered(node) if @lowering.mode == :buffered
 
             color = Graphics::Color.resolve(node.color)
-            xi = const_int(node.x)
-            yi = const_int(node.y)
+            xi = @primitives.const_int(node.x)
+            yi = @primitives.const_int(node.y)
 
             if xi && yi
               return unless @framebuffer.in_bounds?(xi, yi) # off-screen: clip, like the framebuffer
 
-              write_reg16(VRAM_START + ((yi * SCREEN_WIDTH) + xi) * 2, color)
+              @emitter.write_reg16(VRAM_START + ((yi * SCREEN_WIDTH) + xi) * 2, color)
             else
               @lowering.value(node.y)            # r0 = y
-              emit(ASM.push(ACC))
+              @emitter.emit(ASM.push(ACC))
               @lowering.value(node.x)            # r0 = x
-              emit(ASM.pop(TMP))              # r1 = y
-              emit_number(2, SCREEN_WIDTH)
-              emit(ASM.mul(3, TMP, 2))        # r3 = y * width
-              emit(ASM.add_reg(3, 3, ACC))    # r3 = y*width + x
-              emit(ASM.lsl_imm(3, 3, 1))      # r3 = offset * 2 bytes
-              emit_number(2, VRAM_START)
-              emit(ASM.add_reg(3, 2, 3))      # r3 = VRAM address
-              emit_number(ACC, color)
-              emit(ASM.store_halfword(ACC, 3))
+              @emitter.emit(ASM.pop(TMP))              # r1 = y
+              @emitter.emit_number(2, SCREEN_WIDTH)
+              @emitter.emit(ASM.mul(3, TMP, 2))        # r3 = y * width
+              @emitter.emit(ASM.add_reg(3, 3, ACC))    # r3 = y*width + x
+              @emitter.emit(ASM.lsl_imm(3, 3, 1))      # r3 = offset * 2 bytes
+              @emitter.emit_number(2, VRAM_START)
+              @emitter.emit(ASM.add_reg(3, 2, 3))      # r3 = VRAM address
+              @emitter.emit_number(ACC, color)
+              @emitter.emit(ASM.store_halfword(ACC, 3))
             end
           end
 
@@ -1337,7 +1336,7 @@ module VBlank
           def emit_fill_rect(node)
             return @buffered.emit_fill_rect_buffered(node) if @lowering.mode == :buffered
 
-            x, y, w, h = constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
+            x, y, w, h = @primitives.constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
             # Every row of a rectangle spans the same columns, so where it starts and how far it
             # reaches is one answer, settled before a single row is emitted.
             left = [x, @framebuffer.clip_left].max
@@ -1367,11 +1366,11 @@ module VBlank
 
           # Store each pixel of +rows+ from column +left+ up to +right+, the colour loaded once.
           def emit_pixels_stored(left, right, rows, color)
-            emit_number(ACC, Graphics::Color.resolve(color))
+            @emitter.emit_number(ACC, Graphics::Color.resolve(color))
             rows.each do |row|
               (left...right).each do |col|
-                emit_number(TMP, VRAM_START + ((row * SCREEN_WIDTH) + col) * 2)
-                emit(ASM.store_halfword(ACC, TMP))
+                @emitter.emit_number(TMP, VRAM_START + ((row * SCREEN_WIDTH) + col) * 2)
+                @emitter.emit(ASM.store_halfword(ACC, TMP))
               end
             end
           end
@@ -1391,9 +1390,9 @@ module VBlank
           def emit_screen_filled(color)
             word = (color << 16) | color
             count = SCREEN_WIDTH * @layout.shown_rows / 2
-            scratch = var_addr(Primitives::FILL_SCRATCH)
+            scratch = @primitives.var_addr(Primitives::FILL_SCRATCH)
 
-            store_word_immediate(word, scratch) # hold the fill word in IWRAM
+            @primitives.store_word_immediate(word, scratch) # hold the fill word in IWRAM
             if @layout.fills_shown_rows_alone?(2)
               return @framebuffer.emit_shown_rows_filled(scratch, first: VRAM_START, rows: @layout.shown_rows,
                                                                   row_bytes: @layout.shown_columns * 2,
@@ -1401,7 +1400,7 @@ module VBlank
             end
 
             # From that one fixed word, to the screen.
-            emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
+            @primitives.emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
           end
 
           # One column of a picture, stretched to a height worked out as the game runs. The
@@ -1427,7 +1426,7 @@ module VBlank
             # reaches is a pixel.
             see_through = bmp.transparent && !@framebuffer.column_rows_all_pixels?(node.name)
 
-            done = gensym
+            done = @emitter.gensym
             @framebuffer.emit_column_setup(node, bmp, done)
             @framebuffer.emit_column_runs(node.name, bmp, done) do |leave|
               @framebuffer.emit_clip_column_rows(leave)
@@ -1437,27 +1436,27 @@ module VBlank
               # one hanging over an edge takes a second copy of the rows that tests each pixel,
               # which is the rare case and pays for itself only there. A strip one pixel wide
               # has no second case: it is inside or it draws nothing.
-              clipped = gensym
-              emit(ASM.cmp_imm(COLUMN_X, @framebuffer.clip_left))
-              emit_branch(:bcond, clipped, cond: :lt)
-              emit_number(TMP, @framebuffer.clip_right - width)
-              emit(ASM.cmp_reg(COLUMN_X, TMP))
-              emit_branch(:bcond, clipped, cond: :gt)
+              clipped = @emitter.gensym
+              @emitter.emit(ASM.cmp_imm(COLUMN_X, @framebuffer.clip_left))
+              @emitter.emit_branch(:bcond, clipped, cond: :lt)
+              @emitter.emit_number(TMP, @framebuffer.clip_right - width)
+              @emitter.emit(ASM.cmp_reg(COLUMN_X, TMP))
+              @emitter.emit_branch(:bcond, clipped, cond: :gt)
 
               emit_column_rows { emit_draw_column_row(bmp, width, clipped: false, see_through: see_through) }
-              emit_branch(:b, leave) if width > 1
-              place_label(clipped)
+              @emitter.emit_branch(:b, leave) if width > 1
+              @emitter.place_label(clipped)
               emit_column_rows { emit_draw_column_row(bmp, width, clipped: true, see_through: see_through) } if width > 1
             end
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # The walk down the screen, one pass per row of the column that shows.
           def emit_column_rows
-            emit_row_loop(COLUMN_ROWS) do
+            @primitives.emit_row_loop(COLUMN_ROWS) do
               yield
-              emit(ASM.add_reg(COLUMN_POS, COLUMN_POS, COLUMN_STEP))
-              emit(ASM.add_imm(COLUMN_Y, COLUMN_Y, 1))
+              @emitter.emit(ASM.add_reg(COLUMN_POS, COLUMN_POS, COLUMN_STEP))
+              @emitter.emit(ASM.add_imm(COLUMN_Y, COLUMN_Y, 1))
             end
           end
 
@@ -1465,21 +1464,21 @@ module VBlank
           # write it across. Every row this reaches is on the screen — that was settled before
           # the walk started.
           def emit_draw_column_row(bmp, width, clipped:, see_through:)
-            skip = gensym
+            skip = @emitter.gensym
 
             emit_read_column_pixel(bmp, skip, see_through)
 
             # ...to the screen at (x, y), and to the pixels beside it. Their addresses are a
             # fixed distance along from the first, so the row's address is built once.
-            emit_number(TMP, SCREEN_WIDTH)
-            emit(ASM.mul(TMP, COLUMN_Y, TMP))
-            emit(ASM.add_reg(TMP, TMP, COLUMN_X))
-            emit(ASM.lsl_imm(TMP, TMP, 1))
-            emit_number(SPARE, VRAM_START)
-            emit(ASM.add_reg(TMP, TMP, SPARE))
+            @emitter.emit_number(TMP, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(TMP, COLUMN_Y, TMP))
+            @emitter.emit(ASM.add_reg(TMP, TMP, COLUMN_X))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))
+            @emitter.emit_number(SPARE, VRAM_START)
+            @emitter.emit(ASM.add_reg(TMP, TMP, SPARE))
             width.times { |dx| emit_column_store(dx, clipped: clipped) }
 
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # colour = picture[(pos >> 16) * width + slice], the slice already folded into
@@ -1490,11 +1489,11 @@ module VBlank
           # reaches at most one less than that count times it — which is strictly less than
           # the picture's height however the rounding falls.
           def emit_read_column_pixel(bmp, skip, see_through)
-            emit(ASM.lsr_imm(ACC, COLUMN_POS, COLUMN_FIXED))
-            emit_number(TMP, bmp.width * 2)
-            emit(ASM.mul(ACC, ACC, TMP))
-            emit(ASM.add_reg(ACC, COLUMN_SRC, ACC))
-            emit(ASM.load_halfword(ACC, ACC))
+            @emitter.emit(ASM.lsr_imm(ACC, COLUMN_POS, COLUMN_FIXED))
+            @emitter.emit_number(TMP, bmp.width * 2)
+            @emitter.emit(ASM.mul(ACC, ACC, TMP))
+            @emitter.emit(ASM.add_reg(ACC, COLUMN_SRC, ACC))
+            @emitter.emit(ASM.load_halfword(ACC, ACC))
 
             # A see-through pixel carries a value no real color has, so it means "leave this
             # one alone" and nothing is written — which is what lets a scaled sprite in a
@@ -1502,33 +1501,33 @@ module VBlank
             # whose walk lands only on pixels has nothing to ask (+see_through+ false).
             return unless see_through
 
-            emit_number(TMP, bmp.transparent)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, skip, cond: :eq)
+            @emitter.emit_number(TMP, bmp.transparent)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, skip, cond: :eq)
           end
 
           # One pixel of the strip. In the clipped copy of the rows its own column is tested,
           # since only part of the strip is on the screen.
           def emit_column_store(offset, clipped:)
-            return emit(ASM.store_halfword_offset(ACC, TMP, offset * 2)) unless clipped
+            return @emitter.emit(ASM.store_halfword_offset(ACC, TMP, offset * 2)) unless clipped
 
-            past = gensym
-            emit(ASM.add_imm(SPARE, COLUMN_X, offset))
-            emit(ASM.cmp_imm(SPARE, @framebuffer.clip_left))
-            emit_branch(:bcond, past, cond: :lt)
-            emit(ASM.cmp_imm(SPARE, @framebuffer.clip_right))
-            emit_branch(:bcond, past, cond: :ge)
-            emit(ASM.store_halfword_offset(ACC, TMP, offset * 2))
-            place_label(past)
+            past = @emitter.gensym
+            @emitter.emit(ASM.add_imm(SPARE, COLUMN_X, offset))
+            @emitter.emit(ASM.cmp_imm(SPARE, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, past, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(SPARE, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, past, cond: :ge)
+            @emitter.emit(ASM.store_halfword_offset(ACC, TMP, offset * 2))
+            @emitter.place_label(past)
           end
 
           def emit_draw_rect_at(node)
             return @buffered.emit_draw_rect_at_buffered(node) if @lowering.mode == :buffered
 
-            x_const = const_int(node.x)
-            y_const = const_int(node.y)
-            width = const_int(node.w)
-            height = const_int(node.h)
+            x_const = @primitives.const_int(node.x)
+            y_const = @primitives.const_int(node.y)
+            width = @primitives.const_int(node.w)
+            height = @primitives.const_int(node.h)
             return if width && width < 1   # a rect with no width draws nothing
             return if height && height < 1 # ...or no height
 
@@ -1575,48 +1574,48 @@ module VBlank
             @framebuffer.eval_rect_position(node, x_reg: x_reg, y_reg: y_reg, rows_reg: rows_left,
                                                    width_reg: CONTROL_REG)
 
-            skip = gensym
+            skip = @emitter.gensym
 
             # right = x + width, unclipped, worked out before x itself is touched.
             if width
-              emit_add_const(ACC, x_reg, width, TMP)
+              @primitives.emit_add_const(ACC, x_reg, width, TMP)
             else
-              emit(ASM.add_reg(ACC, x_reg, CONTROL_REG)) # CONTROL_REG still holds the raw width here
+              @emitter.emit(ASM.add_reg(ACC, x_reg, CONTROL_REG)) # CONTROL_REG still holds the raw width here
             end
 
             # right := min(right, clip_right)
-            keep_right = gensym
-            emit(ASM.cmp_imm(ACC, @framebuffer.clip_right))
-            emit_branch(:bcond, keep_right, cond: :le)
-            emit_number(ACC, @framebuffer.clip_right)
-            place_label(keep_right)
+            keep_right = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(ACC, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, keep_right, cond: :le)
+            @emitter.emit_number(ACC, @framebuffer.clip_right)
+            @emitter.place_label(keep_right)
 
             # x_reg := max(x_reg, clip_left)
-            keep_left = gensym
-            emit(ASM.cmp_imm(x_reg, @framebuffer.clip_left))
-            emit_branch(:bcond, keep_left, cond: :ge)
-            emit_number(x_reg, @framebuffer.clip_left)
-            place_label(keep_left)
+            keep_left = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(x_reg, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, keep_left, cond: :ge)
+            @emitter.emit_number(x_reg, @framebuffer.clip_left)
+            @emitter.place_label(keep_left)
 
             # width := right - x_reg. Nothing left of the row to draw at all bails the
             # whole rect, the same way a width of zero already did — a rect the game
             # shrank to nothing, or slid entirely off the area, draws nothing either way.
-            emit(ASM.sub_reg(TMP, ACC, x_reg))
-            emit(ASM.cmp_imm(TMP, 0))
-            emit_branch(:bcond, skip, cond: :le)
-            emit(ASM.mov_reg(CONTROL_REG, TMP))
-            emit_number(ACC, @framebuffer.dma_fill_control_halfwords(0))
-            emit(ASM.orr_reg(CONTROL_REG, CONTROL_REG, ACC)) # ...now it is a control word
+            @emitter.emit(ASM.sub_reg(TMP, ACC, x_reg))
+            @emitter.emit(ASM.cmp_imm(TMP, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :le)
+            @emitter.emit(ASM.mov_reg(CONTROL_REG, TMP))
+            @emitter.emit_number(ACC, @framebuffer.dma_fill_control_halfwords(0))
+            @emitter.emit(ASM.orr_reg(CONTROL_REG, CONTROL_REG, ACC)) # ...now it is a control word
 
             if height
               height.times { |dy| emit_mode3_rect_row(dy, x_reg, y_reg, scratch) }
             else
-              emit_row_loop(rows_left) do
+              @primitives.emit_row_loop(rows_left) do
                 emit_mode3_rect_row(0, x_reg, y_reg, scratch)
-                emit(ASM.add_imm(y_reg, y_reg, 1)) # ...and on to the next row down
+                @emitter.emit(ASM.add_imm(y_reg, y_reg, 1)) # ...and on to the next row down
               end
             end
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # The register a computed width, and then the fill's control word built from
@@ -1629,30 +1628,30 @@ module VBlank
           # the fill. +dy+ is how far below the rect's y this row is; the fill's control
           # word always lives in CONTROL_REG by the time this runs.
           def emit_mode3_rect_row(dy, x_reg, y_reg, scratch)
-            row_skip = gensym
+            row_skip = @emitter.gensym
 
             # r4 = y + dy, checked against the area before it becomes an address.
             if dy.zero?
-              emit(ASM.mov_reg(4, y_reg))
+              @emitter.emit(ASM.mov_reg(4, y_reg))
             else
-              emit(ASM.add_imm(4, y_reg, dy))
+              @emitter.emit(ASM.add_imm(4, y_reg, dy))
             end
-            emit(ASM.cmp_imm(4, @framebuffer.clip_top))
-            emit_branch(:bcond, row_skip, cond: :lt)
-            emit(ASM.cmp_imm(4, @framebuffer.clip_bottom))
-            emit_branch(:bcond, row_skip, cond: :ge)
+            @emitter.emit(ASM.cmp_imm(4, @framebuffer.clip_top))
+            @emitter.emit_branch(:bcond, row_skip, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(4, @framebuffer.clip_bottom))
+            @emitter.emit_branch(:bcond, row_skip, cond: :ge)
 
-            emit_number(5, SCREEN_WIDTH)
-            emit(ASM.mul(4, 5, 4))           # r4 = width * (y + dy)
-            emit(ASM.add_reg(4, 4, x_reg))   # + x
-            emit(ASM.lsl_imm(4, 4, 1))       # * 2 bytes per pixel
-            emit_number(5, VRAM_START)
-            emit(ASM.add_reg(4, 4, 5))       # + VRAM base
+            @emitter.emit_number(5, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(4, 5, 4))           # r4 = width * (y + dy)
+            @emitter.emit(ASM.add_reg(4, 4, x_reg))   # + x
+            @emitter.emit(ASM.lsl_imm(4, 4, 1))       # * 2 bytes per pixel
+            @emitter.emit_number(5, VRAM_START)
+            @emitter.emit(ASM.add_reg(4, 4, 5))       # + VRAM base
 
             # To the address just worked out.
-            emit_start_copy_engine(from: scratch, to: in_register(4), control: in_register(CONTROL_REG))
+            @primitives.emit_start_copy_engine(from: scratch, to: Primitives::InRegister.new(4), control: Primitives::InRegister.new(CONTROL_REG))
 
-            place_label(row_skip)
+            @emitter.place_label(row_skip)
           end
 
           # Draw a defined bitmap at a runtime (x, y). An opaque bitmap streams from
@@ -1713,12 +1712,12 @@ module VBlank
             return @primitives.store_word_immediate(1, @primitives.var_addr(BAR_SHOWN_EARLY)) if node.equal?(bar)
             return if node&.bar?
 
-            up = gensym
-            load_var(ACC, BAR_SHOWN_EARLY)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, up, cond: :ne)
+            up = @emitter.gensym
+            @primitives.load_var(ACC, BAR_SHOWN_EARLY)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, up, cond: :ne)
             emit_background(bar)
-            place_label(up)
+            @emitter.place_label(up)
           end
 
           # Bitmap-mode background: no tile hardware, so stamp each non-empty cell with
@@ -1813,70 +1812,70 @@ module VBlank
             x_reg = 7
             y_reg = 8
             @lowering.value(x_node)
-            emit(ASM.mov_reg(x_reg, ACC))
+            @emitter.emit(ASM.mov_reg(x_reg, ACC))
             @lowering.value(y_node)
-            emit(ASM.mov_reg(y_reg, ACC))
+            @emitter.emit(ASM.mov_reg(y_reg, ACC))
             case base
-            when Symbol  then emit_load_data_address(buf_reg, base)    # r6 = ROM blob address
-            when Integer then emit_number(buf_reg, base)  # r6 = RAM buffer address
+            when Symbol  then @emitter.emit_load_data_address(buf_reg, base)    # r6 = ROM blob address
+            when Integer then @emitter.emit_number(buf_reg, base)  # r6 = RAM buffer address
             else raise LoweringError, "rect DMA base must be a blob name or a RAM address, got #{base.inspect}"
             end
 
             height.times do |row|
-              skip = gensym
+              skip = @emitter.gensym
 
               # screen_y = y + row; drop the whole row if it's above or below screen.
-              emit_add_const(9, y_reg, row, 2)          # r9 = screen_y
-              emit(ASM.cmp_imm(9, 0))
-              emit_branch(:bcond, skip, cond: :lt)
-              emit(ASM.cmp_imm(9, SCREEN_HEIGHT))
-              emit_branch(:bcond, skip, cond: :ge)
+              @primitives.emit_add_const(9, y_reg, row, 2)          # r9 = screen_y
+              @emitter.emit(ASM.cmp_imm(9, 0))
+              @emitter.emit_branch(:bcond, skip, cond: :lt)
+              @emitter.emit(ASM.cmp_imm(9, SCREEN_HEIGHT))
+              @emitter.emit_branch(:bcond, skip, cond: :ge)
 
               # visible_left = max(x, 0)  -> r10
-              emit(ASM.mov_reg(10, x_reg))
-              emit(ASM.cmp_imm(x_reg, 0))
-              keep_left = gensym
-              emit_branch(:bcond, keep_left, cond: :ge)
-              emit_number(10, 0)
-              place_label(keep_left)
+              @emitter.emit(ASM.mov_reg(10, x_reg))
+              @emitter.emit(ASM.cmp_imm(x_reg, 0))
+              keep_left = @emitter.gensym
+              @emitter.emit_branch(:bcond, keep_left, cond: :ge)
+              @emitter.emit_number(10, 0)
+              @emitter.place_label(keep_left)
 
               # visible_right = min(x + width, SCREEN_WIDTH)  -> r11
-              emit_add_const(11, x_reg, width, 2)
-              emit(ASM.cmp_imm(11, SCREEN_WIDTH))
-              keep_right = gensym
-              emit_branch(:bcond, keep_right, cond: :le)
-              emit_number(11, SCREEN_WIDTH)
-              place_label(keep_right)
+              @primitives.emit_add_const(11, x_reg, width, 2)
+              @emitter.emit(ASM.cmp_imm(11, SCREEN_WIDTH))
+              keep_right = @emitter.gensym
+              @emitter.emit_branch(:bcond, keep_right, cond: :le)
+              @emitter.emit_number(11, SCREEN_WIDTH)
+              @emitter.place_label(keep_right)
 
               # visible_width = visible_right - visible_left  -> r4; if <= 0 the row
               # is entirely off to one side, so skip it.
-              emit(ASM.sub_reg(4, 11, 10))
-              emit(ASM.cmp_imm(4, 0))
-              emit_branch(:bcond, skip, cond: :le)
+              @emitter.emit(ASM.sub_reg(4, 11, 10))
+              @emitter.emit(ASM.cmp_imm(4, 0))
+              @emitter.emit_branch(:bcond, skip, cond: :le)
 
               # buffer span address = base + (row*width + left_skip) * 2  -> r5
-              emit(ASM.sub_reg(5, 10, x_reg))           # left_skip = visible_left - x
-              emit_add_const(5, 5, row * width, 2)      # + this row's start in the buffer
-              emit(ASM.lsl_imm(5, 5, 1))                # * 2 bytes/pixel
-              emit(ASM.add_reg(5, buf_reg, 5))
+              @emitter.emit(ASM.sub_reg(5, 10, x_reg))           # left_skip = visible_left - x
+              @primitives.emit_add_const(5, 5, row * width, 2)      # + this row's start in the buffer
+              @emitter.emit(ASM.lsl_imm(5, 5, 1))                # * 2 bytes/pixel
+              @emitter.emit(ASM.add_reg(5, buf_reg, 5))
 
               # screen span address = VRAM + (screen_y*SCREEN_WIDTH + visible_left) * 2 -> r3
-              emit_number(2, SCREEN_WIDTH)
-              emit(ASM.mul(3, 9, 2))                    # r3 = screen_y * width
-              emit(ASM.add_reg(3, 3, 10))               # + visible_left
-              emit(ASM.lsl_imm(3, 3, 1))
-              emit_number(2, VRAM_START)
-              emit(ASM.add_reg(3, 3, 2))
+              @emitter.emit_number(2, SCREEN_WIDTH)
+              @emitter.emit(ASM.mul(3, 9, 2))                    # r3 = screen_y * width
+              @emitter.emit(ASM.add_reg(3, 3, 10))               # + visible_left
+              @emitter.emit(ASM.lsl_imm(3, 3, 1))
+              @emitter.emit_number(2, VRAM_START)
+              @emitter.emit(ASM.add_reg(3, 3, 2))
 
               # control = visible_width | DMA_ENABLE (16-bit, source+dest increment).
-              emit(ASM.orr_imm(4, 4, DMA_ENABLE))
+              @emitter.emit(ASM.orr_imm(4, 4, DMA_ENABLE))
 
               # Direction decides which span is the source: :dest sends the buffer
               # (r5) to the screen (r3); :src reads the screen (r3) into the buffer (r5).
               sad, dad = vram == :dest ? [5, 3] : [3, 5]
-              emit_start_copy_engine(from: in_register(sad), to: in_register(dad), control: in_register(4))
+              @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(sad), to: Primitives::InRegister.new(dad), control: Primitives::InRegister.new(4))
 
-              place_label(skip)
+              @emitter.place_label(skip)
             end
           end
 
@@ -1899,43 +1898,43 @@ module VBlank
             x_reg = 2
             y_reg = 3
             @lowering.value(node.x)
-            emit(ASM.mov_reg(x_reg, ACC))
+            @emitter.emit(ASM.mov_reg(x_reg, ACC))
             @lowering.value(node.y)
-            emit(ASM.mov_reg(y_reg, ACC))
+            @emitter.emit(ASM.mov_reg(y_reg, ACC))
 
             bmp.height.times do |row|
               lit = width.times.reject { |col| colors[(row * width) + col] == bmp.transparent }
               next if lit.empty? # a fully transparent row draws nothing
 
-              skip_row = gensym
-              emit_add_const(4, y_reg, row, 5)          # r4 = screen_y
-              emit(ASM.cmp_imm(4, 0))
-              emit_branch(:bcond, skip_row, cond: :lt)
-              emit(ASM.cmp_imm(4, SCREEN_HEIGHT))
-              emit_branch(:bcond, skip_row, cond: :ge)
-              emit_number(5, SCREEN_WIDTH)
-              emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base)
+              skip_row = @emitter.gensym
+              @primitives.emit_add_const(4, y_reg, row, 5)          # r4 = screen_y
+              @emitter.emit(ASM.cmp_imm(4, 0))
+              @emitter.emit_branch(:bcond, skip_row, cond: :lt)
+              @emitter.emit(ASM.cmp_imm(4, SCREEN_HEIGHT))
+              @emitter.emit_branch(:bcond, skip_row, cond: :ge)
+              @emitter.emit_number(5, SCREEN_WIDTH)
+              @emitter.emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base)
 
               lit.each do |col|
                 color = colors[(row * width) + col]
-                skip_px = gensym
+                skip_px = @emitter.gensym
 
-                emit_add_const(7, x_reg, col, 8)        # r7 = screen_x
-                emit(ASM.cmp_imm(7, 0))
-                emit_branch(:bcond, skip_px, cond: :lt)
-                emit(ASM.cmp_imm(7, SCREEN_WIDTH))
-                emit_branch(:bcond, skip_px, cond: :ge)
+                @primitives.emit_add_const(7, x_reg, col, 8)        # r7 = screen_x
+                @emitter.emit(ASM.cmp_imm(7, 0))
+                @emitter.emit_branch(:bcond, skip_px, cond: :lt)
+                @emitter.emit(ASM.cmp_imm(7, SCREEN_WIDTH))
+                @emitter.emit_branch(:bcond, skip_px, cond: :ge)
 
-                emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x
-                emit(ASM.lsl_imm(7, 7, 1))              # * 2 bytes/pixel
-                emit_number(8, VRAM_START)
-                emit(ASM.add_reg(7, 7, 8))              # VRAM address
-                emit_number(8, color)
-                emit(ASM.store_halfword(8, 7))
+                @emitter.emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x
+                @emitter.emit(ASM.lsl_imm(7, 7, 1))              # * 2 bytes/pixel
+                @emitter.emit_number(8, VRAM_START)
+                @emitter.emit(ASM.add_reg(7, 7, 8))              # VRAM address
+                @emitter.emit_number(8, color)
+                @emitter.emit(ASM.store_halfword(8, 7))
 
-                place_label(skip_px)
+                @emitter.place_label(skip_px)
               end
-              place_label(skip_row)
+              @emitter.place_label(skip_row)
             end
           end
 
@@ -1945,22 +1944,22 @@ module VBlank
           def emit_draw_text(node)
             return @buffered.emit_draw_text_buffered(node) if @lowering.mode == :buffered
 
-            x, y = constant_ints!(node, x: node.x, y: node.y)
+            x, y = @primitives.constant_ints!(node, x: node.x, y: node.y)
             @framebuffer.emit_text_color(node, ACC) { |color| Graphics::Color.resolve(color) }
 
             points = @framebuffer.text_points(node, x, y)
             return emit_text_points_call(points) if points.length >= Framebuffer::TEXT_POINTS_LINE
 
             points.each do |point|
-              emit_number(TMP, VRAM_START + (point * 2))
-              emit(ASM.store_halfword(ACC, TMP))
+              @emitter.emit_number(TMP, VRAM_START + (point * 2))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
           end
 
           # A line in a table: the colour already in r0, then the table and how many it holds.
           def emit_text_points_call(points)
-            emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
-            emit_number(SPARE, points.length)
+            @emitter.emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
+            @emitter.emit_number(SPARE, points.length)
             @text_points_used = true
             emit_call_cold_routine(TEXT_POINTS)
           end
@@ -1972,20 +1971,20 @@ module VBlank
           def emit_text_points_routine
             return unless @text_points_used
 
-            pixel = gensym
-            emit(ASM.loop_forever) # fall-through guard
-            place_label(TEXT_POINTS)
-            emit_number(12, VRAM_START)
-            place_label(pixel)
-            emit(ASM.load_halfword(3, 1))
-            emit(ASM.add_imm(1, 1, 2))
-            emit(ASM.lsl_imm(3, 3, 1))              # two bytes a pixel
-            emit(ASM.add_reg(3, 3, 12))
-            emit(ASM.store_halfword(0, 3))
-            emit(ASM.subs_imm(2, 2, 1))
-            emit_branch(:bcond, pixel, cond: :ne)
-            emit(ASM.return)
-            place_label(DerivedNames.routine_end(TEXT_POINTS))
+            pixel = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard
+            @emitter.place_label(TEXT_POINTS)
+            @emitter.emit_number(12, VRAM_START)
+            @emitter.place_label(pixel)
+            @emitter.emit(ASM.load_halfword(3, 1))
+            @emitter.emit(ASM.add_imm(1, 1, 2))
+            @emitter.emit(ASM.lsl_imm(3, 3, 1))              # two bytes a pixel
+            @emitter.emit(ASM.add_reg(3, 3, 12))
+            @emitter.emit(ASM.store_halfword(0, 3))
+            @emitter.emit(ASM.subs_imm(2, 2, 1))
+            @emitter.emit_branch(:bcond, pixel, cond: :ne)
+            @emitter.emit(ASM.return)
+            @emitter.place_label(DerivedNames.routine_end(TEXT_POINTS))
           end
           # Draw the run-time digit held in +value+ (0..9). A font can't be indexed by a
           # run-time value the way an array is, so there are two ways to render it, and
@@ -2006,8 +2005,8 @@ module VBlank
           # and honors the screen mode.
           def emit_draw_digit(node)
             font = node.fonts.get(node.font)
-            x = const_int(node.x)
-            y = const_int(node.y)
+            x = @primitives.const_int(node.x)
+            y = @primitives.const_int(node.y)
             digit_w = @framebuffer.uniform_digit_width(font)
             if x && y && digit_w && @framebuffer.digit_cell_on_screen?(x, y, digit_w, font.height)
               if @lowering.mode == :buffered
@@ -2045,9 +2044,9 @@ module VBlank
           def emit_draw_digit_data(node, font, width, x, y)
             color = Graphics::Color.resolve(node.color)
             @lowering.value(node.value)             # r0 = the digit (0..9)
-            emit_number(1, x)
-            emit_number(2, y)
-            emit_number(3, color)
+            @emitter.emit_number(1, x)
+            @emitter.emit_number(2, y)
+            @emitter.emit_number(3, color)
             emit_call_cold_routine(digit_routine_label(node.font, font, width))
           end
 
@@ -2078,23 +2077,23 @@ module VBlank
             return unless @pending_digit_routines
 
             @pending_digit_routines.each do |font_name, font, width|
-              emit(ASM.loop_forever) # fall-through guard: only ever entered by the call above
-              place_label(Messages::MadeNames.make(:digit_routine, font: font_name))
-              emit(ASM.push(14))
-              emit(ASM.mov_reg(10, 1)) # r10 = x, held across the routine
-              emit(ASM.mov_reg(11, 2)) # r11 = y
-              emit(ASM.mov_reg(12, 3)) # r12 = the fill color
+              @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call above
+              @emitter.place_label(Messages::MadeNames.make(:digit_routine, font: font_name))
+              @emitter.emit(ASM.push(14))
+              @emitter.emit(ASM.mov_reg(10, 1)) # r10 = x, held across the routine
+              @emitter.emit(ASM.mov_reg(11, 2)) # r11 = y
+              @emitter.emit(ASM.mov_reg(12, 3)) # r12 = the fill color
               @framebuffer.emit_digit_glyph_loop(font_name, font, width) do |phase|
                 case phase
-                when :hold then emit(ASM.mov_reg(8, 12)) # r8 = the fill color, held
+                when :hold then @emitter.emit(ASM.mov_reg(8, 12)) # r8 = the fill color, held
                 when :plot then emit_plot_digit_pixel(10, 11)
                 end
               end
-              emit(ASM.pop(15))
+              @emitter.emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can say how much of a frame
               # went into drawing digits. A routine the lowering makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
-              place_label(DerivedNames.routine_end(Messages::MadeNames.make(:digit_routine, font: font_name)))
+              @emitter.place_label(DerivedNames.routine_end(Messages::MadeNames.make(:digit_routine, font: font_name)))
             end
           end
 
@@ -2103,15 +2102,15 @@ module VBlank
           # shared routine, not constants baked in here — and r5/r4 are the live
           # row/col. Uses r0–r3 as scratch and leaves the loop registers alone.
           def emit_plot_digit_pixel(x_reg, y_reg)
-            emit(ASM.add_reg(0, y_reg, 5))        # r0 = screen_y = y + row
-            emit_number(1, SCREEN_WIDTH)
-            emit(ASM.mul(2, 0, 1))                # r2 = screen_y * width
-            emit(ASM.add_reg(0, x_reg, 4))        # r0 = screen_x = x + col
-            emit(ASM.add_reg(2, 2, 0))            # r2 = screen_y*width + screen_x
-            emit(ASM.lsl_imm(2, 2, 1))            # * 2 bytes per pixel
-            emit_number(1, VRAM_START)
-            emit(ASM.add_reg(2, 2, 1))            # r2 = the pixel's VRAM address
-            emit(ASM.store_halfword(8, 2))        # write the color
+            @emitter.emit(ASM.add_reg(0, y_reg, 5))        # r0 = screen_y = y + row
+            @emitter.emit_number(1, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(2, 0, 1))                # r2 = screen_y * width
+            @emitter.emit(ASM.add_reg(0, x_reg, 4))        # r0 = screen_x = x + col
+            @emitter.emit(ASM.add_reg(2, 2, 0))            # r2 = screen_y*width + screen_x
+            @emitter.emit(ASM.lsl_imm(2, 2, 1))            # * 2 bytes per pixel
+            @emitter.emit_number(1, VRAM_START)
+            @emitter.emit(ASM.add_reg(2, 2, 1))            # r2 = the pixel's VRAM address
+            @emitter.emit(ASM.store_halfword(8, 2))        # write the color
           end
 
         end
