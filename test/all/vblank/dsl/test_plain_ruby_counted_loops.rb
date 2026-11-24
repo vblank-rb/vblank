@@ -186,6 +186,45 @@ class TestPlainRubyCountedLoops < Minitest::Test
       .each { |x, y, color| assert_equal Color.resolve(color), shown.pixel(x, y), "the box at #{x}, #{y}" }
   end
 
+  # A loop folded from rounds works its numbers out from its count: times a number, plus one, less
+  # from one, and each worked into a game's number by +, -, ^, | and &. The products here reach a
+  # byte's top (85 * 3 is 255) and pass it (k * 300), the sums carry into the bytes above, and a
+  # number taken away goes below nought; each must come to what Ruby's own rounds come to.
+  def test_numbers_worked_from_a_folded_loops_count_are_rubys
+    player = played do
+      a = 0
+      b = 0
+      c = 0
+      d = 0
+      e = 0
+      f = -5
+      game_loop do
+        a = 0
+        b = 0
+        c = 0
+        d = 0
+        e = -1
+        f = -5
+        86.times do |k|
+          a += (k * 3) + 1
+          b += (k * 300) + 2
+          c ^= k + 7
+          d -= 100 - k
+          e &= (k * 2) | 1
+          f |= k * 5
+        end
+      end
+    end
+    rounds = (0...86)
+
+    assert_equal rounds.sum { |k| (k * 3) + 1 }, player[:a]
+    assert_equal rounds.sum { |k| (k * 300) + 2 }, player[:b]
+    assert_equal rounds.reduce(0) { |x, k| x ^ (k + 7) }, player[:c]
+    assert_equal(-rounds.sum { |k| 100 - k }, player[:d])
+    assert_equal rounds.reduce(-1) { |x, k| x & ((k * 2) | 1) }, player[:e]
+    assert_equal rounds.reduce(-5) { |x, k| x | (k * 5) }, player[:f]
+  end
+
   def test_a_two_line_body_counted_four_times_is_written_out
     program = built do
       game_loop do

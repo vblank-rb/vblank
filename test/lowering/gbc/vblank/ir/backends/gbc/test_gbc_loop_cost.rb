@@ -19,7 +19,15 @@ class TestGBCLoopCost < Minitest::Test
   # counted, with `i` a byte, 180 and 252. A search asking each turn whether to `break` or go to its
   # `next` round was 744 and 816 while a jump set a hidden number the loop's test and the rest of the
   # turn read; 220 and 756 with a jump that is a branch (the `next` loop is a while that is not counted).
-  BOUNDS = { repeat_set: 195, repeat_read: 270, while_set: 195, while_read: 270, while_break: 240, while_next: 830 }.freeze
+  #
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn (`k * 3 + 1`,
+  # `k * 5 + 2`, `k + 7`, `100 - k`, LoopCostGames :steps): 2016 a turn while each product was the
+  # runtime's multiply and each number was added to its variable through the runtime's 32-bit sum; 852
+  # with a product of a byte by a number written in the program as shifts and adds in A or HL, as the
+  # console's own games multiply, and each number worked into its variable's bytes where they are kept,
+  # in one byte where it is proven to fit one. The same rounds written out are 364 a round.
+  BOUNDS = { repeat_set: 195, repeat_read: 270, while_set: 195, while_read: 270, while_break: 240, while_next: 830,
+             steps: 900 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

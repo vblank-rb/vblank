@@ -23,7 +23,7 @@
     },
     "breakout@gbc": {
       "code": 12487,
-      "data": 45392
+      "data": 45375
     },
     "buffered_bounce": {
       "code": 4942,
@@ -43,7 +43,7 @@
     },
     "chip_band@gbc": {
       "code": 13533,
-      "data": 13736
+      "data": 13752
     },
     "clock": {
       "code": 25718,
@@ -95,7 +95,7 @@
     },
     "flowers@gbc": {
       "code": 6719,
-      "data": 4736
+      "data": 4752
     },
     "flowers@snes": {
       "code": 5862,
@@ -247,7 +247,7 @@
     },
     "pong_gbc@gbc": {
       "code": 14246,
-      "data": 25888
+      "data": 25936
     },
     "raycaster": {
       "code": 6112,
@@ -267,7 +267,7 @@
     },
     "scoreboard@gbc": {
       "code": 7952,
-      "data": 7600
+      "data": 7584
     },
     "scoreboard@snes": {
       "code": 5729,
@@ -371,7 +371,7 @@
     },
     "wanderers@gbc": {
       "code": 7981,
-      "data": 5616
+      "data": 5600
     },
     "wanderers@genesis": {
       "code": 6764,

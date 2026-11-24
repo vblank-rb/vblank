@@ -910,10 +910,22 @@ module VBlank
           def emit_set(node)
             return if node.value.is_a?(Node) && node.value.kind == :var_ref && node.value.name == node.var
             return emit_set_kept(node) if kept_bytes(node.var)
+            return emit_sum_in_place(node.var, node.value.op, node.value.rhs) if worked_in_place?(node)
 
             value(node.value)
             store(node.var)
           end
+
+          # Whether a `set` is the variable it sets, worked with a number the game works out by an
+          # operation #emit_sum_in_place does where the variable is kept: `i ^= k + 7`.
+          def worked_in_place?(node)
+            sum = node.value
+            sum.is_a?(Node) && sum.kind == :binop && IN_PLACE_OPS.include?(sum.op) && sum.lhs.kind == :var_ref &&
+              sum.lhs.name == node.var && !folded(sum.rhs) && sprites_placed_from(node.var).empty?
+          end
+
+          # The operations #emit_sum_in_place does where a variable is kept.
+          IN_PLACE_OPS = %i[+ - ^ | &].freeze
 
           def emit_add(node) = emit_sum(node.var, :+, node.operand)
           def emit_sub(node) = emit_sum(node.var, :-, node.operand)
@@ -932,9 +944,59 @@ module VBlank
               low_value(Build.binop(op, Build.var_ref(name), operand), kept)
               return store(name)
             end
+            return emit_sum_in_place(name, op, operand) if sprites_placed_from(name).empty?
 
             sum_of_two(Build.var_ref(name), operand, SUMS.fetch(op))
             store(name)
+          end
+
+          # A variable worked with a number worked out as the game runs (+, -, ^, | or &,
+          # IN_PLACE_OPS), its four bytes worked where they are kept, lowest first, the carry
+          # going up for a sum: the number worked out in BCDE and HL walking the variable, where the
+          # runtime's routine (rt_add32, rt_xor32) is the number kept on the stack, the variable
+          # loaded, a call, and the answer stored back.
+          def emit_sum_in_place(name, op, operand)
+            return emit_byte_in_place(name, op, operand) if proven_within?(operand, 0..0xFF)
+
+            value(operand)
+            @asm.load(:hl, place_of(name))
+            BCDE_LOW_FIRST.each_with_index do |register, i|
+              @asm.load(:a, [:hl])
+              emit_byte_operation(op, register, carried: i.positive?)
+              @asm.load(i == 3 ? [:hl] : [:hli], :a)
+            end
+          end
+
+          # ...and for a number proven to stay from 0 to 255, worked out in its one byte: the lowest
+          # byte of the variable worked with it, and the bytes above with nought, which a sum needs
+          # for its carry, an AND clears, and an OR or XOR leaves as they are.
+          def emit_byte_in_place(name, op, operand)
+            emit_low_byte_in_a(operand)
+            @asm.load(:e, :a)
+            @asm.load(:hl, place_of(name))
+            @asm.load(:a, [:hl])
+            emit_byte_operation(op, :e, carried: false)
+            return @asm.load([:hl], :a) if %i[^ |].include?(op)
+
+            @asm.load([:hli], :a)
+            @asm.load(:e, 0)
+            3.times do |i|
+              @asm.load(:a, [:hl]) unless op == :&
+              op == :& ? @asm.xor_a(:a) : emit_byte_operation(op, :e, carried: true)
+              @asm.load(i == 2 ? [:hl] : [:hli], :a)
+            end
+          end
+
+          # A = A +op+ +register+, one byte of a four-byte operation: +carried+ for a byte above the
+          # lowest, where a sum takes the carry from the byte below.
+          def emit_byte_operation(op, register, carried:)
+            case op
+            when :+ then carried ? @asm.adc_a(register) : @asm.add_a(register)
+            when :- then carried ? @asm.sbc_a(register) : @asm.sub_a(register)
+            when :^ then @asm.xor_a(register)
+            when :| then @asm.or_a(register)
+            else @asm.and_a(register)
+            end
           end
 
           def add_in_place(address, amount, bytes = 4)
@@ -2760,7 +2822,7 @@ module VBlank
               _, holds_when = COMPARISONS.fetch(node.op)
               return @asm.call(holds_when == :z ? "rt_bool_of_z" : "rt_bool_of_nz")
             end
-            return if node.op == :* && (emit_product_by_power_of_two(node) || emit_product_by_byte(node) ||
+            return if node.op == :* && (emit_small_product(node) || emit_product_by_power_of_two(node) || emit_product_by_byte(node) ||
                                         emit_product_by_byte_value(node))
             return if %i[+ -].include?(node.op) && emit_sum_with_constant(node)
             return if node.op == :& && emit_and_with_byte(node)
@@ -2819,7 +2881,23 @@ module VBlank
               end
               return true
             end
-            false
+            emit_constant_less_value(node)
+          end
+
+          # A number written in the program less one worked out, `100 - k`: each byte of the number
+          # less the same byte of the other with the borrow, a dozen instructions where rt_sub32 is
+          # the other kept on the stack and a call. True when it was done so.
+          def emit_constant_less_value(node)
+            number = node.op == :- && folded(node.lhs)
+            return false unless number
+
+            value(node.rhs)
+            BCDE_LOW_FIRST.each_with_index do |register, i|
+              @asm.load(:a, (number >> (8 * i)) & 0xFF)
+              i.zero? ? @asm.sub_a(register) : @asm.sbc_a(register)
+              @asm.load(register, :a)
+            end
+            true
           end
 
           def value_of_neg(node) = sum_of_one(node.operand, "rt_neg32")

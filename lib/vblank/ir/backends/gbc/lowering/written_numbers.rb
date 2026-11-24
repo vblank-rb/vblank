@@ -197,7 +197,7 @@ module VBlank
 
               case operand.op
               when :+, :-, :&, :|, :^ then emit_low_sum(operand, bytes)
-              when :* then emit_low_product(operand)
+              when :* then emit_small_product(operand) || emit_low_product(operand)
               when :>> then emit_low_bytes_shifted_down(operand, bytes)
               else value(operand)
               end

@@ -22,6 +22,54 @@ module VBlank
           module SmallNumbers
             private
 
+            # A number from 0 to 255 times a number written in the program, the product proven to stay
+            # from 0 to 65535: the SM83 has no multiply, so the console's own games multiply a small
+            # number by a known one with shifts and adds, `add a, a` and `add a, c` a bit at a time in
+            # A, or `add hl, hl` and `add hl, de` in HL where the product needs two bytes (Pan Docs,
+            # "CPU Instruction Set"), where the runtime's rt_mul32_byte shifts and adds all four bytes
+            # for each of the factor's eight bits. What a loop folded from a Ruby `times` works its
+            # stepping numbers out with (`k * 5 + 2`, PlainRuby::Counts::KnownRounds). True when it
+            # was done so.
+            def emit_small_product(node)
+              [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
+                factor = folded(by)
+                next unless factor&.between?(2, 0xFF) && !folded(other) && proven_within?(other, 0..0xFF)
+                next unless proven_within?(node, 0..0xFFFF)
+
+                emit_low_byte_in_a(other)
+                proven_within?(node, 0..0xFF) ? emit_byte_times(factor) : emit_half_times(factor)
+                @asm.load(:bc, 0)
+                return true
+              end
+              false
+            end
+
+            # E = A times +factor+, its bits walked from the top below the highest: double, then add
+            # the number once more where the bit is set. D nought.
+            def emit_byte_times(factor)
+              @asm.load(:c, :a)
+              factor.digits(2).reverse.drop(1).each do |bit|
+                @asm.add_a(:a)
+                @asm.add_a(:c) if bit == 1
+              end
+              @asm.load(:e, :a)
+              @asm.load(:d, 0)
+            end
+
+            # DE = A times +factor+, the same walk in HL.
+            def emit_half_times(factor)
+              @asm.load(:e, :a)
+              @asm.load(:d, 0)
+              @asm.load(:h, 0)
+              @asm.load(:l, :a)
+              factor.digits(2).reverse.drop(1).each do |bit|
+                @asm.add_hl(:hl)
+                @asm.add_hl(:de) if bit == 1
+              end
+              @asm.load(:e, :l)
+              @asm.load(:d, :h)
+            end
+
             # The carry set when +operand+'s number, proven small, is below +number+, a number written
             # in the program, and clear when not: true when it was done so. A number the range is all
             # below, or all at or above, needs nothing worked out.
