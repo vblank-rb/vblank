@@ -104,7 +104,7 @@ class TestPlaces < Minitest::Test
       game_loop { draw_place :room, seen_by: eye, faces: [0] }
     end
 
-    assert_match(/faces: needs a list/, message)
+    assert_match(/faces: needs an Array of face numbers/, message)
   end
 
   def test_a_window_that_is_not_four_edges_is_refused
