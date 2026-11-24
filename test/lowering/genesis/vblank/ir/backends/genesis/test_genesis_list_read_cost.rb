@@ -28,6 +28,18 @@ class TestGenesisListReadCost < Minitest::Test
     end
   end
 
+  # A slot named by a number written in the program, `x += a[1]`, is one move at its distance from A5,
+  # as a variable is (Genesis::Lowering#fixed_word_slot). Measured: 50 cycles a read against 40 for a
+  # variable. The difference is the EXT.L a slot the plan keeps narrow takes to be 32 bits.
+  WRITTEN_SLOT_SLACK = 14
+
+  def test_a_read_of_a_written_slot_costs_what_a_variable_read_costs
+    written = ListReadCostGames.cycles_a_read(:genesis, :written, FRAME_CYCLES, width: :word)
+    named = ListReadCostGames.cycles_a_read(:genesis, :named, FRAME_CYCLES, width: :word)
+
+    assert_operator written, :<, named + WRITTEN_SLOT_SLACK, "a written slot costs #{written.round(1)} cycles, a variable #{named.round(1)}"
+  end
+
   # The reads are the interpreter's on every pass.
   def test_the_reads_are_the_interpreters_on_every_pass
     ListReadCostGames::READS_A_PASS.each_key do |index|

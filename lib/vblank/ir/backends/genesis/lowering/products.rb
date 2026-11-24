@@ -216,8 +216,14 @@ module VBlank
               [[node.lhs, node.rhs], [node.rhs, node.lhs]].any? { |test, other| comparison?(test) && unchanging?(other) }
             end
 
-            # Does working +operand+ out change nothing (IR::Unchanging)?
-            def unchanging?(operand) = operand.is_a?(Symbol) || (operand.is_a?(Node) && Unchanging.value?(operand) { |part| folded(part) })
+            # Does working +operand+ out change nothing (IR::Unchanging)? A slot at an address known
+            # here (#fixed_slot) is inside its list, so reading it cannot stop the game.
+            def unchanging?(operand)
+              operand.is_a?(Symbol) || (operand.is_a?(Node) && Unchanging.value?(operand) { |part| folded(part) || fixed_slot_read?(part) })
+            end
+
+            # Whether +node+ reads a list's slot at an address known here (#fixed_slot).
+            def fixed_slot_read?(node) = node.kind == :list_get && !fixed_slot(node).nil?
           end
         end
       end

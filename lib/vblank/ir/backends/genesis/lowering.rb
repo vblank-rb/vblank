@@ -981,7 +981,7 @@ module VBlank
             if slot
               value(node.value)
               emit_slot_value_scaled(node)
-              return @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot.last), @asm.d(0), @asm.abs_l(slot.first))
+              return @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot.last), @asm.d(0), at(slot.first))
             end
             return list_call("rt_list_set", node, node.index, node.value) if @lists_dropped_from_front.include?(node.name)
 
@@ -1004,7 +1004,7 @@ module VBlank
             slot = fixed_slot(node)
             if slot
               address, bytes = slot
-              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(address), @asm.d(0))
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), at(address), @asm.d(0))
               emit_slot_widening(bytes)
               return emit_slot_value_unscaled(node)
             end
@@ -2288,7 +2288,16 @@ module VBlank
             name = variable_named(node)
             return var(name) if name
 
-            held_word_field(node)
+            held_word_field(node) || fixed_word_slot(node)
+          end
+
+          # A long slot of a list at an address known here (#fixed_slot), kept as it is, which an
+          # instruction reads where it is as it would a variable; nil for anything else.
+          def fixed_word_slot(node)
+            return unless node.is_a?(Node) && node.kind == :list_get && slot_place(node.name).scale == 1
+
+            address, bytes = fixed_slot(node)
+            at(address) if bytes == 4
           end
 
           # A long field of the thing a walk holds (#held_field), which an instruction reads where it is
