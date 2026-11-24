@@ -31,7 +31,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second,
   # their keys +keys+ in turn. With +work+ each pass of the game counts that high first, and with
-  # +song+ a tune plays beside them on a voice of its own.
+  # +song+ a tune of three parts, a note on each every sixteenth, plays beside them.
   private def game(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
@@ -39,7 +39,11 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     VBlank.build("STRIKES", console: :snes, out: nil, err: nil) do
       enable_sound
       if song
-        song(:tune) { voice(:lead) { 64.times { note :C3, :quarter } } }
+        song(:tune) do
+          voice(:low) { 256.times { note :C3, :sixteenth } }
+          voice(:middle) { 256.times { note :G3, :sixteenth } }
+          voice(:high, plays: :wave) { 256.times { note :C4, :sixteenth } }
+        end
         play_song :tune
       end
       sfx = sound_effects :sfx, { chime: effect }
@@ -107,5 +111,73 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     assert_struck_apart(rate: 50, apart: 3, lasting: 1, notes: 8, keys: %i[A5 E5], work: SLOW_WORK) do |sound|
       assert_operator sound.passes, :<=, FRAMES / 2, "every pass takes two frames or more"
     end
+  end
+
+  # The length of the effect's voice's wave a little after each of +onsets+, in pairs: the middle
+  # distance between its rises through nought over PITCH_WINDOW pairs. A5's wave is 55 pairs at the
+  # emulator's 48,000 a second, E5's 73.
+  PITCH_WINDOW = 400
+  WAVE_NEAR = 4
+  private def wave_lengths_after(sound, onsets)
+    onsets.map do |at|
+      rises = sound.left[(at + 60)...(at + 60 + PITCH_WINDOW)].each_cons(2).each_with_index
+                   .filter_map { |(was, now), i| i if was.negative? && !now.negative? }
+      apart = rises.each_cons(2).map { |a, b| b - a }.sort
+      apart.empty? ? 0 : apart[apart.size / 2]
+    end
+  end
+
+  private def assert_same_pitches(alone, beside)
+    assert_equal 8, alone.onsets.size
+    expected = wave_lengths_after(alone, alone.onsets)
+    got = wave_lengths_after(beside, alone.onsets)
+    expected.zip(got).each do |want, have|
+      assert_in_delta want, have, WAVE_NEAR, "each note's wave beside the tune: #{got.inspect}, alone: #{expected.inspect}"
+    end
+  end
+
+  # A tune beside the effect keeps the line busy, so a note's pitch and the note itself can come in
+  # different turns of the sound unit's wait, with one of the list's notes struck between them. Each
+  # note is still heard at its own pitch, as without the tune.
+  def test_each_note_keeps_its_own_pitch_beside_a_tune
+    assert_same_pitches(heard(game(rate: 50, apart: 3, lasting: 2, notes: 8, keys: %i[A5 E5])),
+                        heard(game(rate: 50, apart: 3, lasting: 2, notes: 8, keys: %i[A5 E5], song: true)))
+  end
+
+  def test_each_note_on_later_ticks_keeps_its_own_pitch_beside_a_tune
+    assert_same_pitches(heard(game(rate: 240, apart: 5, lasting: 2, notes: 8, keys: %i[A5 E5])),
+                        heard(game(rate: 240, apart: 5, lasting: 2, notes: 8, keys: %i[A5 E5], song: true)))
+  end
+
+  # Eight ticks a frame, each striking a note of its own, then G5 held: more than the line ahead holds
+  # in a frame, so some of a tick's commands come through the queue, each after the time it was due,
+  # and the sound unit does each as it comes. The pitch of a note and the note itself are then done in
+  # different turns of its wait, and the note still sounds at its own pitch. Measured over frames
+  # HELD_FRAMES, while G5 is held: its wave is 61 pairs, C6's before it 46.
+  HELD_FRAMES = (20...28)
+  private def held_wave_length(burst)
+    notes = (0...burst).map { |n| Note.new(at: n, key: n.even? ? :C4 : :C6, length: 1) }
+    notes << Note.new(at: burst, key: :G5, length: 120)
+    effect = Score.new(tempo: 480, ticks_per_beat: 60, length: burst + 120, plays_once: true, on_timer: true,
+                       parts: [Part.new(notes: notes)])
+    cartridge = VBlank.build("STRIKES", console: :snes, out: nil, err: nil) do
+      enable_sound
+      sfx = sound_effects :sfx, { chime: effect }
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        sfx.play :chime if pass == PLAYED_ON
+      end
+    end
+    sound = heard(cartridge)
+    pairs_a_frame = sound.left.size / FRAMES
+    window = sound.left[(HELD_FRAMES.begin * pairs_a_frame)...(HELD_FRAMES.end * pairs_a_frame)]
+    rises = window.each_cons(2).each_with_index.filter_map { |(was, now), i| i if was.negative? && !now.negative? }
+    apart = rises.each_cons(2).map { |a, b| b - a }.sort
+    apart[apart.size / 2]
+  end
+
+  def test_a_note_after_more_ticks_than_the_line_holds_sounds_at_its_own_pitch
+    assert_in_delta held_wave_length(8), held_wave_length(16), WAVE_NEAR
   end
 end

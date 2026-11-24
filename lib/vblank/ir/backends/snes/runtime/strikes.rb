@@ -75,7 +75,7 @@ module VBlank
             # The sound unit's program's direct page, past Sound's own: the command being done (its
             # three numbers, as Sound's commands read them from the mailboxes), whether commands are
             # kept for later, NOW, BASE, when the commands coming are due, a word to work in, the
-            # list's count and its two ends, and NEXT_PITCH to NEXT_GAIN kept while the list is done.
+            # list's count and its two ends, and the list's own NEXT_PITCH to NEXT_GAIN (LIST_NEXT).
             COMMAND = 0x0C
             COMMAND_COPY = [nil, COMMAND, 0x0D, 0x0E].freeze
             LIST_INCOMING = 0x0F
@@ -86,7 +86,7 @@ module VBlank
             LISTED = 0x18
             LIST_HEAD = 0x19
             LIST_TAIL = 0x1A
-            KEPT_NEXT = 0x1B
+            LIST_NEXT = 0x1B
             NEXT_BYTES = 6
             # The list, a ring of LIST_ENTRIES: each entry's command, its two numbers, and when it is
             # due, low and high, each in a table of its own, one byte an entry.
@@ -140,19 +140,36 @@ module VBlank
             end
 
             # strikes_clock (CALL): NOW moved on by the timer's count, and every command of the list
-            # whose time has come done, oldest first, through dispatch (Sound.driver), with the note
-            # being told kept as it was round them. strikes_mailbox (CALL): the command the mailboxes
-            # hold, copied into COMMAND_COPY, done, kept for later, or a TIMING command. strikes_timing and
-            # strikes_store, reached from it.
+            # whose time has come done, oldest first, through dispatch (Sound.driver). strikes_mailbox
+            # (CALL): the command the mailboxes hold, copied into COMMAND_COPY, done, kept for later, or
+            # a TIMING command. strikes_timing and strikes_store, reached from it. strikes_swap_next
+            # (CALL), below.
             def emit_routines(spc)
               emit_clock(spc)
               emit_mailbox_command(spc)
               emit_timing(spc)
               emit_store(spc)
+              emit_swap_next(spc)
+            end
+
+            # strikes_swap_next: NEXT_PITCH to NEXT_GAIN, the note the sound unit is being told, changed
+            # over with LIST_NEXT. A note's pitch and envelope are commands of their own, ahead of the
+            # note (Sound#emit_whole_note_commands), and the list's commands and those done at once
+            # are two lines of them, each held while the other's are done: a pitch done from the list
+            # with its note still to come waits in LIST_NEXT, and one done at once is not overwritten
+            # by the list's. Both are kept by changing them over before the list's commands and after.
+            def emit_swap_next(spc)
+              spc.label("strikes_swap_next")
+              NEXT_BYTES.times do |n|
+                spc.mov(:a, spc.direct(Sound::NEXT_PITCH + n))
+                spc.mov(:y, spc.direct(LIST_NEXT + n))
+                spc.mov(spc.direct(LIST_NEXT + n), :a)
+                spc.mov(spc.direct(Sound::NEXT_PITCH + n), :y)
+              end
+              spc.ret
             end
 
             def emit_clock(spc)
-              kept = (0...NEXT_BYTES).map { |n| [Sound::NEXT_PITCH + n, KEPT_NEXT + n] }
               due_check = lambda do |past|
                 spc.instance_eval do
                   mov :x, direct(LIST_HEAD)
@@ -179,7 +196,7 @@ module VBlank
                 beq "strikes_clock_done"
               end
               due_check.call("strikes_clock_done")
-              kept.each { |from, to| spc.mov(spc.direct(to), spc.direct(from)) }
+              spc.call("strikes_swap_next")
               spc.instance_eval do
                 label "strikes_clock_due"
                 mov :x, direct(LIST_HEAD)
@@ -202,7 +219,7 @@ module VBlank
               due_check.call("strikes_clock_struck")
               spc.bra("strikes_clock_due")
               spc.label("strikes_clock_struck")
-              kept.each { |from, to| spc.mov(spc.direct(from), spc.direct(to)) }
+              spc.call("strikes_swap_next")
               spc.label("strikes_clock_done")
               spc.ret
             end
@@ -286,8 +303,10 @@ module VBlank
                 mov :a, direct(LISTED)
                 cmp :a, imm(LIST_ENTRIES)
                 bcc "strikes_store_room"
+                call "strikes_swap_next" # done at once, as one of the list's
                 mov :a, direct(COMMAND_COPY[1])
-                jmp "dispatch"
+                call "dispatch"
+                jmp "strikes_swap_next"
                 label "strikes_store_room"
                 mov :x, direct(LIST_TAIL)
                 mov :a, direct(COMMAND_COPY[1])
@@ -314,7 +333,9 @@ module VBlank
             # rt_strikes_mark (JSL): MARK put in the line ahead as a frame of the music begins, or sent at
             # once when the line is full.
             # rt_strikes_push (JSL): the command R2 with R0 and R1 put in the line ahead, the carry set
-            # when it went in and clear when the line is full. rt_strikes_close (JSL): UNTIL_NOW sent after a
+            # when it went in. A full line is sent from until there is room, up to SENT_TRIES looks at
+            # the mailbox, and the carry is clear when none was made: every command of a tick goes the
+            # one way, so the sound unit takes a note's pitch and the note itself the same way. rt_strikes_close (JSL): UNTIL_NOW sent after a
             # pass that sent FROM.
             def emit(asm, memory)
               asm.label("rt_strikes_mark")
@@ -346,6 +367,9 @@ module VBlank
             def emit_push(asm, memory)
               s = Sound
               asm.label("rt_strikes_push")
+              asm.phy
+              asm.ldy(SENT_TRIES)
+              asm.label("rt_strikes_push_try")
               asm.ldx(asm.abs(memory[s::AHEAD_TAIL]))
               asm.txa
               asm.clc
@@ -360,9 +384,22 @@ module VBlank
               asm.sta(memory.indexed(asm, s::AHEAD, s::ENTRY_REGISTER))
               asm.lda(asm.direct(s::R1))
               asm.sta(memory.indexed(asm, s::AHEAD, s::ENTRY_VALUE))
+              asm.ply
               asm.sec
               asm.rtl
-              asm.label("rt_strikes_push_full")
+              asm.label("rt_strikes_push_full") # room made by sending the oldest, as the queue makes it
+              [s::R0, s::R1, s::R2].each do |register|
+                asm.lda(asm.direct(register))
+                asm.pha
+              end
+              asm.jsl(asm.long("rt_sound_send_queued"))
+              [s::R2, s::R1, s::R0].each do |register|
+                asm.pla
+                asm.sta(asm.direct(register))
+              end
+              asm.dey
+              asm.bne("rt_strikes_push_try")
+              asm.ply
               asm.clc
               asm.rtl
             end
