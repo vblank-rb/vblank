@@ -207,6 +207,10 @@ class TestAddressRegister < Minitest::Test
   # way the variables' base does — a second register, because one shared between them
   # would be pushed out by whichever was touched last, and a pool walk touches both
   # constantly. See {LIST_ADDR} and {Primitives#emit_load_address_register}.
+  #
+  # Each game below also reads its lists once at an index it works out (`xs[k & 7]`). A small list
+  # read only at slots written in the program is kept beside the variables and reached from their
+  # base instead (Lists#near_list?), so it would never put its own base in the register at all.
 
   # Both registers are watched, not just the first one. Nothing the DSL can express writes
   # the list register between two touches of a list today — the routines that use it for
@@ -262,7 +266,8 @@ class TestAddressRegister < Minitest::Test
       screen :bitmap
       xs = list :xs, capacity: 8
       func(:body) { xs[0] = xs[1] + xs[2] }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] }
     end
     assert_equal 1, runs.length,
                  "four touches of one list, and its base is named once for the lot"
@@ -278,7 +283,8 @@ class TestAddressRegister < Minitest::Test
         xs = list :xs, capacity: 8
         a = 1
         func(:body) { a = xs[0] + a; xs[1] = a }
-        game_loop { call :body }
+        k = 0
+        game_loop { call :body; k = xs[k & 7] }
       end
     }
     runs = list_base_runs_in(:body) { program.call(self) }
@@ -299,7 +305,8 @@ class TestAddressRegister < Minitest::Test
       xs = list :xs, capacity: 8
       ys = list :ys, capacity: 8
       func(:body) { xs[0] = ys[0] }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] + ys[k & 7] }
     end
     assert_equal 2, runs.length, "two lists, so the base is named twice"
     assert_equal [true], runs.last.map { |word| steps_list_base?(word) },
@@ -313,7 +320,8 @@ class TestAddressRegister < Minitest::Test
       xs = list :xs, capacity: 8
       a = var :a, 1
       func(:body) { xs[0] = 1; if a > 0 then xs[1] = 2 else xs[2] = 3 end }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] }
     end
     assert_equal 2, runs.length,
                  "the arm that is jumped to cannot lean on what the code before the branch left; " \
@@ -326,7 +334,8 @@ class TestAddressRegister < Minitest::Test
       xs = list :xs, capacity: 8
       func(:bump) { xs[3] = 9 }
       func(:body) { xs[0] = 1; call :bump; xs[1] = 2 }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] }
     end
     assert_equal 2, runs.length, "a routine between them is free to use the register for its own work"
   end
