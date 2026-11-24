@@ -122,6 +122,19 @@ class TestPlainFileStructs < Minitest::Test
     end
   end
 
+  # The block reads the field after a change to the number the point was made from.
+  def test_a_struct_handed_to_a_block_and_only_read_there
+    agrees("PlainFilePoints.yield_at(score) { |point| score += 1; n = point.x }", reads: %i[n], passes: 3) do
+      score = n = 0
+      game_loop do
+        PlainFilePoints.yield_at(score) do |point|
+          score += 1
+          n = point.x
+        end
+      end
+    end
+  end
+
   def test_a_struct_made_through_a_local_holding_its_class
     agrees("kind = PlainFileLocalClassPoint; kind.new(score, 0)", reads: %i[n], passes: 3) do
       score = 0

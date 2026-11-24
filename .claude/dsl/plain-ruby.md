@@ -588,7 +588,7 @@ the object is cannot be known from the source. A path that starts from a name (`
 
 A Struct or Data class can be in a file loaded with plain `require`, which is not read as game
 code. Its objects are followed one at a time, when game code first gives one a name: a local, an
-instance variable or a method's argument, alone or in an Array, a Hash or a field
+instance variable, a method's argument or a block's named parameter, alone or in an Array, a Hash or a field
 (`InstanceVariables.follow_objects_in`). Each field then keeps the number it held on that line,
 as in Ruby. A Struct object gets the accessors a game file's Struct has, on that object only, and
 a Data object is replaced by a copy whose fields hold copies of those numbers. The class does not

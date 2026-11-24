@@ -615,15 +615,20 @@ module VBlank
           node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil? && child.equal?(node.body)
         end
 
-        # +text+, the body +child+ of +node+, a method of game code, first following the objects its
-        # arguments hold (InstanceVariables.follow_objects_in): an object a plain file made, handed
-        # to a method, is first named there. A body with `rescue` is left as it is, since it cannot
-        # be put in parentheses.
+        # +text+, the body +child+ of +node+, a method or a block of game code, first following the
+        # objects its parameters hold (InstanceVariables.follow_objects_in): an object a plain file
+        # made, handed to a method or yielded to a block, is first named there. A body with `rescue`
+        # is left as it is, since it cannot be put in parentheses.
         def arguments_followed_text(node, child, text)
-          return text unless @follows_instance_variables && node.is_a?(Prism::DefNode) && child.equal?(node.body)
+          return text unless @follows_instance_variables && PARAMETERS_FOLLOWED.any? { |kind| node.is_a?(kind) }
+          return text unless child.equal?(node.body)
           return text if child.is_a?(Prism::BeginNode)
 
-          names = parameter_names(node.parameters)
+          names = case node
+                  when Prism::DefNode then parameter_names(node.parameters)
+                  when Prism::BlockNode then block_parameter_names(node.parameters)
+                  else []
+                  end
           return text if names.empty?
 
           listed = names.join(", ")
@@ -636,6 +641,13 @@ module VBlank
           named = [*parameters.requireds, *parameters.optionals, parameters.rest, *parameters.posts, *parameters.keywords,
                    parameters.keyword_rest]
           named.filter_map { |parameter| parameter.name if parameter.respond_to?(:name) && parameter.name }
+        end
+
+        PARAMETERS_FOLLOWED = [Prism::DefNode, Prism::BlockNode].freeze # Whose parameters #arguments_followed_text follows
+
+        # The names a block's `|...|` gives; none for `it` or `_1`, which have no list.
+        def block_parameter_names(parameters)
+          parameters.is_a?(Prism::BlockParametersNode) ? parameter_names(parameters.parameters) : []
         end
 
         # A `return` in a block belongs to that block, so tests open outside it do not apply.
