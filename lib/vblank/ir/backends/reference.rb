@@ -2675,7 +2675,7 @@ module VBlank
             @obj_layer.each do |obj|
               next unless obj[:level] == level
 
-              set_blend_for(obj[:name], kept)
+              set_blend_for(obj[:name], kept, layer: obj[:layer])
               paint_snapshot_object(obj)
             end
           end
@@ -2719,7 +2719,7 @@ module VBlank
           @obj_layer.each do |obj|
             next unless obj[:in_front]
 
-            set_blend_for(obj[:name], kept)
+            set_blend_for(obj[:name], kept, layer: obj[:layer])
             paint_snapshot_object(obj)
           end
         end
@@ -3030,10 +3030,14 @@ module VBlank
         # Turn the blend on or off for the thing about to be painted: on for anything the
         # placed fade reaches, off for anything it leaves alone. A +name+ of nil is the
         # backdrop, which is behind everything and so is always reached.
-        def set_blend_for(name, kept)
-          set_see_through_for(name)
+        #
+        # An object that changes layer is placed by the layer it was in as the frame was captured
+        # (+layer+, from the snapshot) rather than by +kept+, which holds the names a layer's place in
+        # the stack settles once.
+        def set_blend_for(name, kept, layer: nil)
+          set_see_through_for(name, layer: layer)
           return @screen.set_paint_fade(nil, nil) if kept.nil?
-          return @screen.set_paint_fade(nil, nil) if name && kept.include?(name)
+          return @screen.set_paint_fade(nil, nil) if name && (kept.include?(name) || kept_by_layer?(layer))
 
           @screen.set_paint_fade(@fade_placed[1], @fade_placed[2])
         end
@@ -3045,8 +3049,8 @@ module VBlank
         # already in the buffer that the display would not blend with is another sprite,
         # so the screen is told when the thing is a sprite, and mixes it with the scenery it
         # keeps apart instead (see Framebuffer#keep_scenery).
-        def set_see_through_for(name)
-          layer = see_through_layer_of(name)
+        def set_see_through_for(name, layer: nil)
+          layer = layer ? @see_through&.[](layer) : see_through_layer_of(name)
           @screen.set_paint_see_through(layer && !fading? ? see_through_weights(layer) : nil,
                                         sprite: @objects.key?(name))
         end
@@ -3081,12 +3085,23 @@ module VBlank
           layer.shows.kind == :int && layer.behind.kind == :int
         end
 
-        # The see-through layer the thing called +name+ is in, or nil.
+        # The see-through layer the thing called +name+ is in now, or nil. A sprite the game moves with
+        # `put_in_layer` is in the layer it was last put in (#layer_of), not the one it was declared in.
         def see_through_layer_of(name)
           return nil unless @see_through && name
 
           node = @bg_by_name[name] || @objects[name]
-          node && @see_through[node.layer]
+          node && @see_through[layer_of(node)]
+        end
+
+        # The layer +node+ is in now: for an object that changes layer, the one its pick names, or the
+        # one it was declared in for a number that names none (as #object_level reads it); the one it was
+        # declared in for anything else.
+        def layer_of(node)
+          return node.layer unless node.kind == :object && node.layers && !node.layers.empty?
+
+          pick = raw_var(node.layer_pick)
+          pick.between?(0, node.layers.length - 1) ? node.layers[pick] : node.layer
         end
 
         # Is a fade in force that takes the blend? A see-through layer asks, because a
@@ -3129,11 +3144,24 @@ module VBlank
         # The names the fade in force leaves alone — its layer and everything in front.
         def names_above_placed_fade = names_at_or_above(@fade_placed[0])
 
-        # The names of everything in +layer+ and in front of it. Worked out once per layer,
-        # because it depends only on the picture — so the same layer always answers with
-        # the same list.
+        # The names of everything in +layer+ and in front of it that stays in the layer it was declared in.
+        # Worked out once per layer, because it depends only on the picture — so the same layer always
+        # answers with the same list. A sprite that changes layer is left out: where it is now is read as
+        # each frame is captured (#kept_by_layer?).
         def names_at_or_above(layer)
-          @names_at_or_above[layer] ||= IR::Stacking.at_or_above(@picture, layer).map(&:name)
+          @names_at_or_above[layer] ||= IR::Stacking.at_or_above(@picture, layer)
+                                                    .reject { |node| node.kind == :object && node.layers && !node.layers.empty? }
+                                                    .map(&:name)
+        end
+
+        # Is +layer+, the one a sprite that changes layer was in as the frame was captured, the placed
+        # fade's layer or in front of it?
+        def kept_by_layer?(layer)
+          return false if layer.nil? || @fade_placed.nil?
+
+          place = @picture.stack.index(layer)
+          line = @picture.stack.index(@fade_placed[0])
+          !place.nil? && !line.nil? && place >= line
         end
 
         # Draw one snapshotted object from the layer captured this frame.
@@ -3525,7 +3553,8 @@ module VBlank
             obj = on[:object]
             image = on[:picture]
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
-                     level: object_level(obj), color_list: object_color_list(obj, image), left_out: on[:left_out] }
+                     level: object_level(obj), layer: layer_of(obj), color_list: object_color_list(obj, image),
+                     left_out: on[:left_out] }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
             snap[:in_front] = true if obj.in_front
             snap
