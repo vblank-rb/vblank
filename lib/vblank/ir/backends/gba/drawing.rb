@@ -1771,7 +1771,7 @@ module VBlank
           def emit_save_region(node)
             backing_region_unsupported_in_buffered! if @lowering.mode == :buffered
             info = backing_info(node.buffer)
-            emit_rect_row_dma(node.x, node.y, info[:width], info[:height], info[:base], vram: :src)
+            emit_rect_row_dma(node.x, node.y, info.width, info.height, info.base, vram: :src)
           end
 
           # Put a saved patch back on the screen: stream the RAM buffer INTO VRAM, just
@@ -1779,7 +1779,7 @@ module VBlank
           def emit_restore_region(node)
             backing_region_unsupported_in_buffered! if @lowering.mode == :buffered
             info = backing_info(node.buffer)
-            emit_rect_row_dma(node.x, node.y, info[:width], info[:height], info[:base], vram: :dest)
+            emit_rect_row_dma(node.x, node.y, info.width, info.height, info.base, vram: :dest)
           end
 
           # Copy the rows of a run-time-positioned width×height rectangle between the

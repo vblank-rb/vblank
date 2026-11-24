@@ -870,6 +870,9 @@ module VBlank
                     "a `list #{name.inspect}, capacity: N` must run first")
           end
 
+          # Where a backing buffer is and how big: +width+ and +height+ in pixels, +base+ its address.
+          BackingBuffer = Data.define(:width, :height, :base)
+
           # Reserve a backing buffer's RAM: a width×height block of 16-bit pixels in
           # the same IWRAM the variables live in. Allocated once per name during the
           # definitions pass; the block is padded to a whole word so the next
@@ -877,15 +880,15 @@ module VBlank
           # is a contradiction.
           def register_backing(name, width, height)
             if (existing = @backing[name])
-              return if existing[:width] == width && existing[:height] == height
+              return if existing.width == width && existing.height == height
 
               raise LoweringError,
                     "backing buffer #{name.inspect} is declared with two different sizes " \
-                    "(#{existing[:width]}x#{existing[:height]} and #{width}x#{height})"
+                    "(#{existing.width}x#{existing.height} and #{width}x#{height})"
             end
 
             base = @memory.alloc(((width * height * 2) + 3) & ~3) # bytes, rounded up to a word
-            @backing[name] = { width: width, height: height, base: base }
+            @backing[name] = BackingBuffer.new(width: width, height: height, base: base)
           end
 
           # A backing buffer's layout, or a friendly error if it was never declared.
