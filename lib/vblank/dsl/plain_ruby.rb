@@ -724,6 +724,7 @@ module VBlank
           return "#{ARRAYS}.taken(#{argument(node.receiver)}, :#{node.name})" if game_array_item_taken?(node)
           return index_write_text(node) if node.name == :[]= && node.receiver
           return whole_array_change_text(node) if whole_array_change?(node)
+          return own_array_change_text(node) if own_array_change?(node)
           return attribute_write_text(node) if node.attribute_write? && node.receiver
           return "#{STEPS}.nil_test(#{argument(node.receiver)})" if node.name == :nil? && node.receiver
           return nil_comparison_text(node) if LocalNames.nil_comparison?(node)
@@ -830,6 +831,19 @@ module VBlank
         def reader_call?(node)
           node.is_a?(Prism::CallNode) && !node.receiver.nil? && node.arguments.nil? && node.block.nil? &&
             node.name.match?(/\A[a-z_]\w*\z/)
+        end
+
+        # `@dots << dot`, `@scores.shift`: an instance variable's Array changed as a whole by a line
+        # of its own class, which InstanceVariables.refuse_unkept_change! holds to what the game
+        # keeps. VBlank's own files are left as they are.
+        def own_array_change?(node)
+          @follows_instance_variables && node.name != :[]= && Arrays::CHANGING_VERBS.include?(node.name) &&
+            node.receiver.is_a?(Prism::InstanceVariableReadNode)
+        end
+
+        def own_array_change_text(node)
+          "#{INSTANCE_VARIABLES}.refuse_unkept_change!(#{argument(node.receiver)}, :#{node.name}, :#{node.receiver.name})" \
+            "#{copied_text(node, from: node.receiver.location.end_offset)}"
         end
 
         def whole_array_change_text(node)

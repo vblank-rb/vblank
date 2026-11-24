@@ -773,6 +773,25 @@ module VBlank
                          "#{Messages::AuthorSource.at_author_line}"
         end
 
+        # +array+, an instance variable's (+label+), changed as a whole with +verb+ by a line of its
+        # own class (`@dots << dot`; Rewriter#own_array_change_text). Where game code runs the line
+        # and the Array is still a plain Ruby Array, the change would happen one time, while
+        # building, and the game would never see it: an Array nothing was put into before the game
+        # began, and whose class body puts nothing into it, does not show what it keeps, so it never
+        # became one the game keeps. Refused, saying how to show it. Anything else (a list or a pool,
+        # an Array changed while setting up) is the line's as it is.
+        def refuse_unkept_change!(array, verb, label)
+          return array unless Builder::Session.recording? && array.instance_of?(Array)
+
+          name = label.to_s.delete_prefix("@")
+          raise Refused, "This line changes `#{label}` with `#{verb}` while the game plays, and `#{label}` is still a " \
+                         "plain Ruby Array. So it changes one time, while VBlank builds the game. VBlank makes the game " \
+                         "keep an Array when the class that holds it shows what goes in it. To fix this, put the " \
+                         "first item in `#{label}` before the game loop, or in the same class body that makes " \
+                         "`#{label}`, like `def add(item) = @#{name} << item`." \
+                         "#{Messages::AuthorSource.at_author_line}"
+        end
+
         # +value+, refused where it is a named Array (KeyedArray) that a new Array would copy:
         # spread with `[*counts]` (the rewrite hands it here, Rewriter#splat_array_text) or given to
         # `Array.new(counts)` (Arrays.list_from_new and Arrays.ruby_array). Ruby copies an Array

@@ -627,6 +627,7 @@ Each is a friendly error naming the line.
 | `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
 | an Array method a list has no meaning for (`rotate!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
 | a part's Array its class does not change, added to or turned as a whole through a reader in game code (`flock.dots << dot`, `part.counts.rotate!`; `InstanceVariables.refuse_changed_from_outside!`, the rewrite's `whole_array_change?`) | a method of its class, `def add(dot) = @dots << dot` |
+| a part's Array nothing was put into before the game began, changed in game code by a method its class body does not hold, such as the class reopened (`InstanceVariables.refuse_unkept_change!`, the rewrite's `own_array_change?`) | the first item put in before the game loop, or the method in the class body that makes the Array |
 | a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |

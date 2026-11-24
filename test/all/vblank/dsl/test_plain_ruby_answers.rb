@@ -794,6 +794,22 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # The same Array, which nothing is put into before game code asks its size, then filled a thing a
+  # pass by a method of its class reopened: nothing showed what it keeps before the game began, so
+  # it is still Ruby's, and the add would happen one time while building.
+  def test_a_part_array_of_structs_asked_before_anything_is_put_in
+    refused("n = flock.dots.size before flock.add", /still a plain Ruby Array/) do
+      flock = AnswerFlock.new
+      n = 0
+      t = 0
+      game_loop do
+        n = flock.dots.size
+        flock.add(n + 1) if flock.dots.size < 4
+        t = flock.total_x
+      end
+    end
+  end
+
   def test_a_part_array_of_structs_filled_by_its_class_reopened
     agrees("add in the class reopened", reads: %i[n], passes: 3) do
       flock = AnswerFlock.new
