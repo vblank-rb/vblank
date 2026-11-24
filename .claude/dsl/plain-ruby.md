@@ -374,10 +374,10 @@ end
   **`a <=> b` written in game code is a game number**, -1, 0 or 1 (`Steps.compare`,
   `Value#sign_against`: `(a > b) - (a < b)`, two compares, no divide), and `[a, b] <=> [c, d]` the
   sign of the pairs' signs weighed 2 and 1, so the first decides and the next breaks ties.
-- **An Array the game keeps is an Array to `is_a?`, `kind_of?`, `instance_of?` and `case ... when
-  Array`** (`Steps.kind_question`, `Steps.when_test`), though the build holds it as a List, Pool or
-  StructArray: the rewrite asks those by name in game code. `trail.class` and `Array === trail` still
-  name the build's class (documented in PLAIN_RUBY.md).
+- **An Array the game keeps is an Array to `is_a?`, `kind_of?`, `instance_of?`, `case ... when
+  Array`, `Array === trail` and `trail.class`** (`Steps.kind_question`, `Steps.when_test`,
+  `Steps.case_equality`, `Steps.class_of`), though the build holds it as a List, Pool or
+  StructArray: the rewrite asks those by name in game code.
 - **The list's name** is its local's (`trail`, `trail_2` for a second local of that name in one block
   or file), and in a file loaded with `VBlank.require_game_file`, the file's name first
   (`walker_trail` in `walker.rb`). A profile, a save and a test read it by that name. A `list` line

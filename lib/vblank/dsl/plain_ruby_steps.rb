@@ -204,6 +204,17 @@ module VBlank
           end
         end
 
+        # `Array === value` in game code, with a constant on the left: a kind question where the
+        # constant is a class or module, and the constant's own `===` otherwise (a Range, say).
+        def case_equality(kind, value)
+          return kind_question(value, :kind_of?, kind) if kind.is_a?(Module)
+
+          kind === value # rubocop:disable Style/CaseEquality
+        end
+
+        # `value.class` in game code: Array for an Array the game keeps, as Ruby's would answer.
+        def class_of(value) = kept_array?(value) ? Array : value.class
+
         # Is +value+ an Array the game keeps, held in the build by an object of the DSL's?
         def kept_array?(value) = value.is_a?(List) || value.is_a?(Pool) || value.is_a?(StructArray)
 

@@ -701,6 +701,8 @@ module VBlank
           return "#{ARRAYS}.ruby_array#{copied_text(node, from: node.message_loc.end_offset)}" if ruby_array_with_room?(node)
           return item_question_text(node) if item_question?(node)
           return kind_question_text(node) if kind_question?(node)
+          return case_equality_text(node) if case_equality?(node)
+          return "#{STEPS}.class_of(#{argument(node.receiver)})" if class_asked?(node)
           if node.name == :<=> && node.receiver && node.arguments
             return "#{STEPS}.compare(#{argument(node.receiver)}, #{rewritten_text(node.arguments)})"
           end
@@ -808,6 +810,24 @@ module VBlank
 
         def kind_question_text(node)
           "#{STEPS}.kind_question(#{argument(node.receiver)}, :#{node.name}, #{rewritten_text(node.arguments)})"
+        end
+
+        # `Array === trail`, a constant asking: Steps.case_equality answers it as #kind_question? does.
+        def case_equality?(node)
+          @follows_instance_variables && node.name == :=== && CONSTANT_RECEIVERS.any? { |kind| node.receiver.is_a?(kind) } &&
+            node.arguments&.arguments&.length == 1 && node.block.nil?
+        end
+
+        CONSTANT_RECEIVERS = [Prism::ConstantReadNode, Prism::ConstantPathNode].freeze
+
+        def case_equality_text(node)
+          "#{STEPS}.case_equality(#{rewritten_text(node.receiver)}, #{rewritten_text(node.arguments)})"
+        end
+
+        # `trail.class`, which Steps.class_of answers Array for an Array the game keeps.
+        def class_asked?(node)
+          @follows_instance_variables && node.name == :class && !node.receiver.nil? && node.arguments.nil? &&
+            node.block.nil? && !node.safe_navigation?
         end
 
         # `Array.new(capacity: 4)` that game code never changes, so it stays Ruby's (a game's own is

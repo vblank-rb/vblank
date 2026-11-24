@@ -627,6 +627,28 @@ class TestPlainRubyAnswers < Minitest::Test
             end
       end
     end
+    agrees("Array === dots and dots.class on an Array of Structs the game fills", reads: %i[a b c], passes: 2) do
+      dots = Array.new(capacity: 4)
+      a = b = c = 0
+      game_loop do
+        dots.shift if dots.size == 4
+        dots << AnswerPoint.new(1, 0, 0)
+        a = Array === dots ? 1 : 2 # rubocop:disable Style/CaseEquality
+        b = dots.class == Array ? 1 : 2
+        c = Enumerable === dots ? 1 : 2 # rubocop:disable Style/CaseEquality
+      end
+    end
+    agrees("Array === trail and trail.class on an Array of numbers the game changes", reads: %i[a b c], passes: 2) do
+      trail = Array.new(capacity: 4)
+      a = b = c = 0
+      game_loop do
+        trail.shift if trail.size == 4
+        trail << 1
+        a = Array === trail ? 1 : 2 # rubocop:disable Style/CaseEquality
+        b = trail.class == Array ? 1 : 2
+        c = Hash === trail ? 1 : 2 # rubocop:disable Style/CaseEquality
+      end
+    end
     agrees("trail.is_a?(Array) and case/when Array on an Array of numbers the game changes",
            reads: %i[a b], passes: 2) do
       trail = Array.new(capacity: 4)
