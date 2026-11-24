@@ -771,6 +771,9 @@ module VBlank
             when :add, :sub then value_keeps_counters?(node.operand)
             when :copy then value_keeps_counters?(node.src)
             when :negate, :abs, :negate_abs then true
+            # A jump of the loop's own, or of a loop inside it, lands inside the loop's holding of
+            # its count (ControlFlow#with_loop_targets), so the count is put back on the way out.
+            when :break_repeat, :next_repeat then true
             when :clamp then value_keeps_counters?(node.min) && value_keeps_counters?(node.max)
             when :list_set
               !@lists_dropped_from_front.include?(node.name) && value_keeps_counters?(node.index) && value_keeps_counters?(node.value)
