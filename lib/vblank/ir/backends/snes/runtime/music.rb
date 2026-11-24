@@ -159,7 +159,7 @@ module VBlank
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at, recorded) if level_at
-              Effects.emit(asm, memory, effects, level_at, recorded: recorded) if sharing
+              Effects.emit(asm, memory, level_at, recorded: recorded) if sharing
               emit_note_copies(asm, memory) if notes_apart
               emit_group(asm)
             end
