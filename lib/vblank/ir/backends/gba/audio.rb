@@ -292,11 +292,12 @@ module VBlank
           # shaped differently are simply two entries and the note's own number picks between
           # them. Putting the four numbers on every note instead would have grown every recorded
           # lane of every tune by a third, whether it shaped anything or not.
-          INSTRUMENT_SHIFT = 4
+          INSTRUMENT_SHIFT = 5
           INSTRUMENT_BYTES = 1 << INSTRUMENT_SHIFT
           INSTRUMENT_LENGTH = 4
           INSTRUMENT_ENVELOPE = 8
           INSTRUMENT_HELD_BY = 12
+          INSTRUMENT_NAME = 16 # the number a voice keeps of the recording's name (Mixer::SLOT_NAME)
 
           # A frame no tune ever reaches. Each part ends in a row that waits for it, so a part
           # that has run out stays quiet until the tune comes round again.
@@ -2843,6 +2844,8 @@ module VBlank
             @primitives.emit_add_const(recording, recording, @instruments_at, ACC) # ...its table entry
             @emitter.emit(ASM.ldr(ACC, recording))                            # where it is
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_SRC))
+            @emitter.emit(ASM.ldr_offset(ACC, recording, INSTRUMENT_NAME))    # which recording, by name
+            @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_NAME))
             @emitter.emit(ASM.ldr_offset(ACC, recording, INSTRUMENT_LENGTH))  # how long it is
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_LEN))
             # A note can outlast its recording, and this is what stops it ending there: a
@@ -2919,13 +2922,13 @@ module VBlank
 
             directory = ("\0" * entry_bytes).b
             table = soundings.each_with_index.map do |sounding, number|
-              @emitter.link_data(MUSIC_SCORE, @instruments_at + (number * INSTRUMENT_BYTES), sounding.name)
+              @emitter.link_data(MUSIC_SCORE, @instruments_at + (number * INSTRUMENT_BYTES), @mixer.recording_blob(sounding.name))
               info = @mixer.sample_info(sounding.name)
               # A part or a note that sets nothing about the shape takes whatever the recording
               # itself was declared with, which is where music decoded from elsewhere keeps it.
               shape = sounding.envelope || info.envelope
               shape = nil if shape&.plain?
-              [0, info.length, shape ? shape.packed : 0, info.loop_length].pack("VVVV")
+              [0, info.length, shape ? shape.packed : 0, info.loop_length, @mixer.sample_number(sounding.name), 0, 0, 0].pack("V8")
             end.join
             table += shapes.map { |shape| GameBoySound.wavetable_halfwords(shape).pack("v*") }.join
             events = [NEVER, 0, 0, 0].pack("VVvv") # a row any lane can wait on

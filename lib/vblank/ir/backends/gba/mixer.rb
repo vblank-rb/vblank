@@ -159,7 +159,8 @@ module VBlank
           SLOT_PHASE = 44
           SLOT_GAIN = 48
           SLOT_RAMP = 52
-          SLOT_BYTES = 56
+          SLOT_NAME = 56 # The number of the recording's own name (#sample_number), which SRC cannot say: recordings alike are kept once
+          SLOT_BYTES = 60
 
           # How many bits of fraction the gain keeps in a game that shapes a note, and how a
           # slide toward a gain is kept inside 32 bits — written down where the interpreter's mix
@@ -252,6 +253,10 @@ module VBlank
           # which is how a slot's source address becomes a name again. Two samples with
           # identical bytes may share one address, and then a voice playing either reads back
           # as whichever was declared first.
+          # +sample_names+ are the names of the declared samples, by the number a voice keeps of its own
+          # (SLOT_NAME): two recordings with the same samples are one copy in the cartridge, so the
+          # address a voice reads from cannot tell them apart.
+          #
           # +clock+ is the sample clock the build settled on (Timers.sample_clock), and it
           # belongs here because a voice's step is meaningless without it: a step of 1.0 means
           # "read the recording at this rate", so what pitch that comes out at depends on the
@@ -268,7 +273,7 @@ module VBlank
           # emulator's own rate, at moments the emulator's timing settles, and a game's own transfers
           # into video memory move those moments a little, so two builds that mix alike can be heard
           # a little apart. Nil for a table made without them.
-          VoiceTable = Data.define(:base, :count, :sample_addresses, :clock, :effect_marks, :mix_buffers, :front_at) do
+          VoiceTable = Data.define(:base, :count, :sample_names, :clock, :effect_marks, :mix_buffers, :front_at) do
             def initialize(effect_marks: {}, mix_buffers: nil, front_at: nil, **rest) = super
 
             # The frame of sound the mix wrote last, a signed sample each, read off the console a
@@ -285,13 +290,12 @@ module VBlank
             # console at the address it is given — the reader is handed in rather than owned,
             # so this can be tested against a plain Hash as easily as against an emulator.
             def read
-              names = sample_addresses.invert
               (0...count).filter_map do |slot|
                 at = base + (slot * SLOT_BYTES)
                 mark = yield(at + SLOT_ACTIVE)
                 next if mark.zero?
 
-                Voice.new(sample: names[yield(at + SLOT_SRC)], position: yield(at + SLOT_POS),
+                Voice.new(sample: sample_names.fetch(yield(at + SLOT_NAME)), position: yield(at + SLOT_POS),
                           length: yield(at + SLOT_LEN), step: yield(at + SLOT_STEP),
                           loop: !yield(at + SLOT_LOOP).zero?, volume: yield(at + SLOT_VOL),
                           owner: owner(mark))
@@ -342,6 +346,7 @@ module VBlank
             @timers = timers
             @primitives = primitives
             @samples = {}          # name -> { rate:, length: } (a Direct Sound PCM sample)
+            @recording_blobs = {}  # name -> the blob holding its samples: the first declared with the same ones
             @plays_samples = false # does the program play any sample (uses Direct Sound)?
             @music_takes_voices = false # does a song's or an effect's recorded part start notes in the slots?
             @songs_have_recorded_parts = false # ...a song's, in particular?
@@ -371,6 +376,14 @@ module VBlank
             @samples[name] ||
               raise(LoweringError, "play_sample of undefined sample #{name.inspect} — declare it with `sample`")
           end
+
+          # The data blob that holds the samples of +name+. Recordings with the same samples share the
+          # blob of the first of them declared.
+          def recording_blob(name) = @recording_blobs.fetch(name)
+
+          # The number a voice keeps for the sample +name+ (SLOT_NAME): its place among the declared
+          # samples.
+          def sample_number(name) = @samples.keys.index(name)
 
           # A song's recorded parts start notes in the slots, so the mixer is brought up — and
           # the routine that finds a note its voice goes in the screen's interrupt.
@@ -436,7 +449,9 @@ module VBlank
             program.walk.each do |node|
               case node.kind
               when :sample
-                @emitter.data_blobs[node.name] = node.bytes # embed the PCM data as a ROM blob
+                kept = @recording_blobs.each_value.find { |blob| @emitter.data_blobs[blob] == node.bytes }
+                @emitter.data_blobs[node.name] = node.bytes unless kept # embed the PCM data as a ROM blob, once
+                @recording_blobs[node.name] = kept || node.name
                 @samples[node.name] = Assets::Sample.of(node)
               when :play_sample
                 @plays_samples = true
@@ -475,9 +490,7 @@ module VBlank
 
             VoiceTable.new(base: @voice_base, count: MAX_VOICES, clock: @sample_clock, effect_marks: @effect_marks,
                            mix_buffers: [@mix_buf0, @mix_buf1], front_at: @primitives.var_addr(MIX_FRONT),
-                           sample_addresses: @samples.keys.to_h do |name|
-                             [name, ROM_START + VBlank::Cartridge::ROM::ENTRY_OFFSET + @emitter.data_positions.fetch(name)]
-                           end)
+                           sample_names: @samples.keys)
           end
 
           # Where the console counts the sounds it could not play, for the build record to
@@ -686,13 +699,15 @@ module VBlank
           def emit_play_sample(node)
             sample = sample_info(node.name)
             holding_off_interrupts do
-              @emitter.emit_load_data_address(4, node.name) # r4 = the sample's address in ROM
+              @emitter.emit_load_data_address(4, recording_blob(node.name)) # r4 = the sample's address in ROM
               emit_find_free_voice                          # r0 = a free slot's address, or none -> skip
               done = @emitter.gensym
               @emitter.emit(ASM.cmp_imm(0, 0))        # emit_find_free_voice leaves r0 = 0 when full
               @emitter.emit_branch(:bcond, done, cond: :eq)
 
               @emitter.emit(ASM.str(4, 0))                             # slot.src = address (SLOT_SRC = 0)
+              @emitter.emit(ASM.load_immediate(TMP, sample_number(node.name)))
+              @emitter.emit(ASM.str_offset(TMP, 0, SLOT_NAME))         # slot.name: which recording, by name
               @emitter.emit(ASM.load_immediate(TMP, 0))
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_POS))          # slot.pos = 0
               @emitter.emit(ASM.load_immediate(TMP, sample.length))
@@ -796,7 +811,7 @@ module VBlank
           def emit_stop_sample(node = nil)
             name = node && node.name
             holding_off_interrupts do
-              @emitter.emit_load_data_address(4, name) if name # r4 = the sample's address to match
+              @emitter.emit(ASM.load_immediate(4, sample_number(name))) if name # r4 = the sample's number to match
               @emitter.emit(ASM.load_immediate(1, @voice_base))                            # r1 = slot pointer
               @emitter.emit(ASM.load_immediate(2, @voice_base + (MAX_VOICES * SLOT_BYTES))) # r2 = past the last
               loop_lbl = @emitter.gensym
@@ -806,7 +821,7 @@ module VBlank
               @emitter.emit(ASM.cmp_imm(0, OWNER_GAME))
               @emitter.emit_branch(:bcond, skip, cond: :ne)              # not a sound of the game's
               if name
-                @emitter.emit(ASM.ldr(0, 1))                             # r0 = slot.src
+                @emitter.emit(ASM.ldr_offset(0, 1, SLOT_NAME))           # r0 = slot.name
                 @emitter.emit(ASM.cmp_reg(0, 4))                         # slot plays this sample?
                 @emitter.emit_branch(:bcond, skip, cond: :ne)            # no -> leave it
               end

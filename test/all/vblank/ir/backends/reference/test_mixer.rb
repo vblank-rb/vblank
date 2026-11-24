@@ -39,14 +39,14 @@ class TestMixer < Minitest::Test
     base = 0x0300_0000
     table = GBA::Mixer::VoiceTable.new(base: base, count: 3,
                                        clock: VBlank::Console::ADVANCE.sample_clock(8000),
-                                       sample_addresses: { zap: 0x0800_1000, hum: 0x0800_2000 })
+                                       sample_names: %i[zap hum])
     at = ->(slot, field) { base + (slot * GBA::Mixer::SLOT_BYTES) + field }
     memory = Hash.new(0)
     memory[at[0, GBA::Mixer::SLOT_ACTIVE]] = 1 # slot 0 sounds :zap ...
-    memory[at[0, GBA::Mixer::SLOT_SRC]] = 0x0800_1000
+    memory[at[0, GBA::Mixer::SLOT_NAME]] = 0
     memory[at[0, GBA::Mixer::SLOT_POS]] = 40
     memory[at[2, GBA::Mixer::SLOT_ACTIVE]] = 1 # ...slot 1 is idle, slot 2 loops :hum
-    memory[at[2, GBA::Mixer::SLOT_SRC]] = 0x0800_2000
+    memory[at[2, GBA::Mixer::SLOT_NAME]] = 1
     memory[at[2, GBA::Mixer::SLOT_LOOP]] = 1
 
     voices = table.read { |address| memory[address] }
