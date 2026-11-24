@@ -549,6 +549,29 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # The same methods with no block answer an Enumerator, which cannot see what its block hands
+  # back, so the block must be given to the method itself.
+  def test_items_answered_with_no_block_are_refused
+    refused("c = sizes.counts.map.with_index { |c, _| c }; c[0] += 5", /give the block/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        copy = sizes.counts.map.with_index { |count, _at| count }
+        copy[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+  end
+
+  # A walk whose method answers the Array itself (`each_slice` with its block) is a read.
+  def test_each_slice_with_its_block_over_a_named_array_agrees
+    agrees("sizes.counts.each_slice(2) { |a, b| n = a + b }", reads: %i[n], passes: 2) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop { sizes.counts.each_slice(2) { |first, second| n = first + second } }
+    end
+  end
+
   # A block that works out new numbers from the items makes numbers of its own, as in Ruby.
   def test_map_to_new_numbers_of_a_named_array_agrees
     agrees("c = sizes.counts.map { |c| c + 1 }; c[0] += 5", reads: %i[n m], passes: 2) do

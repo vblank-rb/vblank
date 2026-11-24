@@ -876,10 +876,19 @@ module VBlank
             class_eval(<<~RUBY, __FILE__, __LINE__ + 1)
               def #{name}(...)
                 answer = super
-                Steps.refuse_game_code!(copy_taken_message) if holds_own_item?(answer)
+                Steps.refuse_game_code!(no_block_message) if answer.is_a?(Enumerator)
+                Steps.refuse_game_code!(copy_taken_message) if !answer.equal?(self) && holds_own_item?(answer)
                 answer
               end
             RUBY
+          end
+
+          # With no block these answer an Enumerator, whose later steps (`with_index`, `to_a`) can
+          # hand the items on without asking this Array.
+          def no_block_message
+            "This Array holds game variables, and this line calls a method on it with no block, like " \
+              "`counts.map.with_index`. VBlank cannot check what the next method does with the items. To " \
+              "fix this, give the block to the method itself, like `counts.map { |c| c + 1 }`."
           end
 
           def copy_taken_message
