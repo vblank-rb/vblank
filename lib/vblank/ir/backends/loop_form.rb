@@ -85,7 +85,7 @@ module VBlank
         #   runs, in it or in a routine it calls, names +variable+ (or +limit+, where that is a
         #   variable) but to read it, so the variable moves only by that one more;
         # - no `next` in the body leaves the one more out of a turn (a `break` may leave the loop);
-      # - nothing in the body can reach a frame boundary or stop the game: the checked run compares
+        # - nothing in the body can reach a frame boundary or stop the game: the checked run compares
         #   every variable as a pass ends, the loop's hidden index among them, and a counted while
         #   keeps that index only as it ends (it is the turns made, the variable less where it
         #   started).

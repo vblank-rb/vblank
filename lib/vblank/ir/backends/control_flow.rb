@@ -80,8 +80,8 @@ module VBlank
           when :if then emit_if(node)
           when :loop then emit_loop(node)
           when :repeat then emit_repeat(node)
-          when :break_repeat then jump(loop_targets.last.fetch(0))
-          when :next_repeat then jump(loop_targets.last.fetch(1))
+          when :break_repeat then jump(loop_targets.last.leave)
+          when :next_repeat then jump(loop_targets.last.turn_end)
           when :every, :after then emit_beat(node)
           when :case then emit_case(node)
           else raise ArgumentError, "no writer here for #{node.kind.inspect}"
@@ -264,8 +264,10 @@ module VBlank
         # its end, and the label of its one more. A `break` from a counted while goes to a label
         # inside #with_counter_held, so a count kept in a register is put back on the way out; a
         # counted while has no `next` (LoopForm#counted_while).
+        LoopTargets = Data.define(:leave, :turn_end)
+
         def with_loop_targets(leave, turn_end)
-          loop_targets.push([leave, turn_end])
+          loop_targets.push(LoopTargets.new(leave:, turn_end:))
           yield
         ensure
           loop_targets.pop
