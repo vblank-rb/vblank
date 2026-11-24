@@ -93,8 +93,9 @@ first served. It is how a console game keeps the things in a room.
 once, and a thing added during the walk is first visited by the next walk, so a thing that splits in
 two does not split again in the same pass. A thing removed during a walk keeps its slot until the
 walk ends, so a `<<` in the same walk takes a different slot, and a pool that had no room still has
-none: a `<<` in the walk that needs that place stops the game saying so, and the new thing goes in
-after the walk. The walk goes through the live things only, so it costs what is live rather than
+none: a `<<` written in a walk after a `shift` written in the same walk stops the build, and a `<<`
+in the walk that needs a place a routine the walk called took out stops the game saying so. The new
+thing goes in after the walk. The walk goes through the live things only, so it costs what is live rather than
 the capacity. Each walk written in the game keeps three variables of its own, so a walk inside
 another walk of the same Array keeps its place.
 

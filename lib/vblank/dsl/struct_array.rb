@@ -77,6 +77,7 @@ module VBlank
         @pool.explain_kinds_with { |field| kind_advice(field) }
         @walked = walked_class(kind)
         @walks_open = 0
+        @shifted_in_walk = false
       end
 
       # The pool this Array is kept as.
@@ -95,6 +96,7 @@ module VBlank
         # #shift. In the `initialize` of a part made by game code that made this Array there, it is
         # made on the part's first pass alone (Builder#once_for_part), since the part is made once.
         during_walk = @walks_open.positive? || @builder.building_callable_routine?
+        refuse_push_after_shift_in_walk! if @walks_open.positive? && @shifted_in_walk
         @builder.once_for_part(@pool.name) { @pool.spawn_with(values, during_walk: during_walk) }
         self
       end
@@ -106,8 +108,21 @@ module VBlank
       # Only a `shift` that can run during a walk of this Array looks past what the walk took out:
       # one written inside a walk, or in a routine that may be called from one.
       def shift
+        @shifted_in_walk = true if @walks_open.positive?
         @pool.remove_oldest(during_walk: @walks_open.positive? || @builder.building_callable_routine?)
         nil
+      end
+
+      # A push written in a walk of this Array after a `shift` written in the same walk. The thing
+      # the shift takes out gives its place back only when the walk ends (Pool#spawn_dropping), so
+      # in a full Array the push finds no room and the game stops as it plays. Both lines are in
+      # the walk's block, so the build says so first. A shift the build cannot see in the walk, in
+      # a routine the walk calls, is still stopped as the game plays.
+      private def refuse_push_after_shift_in_walk!
+        PlainRuby::Steps.refuse_game_code!("This line adds to `#{@local}` inside a walk of it, after a `shift` in " \
+                                           "the same walk. An item taken out inside a walk gives its place back " \
+                                           "only when the walk ends, so a full `#{@local}` has no room for this " \
+                                           "item. To fix this, add the new item after the walk.")
       end
 
       # Takes out every thing.
@@ -471,6 +486,7 @@ module VBlank
         @pool.each(newest_first: newest_first, &block)
       ensure
         @walks_open -= 1
+        @shifted_in_walk = false if @walks_open.zero?
       end
 
       # The pool's name and who holds it (Builder#plain_array_list_name): a local's from the

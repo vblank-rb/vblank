@@ -355,7 +355,7 @@ end
 - A member can have any name Ruby allows. A member named as what a thing answers, such as `left` or `move`, means the member, as in Ruby.
 - A part keeps one in an instance variable the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class.
 - `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change, and so are Ruby's Array methods it has no meaning for (`rotate!`, `map`), by name.
-- A push onto a full Array stops the game, as it does for an Array of numbers: `shift` first to make room, as above, or test `size` first to skip the new thing. A thing taken out inside a walk gives its place back only when the walk ends, so a `<<` in the same walk that needs that place stops the game saying so: add the new thing after the walk. A `<<` in a walk of an Array with room joins it at once, and only the walk it is in does not visit it.
+- A push onto a full Array stops the game, as it does for an Array of numbers: `shift` first to make room, as above, or test `size` first to skip the new thing. A thing taken out inside a walk gives its place back only when the walk ends, so a `<<` written in a walk after a `shift` written in the same walk stops the build, and a `<<` in a walk that needs a place a routine the walk called took out stops the game saying so: add the new thing after the walk. A `<<` in a walk of an Array with room joins it at once, and only the walk it is in does not visit it.
 
 ## Changing a variable
 

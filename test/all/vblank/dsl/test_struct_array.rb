@@ -567,15 +567,39 @@ class TestStructArray < Minitest::Test
   # A thing taken out inside a walk keeps its place until the walk ends, so a push after it in
   # the same walk finds no room where Ruby would. That stops the game saying so, never a push
   # that answers differently from Ruby.
+  # The shift and the push are both written in the walk's block, so the build sees them and stops
+  # there, before anyone plays: a full Array would have no room for the push until the walk ends.
+  def test_a_shift_then_a_push_in_a_walk_of_the_same_array_is_refused_while_building
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(frames: 1) do
+        sparks = Array.new(capacity: 4)
+        game_loop do
+          sparks.each do |s|
+            if s.x == 0
+              sparks.shift
+              sparks << Spark.new(9, 0, 0)
+            end
+          end
+        end
+      end
+    end
+
+    assert_match(/inside a walk of it/, error.message)
+    assert_match(/after the walk/, error.message)
+  end
+
+  # A shift in a routine the walk calls is one the build cannot see in the walk, so the game
+  # stops as it plays, in the same words.
   def test_a_push_in_a_walk_with_room_only_from_that_walk_stops_saying_so
     error = assert_raises(VBlank::IR::ProgramError) do
       played(frames: 1) do
         sparks = Array.new(capacity: 4)
         4.times { |n| sparks << Spark.new(n, 0, 0) } if sparks.empty?
+        func(:drop_oldest) { sparks.shift }
         game_loop do
           sparks.each do |s|
             if s.x == 0
-              sparks.shift
+              call :drop_oldest
               sparks << Spark.new(9, 0, 0)
             end
           end
