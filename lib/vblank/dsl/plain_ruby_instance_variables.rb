@@ -850,6 +850,49 @@ module VBlank
             RUBY
           end
 
+          # A copy, or a new Hash made from the slots, would hold the same game variables. A write
+          # through it reaches the variable itself (Writes.change), and a read of it after the Hash
+          # changes reads the new number, where Ruby's copy keeps the old one: refused even where it
+          # is only read, as KeyedArray refuses its copies. Where a block worked out new numbers
+          # (`transform_values { |value| value * 2 }`), the answer is Ruby's own.
+          #--
+          # `values`, `to_a` and the Arrays Enumerable answers stay Ruby's: the library reads a Hash
+          # of game variables through them itself (#numbers_collection?, ItemQuestions).
+          #++
+          def dup = Steps.refuse_game_code!(copy_taken_message)
+          def clone(*) = Steps.refuse_game_code!(copy_taken_message)
+
+          HASH_ANSWERED = %i[
+            to_h merge select filter reject compact slice except invert transform_values transform_keys
+          ].freeze
+
+          # Written as source, since a method made from a block cannot be called from another Ractor.
+          HASH_ANSWERED.each do |name|
+            class_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+              def #{name}(...)
+                answer = super
+                Steps.refuse_game_code!(copy_taken_message) if answer.is_a?(Enumerator) || holds_own_value?(answer)
+                answer
+              end
+            RUBY
+          end
+
+          # Does +answer+, a new Array or Hash (nested too), hold one of this Hash's own variables?
+          def holds_own_value?(answer)
+            case answer
+            when Array then answer.any? { |item| each_value.any? { |own| own.equal?(item) } || holds_own_value?(item) }
+            when Hash then answer.each_value.any? { |value| each_value.any? { |own| own.equal?(value) } || holds_own_value?(value) }
+            else false
+            end
+          end
+
+          def copy_taken_message
+            "This Hash holds game variables, and this line takes a copy of it, like `hash.dup` or " \
+              "`hash.merge(other)`. In Ruby the copy is its own. Here the copy would hold the same variables, so " \
+              "it would change when the Hash changes. To fix this, read the values one at a time, like " \
+              "`left = hash[:left]`, or add them up in place, like `hash.sum { |_key, value| value }`."
+          end
+
           def whole_hash_change_message(verb)
             "This Hash holds game variables, and this line changes it with `#{verb}`. The game keeps one " \
               "number for each key, and cannot add a key, remove a key or change many keys in one step. " \

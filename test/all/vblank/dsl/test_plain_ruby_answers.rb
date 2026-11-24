@@ -1127,6 +1127,46 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  def test_a_copy_of_a_hash_of_game_numbers_is_refused
+    refused("g = h.dup, then h[:a] += 1", /takes a copy/) do
+      h = { a: 1, b: 2 }
+      g = h.dup
+      m = 0
+      game_loop do
+        h[:a] += 1
+        m = g[:a]
+      end
+    end
+    refused("g = h.select { true } in the game loop", /takes a copy/) do
+      h = { a: 1, b: 2 }
+      m = 0
+      game_loop do
+        g = h.select { |_key, _value| true }
+        h[:a] += 1
+        m = g[:a]
+      end
+    end
+    refused("h.merge(c: 3)", /takes a copy/) do
+      h = { a: 1, b: 2 }
+      game_loop { h[:a] += h.merge(c: 3)[:b] }
+    end
+  end
+
+  def test_a_hash_of_game_numbers_read_whole
+    agrees("h.sum, h.count, h.each_value and h.map with new numbers", reads: %i[m n o p], passes: 3) do
+      h = { a: 1, b: 2 }
+      m = n = o = p = 0
+      game_loop do
+        h[:a] += 1
+        m = h.sum { |_key, value| value }
+        n = h.count
+        o = 0
+        h.each_value { |value| o += value }
+        p = h.map { |_key, value| value * 2 }.sum
+      end
+    end
+  end
+
   def test_a_hash_holding_true_or_false_switched_by_the_game
     agrees("h[:open] = !h[:open] in the game loop", reads: %i[m n], passes: 3) do
       h = { open: false, count: 0 }

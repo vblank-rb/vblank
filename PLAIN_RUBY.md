@@ -130,7 +130,7 @@ The number is named after the class and the instance variable: `lamp_lit` for `@
 
 A Hash or Array of numbers that game code changes is a number for each key, where every key is known while building: a number, a symbol or a constant written out, or the name a Ruby loop over something written out gives.
 
-A Hash written out in the game block, `h = { a: 1, b: 2 }`, works the same way when game code changes it at a key: `h[:a] += 3`, `h[:b] = 0`, or `m = (h[:a] += 3)`, which gives `m` the new number as Ruby does. The numbers are named after the local and the key, `h_a` and `h_b`. The game keeps one number for each key, so a key the Hash does not have stops the build, and so does a method that adds, removes or changes many keys in one step (`store`, `merge!`, `delete`, `transform_values!`, `clear` and the others). Change one key at a time instead.
+A Hash written out in the game block, `h = { a: 1, b: 2 }`, works the same way when game code changes it at a key: `h[:a] += 3`, `h[:b] = 0`, or `m = (h[:a] += 3)`, which gives `m` the new number as Ruby does. The numbers are named after the local and the key, `h_a` and `h_b`. The game keeps one number for each key, so a key the Hash does not have stops the build, and so does a method that adds, removes or changes many keys in one step (`store`, `merge!`, `delete`, `transform_values!`, `clear` and the others). Change one key at a time instead. A copy of such a Hash, `dup`, `merge`, `select`, `slice` and the others that answer a new Hash holding its numbers, stops the build too: in Ruby the copy keeps its own numbers, and the game's would change with the Hash.
 
 ```ruby
 # One count for each side, kept by the game
