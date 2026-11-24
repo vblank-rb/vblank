@@ -89,8 +89,10 @@ module VBlank
           # Where each statement's code is: the line of the game that wrote it, and the stretch
           # of the emitted code it came to, nested statements included. A statement's code is
           # one stretch because it is emitted in one go. This is what lets a measured run say
-          # which part of a routine its time went to, by the line an author would open.
-          StatementSpan = Data.define(:source, :from, :to)
+          # which part of a routine its time went to, by the line an author would open, and what
+          # lets a listing of the code (Diagnostics::FuncDumper) group instructions under the
+          # statement they came from, which +label+ names: its kind and, where it has one, its name.
+          StatementSpan = Data.define(:source, :label, :from, :to)
 
           # Every statement lowered this pass that knows its line, in the order lowered.
           attr_reader :statement_spans
@@ -120,9 +122,14 @@ module VBlank
           def measure_statement(node, &)
             from = @emit.pos
             result = measure_node(node, &)
-            @statement_spans << StatementSpan.new(source: node.source, from: from, to: @emit.pos) if node.source && @emit.pos > from
+            @statement_spans << StatementSpan.new(source: node.source, label: statement_label(node), from: from, to: @emit.pos) if node.source && @emit.pos > from
             @statement_bytes[node] = (@statement_bytes[node] || ZERO_BYTES).merge_site(@emit.pos - from)
             result
+          end
+
+          # What a statement is called in a listing: its kind, and its name where it has one.
+          def statement_label(node)
+            node.respond_to?(:name) && node.name ? "#{node.kind} :#{node.name}" : node.kind.to_s
           end
 
           # How many bytes one use of statement +node+ came to, nested statements included, or nil

@@ -15,12 +15,16 @@ module VBlank
       # @param tables [Hash{Symbol=>Range}] function name => the part of its span that
       #   is a table of numbers it reads, not instructions (a routine kept in the console's
       #   quick memory has one after its return)
+      # @param spans [Array<GBA::Attribution::StatementSpan>] where each statement's code is, with the
+      #   line of the game that wrote it; the listing groups instructions under the innermost statement
+      #   round them. Empty for a listing with no grouping.
       # @param out [IO] where the disassembly is written
       # @param err [IO] where an unknown-function warning is written
-      def initialize(rom, func_ranges, tables: {}, out: $stdout, err: $stderr)
+      def initialize(rom, func_ranges, tables: {}, spans: [], out: $stdout, err: $stderr)
         @rom = rom
         @func_ranges = func_ranges
         @tables = tables
+        @spans = spans
         @out = out
         @err = err
         @inspector = Inspector.from_rom(rom)
@@ -61,15 +65,31 @@ module VBlank
         "=== func :#{name} (0x#{format('%04X', first)}..0x#{format('%04X', last)}) ==="
       end
 
+      # The lines of the code in +range+, a line over each run of instructions that came from one
+      # statement (see #statement_at).
       def disassemble(range)
         regs = Array.new(16, 0)
-        range.step(4).map do |code_offset|
+        inside = @spans.select { |span| span.from < range.end && span.to > range.begin }
+        current = nil
+        range.step(4).flat_map do |code_offset|
           rom_offset = Cartridge::ROM::ENTRY_OFFSET + code_offset
           inst = @rom.buffer[rom_offset, 4].unpack1("V")
           desc, regs = @inspector.disassemble(inst, regs)
-          format("  0x%04X: %s", rom_offset, desc)
+          statement = statement_at(inside, code_offset)
+          heading = statement.equal?(current) ? [] : [statement_heading(statement)].compact
+          current = statement
+          heading + [format("  0x%04X: %s", rom_offset, desc)]
         end
       end
+
+      # The statement whose code is at +code_offset+, the innermost where several round it: the one
+      # that took the fewest bytes, the first recorded of two the same size (a statement's
+      # nested ones are recorded before it).
+      def statement_at(spans, code_offset)
+        spans.select { |span| span.from <= code_offset && code_offset < span.to }.min_by { |span| span.to - span.from }
+      end
+
+      def statement_heading(statement) = statement && "  ; from #{statement.source}  #{statement.label}"
     end
   end
 end

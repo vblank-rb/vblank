@@ -83,6 +83,7 @@ module VBlank
         request.progress.done
         unless evaluated.dump_requests.empty?
           Diagnostics::FuncDumper.new(rom, backend.func_ranges, tables: backend.number_tables,
+                                                                spans: backend.attribution.statement_spans,
                                                                 out: request.out, err: request.err)
                                  .dump(evaluated.dump_requests)
         end

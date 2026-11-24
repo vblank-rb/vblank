@@ -425,6 +425,32 @@ class TestInspector < Minitest::Test
     assert_match(/POP/, listing[-2], "the table comes straight after the routine's return")
   end
 
+  # Each statement's instructions are listed under a line naming the statement and where the game
+  # wrote it, the inner ones under theirs, so a reader of the listing can tell which line of the
+  # game each instruction came from.
+  def test_dump_func_groups_each_statement_under_the_line_that_wrote_it
+    out = StringIO.new
+    line = __LINE__ + 4
+    VBlank.build("TEST", console: :gba, validate: false, out: out, err: nil) do
+      x = 0
+      func :counting do
+        3.times { x += 1; x = x ^ 5 }
+        x = 42
+      end
+      dump_func :counting
+      halt
+    end
+    listing = out.string.lines.map(&:rstrip)
+    heads = listing.select { |row| row.include?("; from ") }
+
+    refute_empty heads, "the listing names the statements"
+    assert_includes heads.join("\n"), "test_inspector.rb:#{line + 1}", "the line of `x = 42`"
+    first_head = listing.index { |row| row.include?("; from ") }
+    after_func_header = listing.index { |row| row.include?("=== func :counting") }
+    assert_operator first_head, :>, after_func_header
+    assert_match(/0x[0-9A-F]{4}: /, listing[first_head + 1], "an instruction comes straight after a statement's line")
+  end
+
   def test_dump_func_warns_on_unknown
     err = StringIO.new
     VBlank.build("TEST", console: :gba, code: "BTST", maker: "01", validate: false, err: err) do

@@ -1962,9 +1962,10 @@ module VBlank
     # The machine code of every routine of +rom+, or of the one --dump-arm names, as the listing
     # a game's `dump_func` prints.
     def dump_arm_of(rom)
-      spans = rom.built.func_spans
-      names = options[:dump_arm].empty? ? spans.keys : [options[:dump_arm].to_sym]
-      VBlank::Diagnostics::FuncDumper.new(rom, spans, tables: rom.built.number_tables, out: $stdout, err: $stderr)
+      routines = rom.built.func_spans
+      names = options[:dump_arm].empty? ? routines.keys : [options[:dump_arm].to_sym]
+      VBlank::Diagnostics::FuncDumper.new(rom, routines, tables: rom.built.number_tables, spans: rom.built.statement_spans,
+                                                         out: $stdout, err: $stderr)
                                      .dump(names)
     end
 

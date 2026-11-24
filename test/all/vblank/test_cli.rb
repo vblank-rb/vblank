@@ -404,6 +404,7 @@ class TestCLI < Minitest::Test
       assert_match(/=== func :bump /, out)
       assert_match(/=== func :other /, out)
       assert_match(/0x[0-9A-F]{4}: /, out)
+      assert_match(/; from dumpy\.rb:\d+/, out, "each statement's instructions come under the line that wrote it")
     end
   end
 
