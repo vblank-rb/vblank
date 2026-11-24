@@ -2544,6 +2544,7 @@ module VBlank
             end
             return emit_low_half_of_slot(node, bits) if node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
             return if depth < MOST_LOW_HALF_DEPTH && emit_low_half_of_narrow_step(node, bits, depth)
+            return if emit_byte_product_into_a(node)
 
             unless sum_in_halves?(node) && depth < MOST_LOW_HALF_DEPTH
               value(node)
@@ -4993,6 +4994,11 @@ module VBlank
           # that is not a small one at or above nought, a loop of a dozen instructions for each of
           # its 32 bits. True when it was done so.
           def emit_product_by_written_number(node)
+            if emit_byte_product_into_a(node)
+              @asm.sta(@asm.direct(R0))
+              @asm.stz(@asm.direct(R0 + 2))
+              return true
+            end
             [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
               number = folded(by)
               next unless number
@@ -5037,6 +5043,34 @@ module VBlank
               @asm.stz(@asm.direct(R0))
               @asm.stz(@asm.direct(R0 + 2))
               @asm.label(done)
+              return true
+            end
+            false
+          end
+
+          # A = a number proven to stay from 0 to 255 times a byte written in the program, by one turn
+          # of the console's multiplier: the product of two bytes is all of it, 16 bits from nought up,
+          # where a whole number takes four turns and the adding up after (#emit_product_by_byte_of_r0).
+          # What a loop folded from a Ruby `times` works its stepping numbers out with (`k * 5 + 2`,
+          # PlainRuby::Counts::KnownRounds). True when it was done so.
+          def emit_byte_product_into_a(node)
+            return false unless node.is_a?(Node) && node.kind == :binop && node.op == :*
+
+            [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
+              number = folded(by)
+              next unless number&.between?(3, 0xFF) && (number & (number - 1)).nonzero? && !folded(other) && proven_within?(other, 0..0xFF)
+
+              h = Console::SNESHardware
+              emit_low_half(other, 8)
+              @asm.sep(0x20)
+              @asm.pha
+              @asm.lda(number)
+              @asm.sta(@asm.abs(h::WRMPYA))
+              @asm.pla
+              @asm.sta(@asm.abs(h::WRMPYB))
+              4.times { @asm.nop } # the eight cycles the multiplier takes
+              @asm.rep(0x20)
+              @asm.lda(@asm.abs(h::RDMPYL))
               return true
             end
             false

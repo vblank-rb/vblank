@@ -20,7 +20,13 @@ class TestSNESLoopCost < Minitest::Test
   # asking each turn whether to `break` or go to its `next` round was 995 and 1045 while a jump set a
   # hidden number the loop's test and the rest of the turn read; 315 and 956 with a jump that is a
   # branch (the `next` loop is a while that is not counted).
-  BOUNDS = { repeat_set: 170, repeat_read: 390, while_set: 170, while_read: 390, while_break: 345, while_next: 1050 }.freeze
+  #
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn (`k * 3 + 1`,
+  # `k * 5 + 2`, `k + 7`, `100 - k`, LoopCostGames :steps): 3506 a turn while each product was four
+  # turns of the console's multiplier and the adding up, one for each byte of a whole number; 2150 with
+  # a product of a count proven to fit a byte one turn of it. The same rounds written out are 572 a round.
+  BOUNDS = { repeat_set: 170, repeat_read: 390, while_set: 170, while_read: 390, while_break: 345, while_next: 1050,
+             steps: 2250 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_master_clocks") do

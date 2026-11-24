@@ -138,7 +138,7 @@
       "data": 0
     },
     "hero@snes": {
-      "code": 55387,
+      "code": 53155,
       "data": 13831
     },
     "jukebox": {
@@ -354,7 +354,7 @@
       "data": 3740
     },
     "tower@snes": {
-      "code": 11951,
+      "code": 11785,
       "data": 8091
     },
     "two_rooms": {
