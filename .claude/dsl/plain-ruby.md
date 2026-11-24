@@ -213,9 +213,11 @@ instance variables.
   `h = { a: 1, b: 2 }`, then `h[:a] += 3` or `m = (h[:a] += 3)` in game code (`LocalNames#game_hash?`,
   `Writes.game_hash`), named `h_a` and `h_b`. A slot holding a place the game named (`{ x:
   var(:x, 1) }`) stays that place. A Hash verb that adds, drops or changes many keys at once
-  (`KeyedHash::CHANGING_VERBS`: `store`, `merge!`, `delete` ...) is refused. A Hash of names alone, written out
-  and put in as Symbols (`screens = { 0 => :title }`, `screens[2] = :over`), stays Ruby's own Hash
-  (`Local#names_only?`): it is a table a verb such as `call` reads while building.
+  (`KeyedHash::CHANGING_VERBS`: `store`, `merge!`, `delete` ...) is refused. Only a change that works out the slot as
+  the game runs (`h[:a] += 3`, `h[:a] = speed`) makes it one, or a slot set to a value known while
+  building on a Hash written above the game loop (`Local#game_hash?`). A Hash written out in game code
+  and only read, handed to a verb, or given values known while building (`options[:press] = press`,
+  `screens[2] = :over`) stays Ruby's own, whatever it holds.
 - **A named Array of numbers read at an index the game may work out is a list** (`lists.md`):
   `@counts = [0, 0]` in `initialize`, then `@counts[which] += 1` in game code, with any other index
   than those above, written in the class, in the class reopened or in a class made from it, in any

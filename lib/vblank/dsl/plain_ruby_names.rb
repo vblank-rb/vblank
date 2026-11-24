@@ -166,20 +166,22 @@ module VBlank
 
           # Is this name a Hash the game keeps a variable for at each key (LocalNames#game_hash?)?
           #
-          # Not a Hash that holds names alone, written out and put in as Symbols (`{ 0 => :title }`, then
-          # `screens[2] = :over`): that is a table of routines or settings a verb reads while building
-          # (`call screens, number: state`), and it stays Ruby's own Hash.
+          # Only where game code changes a slot as the game runs: a slot worked out (`h[:a] += 3`,
+          # `h[:a] = h[:a] + 2`, `h[:a] = speed`), or set to a value known while building on a Hash
+          # that lives from pass to pass (written out above the game loop). A Hash written out in game
+          # code and only read, handed to a verb, or given values known while building
+          # (`options[:press] = press`, `screens[2] = :over`) is made again each pass with what Ruby
+          # knows, and stays Ruby's own Hash, whatever it holds: a verb reads its settings or names
+          # while building (`menu :main, **options`, `call screens, number: state`).
           def game_hash?
-            changed_as_collection && !names_only? &&
-              @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && LocalNames.keyed_hash?(write.node.value) }
+            return false unless hash_worked_out_by_game || (hash_set_known_by_game && !@writes.all?(&:in_game_code))
+
+            @writes.all? { |write| write.node.is_a?(Prism::LocalVariableWriteNode) && LocalNames.keyed_hash?(write.node.value) }
           end
 
-          # Does every line that gives this name a value write out Symbols alone, and every change put one?
-          def names_only?
-            written = @writes.flat_map { |write| write.node.respond_to?(:value) && write.node.value.is_a?(Prism::HashNode) ? write.node.value.elements : [nil] }
-            written.all? { |slot| slot.is_a?(Prism::AssocNode) && slot.value.is_a?(Prism::SymbolNode) } &&
-              array_puts.all?(Prism::SymbolNode)
-          end
+          # Game code changes a slot of what the name holds with a value it works out
+          # (#game_hash?), or sets one to a value known while building.
+          attr_accessor :hash_worked_out_by_game, :hash_set_known_by_game
         end
 
         # Is +value+ a Hash written out with a key and a value for each slot, and at least one slot:
@@ -1102,6 +1104,33 @@ module VBlank
           local.changed_as_collection = true
           local.grown_as_array = true if Arrays::GROWING_VERBS.include?(verb)
           local.array_puts.concat(puts)
+          note_hash_change(local, verb, puts)
+        end
+
+        # What a change in game code does to a Hash a local holds (Local#game_hash?): a slot set to a
+        # value known while building, or one the game works out.
+        def note_hash_change(local, verb, puts)
+          if verb == :[]= && !puts.empty? && puts.all? { |put| value_known_while_building?(put) }
+            local.hash_set_known_by_game = true
+          else
+            local.hash_worked_out_by_game = true
+          end
+        end
+
+        # Is +node+ a value Ruby knows as it builds the game: written out (a number, a name, a string,
+        # nil, true or false, or an Array or Hash of those), a sum of such values, or a local that no
+        # game code writes (one of the game block's set while building, or one from outside it)?
+        def value_known_while_building?(node)
+          case node
+          when Prism::NilNode, Prism::TrueNode, Prism::FalseNode, Prism::SymbolNode, Prism::StringNode then true
+          when Prism::ArrayNode then node.elements.all? { |element| value_known_while_building?(element) }
+          when Prism::HashNode
+            node.elements.all? { |slot| slot.is_a?(Prism::AssocNode) && value_known_while_building?(slot.value) }
+          when Prism::LocalVariableReadNode
+            local = @locals_by_node[node]
+            local.nil? || local.iteration_parameter || local.writes.none?(&:in_game_code)
+          else known_while_building?(node)
+          end
         end
 
         # Is +node+ a value the build knows as it runs the line: a key known while building

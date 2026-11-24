@@ -77,9 +77,9 @@ module ScenesGames
         # the game picks a routine by, which stay Ruby's own Hash.
         over_too = true
         game_loop do
-          screens = { 0 => :title, 1 => :play }
-          screens[OVER] = :over if over_too
-          call screens, number: state
+          rooms = { 0 => :title, 1 => :play }
+          rooms[OVER] = :over if over_too
+          call rooms, number: state
           step += 1
         end
       when :plain_case

@@ -1099,6 +1099,18 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  def test_a_hash_kept_from_pass_to_pass_set_to_a_number_written_out
+    agrees("m = h[:a], then h[:a] = 5, on a Hash from above the game loop", reads: %i[m n], passes: 3) do
+      h = { a: 1 }
+      m = n = 0
+      game_loop do
+        m = h[:a]
+        h[:a] = 5
+        n += m
+      end
+    end
+  end
+
   def test_a_hash_made_on_every_pass_starts_again
     agrees("h = { a: 0 } in the game loop, then h[:a] += 2", reads: %i[m n], passes: 3) do
       m = n = 0
