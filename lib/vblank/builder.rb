@@ -2609,17 +2609,34 @@ module VBlank
     # Build a container node, attach it, and keep it open while the block runs so
     # nested statements land inside it — then close it. The block-taking control
     # methods (loops, conditionals, func bodies) use this.
+    #
+    # A block that raises can leave a test it opened a step at a time (#open_branch, the rewritten
+    # `if`) open inside this one, so the stacks go back to how they were before this container.
+    # A builder made by hand stays the thread's current game after the error (Builder::Session),
+    # and with a container left open it would record whatever plain Ruby later runs on that thread
+    # as game code.
     def push_container(node)
       record(node)
+      depth = @container_stack.length
+      shown_depth = @shown_while.length
       @container_stack.push(node)
       # A test the block is written under is also a test anything declared in the block is
       # only shown under (see #gated_by_open_conditions) — the same statement reads both ways, and a
       # thing the framework redraws for you every frame has no other way to hear about it.
       @shown_while.push(node.cond) if node.kind == :if
-      yield
-    ensure
-      @shown_while.pop if node.kind == :if
-      @container_stack.pop
+      begin
+        yield
+      rescue Exception # rubocop:disable Lint/RescueException -- put the stacks back for any error, then raise it again
+        @container_stack.slice!(depth..)
+        @shown_while.slice!(shown_depth..)
+        raise
+      ensure
+        # The block's end, a `throw` or a `break` closes this container alone.
+        unless @container_stack.length == depth
+          @shown_while.pop if node.kind == :if
+          @container_stack.pop
+        end
+      end
     end
 
     # Run a DSL block (a game loop body, a func body…) at the current build

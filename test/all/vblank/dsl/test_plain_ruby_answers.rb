@@ -1709,6 +1709,22 @@ class TestPlainRubyAnswers < Minitest::Test
     assert_equal 30, ticker.shown
   end
 
+  # A builder made by hand stays the thread's game after its game code stops with an error inside
+  # an `if`; a part made after it is made once, not taken for one made on every pass of its loop.
+  def test_part_made_after_a_builder_by_hand_stopped_inside_a_test
+    builder = Builder.new
+    stopping = VBlank::DSL::PlainRuby.rewrite(proc do
+      k = 0
+      game_loop do
+        k += 1
+        raise ArgumentError, "stopped inside a game test" if k > 2
+      end
+    end)
+    assert_raises(ArgumentError) { builder.instance_eval(&stopping) }
+
+    assert_kind_of AnswerTicker, AnswerTicker.new
+  end
+
   # Two lamps, the second switched first: each keeps the name of the order it was made in, as it
   # would with `game_variables`, so a save made before still finds each number.
   def test_objects_of_one_class_are_named_in_the_order_they_were_made
