@@ -1390,14 +1390,16 @@ module VBlank
               # first, for the frame after the blank — which a pass running late leaves to this.
               asm.label("rt_hblank_interrupt")
               %i[af de hl].each { |pair| asm.push(pair) }
+              shared = Strikes.bar_shared?(memory)
               if Strikes.line?(memory) # the line match the strikes wait for, or a line's end
+                emit_shared_line_before_bar(asm, memory) if shared # first: its line ends soon
                 asm.call("rt_strikes_due")
                 asm.load_high(:a, h::STAT)
                 asm.and_a(STAT_HBLANK)
                 asm.jump_relative(:z, "rt_hblank_interrupt_done")
               end
               covers = memory.reserved?(BAR_COVERS)
-              emit_line_before_bar(asm, memory) if covers
+              emit_line_before_bar(asm, memory) if covers && !shared
               asm.load_high(:a, h::LY)
               asm.inc(:a)
               asm.cp_a(Console::GBCHardware::SCREEN_HEIGHT)
@@ -2916,6 +2918,8 @@ module VBlank
               asm.load(:a, [memory[BENDING]])
               asm.and_a(:a)
               asm.jump_relative(:nz, "rt_bar_covers_bent")
+              return emit_bar_covers_shared(asm, memory) if Strikes.bar_shared?(memory)
+
               asm.load(:a, :b)
               asm.dec(:a)
               asm.load_high(h::LYC, :a)
@@ -2944,6 +2948,41 @@ module VBlank
               asm.or_a(STAT_HBLANK)
               asm.load_high(h::STAT, :a)
               asm.ret
+              emit_bar_sprites_switches(asm, memory)
+            end
+
+            # The rest of rt_bar_covers_first_row (B the bar's top) where the strikes share the line match
+            # (Strikes#emit_line_match_set): the line before the bar's top kept in Strikes::BAR_AT, nought for
+            # none or a bent screen, which asks on every line, and the line match set for whichever comes first.
+            # The display's interrupt is on already for the strikes, and one asked for is theirs to answer.
+            def emit_bar_covers_shared(asm, memory)
+              h = Console::GBCHardware
+              asm.load(:a, :b)
+              asm.load([memory[Strikes::BAR_AT]], :a)
+              asm.load_high(:a, h::STAT)
+              asm.and_a(~STAT_HBLANK & 0xFF)
+              asm.load_high(h::STAT, :a)
+              asm.jump("rt_line_match_set")
+              asm.label("rt_bar_covers_none")
+              asm.xor_a(:a)
+              asm.load([memory[Strikes::BAR_AT]], :a)
+              asm.load(:a, [memory[BENDING]])
+              asm.and_a(:a)
+              asm.jump(:z, "rt_line_match_set")
+              asm.label("rt_bar_covers_bent")
+              asm.xor_a(:a)
+              asm.load([memory[Strikes::BAR_AT]], :a)
+              asm.load_high(:a, h::STAT)
+              asm.or_a(STAT_HBLANK)
+              asm.load_high(h::STAT, :a)
+              asm.jump("rt_line_match_set")
+              emit_bar_sprites_switches(asm, memory)
+            end
+
+            # rt_bar_hide_sprites and rt_bar_sprites_back (#emit_bar_covers).
+            def emit_bar_sprites_switches(asm, memory)
+              h = Console::GBCHardware
+              covers = memory[BAR_COVERS]
 
               asm.label("rt_bar_hide_sprites")
               asm.load(:a, [memory[LCDC_WANTED]])
@@ -2985,6 +3024,33 @@ module VBlank
               asm.call("rt_bar_hide_sprites")
               asm.jump_relative("rt_hblank_interrupt_done")
               asm.label("rt_hblank_interrupt_bent")
+            end
+
+            # In the display's interrupt, where the strikes share the line match (Strikes#emit_line_match_set),
+            # before they are answered, since the switch must go over before the line ends: the line before
+            # the bar's top, if it has begun on a frame being drawn and the bar still wants it, waited out
+            # and the sprites switched off, and the line match given to the strikes. Uses A and E.
+            def emit_shared_line_before_bar(asm, memory)
+              h = Console::GBCHardware
+              asm.load(:a, [memory[Strikes::BAR_AT]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_hblank_interrupt_no_bar")
+              asm.dec(:a)
+              asm.load(:e, :a)
+              asm.load_high(:a, h::LY)
+              asm.cp_a(:e)
+              asm.jump_relative(:c, "rt_hblank_interrupt_no_bar")
+              asm.cp_a(Console::GBCHardware::SCREEN_HEIGHT) # a strike in the blank, the bar armed for the frame after
+              asm.jump_relative(:nc, "rt_hblank_interrupt_no_bar")
+              asm.label("rt_hblank_interrupt_bar_wait")
+              asm.load_high(:a, h::STAT)
+              asm.and_a(STAT_MODE)
+              asm.jump_relative(:nz, "rt_hblank_interrupt_bar_wait")
+              asm.call("rt_bar_hide_sprites")
+              asm.xor_a(:a)
+              asm.load([memory[Strikes::BAR_AT]], :a)
+              asm.call("rt_line_match_set")
+              asm.label("rt_hblank_interrupt_no_bar")
             end
 
             # ...and on a screen with them, E the line coming next: the bar's top, on a bar covering.

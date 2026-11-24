@@ -44,8 +44,9 @@ module VBlank
           # interrupt shares with a bent background's rows (Runtime::Picture, rt_hblank_interrupt): it
           # answers the strikes first, and bends a row only at a line's end. The display's interrupt
           # then stays on, and a background with no bend switches off the line's end rather than the
-          # interrupt. A game whose status bar covers the sprites holds the line match for the bar's
-          # top, and with a recording its notes are written as the frame plays, as before.
+          # interrupt. A game whose status bar covers the sprites wants the line match for the bar's top
+          # too, so the two share it (#emit_line_match_set): it is set for whichever comes first, and the
+          # interrupt answers the strikes and then the bar.
           #
           # ### Writes outside the pass
           #
@@ -89,9 +90,16 @@ module VBlank
             # Reserved in a game whose recording holds the timer: the alarm is the display's line match.
             LINE_ALARM = "rt strikes line alarm"
 
-            def reserve(memory, line: false)
+            # In such a game whose status bar covers the sprites, the line match is shared with the bar's top
+            # (#emit_line_match_set): the line each wants it on, plus one, and nought for none.
+            STRIKE_AT = "rt strikes strike at"
+            BAR_AT = "rt strikes bar at"
+
+            # +bar+ for a game with +line+ whose status bar covers the sprites (Runtime::Picture::BAR_COVERS).
+            def reserve(memory, line: false, bar: false)
               [STRIKING, HEAD, TAIL].each { |name| memory.reserve(name, 1) }
               memory.reserve(LINE_ALARM, 1) if line
+              [STRIKE_AT, BAR_AT].each { |name| memory.reserve(name, 1) } if line && bar
               [BLANK_LINES, BASE, ACCUM, DUE].each { |name| memory.reserve(name, 2) }
               memory.reserve_in_page(LIST, 0x100)
             end
@@ -100,6 +108,14 @@ module VBlank
 
             # Is the alarm the display's line match (#emit_set_line), the timer being a recording's?
             def line?(memory) = memory.reserved?(LINE_ALARM)
+
+            # Where the line match is shared with the bar, a strike due this many lines or fewer before the
+            # bar's line waits for it and is answered after it: the bar's switch must go over at the end of
+            # its line, and the interrupt answering a strike just before could still be running then.
+            BAR_FIRST_BY = 8
+
+            # Does the line match serve the strikes and a status bar covering the sprites both?
+            def bar_shared?(memory) = memory.reserved?(BAR_AT)
 
             # The interrupt the alarm raises.
             def alarm_interrupt(memory) = line?(memory) ? Console::GBCHardware::INT_STAT : Console::GBCHardware::INT_TIMER
@@ -118,6 +134,7 @@ module VBlank
               emit_line_now(asm, memory)
               emit_due(asm, memory)
               emit_alarm(asm) unless line?(memory)
+              emit_line_match_set(asm, memory) if bar_shared?(memory)
               emit_frame(asm, memory, step)
               emit_later(asm)
               emit_multiply(asm)
@@ -324,7 +341,7 @@ module VBlank
               asm.jump_relative(:nz, "rt_strikes_write")
               asm.or_a(:e)
               asm.jump_relative(:z, "rt_strikes_write")
-              line?(memory) ? emit_set_line(asm) : emit_set_timer(asm)
+              line?(memory) ? emit_set_line(asm, memory) : emit_set_timer(asm)
               asm.jump_relative("rt_strikes_out")
 
               asm.label("rt_strikes_write")
@@ -340,7 +357,11 @@ module VBlank
               asm.jump("rt_strikes_next")
 
               asm.label("rt_strikes_empty")
-              if line?(memory)
+              if bar_shared?(memory)
+                asm.xor_a(:a)
+                asm.load([memory[STRIKE_AT]], :a)
+                asm.call("rt_line_match_set")
+              elsif line?(memory)
                 asm.load_high(:a, h::STAT)
                 asm.and_a(~Picture::STAT_LINE_MATCH & 0xFF)
                 asm.load_high(h::STAT, :a)
@@ -403,8 +424,9 @@ module VBlank
             # a frame on, where that is further. The display raises its interrupt as it starts that
             # line (Pan Docs, "LCD Status Registers"), and the line interrupt answers it with
             # rt_strikes_due (Runtime::Picture, rt_hblank_interrupt); written as the display is on that
-            # line already, it raises it at once.
-            def emit_set_line(asm)
+            # line already, it raises it at once. Where a status bar shares the line match, the line is
+            # kept in STRIKE_AT and rt_line_match_set sets it.
+            def emit_set_line(asm, memory)
               h = Console::GBCHardware
               asm.load(:a, :d)
               asm.and_a(:a)
@@ -421,10 +443,74 @@ module VBlank
               asm.jump_relative(:c, "rt_strikes_line_set")
               asm.sub_a(LINES_A_FRAME)
               asm.label("rt_strikes_line_set")
+              if bar_shared?(memory)
+                asm.inc(:a)
+                asm.load([memory[STRIKE_AT]], :a)
+                asm.call("rt_line_match_set")
+                return
+              end
               asm.load_high(h::LYC, :a)
               asm.load_high(:a, h::STAT)
               asm.or_a(Picture::STAT_LINE_MATCH)
               asm.load_high(h::STAT, :a)
+            end
+
+            # rt_line_match_set, where the strikes and a status bar covering the sprites share the line
+            # match: LYC set to whichever of STRIKE_AT and BAR_AT comes first from the line the display is
+            # on, counting on round the frame (the bar first where the strike is BAR_FIRST_BY lines or fewer
+            # before it), and the line match switched on; or off for neither. The bar
+            # wants the line before its top on the frame being drawn (Runtime::Picture#emit_bar_covers) and
+            # the strikes their entry's, which can be on the frame after. Keeps BC, DE and HL.
+            def emit_line_match_set(asm, memory)
+              h = Console::GBCHardware
+              asm.label("rt_line_match_set")
+              asm.push(:bc)
+              asm.load_high(:a, h::LY)
+              asm.load(:c, :a)
+              asm.load(:a, [memory[BAR_AT]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_line_match_strike")
+              asm.dec(:a)
+              emit_lines_on(asm)
+              asm.load(:b, :a) # how far on the bar's line is
+              asm.load(:a, [memory[STRIKE_AT]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_line_match_bar")
+              asm.dec(:a)
+              emit_lines_on(asm)
+              asm.add_a(BAR_FIRST_BY)
+              asm.cp_a(:b)
+              asm.jump_relative(:c, "rt_line_match_strike")
+              asm.label("rt_line_match_bar")
+              asm.load(:a, [memory[BAR_AT]])
+              asm.jump_relative("rt_line_match_on")
+              asm.label("rt_line_match_strike")
+              asm.load(:a, [memory[STRIKE_AT]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_line_match_off")
+              asm.label("rt_line_match_on")
+              asm.dec(:a)
+              asm.load_high(h::LYC, :a)
+              asm.load_high(:a, h::STAT)
+              asm.or_a(Picture::STAT_LINE_MATCH)
+              asm.load_high(h::STAT, :a)
+              asm.pop(:bc)
+              asm.ret
+              asm.label("rt_line_match_off")
+              asm.load_high(:a, h::STAT)
+              asm.and_a(~Picture::STAT_LINE_MATCH & 0xFF)
+              asm.load_high(h::STAT, :a)
+              asm.pop(:bc)
+              asm.ret
+            end
+
+            # A = how many lines on from line C the line in A is, round the frame, inline. Uses the flags.
+            def emit_lines_on(asm)
+              label = "rt_lines_on_#{asm.here}"
+              asm.sub_a(:c)
+              asm.jump_relative(:nc, label)
+              asm.add_a(LINES_A_FRAME)
+              asm.label(label)
             end
 
             # rt_strikes_alarm: the timer's interrupt. It is stopped, and rt_strikes_due writes what

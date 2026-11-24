@@ -32,12 +32,22 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second.
   # With +work+ each pass of the game counts that high first. The effect plays on pass +played_on+.
-  # With +recording+ a silent recording loops from the second pass, and holds the timer.
-  private def game(rate:, apart:, lasting:, notes: 5, work: 0, recording: false)
+  # With +recording+ a silent recording loops from the second pass, and holds the timer. With +bar+ a
+  # status bar covers the sprites from BAR_TOP down, a white sprite across its top.
+  private def game(rate:, apart:, lasting:, notes: 5, work: 0, recording: false, bar: false)
+    VBlank.build("STRIKES", console: :gbc, out: nil, err: nil,
+                 &game_code(rate: rate, apart: apart, lasting: lasting, notes: notes, work: work, recording: recording, bar: bar))
+  end
+
+  BAR_TOP = 128
+
+  private def game_code(rate:, apart:, lasting:, notes: 5, work: 0, recording: false, bar: false)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: :E5, length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
-    VBlank.build("STRIKES", console: :gbc, out: nil, err: nil) do
+    test = self
+    proc do
+      test.covering_bar(self) if bar
       enable_sound
       sfx = sound_effects :sfx, { chime: effect }
       pass = var :pass, 0
@@ -49,6 +59,23 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
         sfx.play :chime if pass == PLAYED_ON
         repeat(work) { busy += 1 } if work.positive?
       end
+    end
+  end
+
+  # A green status bar from BAR_TOP down that covers the sprites, over a red field, and a white sprite
+  # half over it, in the game +game+ (test_gbc_bar_covers_sprites.rb's).
+  def covering_bar(game)
+    game.instance_eval do
+      screen :tiled
+      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
+      image(:ball, "#" => :white) { Minitest::Test::SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      bar = status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "#" * 32], top: TestGBCEffectStrikesInFrame::BAR_TOP
+      sprite :ball, at: [40, TestGBCEffectStrikesInFrame::BAR_TOP - 4]
+      bar.covers_sprites = true
     end
   end
 
@@ -112,6 +139,28 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
   # display's line match instead (Pan Docs, "LCD Status Registers").
   def test_a_game_playing_a_recording_strikes_its_notes_on_their_lines
     assert_struck_apart(rate: 50, apart: 3, lasting: 1, recording: true)
+  end
+
+  # A game whose status bar covers the sprites has the display's line match switch the sprites off at
+  # the bar's top, and the strikes share it: the line match is set for whichever comes first.
+  def test_a_game_playing_a_recording_under_a_bar_over_its_sprites_strikes_its_notes_on_their_lines
+    assert_struck_apart(rate: 50, apart: 3, lasting: 1, recording: true, bar: true)
+  end
+
+  # ...and the bar still covers the sprites on every frame while the notes are struck, from its top
+  # line exactly: a strike due just before the bar's line waits for the bar.
+  def test_a_bar_over_the_sprites_covers_them_while_notes_are_struck_on_the_line_match
+    white = 0x7FFF
+    green = VBlank::Graphics::Color.resolve(:green)
+    reader = VBlank::Diagnostics::Verifier.new(game(rate: 240, apart: 2, lasting: 1, notes: 40, recording: true, bar: true), frames: 0)
+    cut = Array.new(PLAYED_ON + 20) do
+      reader.step(1)
+      reader.pixel_gba(42, BAR_TOP - 1) == white && reader.pixel_gba(42, BAR_TOP) == green
+    end
+
+    assert_equal [true], cut.drop(PLAYED_ON - 2).uniq, "the sprite cut at the bar on each frame: #{cut.inspect}"
+  ensure
+    reader&.close
   end
 
   # A note struck part way through a frame on a voice still sounding the note before, the new one

@@ -72,7 +72,7 @@ module VBlank
                                     cells_shown_now: cells_shown_now, bar_covers: bar_covers, painting: art.painting?,
                                     grids_kept: grids_kept)
             # Must follow Clips and Picture: a recording's timer, or a bar's line match, decide its alarm.
-            Strikes.reserve(memory, line: clips) if effect_clock_step && !effects.empty? && !(clips && bar_covers)
+            Strikes.reserve(memory, line: clips, bar: bar_covers) if effect_clock_step && !effects.empty?
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
