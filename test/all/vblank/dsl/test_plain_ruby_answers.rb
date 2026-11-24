@@ -59,7 +59,8 @@ class TestPlainRubyAnswers < Minitest::Test
     "[a, b].uniq", "[1, 2].uniq { n + a }", "[a, b].tally", "[a, b].group_by", "[1, 2].group_by { n + a }",
     "[a, b].index(7)", "[a, b].find_index(7)", "[a, b].rindex(7)", "[1, 7].index(a)", "[a, b] - [7]",
     "[a, b] & [7]", "[a, b] | [7]", "[1, 7] - [a]", "[a, b].difference([7])", "[a, b].intersection([7])",
-    "[a, b].union([7])", "[a, b].intersect?([7])", "[a, b].delete(7)", "sizes.counts.uniq"
+    "[a, b].union([7])", "[a, b].intersect?([7])", "[a, b].delete(7)", "sizes.counts.uniq",
+    "[p, q].index(q)", "[p, q].uniq", "[p, q] - [q]"
   ].freeze
 
   def test_equality_questions_on_game_numbers_are_refused
@@ -2885,6 +2886,8 @@ class TestPlainRubyAnswers < Minitest::Test
           n = [a, b].delete(7)
         end
       end
+    when "[p, q].index(q)", "[p, q].uniq", "[p, q] - [q]"
+      struct_equality_question(name)
     when "sizes.counts.uniq"
       proc do
         sizes = AnswerNamedSizes.new
@@ -2892,6 +2895,43 @@ class TestPlainRubyAnswers < Minitest::Test
         game_loop do
           sizes.counts[0] += 1
           n = sizes.counts.uniq.size
+        end
+      end
+    end
+  end
+
+  # The EQUALITY_QUESTIONS cases on a Ruby Array of two Structs, one with a field game code changes:
+  # Ruby compares Structs by their fields.
+  private def struct_equality_question(name)
+    case name
+    when "[p, q].index(q)"
+      proc do
+        p = AnswerPoint.new(1, 0, 0)
+        q = AnswerPoint.new(2, 0, 0)
+        n = 0
+        game_loop do
+          p.x += 1
+          n = [p, q].index(q)
+        end
+      end
+    when "[p, q].uniq"
+      proc do
+        p = AnswerPoint.new(1, 0, 0)
+        q = AnswerPoint.new(2, 0, 0)
+        n = 0
+        game_loop do
+          p.x += 1
+          n = [p, q].uniq.size
+        end
+      end
+    when "[p, q] - [q]"
+      proc do
+        p = AnswerPoint.new(1, 0, 0)
+        q = AnswerPoint.new(2, 0, 0)
+        n = 0
+        game_loop do
+          p.x += 1
+          n = ([p, q] - [q]).size
         end
       end
     end

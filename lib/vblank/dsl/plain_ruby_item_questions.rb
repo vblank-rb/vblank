@@ -61,7 +61,7 @@ module VBlank
         def equality_answer(receiver, verb, given, block)
           return ruby_answer(receiver, verb, given, block) unless ruby_collection?(receiver)
 
-          compared = items_compared(receiver) + given.flat_map { |value| value.is_a?(Array) ? value.flatten : [value] }
+          compared = items_compared(receiver) + given.flat_map { |value| values_compared(value) }
           refuse_compared_game_numbers!(verb) if game_numbers?(compared)
           if block
             block = BLOCK_KEYS.include?(verb) ? refusing_game_keys(verb, block) : refusing_game_tests(verb, block)
@@ -69,13 +69,26 @@ module VBlank
           ruby_answer(receiver, verb, given, block)
         end
 
-        # What Ruby compares in +collection+: a Hash's keys, a Range's ends, an Array's items (an
-        # item that is an Array, by its own items).
+        # What Ruby compares in +collection+: a Hash's keys, a Range's ends, an Array's items.
         def items_compared(collection)
           case collection
-          when Hash then collection.keys
+          when Hash then collection.keys.flat_map { |key| values_compared(key) }
           when Range then [collection.begin, collection.end]
-          else collection.flatten
+          else collection.to_a.flat_map { |item| values_compared(item) }
+          end
+        end
+
+        # What Ruby's `==` and `eql?` compare in +value+: an Array by its items, a Hash by its keys
+        # and values, a Struct or a Data by its fields, each of those the same way; anything else by
+        # itself. An Array is walked through `to_a`, a plain Array, since a named Array of game
+        # variables (InstanceVariables::KeyedArray) refuses `flat_map` as a copy of itself.
+        def values_compared(value)
+          case value
+          when Array then value.to_a.flat_map { |item| values_compared(item) }
+          when Hash then value.flat_map { |key, held| values_compared(key) + values_compared(held) }
+          when Struct then value.to_a.flat_map { |field| values_compared(field) }
+          when Data then value.to_h.values.flat_map { |field| values_compared(field) }
+          else [value]
           end
         end
 
@@ -83,7 +96,7 @@ module VBlank
         def refusing_game_keys(verb, block)
           lambda do |*item|
             answer = block.call(*item)
-            refuse_compared_game_numbers!(verb) if game_numbers?(answer.is_a?(Array) ? answer.flatten : [answer])
+            refuse_compared_game_numbers!(verb) if game_numbers?(values_compared(answer))
             answer
           end
         end

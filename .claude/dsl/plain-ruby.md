@@ -379,7 +379,8 @@ end
   The questions Ruby answers by comparing items with `eql?` and `hash` or `==` (`ItemQuestions::EQUALITY`:
   `uniq`, `tally`, `group_by`, `chunk`, `index`/`find_index`/`rindex` of a value, `-`, `&`, `|`,
   `difference`, `intersection`, `union`, `intersect?`, `delete`) are refused where an item, an
-  argument or a key block's answer is a game number: a Value's `eql?` and `hash` are the object's,
+  argument or a key block's answer is or holds a game number (a Struct or Data by its fields, an
+  Array or Hash by its contents, `values_compared`): a Value's `eql?` and `hash` are the object's,
   and its `==` a test, so Ruby's answer would be wrong. `-` reaches ItemQuestions on every receiver
   (`a - 3` is Ruby's own sum there); `&` and `|` come from `Steps.bits` for an Array.
   **`a <=> b` written in game code is a game number**, -1, 0 or 1 (`Steps.compare`,
