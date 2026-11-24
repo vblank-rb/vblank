@@ -19,17 +19,30 @@ module VBlank
         QUESTIONS = %i[max min minmax count any? all? none? include?].freeze
 
         # The questions that pick items out by a block's test, refused where the test is the game's.
-        PICKING = %i[find detect find_index select filter reject partition filter_map take_while drop_while
+        PICKING = %i[find detect select filter reject partition filter_map take_while drop_while
                      max_by min_by sort_by sum].freeze
 
-        # Every name the rewrite sends here.
-        VERBS = (QUESTIONS + PICKING).freeze
+        # The questions Ruby answers by comparing items with each other or with what is given, by
+        # `eql?` and `hash` (`uniq`, `tally`, `-`) or by `==` (`index(7)`). A number the game works
+        # out answers `==` with a test, which Ruby counts as true, and `eql?` by which object it is,
+        # so these are refused where an item, an argument or a block's answer is one. `&` and `|`
+        # come here from Steps.bits.
+        EQUALITY = %i[uniq tally group_by chunk index find_index rindex - & | difference intersection union
+                      intersect? delete].freeze
+
+        # Of EQUALITY, those whose block's answer is what is compared (`uniq { |n| n % 4 }`), not a
+        # test that picks an item.
+        BLOCK_KEYS = %i[uniq group_by chunk].freeze
+
+        # Every name the rewrite sends here. `&` and `|` are Steps.bits's.
+        VERBS = (QUESTIONS + PICKING + EQUALITY - %i[& |]).freeze
 
         module_function
 
         # +receiver+.+verb+(*given, &block), answered as Ruby would, worked out by the game where
         # Ruby could not.
         def ask(receiver, verb, *given, &block)
+          return equality_answer(receiver, verb, given, block) if EQUALITY.include?(verb)
           return ruby_answer(receiver, verb, given, block) unless ruby_collection?(receiver)
           return ruby_answer(receiver, verb, given, block && refusing_game_tests(verb, block)) unless QUESTIONS.include?(verb)
 
@@ -41,6 +54,45 @@ module VBlank
           end
 
           ruby_answer(receiver, verb, given, answers ? answers_in_turn(answers) : block)
+        end
+
+        # An EQUALITY verb: Ruby's answer, refused where Ruby would compare a number the game works
+        # out. On anything but a collection of Ruby's (`a - 3` is a sum) it is Ruby's as written.
+        def equality_answer(receiver, verb, given, block)
+          return ruby_answer(receiver, verb, given, block) unless ruby_collection?(receiver)
+
+          compared = items_compared(receiver) + given.flat_map { |value| value.is_a?(Array) ? value.flatten : [value] }
+          refuse_compared_game_numbers!(verb) if game_numbers?(compared)
+          if block
+            block = BLOCK_KEYS.include?(verb) ? refusing_game_keys(verb, block) : refusing_game_tests(verb, block)
+          end
+          ruby_answer(receiver, verb, given, block)
+        end
+
+        # What Ruby compares in +collection+: a Hash's keys, a Range's ends, an Array's items (an
+        # item that is an Array, by its own items).
+        def items_compared(collection)
+          case collection
+          when Hash then collection.keys
+          when Range then [collection.begin, collection.end]
+          else collection.flatten
+          end
+        end
+
+        # +block+, refusing an answer holding a number the game works out, which Ruby would compare.
+        def refusing_game_keys(verb, block)
+          lambda do |*item|
+            answer = block.call(*item)
+            refuse_compared_game_numbers!(verb) if game_numbers?(answer.is_a?(Array) ? answer.flatten : [answer])
+            answer
+          end
+        end
+
+        def refuse_compared_game_numbers!(verb)
+          Steps.refuse_game_code!("`#{verb}` compares the items, and one of them is a number the game works out " \
+                                  "as it plays. Ruby must compare them while the game is built, and it cannot " \
+                                  "compare that number then. To fix this, compare the numbers one at a time with " \
+                                  "`==`, or walk the items with `each` and keep the answer in a game number.")
         end
 
         # The questions whose block is a test of one item.
@@ -81,6 +133,28 @@ module VBlank
           when :min_by then receiver.min_by(*given, &block)
           when :sort_by then receiver.sort_by(&block)
           when :sum then receiver.sum(*given, &block)
+          else equality_ruby_answer(receiver, verb, given, block)
+          end
+        end
+
+        # An EQUALITY question as Ruby asks it, by name.
+        def equality_ruby_answer(receiver, verb, given, block)
+          case verb
+          when :uniq then receiver.uniq(&block)
+          when :tally then receiver.tally(*given)
+          when :group_by then receiver.group_by(&block)
+          when :chunk then receiver.chunk(&block)
+          when :index then receiver.index(*given, &block)
+          when :find_index then receiver.find_index(*given, &block)
+          when :rindex then receiver.rindex(*given, &block)
+          when :- then receiver - given.first
+          when :& then receiver & given.first
+          when :| then receiver | given.first
+          when :difference then receiver.difference(*given)
+          when :intersection then receiver.intersection(*given)
+          when :union then receiver.union(*given)
+          when :intersect? then receiver.intersect?(*given)
+          when :delete then receiver.delete(*given, &block)
           end
         end
 

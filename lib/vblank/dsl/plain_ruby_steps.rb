@@ -406,6 +406,7 @@ module VBlank
           elsif game_test?(left) then bits_beside_plain(as_condition(left), operator, right)
           elsif game_test?(right) && (left.nil? || left == true || left == false)
             bits_beside_plain(as_condition(right), operator, left)
+          elsif left.is_a?(Array) && operator != :^ then ItemQuestions.ask(left, operator, right)
           else left.public_send(operator, right)
           end
         end

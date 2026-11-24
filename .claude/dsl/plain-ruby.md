@@ -376,6 +376,12 @@ end
   `select`, `reject`, `partition`, `max_by`...) are refused, and `<=>` on a game number is refused
   where Ruby asks it (`sort`, `max_by`, `clamp`, a gem), except Range.new: a Range of game numbers
   still builds, written as `Range.new` by the rewrite where an end is not a number written out.
+  The questions Ruby answers by comparing items with `eql?` and `hash` or `==` (`ItemQuestions::EQUALITY`:
+  `uniq`, `tally`, `group_by`, `chunk`, `index`/`find_index`/`rindex` of a value, `-`, `&`, `|`,
+  `difference`, `intersection`, `union`, `intersect?`, `delete`) are refused where an item, an
+  argument or a key block's answer is a game number: a Value's `eql?` and `hash` are the object's,
+  and its `==` a test, so Ruby's answer would be wrong. `-` reaches ItemQuestions on every receiver
+  (`a - 3` is Ruby's own sum there); `&` and `|` come from `Steps.bits` for an Array.
   **`a <=> b` written in game code is a game number**, -1, 0 or 1 (`Steps.compare`,
   `Value#sign_against`: `(a > b) - (a < b)`, two compares, no divide), and `[a, b] <=> [c, d]` the
   sign of the pairs' signs weighed 2 and 1, so the first decides and the next breaks ties.

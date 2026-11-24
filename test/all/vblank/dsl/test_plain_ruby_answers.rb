@@ -52,6 +52,39 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # Ruby asks these by eql? and hash, or by ==, item by item, while building. A number the game
+  # works out has neither answer then, so each is refused where an item, an argument or a block's
+  # answer is one.
+  EQUALITY_QUESTIONS = [
+    "[a, b].uniq", "[1, 2].uniq { n + a }", "[a, b].tally", "[a, b].group_by", "[1, 2].group_by { n + a }",
+    "[a, b].index(7)", "[a, b].find_index(7)", "[a, b].rindex(7)", "[1, 7].index(a)", "[a, b] - [7]",
+    "[a, b] & [7]", "[a, b] | [7]", "[1, 7] - [a]", "[a, b].difference([7])", "[a, b].intersection([7])",
+    "[a, b].union([7])", "[a, b].intersect?([7])", "[a, b].delete(7)", "sizes.counts.uniq"
+  ].freeze
+
+  def test_equality_questions_on_game_numbers_are_refused
+    EQUALITY_QUESTIONS.each { |name| refused(name, /compares the items/, &equality_question(name)) }
+  end
+
+  # The same questions on Ruby's own numbers are Ruby's, answered while building, and `-` between
+  # numbers is still a sum.
+  def test_equality_questions_on_plain_numbers_agree
+    agrees("[1, 2, 2].uniq and the others", reads: %i[m n o p q r s]) do
+      a = 9
+      m = n = o = p = q = r = s = 0
+      game_loop do
+        a += 1
+        m = [1, 2, 2].uniq.size
+        n = [1, 2, 2].tally[2]
+        o = [1, 2, 7].index(7)
+        p = ([1, 2, 7] - [7]).size
+        q = ([1, 2] | [7]).size
+        r = a - 3
+        s = 3 - a
+      end
+    end
+  end
+
   def test_range_and_list_tests
     agrees("include? and case on a range", reads: %i[m n o]) do
       a = 3
@@ -2667,5 +2700,200 @@ class TestPlainRubyAnswers < Minitest::Test
   private def list_names(node)
     own = node.kind == :list_new ? [node.name] : []
     own + node.children.flat_map { |child| list_names(child) }
+  end
+
+  # The game asking the EQUALITY_QUESTIONS case +name+ of game numbers each pass.
+  private def equality_question(name)
+    case name
+    when "[a, b].uniq"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].uniq.size
+        end
+      end
+    when "[1, 2].uniq { n + a }"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [1, 2].uniq { |i| i + a }.size
+        end
+      end
+    when "[a, b].tally"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].tally.size
+        end
+      end
+    when "[a, b].group_by"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].group_by { |i| i }.size
+        end
+      end
+    when "[1, 2].group_by { n + a }"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [1, 2].group_by { |i| i + a }.size
+        end
+      end
+    when "[a, b].index(7)"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].index(7)
+        end
+      end
+    when "[a, b].find_index(7)"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].find_index(7)
+        end
+      end
+    when "[a, b].rindex(7)"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].rindex(7)
+        end
+      end
+    when "[1, 7].index(a)"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [1, 7].index(a)
+        end
+      end
+    when "[a, b] - [7]"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = ([a, b] - [7]).size
+        end
+      end
+    when "[a, b] & [7]"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = ([a, b] & [7]).size
+        end
+      end
+    when "[a, b] | [7]"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = ([a, b] | [7]).size
+        end
+      end
+    when "[1, 7] - [a]"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = ([1, 7] - [a]).size
+        end
+      end
+    when "[a, b].difference([7])"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].difference([7]).size
+        end
+      end
+    when "[a, b].intersection([7])"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].intersection([7]).size
+        end
+      end
+    when "[a, b].union([7])"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].union([7]).size
+        end
+      end
+    when "[a, b].intersect?([7])"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].intersect?([7]) ? 1 : 2
+        end
+      end
+    when "[a, b].delete(7)"
+      proc do
+        a = 3
+        b = 7
+        n = 0
+        game_loop do
+          a += 1
+          n = [a, b].delete(7)
+        end
+      end
+    when "sizes.counts.uniq"
+      proc do
+        sizes = AnswerNamedSizes.new
+        n = 0
+        game_loop do
+          sizes.counts[0] += 1
+          n = sizes.counts.uniq.size
+        end
+      end
+    end
   end
 end
