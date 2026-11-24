@@ -1111,6 +1111,52 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A Hash made again each pass in the game loop and set to a number written out stays Ruby's own,
+  # and a slot set under a test the game decides becomes a game number there (Writes.promote_slot),
+  # so it is set on the passes Ruby sets it.
+  def test_a_hash_made_each_pass_set_under_a_game_test
+    agrees("h = { a: 1 } in the game loop, then h[:a] = 5 if pass == 3", reads: %i[m n], passes: 4) do
+      m = n = pass = 0
+      game_loop do
+        pass += 1
+        h = { a: 1 }
+        h[:a] = 5 if pass == 3
+        m = h[:a]
+        n += m
+      end
+    end
+  end
+
+  # ...and in a loop the game runs, where a read before the set sees the number it was made with.
+  def test_a_hash_made_each_pass_set_in_a_game_loop
+    agrees("h = { a: 1 }, then in a while: n += h[:a]; h[:a] = 5", reads: %i[n], passes: 2) do
+      n = limit = 0
+      game_loop do
+        limit += 1
+        h = { a: 1 }
+        i = 0
+        while i < limit + 2
+          n += h[:a]
+          h[:a] = 5
+          i += 1
+        end
+      end
+    end
+  end
+
+  # ...and the same set with no game test round it answers as Ruby does.
+  def test_a_hash_made_each_pass_set_to_a_number_written_out
+    agrees("h = { a: 1 } in the game loop, then h[:a] = 5", reads: %i[m n], passes: 3) do
+      m = n = 0
+      game_loop do
+        h = { a: 1 }
+        n += h[:a]
+        h[:a] = 5
+        m = h[:a]
+      end
+    end
+  end
+
   def test_a_hash_made_on_every_pass_starts_again
     agrees("h = { a: 0 } in the game loop, then h[:a] += 2", reads: %i[m n], passes: 3) do
       m = n = 0
