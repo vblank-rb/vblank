@@ -194,6 +194,51 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
     reader&.close
   end
 
+  # An effect from the left speaker alone over a song on another voice from the right, whose notes set
+  # their voice's speakers on the frames the effect's notes wait for their strikes: the song's write
+  # of the speakers' switches, which hold every voice's, folds into the effect's listed one, and must
+  # change its own voice's switches alone. Heard as how many of the right speaker's samples are louder
+  # than the song's quiet drums while the effect plays: a few at each of its rests, which send its voice
+  # to both speakers a moment before it falls quiet (45 for these eight, measured in mGBA), and not the
+  # effect's notes themselves (1683 when the song's write took the effect's switches with it).
+  RIGHT_LOUD = 4000
+  RIGHT_LOUD_MOST = 64
+
+  private def right_speaker_loud_samples(with_effect)
+    drums = Score.new(tempo: 150, ticks_per_beat: 4,
+                      parts: [Part.new(plays: :noise, pan: :right, notes: (0...8).map { |n| Note.new(at: n, key: :C4, length: 1, volume: 2) })])
+    struck = (0...8).map { |n| Note.new(at: n * 3, key: :E5, length: 2, volume: 15) }
+    effect = Score.new(tempo: 50, ticks_per_beat: 60, length: 24, plays_once: true, on_timer: true,
+                       parts: [Part.new(pan: :left, notes: struck)])
+    cartridge = VBlank.build("STRIKES", console: :gbc, out: nil, err: nil) do
+      enable_sound
+      music = songs :music, [drums]
+      sfx = sound_effects :sfx, { chime: effect }
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        music.play 0
+        sfx.play :chime if with_effect && pass == PLAYED_ON
+      end
+    end
+    reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
+    right = []
+    (PLAYED_ON + 30).times do |frame|
+      reader.step(1)
+      right.concat(reader.last_frame_samples.each_slice(2).map { |pair| pair.last.abs }) if frame > PLAYED_ON + 2
+    end
+    right.count { |loudness| loudness > RIGHT_LOUD }
+  ensure
+    reader&.close
+  end
+
+  def test_a_songs_speaker_write_folded_into_an_effects_keeps_the_effects_speaker
+    alone = right_speaker_loud_samples(false)
+    over = right_speaker_loud_samples(true)
+
+    assert_operator over, :<=, alone + RIGHT_LOUD_MOST, "the right speaker's loud samples with the effect from the left: #{over}, the song alone: #{alone}"
+  end
+
   # A note struck part way through a frame on a voice still sounding the note before, the new one
   # wobbling or stepping its shape from its first frame: the frame's end moves the voice's pitch or
   # shape for it before the strike comes. The note before keeps its own until the strike: the

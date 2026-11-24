@@ -637,7 +637,14 @@ module VBlank
               asm.and_a(0x0F)
               asm.label("rt_set_speakers_chosen")
               asm.load(:c, :a) # the switches it is on
-              asm.load_high(:a, Console::GBCHardware::NR51)
+              if Strikes.any?(memory) # the others' switches as the list will leave them (Strikes)
+                asm.push(:bc)
+                asm.load(:c, Console::GBCHardware::NR51 & 0xFF)
+                asm.call("rt_sound_listed")
+                asm.pop(:bc)
+              else
+                asm.load_high(:a, Console::GBCHardware::NR51)
+              end
               asm.or_a(:b)
               asm.xor_a(:b) # this voice's switches off
               asm.or_a(:c)

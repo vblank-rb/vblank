@@ -133,6 +133,7 @@ module VBlank
 
             def emit(asm, memory, step)
               emit_put(asm, memory)
+              emit_listed(asm, memory)
               emit_line_now(asm, memory)
               emit_due(asm, memory)
               emit_alarm(asm) unless line?(memory)
@@ -245,6 +246,44 @@ module VBlank
               asm.label("rt_sound_put_done")
               emit_let_alarm(asm, memory)
               %i[hl de bc af].each { |pair| asm.pop(pair) }
+              asm.ret
+            end
+
+            # rt_sound_listed (C = a register, as LDH [C] names it): A = the value the latest listed write of
+            # it holds, or the register's own where none is listed. For a register several voices share, the
+            # speakers' switches (NR51): a write that changes one voice's switches starts from what the
+            # others' will be once the list is struck, so folded into a listed write (rt_sound_put) it keeps
+            # theirs. Keeps every other register.
+            def emit_listed(asm, memory)
+              page = memory[LIST] >> 8
+              asm.label("rt_sound_listed")
+              %i[bc de hl].each { |pair| asm.push(pair) }
+              emit_hold_alarm(asm, memory)
+              asm.load_high(:a, [:c])
+              asm.load(:d, :a) # the register now
+              asm.load(:h, page)
+              asm.load(:a, [memory[HEAD]])
+              asm.load(:l, :a)
+              asm.label("rt_sound_listed_look")
+              asm.load(:a, [memory[TAIL]])
+              asm.cp_a(:l)
+              asm.jump_relative(:z, "rt_sound_listed_looked")
+              asm.load(:a, [:hl])
+              asm.cp_a(:c)
+              asm.jump_relative(:nz, "rt_sound_listed_other")
+              asm.inc(:l)
+              asm.load(:a, [:hl])
+              asm.load(:d, :a)
+              asm.dec(:l)
+              asm.label("rt_sound_listed_other")
+              asm.load(:a, :l)
+              asm.add_a(ENTRY_BYTES)
+              asm.load(:l, :a)
+              asm.jump_relative("rt_sound_listed_look")
+              asm.label("rt_sound_listed_looked")
+              emit_let_alarm(asm, memory)
+              asm.load(:a, :d)
+              %i[hl de bc].each { |pair| asm.pop(pair) }
               asm.ret
             end
 
