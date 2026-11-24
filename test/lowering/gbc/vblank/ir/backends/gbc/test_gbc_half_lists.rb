@@ -56,7 +56,7 @@ class TestGBCHalfLists < Minitest::Test
       end
     end
 
-    assert_match(/:xs/, error.message)
+    assert_match(/`xs`/, error.message)
     assert_match(/full/, error.message)
   end
 
@@ -70,7 +70,7 @@ class TestGBCHalfLists < Minitest::Test
       end
     end
 
-    assert_match(/:xs/, error.message)
+    assert_match(/`xs`/, error.message)
     assert_match(/full/, error.message)
   end
 
@@ -125,8 +125,10 @@ class TestGBCHalfLists < Minitest::Test
       total = var :total, 0
       shown = var :shown, 0
       game_loop do
-        75.times do
-          xs.push 700
+        # A number picked by a test on the round keeps each round written out, so the pass is the
+        # queue's work alone and not a loop's besides (PlainRuby::Counts::KnownRounds).
+        75.times do |n|
+          xs.push(n.even? ? 700 : 701)
           total += xs[0]
           total += xs.length
           xs.shift

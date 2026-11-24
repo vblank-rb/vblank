@@ -30,7 +30,7 @@ class TestGBCByteLists < Minitest::Test
       end
     end
 
-    assert_match(/:xs/, error.message)
+    assert_match(/`xs`/, error.message)
     assert_match(/full/, error.message)
   end
 
