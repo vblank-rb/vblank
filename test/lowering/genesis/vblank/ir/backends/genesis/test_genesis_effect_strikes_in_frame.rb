@@ -226,4 +226,12 @@ class TestGenesisEffectStrikesInFrame < Minitest::Test
   def test_the_tune_taking_back_a_voice_the_effect_lets_go_is_heard_on
     assert_tune_heard_after_effect_lets_go(:genesis)
   end
+
+  # The checked run lays the listed writes over the chips, and leaves out the game's wave's dropped ones,
+  # which strike nothing: laid over, the effect's FM writes would stand where the game's wave is.
+  def test_the_checked_run_leaves_out_writes_the_games_sound_dropped
+    VBlank::IR::Backends::Genesis::CheckedRun.new.run(game_sound_program(:genesis, :wave), frames: FRAMES_PAST_GAME_SOUND)
+  end
+
+  FRAMES_PAST_GAME_SOUND = SOUNDED_ON + 6
 end

@@ -152,7 +152,11 @@ module VBlank
             tail = half(runtime_place(strikes::TAIL))
             until at == tail
               what, first, second = (0..2).map { |word| half(runtime_place(strikes::LIST) + at + (word * 2)) }
-              what.anybits?(strikes::PSG) ? lay_psg_write(psg, first, second) : fm.setbyte(first, second & 0xFF)
+              if what.anybits?(strikes::PSG)
+                lay_psg_write(psg, first, second)
+              elsif what != strikes::DROPPED # dropped for the game's own sound, it strikes nothing
+                fm.setbyte(first, second & 0xFF)
+              end
               at = (at + strikes::ENTRY_BYTES) & strikes::LIST_MASK
             end
             [psg, fm]

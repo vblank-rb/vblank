@@ -42,11 +42,23 @@ module EffectStrikesHeard
   end
 
   private def game_sound_cartridge(console, on_timer, sound, rate = RATE)
+    VBlank.build("STRIKES", console: console, out: nil, err: nil, &game_sound_code(on_timer, sound, rate))
+  end
+
+  # ...as a program for +console+, struck on the timer, for a checked run.
+  def game_sound_program(console, sound, rate = RATE)
+    builder = VBlank::Builder.new
+    builder.instance_eval(&game_sound_code(true, sound, rate))
+    builder.finalize_program
+    builder.program.copy.tap { |program| program.console = console }
+  end
+
+  private def game_sound_code(on_timer, sound, rate)
     low = (0...TICKS).map { |n| Note.new(at: n, key: :C3, length: 1, volume: 15) }
     quiet = [Note.new(at: 0, key: :C3, length: TICKS, volume: 0)]
     parts = sound == :wave ? [Part.new(plays: :wave, notes: low)] : [Part.new(notes: quiet), Part.new(notes: low)]
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: TICKS, plays_once: true, on_timer: on_timer, parts: parts)
-    VBlank.build("STRIKES", console: console, out: nil, err: nil) do
+    proc do
       enable_sound
       define_sound :ping, frequency: 1500, duty: :half, decay: :none, volume: 15
       sfx = sound_effects :sfx, { chime: effect }
