@@ -411,8 +411,10 @@ module VBlank
             @effect_lists = {}
             @effect_waves = false
             @effects_keep_voices = @effects.any? { |name| @songs.fetch(name).keeps_voices }
+            return @effect_clock_step = nil unless plays_sound_effects?
+
+            # Read off the program only in a game with effects: a walk of the whole program each.
             @effect_clock_step = IR::Tunes.effect_clock_step(program, program.described_console)
-            return unless plays_sound_effects?
 
             slots = @effects.each_with_index.to_h
             program.walk.each do |node|
