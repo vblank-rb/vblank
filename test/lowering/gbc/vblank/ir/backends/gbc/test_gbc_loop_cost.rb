@@ -25,9 +25,11 @@ class TestGBCLoopCost < Minitest::Test
   # runtime's multiply and each number was added to its variable through the runtime's 32-bit sum; 852
   # with a product of a byte by a number written in the program as shifts and adds in A or HL, as the
   # console's own games multiply, and each number worked into its variable's bytes where they are kept,
-  # in one byte where it is proven to fit one. The same rounds written out are 364 a round.
+  # in one byte where it is proven to fit one; 840 with the turn's test one jump on the carry
+  # (GBC::Lowering#jump_if), where it jumped over a jump back. The same rounds written out are 364 a
+  # round.
   BOUNDS = { repeat_set: 195, repeat_read: 270, while_set: 195, while_read: 270, while_break: 240, while_next: 830,
-             steps: 900 }.freeze
+             steps: 860 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

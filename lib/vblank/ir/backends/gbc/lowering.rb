@@ -2487,6 +2487,15 @@ module VBlank
             end
             return jump_unless(condition.lhs, label) if turned_round?(condition)
 
+            # A number against one written in the program, as a loop's turn ends (`k < 64`), is a
+            # carry: one jump on it, where jumping over a jump is two.
+            ordered = ordering_with_number(condition)
+            if ordered && ordered[1]
+              other, number, below = ordered
+              emit_carry_when_below(other, number)
+              return @asm.jump(below ? :c : :nc, label)
+            end
+
             go_on = fresh("holds_not")
             jump_unless(condition, go_on)
             @asm.jump(label)
