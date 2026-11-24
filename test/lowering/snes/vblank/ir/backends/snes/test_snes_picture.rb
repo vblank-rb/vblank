@@ -966,6 +966,26 @@ class TestSNESPicture < Minitest::Test
     assert_equal 10, run[:t]
   end
 
+  # A sprite the game puts into a see-through layer of sprites is mixed there and solid out of it
+  # (the interpreter's Reference#set_see_through_for), which this build does not make yet.
+  def test_a_sprite_put_in_and_out_of_a_see_through_layer_is_refused_in_plain_words
+    error = assert_raises(SNES::Lowering::NotMadeYet) do
+      SNES.new.build(program_of do
+        screen :tiled
+        image(:ground, "#" => rgb(30, 30, 30)) { "########\n" * 8 }
+        image(:hero, "#" => :green) { "########\n" * 8 }
+        tiles :world_tiles, "#" => :ground
+        layers :world, :actors, :ghosts
+        layer(:world) { background :world, tiles: :world_tiles, map: Array.new(32) { "#" * 32 } }
+        layer(:ghosts, transparency: 50) { sprite :hero, at: [100, 36] }
+        hero = layer(:actors) { sprite :hero, at: [40, 40] }
+        game_loop { hero.put_in_layer :ghosts }
+      end)
+    end
+
+    assert_match(/put in and out of a see-through layer/, error.message)
+  end
+
   # Letters added to what is behind them, as a title brings its menu up: the whole of each, the sum
   # held at the brightest. A sprite in another layer stays solid, and a pixel of nought in a letter
   # shows what is behind it, since adding nothing changes nothing.

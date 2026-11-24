@@ -2031,6 +2031,7 @@ module VBlank
               return if layers.empty?
 
               layer = layers.first
+              refuse_unmade_moving_see_through!(layer)
               parts = Picture.see_through_parts(@program, layer, @cache.stacking)
               seen_through = parts.seen_through
               sprites = parts.sprites
@@ -2058,6 +2059,18 @@ module VBlank
             end
 
             SeeThroughParts = Data.define(:seen_through, :sprites, :behind)
+
+            # A sprite the game can put in and out of the see-through +layer+ (`put_in_layer`). The
+            # interpreter mixes it while it is in the layer and draws it solid while it is out, and the
+            # colour math reaches a sprite by the colours it is drawn with, which this build settles
+            # once for each sprite.
+            def refuse_unmade_moving_see_through!(layer)
+              moving = @cache.stacking.objects.any? do |obj|
+                layers = [obj.layer, *obj.layers].uniq
+                layers.include?(layer.name) && layers.length > 1
+              end
+              refuse_unmade!("a sprite put in and out of a see-through layer (`put_in_layer`)") if moving
+            end
 
             # What a see-through +layer+ is made of, and the backgrounds behind it, of every scene.
             def self.see_through_parts(program, layer, picture = Stacking.picture(program))
