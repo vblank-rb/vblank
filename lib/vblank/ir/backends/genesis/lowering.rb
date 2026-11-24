@@ -621,6 +621,7 @@ module VBlank
 
             name = variable_named(node.value)
             return @asm.move(:l, var(name), var(node.var)) if name
+            return if emit_set_in_place(node)
 
             value(node.value)
             store(node.var)
@@ -638,20 +639,31 @@ module VBlank
           def emit_add(node) = emit_sum(node.var, :+, node.operand)
           def emit_sub(node) = emit_sum(node.var, :-, node.operand)
 
-          # `x = x + n` and `x = x - n`, in place when n is a number written in the program or a
-          # variable: one instruction, or two.
+          # `x = x + n` and `x = x - n`, in place: one instruction for a number written in the
+          # program, and for anything else n worked out into D0 and added to x where it is, ADD.L
+          # D0 to the variable. Worked out as `x + n` instead, x is read into D0 with n kept in D2
+          # and the sum written back, two moves of a long to and from work RAM where the add to it
+          # is one. n is worked out before x is read either way (#with_right_operand), so nothing
+          # reads anything in another order.
           def emit_sum(name, op, operand)
             known = folded(operand)
             return emit_sum_of_number(name, op, known) if known
 
             other = variable_named(operand)
-            unless other
-              value(Build.binop(op, Build.var_ref(name), operand))
-              return store(name)
-            end
-
-            @asm.move(:l, var(other), @asm.d(0))
+            other ? @asm.move(:l, var(other), @asm.d(0)) : value(operand)
             emit_long_sum(op, @asm.d(0), var(name))
+          end
+
+          # `x = x op y` for one of IN_PLACE_OPS with y worked out (#emit_sum), or nil where +node+
+          # is not that. True when it was done so.
+          def emit_set_in_place(node)
+            sum = node.value
+            return nil unless sum.is_a?(Node) && sum.kind == :binop && IN_PLACE_OPS.include?(sum.op)
+            return nil unless variable_named(sum.lhs) == node.var && folded(sum.rhs).nil? && variable_named(sum.rhs).nil?
+
+            value(sum.rhs)
+            emit_long_sum(sum.op, @asm.d(0), var(node.var))
+            true
           end
 
           # +destination+ +operator+= +source+, 32 bits, for one of IN_PLACE_OPS.
