@@ -38,6 +38,7 @@ module VBlank
               asm.and_a(:a)
               asm.ret(:z)
               asm.load(:c, :a)
+              asm.call("rt_strikes_drop") if Strikes.any?(memory) # the listed writes it overtakes
               asm.load(:a, [:hli])
               asm.load_high([:c], :a)
               asm.jump_relative("rt_sound_writes_next")

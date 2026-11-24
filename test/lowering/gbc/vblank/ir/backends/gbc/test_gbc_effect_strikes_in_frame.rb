@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "effect_strikes_heard"
 
 # A sound effect on a timer, struck inside the frame on the Color (GBC Runtime::Strikes). Its notes
 # are as far apart in time as their ticks, not rounded to the frames they fall in: a tick of 50 a
@@ -13,6 +14,8 @@ require "test_helper"
 # one before it left, in frames from power-on: the frame whose sound holds it, and how far through
 # that frame's sample pairs it is.
 class TestGBCEffectStrikesInFrame < Minitest::Test
+  include EffectStrikesHeard
+
   Score = VBlank::Audio::Score
   Part = Score::Part
   Note = Score::Note
@@ -288,5 +291,16 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
 
   def test_a_shape_stepped_before_its_note_is_struck_waits_for_the_strike
     assert_unchanged_until_struck(duty: %i[eighth half])
+  end
+
+  # The game's own beep over the effect (EffectStrikesHeard), within a quarter of a frame of where it
+  # is heard with the effect at the frame's start: the square voice takes a new length of wave as the
+  # one it is counting ends (Pan Docs, "Audio Details"), up to a half wave of the effect's low note
+  # later, and the frame's music lists four ticks' writes before the game's pass, where the other
+  # writes them. Left beside the listed strike, the beep is cut off at the strike's line.
+  GAME_SOUND_NEAR = Rational(1, 4)
+
+  def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:gbc, :beep, near: GAME_SOUND_NEAR)
   end
 end

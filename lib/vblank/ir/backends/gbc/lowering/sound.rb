@@ -220,6 +220,10 @@ module VBlank
               @asm.load_high(:a, Console::GBCHardware::NR51)
               @asm.or_a(0x11 << (voice - 1))
               @asm.load_high(Console::GBCHardware::NR51, :a)
+              if Runtime::Strikes.any?(@memory) # and in the listed switches it overtakes
+                @asm.load(:a, 0x11 << (voice - 1))
+                @asm.call("rt_strikes_speakers_set")
+              end
               @asm.ei
             end
 

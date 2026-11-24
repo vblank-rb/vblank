@@ -134,6 +134,7 @@ module VBlank
             def emit(asm, memory, step)
               emit_put(asm, memory)
               emit_listed(asm, memory)
+              emit_drop(asm, memory)
               emit_line_now(asm, memory)
               emit_due(asm, memory)
               emit_alarm(asm) unless line?(memory)
@@ -284,6 +285,62 @@ module VBlank
               emit_let_alarm(asm, memory)
               asm.load(:a, :d)
               %i[hl de bc].each { |pair| asm.pop(pair) }
+              asm.ret
+            end
+
+            # What a dropped entry names: FF27, where the sound chip has no register and a write does
+            # nothing (Pan Docs, "Audio Registers"), so striking it writes nothing.
+            DROPPED = 0x27
+
+            # rt_strikes_drop (C = a register, as LDH [C] names it), for the game's own sound, written now:
+            # every listed write of the register dropped, so the strike does not overtake the game's sound
+            # (IR::Tunes, "The game's own sound against a listed strike"). For the speakers' switches
+            # (NR51), which every voice shares, rt_strikes_speakers_set instead. Keeps every register.
+            #
+            # rt_strikes_speakers_set (A = switches): the switches set in every listed write of NR51, for
+            # the game's own sound, which plays its voice from both speakers. Keeps every register.
+            def emit_drop(asm, memory)
+              page = memory[LIST] >> 8
+              asm.label("rt_strikes_drop")
+              %i[af bc de hl].each { |pair| asm.push(pair) }
+              asm.load(:d, 0) # dropping
+              asm.jump_relative("rt_strikes_drop_body")
+              asm.label("rt_strikes_speakers_set")
+              %i[af bc de hl].each { |pair| asm.push(pair) }
+              asm.load(:e, :a)
+              asm.load(:c, Console::GBCHardware::NR51 & 0xFF)
+              asm.load(:d, 1) # setting switches
+              asm.label("rt_strikes_drop_body")
+              emit_hold_alarm(asm, memory)
+              asm.load(:h, page)
+              asm.load(:a, [memory[HEAD]])
+              asm.load(:l, :a)
+              asm.label("rt_strikes_drop_look")
+              asm.load(:a, [memory[TAIL]])
+              asm.cp_a(:l)
+              asm.jump_relative(:z, "rt_strikes_drop_looked")
+              asm.load(:a, [:hl])
+              asm.cp_a(:c)
+              asm.jump_relative(:nz, "rt_strikes_drop_other")
+              asm.bit(0, :d)
+              asm.jump_relative(:nz, "rt_strikes_drop_switches")
+              asm.load(:a, DROPPED)
+              asm.load([:hl], :a)
+              asm.jump_relative("rt_strikes_drop_other")
+              asm.label("rt_strikes_drop_switches")
+              asm.inc(:l)
+              asm.load(:a, [:hl])
+              asm.or_a(:e)
+              asm.load([:hl], :a)
+              asm.dec(:l)
+              asm.label("rt_strikes_drop_other")
+              asm.load(:a, :l)
+              asm.add_a(ENTRY_BYTES)
+              asm.load(:l, :a)
+              asm.jump_relative("rt_strikes_drop_look")
+              asm.label("rt_strikes_drop_looked")
+              emit_let_alarm(asm, memory)
+              %i[hl de bc af].each { |pair| asm.pop(pair) }
               asm.ret
             end
 
