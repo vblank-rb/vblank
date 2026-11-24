@@ -7,9 +7,9 @@ module VBlank
         # An error about sound effects on a timer that ticks more often than a frame can hold:
         #
         # > The sound effects have `on_timer: true` and tick <number> times a second. The <console>
-        # > shows <number> frames a second, so one frame can hold <number> ticks. On the timer, one
-        # > frame can hold 8 ticks at most. To fix this, give the sound effects a slower `tempo:` or
-        # > fewer `ticks_per_beat:`. Or remove `on_timer:`.
+        # > shows <number> frames a second, so the timer ticks up to <number> times in one frame. A frame
+        # > can play 8 ticks at most. To fix this, give the sound effects a slower `tempo:` or fewer
+        # > `ticks_per_beat:`. Or remove `on_timer:`.
         #
         # A frame plays each of its ticks as a pass over the sound effects, so a timer this fast
         # would take much of the frame. The build stops and says the rate.
@@ -37,8 +37,8 @@ module VBlank
 
           def message(console, rate, step)
             "The sound effects have `on_timer: true` and tick #{Tunes.timer_rate_words(rate)}. The " \
-              "#{console.title} shows #{(1 / console.frame_seconds).to_f.round(2)} frames a second, so one frame can " \
-              "hold #{Tunes.most_ticks_a_frame(step)} ticks. On the timer, one frame can hold " \
+              "#{console.title} shows #{(1 / console.frame_seconds).to_f.round(2)} frames a second, so the timer " \
+              "ticks up to #{Tunes.most_ticks_a_frame(step)} times in one frame. A frame can play " \
               "#{Tunes::MOST_TICKS_A_FRAME} ticks at most. To fix this, give the sound effects a slower `tempo:` or " \
               "fewer `ticks_per_beat:`. Or remove `on_timer:`."
           end

@@ -368,7 +368,7 @@ module VBlank
             # rather than answering, so the list can do one later the same way.
             def driver(whole_notes: false, chip_envelopes: false, sides: false, scene_sources_from: nil, strikes: false)
               ports = PORTS
-              told = strikes ? Strikes::TOLD : ports # where a command's three numbers are read
+              told = strikes ? Strikes::COMMAND_COPY : ports # where a command's three numbers are read
               past_key_off = whole_notes ? "whole" : "answer"
               spc = SPC700.new(origin: DRIVER_AT)
               spc.instance_eval do
@@ -384,11 +384,11 @@ module VBlank
                 beq "wait"
                 mov direct(LAST_ANSWERED), :a
                 if strikes
-                  call "strikes_take"
+                  call "strikes_mailbox"
                   mov :a, direct(LAST_ANSWERED)
                   mov direct(ports[0]), :a
                   bra "wait"
-                  label "dispatch" # A the command, its numbers in TOLD
+                  label "dispatch" # A the command, its numbers in Strikes::COMMAND_COPY
                 else
                   mov :a, direct(ports[1])
                 end
@@ -632,7 +632,7 @@ module VBlank
             def image_for(memory, waves, recordings:, scenes:)
               image(waves, recordings: recordings, scenes: scenes, whole_notes: memory.reserved?(AHEAD),
                            chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES),
-                           sides: memory.reserved?(Recordings::SIDES), strikes: memory.reserved?(Strikes::OPEN))
+                           sides: memory.reserved?(Recordings::SIDES), strikes: memory.reserved?(Strikes::FROM_SENT))
             end
 
             # What is sent across, in the cartridge, for rt_sound_start to send, in pieces of
@@ -691,7 +691,7 @@ module VBlank
               emit_log(asm, memory)
               emit_frame(asm, memory, songs, samples)
               emit_scene_load(asm, memory, made.scene_area) if scenes
-              Strikes.emit(asm, memory) if memory.reserved?(Strikes::OPEN)
+              Strikes.emit(asm, memory) if memory.reserved?(Strikes::FROM_SENT)
             end
 
             # rt_sound_load_scene: the recordings of a scene sent into the scene area, R0 (a long
@@ -953,7 +953,7 @@ module VBlank
               asm.label("rt_sound_command") # the command in A, its two numbers in R0 and R1
               asm.sta(asm.direct(R2))
               asm.lda(asm.abs(memory[LIVE]))
-              if memory.reserved?(Strikes::OPEN)
+              if memory.reserved?(Strikes::FROM_SENT)
                 asm.branch_long(:beq, "rt_sound_write_done")
                 Strikes.emit_write_ahead(asm, memory)
               elsif memory.reserved?(AHEAD)

@@ -963,7 +963,7 @@ static int32_t step_effect_clock(void) {
 }
 
 /* Each effect asked for since the last tick, taken up for the tick playing now. */
-static void take_asked_effects(void) {
+static void move_asked_effects_to_tick(void) {
   for (int32_t effect = 0; effect < EFFECT_COUNT; effect++) {
     effect_asked_now[effect] = effect_asked[effect];
     effect_asked[effect] = 0;
@@ -980,7 +980,7 @@ static void rg_music_sound_frame(void) {
   refuse_too_many_effects();
   switch_to_wanted_song();
   int32_t ticks = step_effect_clock();
-  if (ticks > 0) take_asked_effects();
+  if (ticks > 0) move_asked_effects_to_tick();
   int32_t tune = playing >= 0 ? song[3] : -1;
   const int32_t *by_rank = &rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT)];
   int32_t at = 0;
@@ -988,7 +988,7 @@ static void rg_music_sound_frame(void) {
   if (playing >= 0) play_song_frame();
   while (ticks > 0 && at < EFFECT_COUNT) play_effect_frame(by_rank[at++]);
   for (int32_t tick = 1; tick < ticks; tick++) {
-    take_asked_effects();
+    move_asked_effects_to_tick();
     for (at = 0; at < EFFECT_COUNT; at++) play_effect_frame(by_rank[at]);
   }
   step_swells();

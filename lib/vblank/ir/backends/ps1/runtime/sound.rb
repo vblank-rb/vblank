@@ -169,7 +169,7 @@ module VBlank
               if strikes
                 asm.lw(:t0, at.call(Strikes::STRIKING), :gp)
                 asm.beq(:t0, :zero, "rt_spu_write_now")
-                emit_struck(asm) do
+                emit_strikes_put_returning(asm) do
                   asm.sll(:a0, :a0, 16)
                   asm.andi(:t0, :a1, 0xFFFF)
                   asm.or(:a0, :a0, :t0)
@@ -262,7 +262,7 @@ module VBlank
               asm.bne(:t6, :t0, "rt_sound_volume_struck_right")
               asm.move(:t5, :zero) # heard from the left alone
               asm.label("rt_sound_volume_struck_right")
-              { h::SPU_VOLUME_LEFT => :t4, h::SPU_VOLUME_RIGHT => :t5 }.each do |register, value|
+              [[h::SPU_VOLUME_LEFT, :t4], [h::SPU_VOLUME_RIGHT, :t5]].each do |register, value|
                 asm.sll(:a0, :t2, 20) # the voice's registers, 10h apart, in the word's distance
                 asm.lui(:t0, Strikes.write_word(register, 0) >> 16)
                 asm.or(:a0, :a0, :t0)
@@ -277,7 +277,7 @@ module VBlank
 
             # A call of rt_strikes_put, inline, that returns to the caller: the block makes a0 the entry's
             # word, and a0 is as it was after.
-            def emit_struck(asm)
+            def emit_strikes_put_returning(asm)
               asm.addiu(:sp, :sp, -8)
               asm.sw(:ra, 0, :sp)
               asm.sw(:a0, 4, :sp)
@@ -307,7 +307,7 @@ module VBlank
               if struck_as
                 asm.lw(:t0, at.call(Strikes::STRIKING), :gp)
                 asm.beq(:t0, :zero, "#{label}_at_boundary")
-                emit_struck(asm) { asm.ori(:a0, :a0, struck_as) }
+                emit_strikes_put_returning(asm) { asm.ori(:a0, :a0, struck_as) }
                 asm.label("#{label}_at_boundary")
               end
               asm.li(:t1, 1)

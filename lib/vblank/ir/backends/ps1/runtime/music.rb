@@ -678,7 +678,7 @@ module VBlank
               enter(asm)
               asm.jal("rt_music_switch")
               strikes = clock_step && Strikes.strikes?(memory)
-              Strikes.emit_frame_begins(asm, at, EFFECT_CLOCK) if strikes
+              Strikes.emit_set_frame_base(asm, at, EFFECT_CLOCK) if strikes
               emit_step_effect_clock(asm, at, clock_step) if clock_step
               emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
               asm.lw(:t0, at.call(PLAYING), :gp)
@@ -707,11 +707,11 @@ module VBlank
               asm.beq(:t0, :zero, "rt_sfx_later_ticks_done")
               if strikes
                 Strikes.emit_next_tick(asm, at)
-                Strikes.emit_pass_begins(asm, at, step)
+                Strikes.emit_striking_on(asm, at, step)
               end
               asm.jal("rt_sfx_above")
               asm.jal("rt_sfx_below")
-              Strikes.emit_pass_ends(asm, at) if strikes
+              Strikes.emit_striking_off(asm, at) if strikes
               asm.b("rt_sfx_later_tick")
               asm.label("rt_sfx_later_ticks_done")
             end
@@ -739,9 +739,9 @@ module VBlank
 
               asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
               asm.beq(:t0, :zero, "#{routine}_untimed")
-              Strikes.emit_pass_begins(asm, at, clock_step) if strikes
+              Strikes.emit_striking_on(asm, at, clock_step) if strikes
               asm.jal(routine)
-              Strikes.emit_pass_ends(asm, at) if strikes
+              Strikes.emit_striking_off(asm, at) if strikes
               asm.label("#{routine}_untimed")
             end
 

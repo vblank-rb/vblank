@@ -26,7 +26,8 @@ module VBlank
           # ### The second timer as the clock
           #
           # The second timer already counts the lines the screen has drawn, from power-on and never
-          # started again (Boot), 263 a frame, a line some 64 microseconds (psx-spx, "Timers"). Told to
+          # started again (Boot), PS1Hardware::LINES_A_FRAME a frame (every build is NTSC), a line some
+          # 64 microseconds (psx-spx, "Timers"). Told to
           # raise its interrupt each time the count reaches its target, it is the clock: the list's first
           # entry's line is the target, and the interrupt (Frame#emit_interrupt) does every entry that is
           # due and sets the target to the next (rt_strikes_due). The count runs on past the target, so
@@ -53,8 +54,6 @@ module VBlank
             LIST_MASK = (ENTRIES * ENTRY_BYTES) - 1
             # In an entry's key: the voice, and this bit for a key off rather than a key on.
             KEY_OFF = 0x100
-            # The lines a frame of the screen has (psx-spx, "GPU Video Timings": 263 for NTSC).
-            LINES_A_FRAME = 263
 
             module_function
 
@@ -170,11 +169,11 @@ module VBlank
             # As a frame of the music begins, inline: BASE, the line the blank before it began on, less a
             # frame for each frame the pass took still to play after this one; and REMAINING, what the
             # effects' count (+clock+) has to go to its first tick, before it moves on.
-            def emit_frame_begins(asm, at, clock)
+            def emit_set_frame_base(asm, at, clock)
               asm.lw(:t0, at.call(Frame::BLANK_LINE), :gp)
               asm.lw(:t1, at.call(Sound::TICKS_LEFT), :gp)
               asm.addiu(:t1, :t1, -1)
-              asm.li(:t2, LINES_A_FRAME)
+              asm.li(:t2, h::LINES_A_FRAME)
               asm.multu(:t1, :t2)
               asm.mflo(:t1)
               asm.subu(:t0, :t0, :t1)
@@ -188,9 +187,9 @@ module VBlank
 
             # A tick's pass is about to play, inline: DUE, BASE plus REMAINING's share of the frame's lines
             # (+step+ is a frame's 65536ths, IR::Tunes.effect_clock_step), and STRIKING on.
-            def emit_pass_begins(asm, at, step)
+            def emit_striking_on(asm, at, step)
               asm.lw(:t0, at.call(REMAINING), :gp)
-              asm.li(:t1, LINES_A_FRAME)
+              asm.li(:t1, h::LINES_A_FRAME)
               asm.multu(:t0, :t1)
               asm.mflo(:t0)
               asm.li(:t1, step)
@@ -205,7 +204,7 @@ module VBlank
             end
 
             # ...and played, inline: STRIKING off.
-            def emit_pass_ends(asm, at) = asm.sw(:zero, at.call(STRIKING), :gp)
+            def emit_striking_off(asm, at) = asm.sw(:zero, at.call(STRIKING), :gp)
 
             # The next tick of the frame, inline: a whole count further to go.
             def emit_next_tick(asm, at)

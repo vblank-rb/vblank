@@ -779,7 +779,7 @@ module VBlank
             # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
             # step), and on a frame with no tick neither pass over the effects is made.
             def emit_frames(asm, at, sharing, memory, clock_step = nil)
-              strikes = clock_step && memory.reserved?(Strikes::OPEN)
+              strikes = clock_step && memory.reserved?(Strikes::FROM_SENT)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs("rt_music_switch"))
               asm.jsl(asm.long("rt_strikes_mark")) if strikes
@@ -814,7 +814,7 @@ module VBlank
 
             # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
             # effects' timer has no tick, when they are on one. With +strikes+ the pass's notes are
-            # struck inside the frame (Strikes), and END follows what it sent.
+            # struck inside the frame (Strikes), and UNTIL_NOW follows what it sent.
             def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jsr(asm.abs(routine))

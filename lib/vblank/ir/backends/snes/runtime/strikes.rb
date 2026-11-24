@@ -17,9 +17,9 @@ module VBlank
           # The console's processor still plays the effects a frame at a time, ticks counted as every
           # player counts them, so the sound log, who holds which voice and which note plays are the
           # interpreter's. What changes is when the sound unit is told. Each tick's pass over the
-          # effects knows where in the frame its tick falls (STRIKE_OFFSET), and the writes that pass
+          # effects knows where in the frame its tick falls (OFFSET), and the writes that pass
           # sends go in the line ahead of the queue (Sound, "A sound effect goes ahead") between two
-          # TIMING commands: FROM, with the tick's offset into the frame, and END. The sound unit's
+          # TIMING commands: FROM, with the tick's offset into the frame, and UNTIL_NOW. The sound unit's
           # program keeps what comes between them in a short list, each with the time it is due,
           # and does each when its time comes. Everything else it does at once, as before.
           #
@@ -64,8 +64,8 @@ module VBlank
             # kept for later, NOW, BASE, when the commands coming are due, a word to work in, the
             # list's count and its two ends, and NEXT_PITCH to NEXT_GAIN kept while the list is done.
             COMMAND = 0x0C
-            TOLD = [nil, COMMAND, 0x0D, 0x0E].freeze
-            KEEPING = 0x0F
+            COMMAND_COPY = [nil, COMMAND, 0x0D, 0x0E].freeze
+            LIST_INCOMING = 0x0F
             NOW = 0x10
             BASE = 0x12
             DUE = 0x14
@@ -84,15 +84,15 @@ module VBlank
             LIST_DUE_LOW = 0xA0
             LIST_DUE_HIGH = 0xC0
 
-            # The console's side: whether FROM was sent for the pass playing now and END is owed, and
+            # The console's side: whether FROM was sent for the pass playing now and UNTIL_NOW is owed, and
             # where the tick playing now falls in the frame, in 256ths of the sound unit's counts.
-            OPEN = "rt strikes open"
+            FROM_SENT = "rt strikes from sent"
             OFFSET = "rt strikes offset"
 
             module_function
 
             def reserve(memory)
-              memory.reserve(OPEN, 2)
+              memory.reserve(FROM_SENT, 2)
               memory.reserve(OFFSET, 2)
             end
 
@@ -121,12 +121,12 @@ module VBlank
 
             # strikes_clock (CALL): NOW moved on by the timer's count, and every command of the list
             # whose time has come done, oldest first, through dispatch (Sound.driver), with the note
-            # being told kept as it was round them. strikes_take (CALL): the command the mailboxes
-            # hold, copied into TOLD, done, kept for later, or a TIMING command. strikes_timing and
+            # being told kept as it was round them. strikes_mailbox (CALL): the command the mailboxes
+            # hold, copied into COMMAND_COPY, done, kept for later, or a TIMING command. strikes_timing and
             # strikes_store, reached from it.
             def emit_routines(spc)
               emit_clock(spc)
-              emit_take(spc)
+              emit_mailbox_command(spc)
               emit_timing(spc)
               emit_store(spc)
             end
@@ -164,17 +164,17 @@ module VBlank
                 label "strikes_clock_due"
                 mov :x, direct(LIST_HEAD)
                 mov :a, direct_x(LIST_COMMANDS)
-                mov direct(TOLD[1]), :a
+                mov direct(COMMAND_COPY[1]), :a
                 mov :a, direct_x(LIST_FIRSTS)
-                mov direct(TOLD[2]), :a
+                mov direct(COMMAND_COPY[2]), :a
                 mov :a, direct_x(LIST_SECONDS)
-                mov direct(TOLD[3]), :a
+                mov direct(COMMAND_COPY[3]), :a
                 mov :a, :x
                 inc :a
                 and_ :a, imm(LIST_ENTRIES - 1)
                 mov direct(LIST_HEAD), :a
                 dec direct(LISTED)
-                mov :a, direct(TOLD[1])
+                mov :a, direct(COMMAND_COPY[1])
                 call "dispatch"
                 mov :a, direct(LISTED)
                 beq "strikes_clock_struck"
@@ -187,37 +187,37 @@ module VBlank
               spc.ret
             end
 
-            def emit_take(spc)
+            def emit_mailbox_command(spc)
               spc.instance_eval do
-                label "strikes_take"
-                mov direct(TOLD[1]), direct(Sound::PORTS[1])
-                mov direct(TOLD[2]), direct(Sound::PORTS[2])
-                mov direct(TOLD[3]), direct(Sound::PORTS[3])
-                mov :a, direct(TOLD[1])
+                label "strikes_mailbox"
+                mov direct(COMMAND_COPY[1]), direct(Sound::PORTS[1])
+                mov direct(COMMAND_COPY[2]), direct(Sound::PORTS[2])
+                mov direct(COMMAND_COPY[3]), direct(Sound::PORTS[3])
+                mov :a, direct(COMMAND_COPY[1])
                 cmp :a, imm(TIMING)
-                bne "strikes_take_command"
+                bne "strikes_mailbox_not_timing"
                 jmp "strikes_timing"
-                label "strikes_take_command"
-                mov :x, direct(KEEPING)
-                beq "strikes_take_now"
+                label "strikes_mailbox_not_timing"
+                mov :x, direct(LIST_INCOMING)
+                beq "strikes_mailbox_at_once"
                 and_ :a, imm(Sound::COMMAND_BITS)
                 cmp :a, imm(Sound::LOAD_AT) # a scene's recordings are never kept
-                bcs "strikes_take_now"
+                bcs "strikes_mailbox_at_once"
                 jmp "strikes_store"
-                label "strikes_take_now"
-                mov :a, direct(TOLD[1])
+                label "strikes_mailbox_at_once"
+                mov :a, direct(COMMAND_COPY[1])
                 jmp "dispatch"
               end
             end
 
-            # strikes_timing: MARK, FROM or UNTIL_NOW (TOLD's second number), its first number FROM's
+            # strikes_timing: MARK, FROM or UNTIL_NOW (COMMAND_COPY's second number), its first number FROM's
             # offset in counts.
             def emit_timing(spc)
               frame = units_a_frame
               spc.instance_eval do
                 label "strikes_timing"
-                mov direct(KEEPING), imm(0)
-                mov :a, direct(TOLD[3])
+                mov direct(LIST_INCOMING), imm(0)
+                mov :a, direct(COMMAND_COPY[3])
                 cmp :a, imm(MARK)
                 bne "strikes_timing_from"
                 mov :a, direct(BASE) # a frame after the last BASE...
@@ -243,20 +243,20 @@ module VBlank
                 label "strikes_timing_from"
                 cmp :a, imm(FROM)
                 bne "strikes_timing_done"
-                mov :a, direct(TOLD[2])
+                mov :a, direct(COMMAND_COPY[2])
                 clrc
                 adc :a, direct(BASE)
                 mov direct(DUE), :a
                 mov :a, direct(BASE + 1)
                 adc :a, imm(0)
                 mov direct(DUE + 1), :a
-                mov direct(KEEPING), imm(1)
+                mov direct(LIST_INCOMING), imm(1)
                 label "strikes_timing_done"
                 ret
               end
             end
 
-            # strikes_store: the command TOLD holds put on the list, due at DUE; done at once when the
+            # strikes_store: the command COMMAND_COPY holds put on the list, due at DUE; done at once when the
             # list is full.
             def emit_store(spc)
               spc.instance_eval do
@@ -264,15 +264,15 @@ module VBlank
                 mov :a, direct(LISTED)
                 cmp :a, imm(LIST_ENTRIES)
                 bcc "strikes_store_room"
-                mov :a, direct(TOLD[1])
+                mov :a, direct(COMMAND_COPY[1])
                 jmp "dispatch"
                 label "strikes_store_room"
                 mov :x, direct(LIST_TAIL)
-                mov :a, direct(TOLD[1])
+                mov :a, direct(COMMAND_COPY[1])
                 mov direct_x(LIST_COMMANDS), :a
-                mov :a, direct(TOLD[2])
+                mov :a, direct(COMMAND_COPY[2])
                 mov direct_x(LIST_FIRSTS), :a
-                mov :a, direct(TOLD[3])
+                mov :a, direct(COMMAND_COPY[3])
                 mov direct_x(LIST_SECONDS), :a
                 mov :a, direct(DUE)
                 mov direct_x(LIST_DUE_LOW), :a
@@ -291,7 +291,7 @@ module VBlank
 
             # rt_strikes_mark (JSL): MARK sent at once, as a frame of the music begins.
             # rt_strikes_push (JSL): the command R2 with R0 and R1 put in the line ahead, the carry set
-            # when it went in and clear when the line is full. rt_strikes_close (JSL): END sent after a
+            # when it went in and clear when the line is full. rt_strikes_close (JSL): UNTIL_NOW sent after a
             # pass that sent FROM.
             def emit(asm, memory)
               asm.label("rt_strikes_mark")
@@ -303,9 +303,9 @@ module VBlank
               asm.jml(asm.long("rt_sound_command_at_once"))
               emit_push(asm, memory)
               asm.label("rt_strikes_close")
-              asm.lda(asm.abs(memory[OPEN]))
+              asm.lda(asm.abs(memory[FROM_SENT]))
               asm.beq("rt_strikes_close_done")
-              asm.stz(asm.abs(memory[OPEN]))
+              asm.stz(asm.abs(memory[FROM_SENT]))
               asm.lda(TIMING)
               asm.sta(asm.direct(Sound::R2))
               asm.stz(asm.direct(Sound::R0))
@@ -348,7 +348,7 @@ module VBlank
               s = Sound
               asm.lda(asm.abs(memory[s::ASKING_AHEAD]))
               asm.beq("rt_sound_write_in_line")
-              asm.lda(asm.abs(memory[OPEN]))
+              asm.lda(asm.abs(memory[FROM_SENT]))
               asm.bne("rt_strikes_write_opened")
               [s::R0, s::R1, s::R2].each do |register|
                 asm.lda(asm.direct(register))
@@ -369,7 +369,7 @@ module VBlank
               asm.jsl(asm.long("rt_strikes_push"))
               asm.bcc("rt_strikes_write_unopened")
               asm.lda(1)
-              asm.sta(asm.abs(memory[OPEN]))
+              asm.sta(asm.abs(memory[FROM_SENT]))
               asm.label("rt_strikes_write_unopened")
               [s::R2, s::R1, s::R0].each do |register|
                 asm.pla

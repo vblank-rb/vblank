@@ -343,7 +343,7 @@ module VBlank
             sound = Runtime::Sound
             return true if @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
 
-            @places.runtime.key?(Runtime::Strikes::OPEN) && @core.apu_ram.getbyte(Runtime::Strikes::LISTED).positive?
+            @places.runtime.key?(Runtime::Strikes::FROM_SENT) && @core.apu_ram.getbyte(Runtime::Strikes::LISTED).positive?
           end
 
           # The recordings the cartridge's places held at the moment of +frame+, each [name, level], in

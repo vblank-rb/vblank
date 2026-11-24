@@ -736,7 +736,7 @@ def rg_step_effect_clock
 end
 
 # Each effect asked for since the last tick, taken up for the tick playing now.
-def rg_take_asked_effects
+def rg_move_asked_effects_to_tick
   rg_effect_count.times do |effect|
     @rg_effect_asked_now[effect] = @rg_effect_asked[effect]
     @rg_effect_asked[effect] = false
@@ -751,7 +751,7 @@ def rg_music_sound_frame
   rg_refuse_too_many_effects
   rg_switch_to_wanted_song
   ticks = rg_step_effect_clock
-  rg_take_asked_effects if ticks.positive?
+  rg_move_asked_effects_to_tick if ticks.positive?
   tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
   by_rank = rg_effects_by_rank
   at = ticks.positive? ? 0 : rg_effect_count
@@ -765,7 +765,7 @@ def rg_music_sound_frame
     at += 1
   end
   (ticks - 1).times do
-    rg_take_asked_effects
+    rg_move_asked_effects_to_tick
     rg_effect_count.times { |place| rg_play_effect_frame(@rg_game_effects[by_rank + place]) }
   end
   rg_step_swells

@@ -170,6 +170,10 @@ module VBlank
       DMA_BUSY = 1 << 24
       # 320 pixels across, 240 lines, NTSC, 15-bit colour, not interlaced.
       DISPLAY_MODE_320_BY_240 = 0x01
+      # The lines an NTSC frame has, the blank's among them (psx-spx, "GPU Video Timings"). Every build
+      # sets the NTSC mode above, so this is every build's frame; a build that could be PAL (314 lines)
+      # would take it from the mode it sets.
+      LINES_A_FRAME = 263
       # Where the 320 visible pixels sit on an NTSC line (eight of the chip's clocks a pixel), and the
       # 240 visible lines: the ranges psx-spx gives as the usual ones.
       HORIZONTAL_FIRST = 0x260
