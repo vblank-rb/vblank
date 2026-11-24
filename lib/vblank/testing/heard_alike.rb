@@ -37,7 +37,8 @@ module VBlank
     #   line_up_within_frames:     move the second's sound up to this many frames earlier or later, to
     #                              where it lines up best with the first's, before comparing (optional),
     #                              for two whose start-up takes a few frames more on one; the failure
-    #                              says how far it was moved
+    #                              says how far it was moved, and a move further than
+    #                              first_heard_frames_apart is a difference of when each is first heard
     #   each_speaker: false        compare the speakers mixed alone, for two that place their sound
     #                              differently on purpose (each speaker is compared too unless set)
     #   each_voice: false          after a difference, do not play each voice alone to name the one

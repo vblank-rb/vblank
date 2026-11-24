@@ -111,7 +111,14 @@ module VBlank
     # Lined up. +moved_frames+ is how many frames the second cartridge's sound was moved to line up
     # with the first's where the game gave +line_up_within_frames+: more than nought where it was
     # moved earlier (it started late), less where it was moved later, and nil where nothing was lined
-    # up. Every measure and frame after that is of the second as moved, counted in the first's frames.
+    # up. Every measure and frame after that is of the second as moved, counted in the first's frames,
+    # but for when each is first heard: a move is a start that many frames apart, so one further than
+    # +first_heard_frames_apart+ is a :first_heard difference of the two as played.
+    #
+    # +pitch_unread+ is true where pitch was asked for and the two are heard on the same frames, and
+    # neither has a pitch on any of them: a noise, a drum, or several notes at once, whose pitch
+    # nothing held. A report says so; where the game chose the voices heard it is a :no_pitch
+    # difference.
     #
     # In a test this is Testing::HeardAlike#assert_heard_alike.
     #
@@ -124,9 +131,9 @@ module VBlank
     # few before it an emulator plays for its sound to settle, Console::Kit#frames_sound_settles_after_load).
     # Nil for a comparison of HeardSounds made elsewhere (#between).
     HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices, :hearing, :frames_stepped,
-                                  :moved_frames) do
+                                  :moved_frames, :pitch_unread) do
       def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil, hearing: nil,
-                     frames_stepped: nil, moved_frames: nil) = super
+                     frames_stepped: nil, moved_frames: nil, pitch_unread: false) = super
     end
 
     class HeardComparison
@@ -234,41 +241,56 @@ module VBlank
                 else
                   [Side.of(played, heard_above), Side.of(presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1]), heard_above)]
                 end
-        moved = lag_frames(*sides.map(&:mixed), tolerances.line_up_within_frames) if tolerances.line_up_within_frames
-        sides = [sides[0], sides[1].moved(moved)] if moved
         compared = between(*sides.map(&:mixed), tolerances, recordings: sides.map(&:recording),
                                                             speakers: each_speaker ? Side.speakers(sides) : nil)
-                   .with(hearing: hearing, frames_stepped: sides.map(&:frames_stepped), moved_frames: moved)
+                   .with(hearing: hearing, frames_stepped: sides.map(&:frames_stepped))
+        compared = with_unread_pitch_refused(compared) if pitch && hearing
         return compared if hearing || !(pitch || (each_voice && !compared.alike?))
 
         voices = replays.first.voices.to_h do |voice|
           alone = replays.map { |replay| replay.side(tape, [voice], start, pitch: pitch) }
-          alone = [alone[0], alone[1].moved(moved)] if moved
-          [voice, between(*alone.map(&:mixed), tolerances).with(frames_stepped: alone.map(&:frames_stepped))]
+          [voice, between(*alone.map(&:mixed), tolerances, moved: compared.moved_frames)
+                    .with(frames_stepped: alone.map(&:frames_stepped))]
         end
         compared.with(voices: voices, differences: compared.differences + pitch_differences_of(voices))
       end
+
+      # Where the game chose the voices heard and asked for their pitch, and neither cartridge has a
+      # pitch on any frame both are heard on, nothing could be held: a difference, not a pass.
+      def self.with_unread_pitch_refused(compared)
+        return compared unless compared.pitch_unread
+
+        compared.with(differences: compared.differences + [HeardDifference.new(what: :no_pitch, frame: nil, loudest: nil,
+                                                                                measured: [nil, nil])])
+      end
+      private_class_method :with_unread_pitch_refused
 
       # How many frames +second+ (a HeardSound) is behind +first+, from -+within+ to +within+: the
       # move that lines the two up best.
       #
       # ### How the two are lined up
       #
-      # By cross-correlation of each frame's loudest sample. For each move the second could take,
-      # the two lists are set side by side, that many frames apart, and how alike they rise and fall
-      # over the frames they share is Pearson's correlation: each list less its own average, the
-      # products of the two added up, over the square root of each one's squares added up. It is 1
-      # where one is the other made louder or quieter, so a level that differs does not move the
-      # sound. The move whose correlation is highest wins, and of two as high, the smaller. Two
-      # sounds that are each one level throughout have nothing to line up by, and are not moved.
+      # By cross-correlation of each frame's loudest sample, a frame at or under the silent level
+      # (+heard_above+) read as nought, so a hum under it pulls nothing. For each move the second
+      # could take, the two lists are set side by side, that many frames apart, and how alike they
+      # rise and fall over the frames they share is Pearson's correlation: each list less its own
+      # average, the products of the two added up, over the square root of each one's squares added
+      # up. It is 1 where one is the other made louder or quieter, so a level that differs does not
+      # move the sound. The move whose correlation is highest wins (read to a billionth, so two the
+      # same but for rounding are a tie); of two as high, the smaller, and of a move either way as
+      # high, the second moved earlier. Two sounds that are each one level throughout have nothing to
+      # line up by, and are not moved.
       def self.lag_frames(first, second, within)
-        one, other = first.loudest_by_frame, second.loudest_by_frame
-        moves = (-within..within).sort_by(&:abs)
+        one, other = [first, second].map do |sound|
+          sound.loudest_by_frame.map { |loudest| loudest > sound.heard_above ? loudest : 0 }
+        end
+        moves = (-within..within).sort_by { |move| [move.abs, -move] }
         scores = moves.to_h do |move|
           shared = (0...one.size).select { |frame| (frame + move).between?(0, other.size - 1) }
-          [move, correlation(shared.map { |frame| one[frame] }, shared.map { |frame| other[frame + move] })]
+          [move, correlation(shared.map { |frame| one[frame] }, shared.map { |frame| other[frame + move] }).round(9)]
         end
-        moves.max_by { |move| [scores[move], -move.abs] }
+        best = scores.values.max
+        moves.find { |move| scores[move] == best }
       end
 
       # Pearson's correlation of two lists of one length, 0 where either is one level throughout.
@@ -314,22 +336,46 @@ module VBlank
 
         # Each speaker, :left and :right, to the two sides' HeardSounds on it.
         def self.speakers(sides) = { left: sides.map(&:left), right: sides.map(&:right) }
-
-        # The same, every HeardSound moved +frames+ earlier (HeardSound#moved).
-        def moved(frames) = with(mixed: mixed.moved(frames), left: left.moved(frames), right: right.moved(frames))
       end
       private_constant :Side
 
       # The comparison of two HeardSounds, +first+ and +second+, by +tolerances+ (a HeardTolerances), and
       # of each speaker's where +speakers+ gives them (:left and :right to a pair of HeardSounds).
-      def self.between(first, second, tolerances, recordings: nil, speakers: nil)
-        mixed = Differences.new(first, second, tolerances).all
+      #
+      # Where +tolerances+ gives +line_up_within_frames+, the second (and its speakers) is moved to
+      # line up with the first (#lag_frames) before anything else is measured, or by +moved+ frames
+      # where that is given, so each voice of a comparison moves as its mix did. A move is a start
+      # that many frames apart, so one further than +first_heard_frames_apart+ is a :first_heard
+      # difference, measuring each one's first frame as played.
+      def self.between(first, second, tolerances, recordings: nil, speakers: nil, moved: nil)
+        moved = lag_frames(first, second, tolerances.line_up_within_frames) if moved.nil? && tolerances.line_up_within_frames
+        as_played = second
+        if moved
+          second = second.moved(moved)
+          speakers = speakers&.transform_values { |pair| [pair[0], pair[1].moved(moved)] }
+        end
+        checks = Differences.new(first, second, tolerances)
+        mixed = with_move_counted(checks.all, moved, [first, as_played], tolerances)
         on_one = (speakers || {}).flat_map do |speaker, pair|
           Differences.new(*pair, tolerances).all.reject { |found| mixed.any? { |out| out.what == found.what } }
                      .map { |found| found.with(speaker: speaker) }
         end
-        new(first: first, second: second, differences: mixed + on_one, recordings: recordings, speakers: speakers)
+        new(first: first, second: second, differences: mixed + on_one, recordings: recordings, speakers: speakers,
+            moved_frames: moved, pitch_unread: checks.pitch_unread?)
       end
+
+      # +found+ with a move further than the first sounds may be apart counted as a :first_heard
+      # difference of the two +as_played+, in its place in the order.
+      def self.with_move_counted(found, moved, as_played, tolerances)
+        return found if moved.nil? || moved.abs <= tolerances.first_heard_frames_apart
+        return found if found.any? { |difference| difference.what == :never_heard }
+
+        frames = as_played.map(&:first_heard)
+        started = HeardDifference.new(what: :first_heard, frame: frames.min, measured: frames,
+                                      loudest: as_played.map { |side| side.loudest_on(frames.min) })
+        [started] + found.reject { |difference| difference.what == :first_heard }
+      end
+      private_class_method :with_move_counted
 
       def alike? = differences.empty?
 
@@ -666,15 +712,37 @@ module VBlank
           difference(:fall, @sides.map(&:fall_starts).min + 1, falls) if apart(falls) > @tolerances.ending_frames_apart
         end
 
-        # The frames both are heard on with a pitch further apart than the game allows, where it gave
-        # +pitch_cents_apart+ and each side's pitch was read: the first is named, with each pitch on it.
-        def pitch
-          allowed = @tolerances.pitch_cents_apart
-          return if allowed.nil? || @sides.any? { |side| side.pitch_by_frame.nil? }
+        public
 
-          over = heard_span.select do |frame|
-            pitches = @sides.map { |side| side.pitch_on(frame) }
-            pitches.all? && HeardComparison.cents_apart(*pitches) > allowed
+        # Whether pitch was asked for, the two are heard on the same frames, and neither has a pitch on
+        # any of them, so nothing about pitch was held.
+        def pitch_unread?
+          pitch_read = both_heard_frames
+          return false if pitch_read.nil? || pitch_read.empty?
+
+          pitch_read.none? { |frame| @sides.any? { |side| side.pitch_on(frame) } }
+        end
+
+        private
+
+        # The frames both are heard on, where the game gave +pitch_cents_apart+ and each side's pitch
+        # was read; nil otherwise.
+        def both_heard_frames
+          return if @tolerances.pitch_cents_apart.nil? || @sides.any? { |side| side.pitch_by_frame.nil? }
+          return [] unless @sides.all?(&:heard?)
+
+          heard_span.select { |frame| @sides.all? { |side| side.heard_on?(frame) } }
+        end
+
+        # The frames both are heard on with pitches further apart than the game allows, or a pitch on
+        # one and none on the other (a noise, a drum, a wrong instrument): the first is named, with
+        # each pitch on it, nil for none.
+        def pitch
+          over = (both_heard_frames || []).select do |frame|
+            one, other = @sides.map { |side| side.pitch_on(frame) }
+            next false if one.nil? && other.nil?
+
+            one.nil? || other.nil? || HeardComparison.cents_apart(one, other) > @tolerances.pitch_cents_apart
           end
           return if over.empty?
 

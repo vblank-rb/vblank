@@ -584,7 +584,7 @@ module VBlank
       def say_sound_alike_or_different(compared)
         if compared.alike?
           say "The two cartridges sound alike. #{compared.first.frames} frames were heard."
-          HeardReport.moved_lines(compared.moved_frames).each { |line| say line }
+          (HeardReport.moved_lines(compared.moved_frames) + HeardReport.unread_pitch_lines(compared.voices)).each { |line| say line }
         else
           say "The two cartridges sound different."
           HeardReport.difference_message(compared).each_line { |line| say "  #{line.chomp}" }

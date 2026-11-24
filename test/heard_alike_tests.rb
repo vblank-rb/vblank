@@ -150,16 +150,20 @@ module HeardAlikeTests
   LATE_FRAMES = 3
   LINED_UP_WITHIN = 4
 
-  # What a test of lining up gives: the same as for a tune a frame late, and the frames each tune
-  # ends on as far apart as that allows on this console.
-  private def lined_up_settings = moved_tune_settings.merge(ending_frames_apart: frame_late_endings_apart,
+  # What a test of lining up gives: the same as for a tune a frame late, the first sounds as many
+  # frames apart as the late one starts, and the frames each tune ends on as far apart as that allows
+  # on this console. A move is a start that far apart, so it is held to first_heard_frames_apart.
+  private def lined_up_settings = moved_tune_settings.merge(first_heard_frames_apart: LATE_FRAMES,
+                                                            ending_frames_apart: frame_late_endings_apart,
                                                             line_up_within_frames: LINED_UP_WITHIN)
 
   # A tune that starts a few frames late in the original is lined up with ours before it is compared,
   # and the comparison says how far it was moved.
   def test_a_tune_a_few_frames_late_is_lined_up_and_says_how_far_it_was_moved
     as_a_file(tune_game(starts: START + LATE_FRAMES)) do |path|
-      unmoved = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **lined_up_settings.except(:line_up_within_frames))
+      unmoved = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path,
+                                                           **lined_up_settings.except(:line_up_within_frames),
+                                                           first_heard_frames_apart: 0)
       lined_up = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **lined_up_settings)
 
       assert_equal :first_heard, unmoved.difference.what
@@ -167,6 +171,24 @@ module HeardAlikeTests
       assert_predicate lined_up, :alike?
       assert_equal LATE_FRAMES, lined_up.moved_frames
       assert_equal lined_up.first.first_heard, lined_up.second.first_heard
+    end
+  end
+
+  # Moved further than the first sounds may be apart is a difference of when each is first heard,
+  # however alike the rest is once lined up: the failure names each one's first frame as played, and
+  # the move.
+  def test_a_move_further_than_the_first_sounds_may_be_apart_fails
+    as_a_file(tune_game(starts: START + LATE_FRAMES)) do |path|
+      compared = VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **lined_up_settings,
+                                                            first_heard_frames_apart: LATE_FRAMES - 1)
+      ours, theirs = compared.difference.measured
+
+      assert_equal :first_heard, compared.difference.what
+      assert_equal LATE_FRAMES, compared.moved_frames
+      assert_equal ours + LATE_FRAMES, theirs, "each as it was played, not as moved"
+      message = VBlank::Testing::HeardAlike.difference_message(compared)
+      assert_match "The second cartridge's sound was moved #{LATE_FRAMES} frames earlier", message
+      assert_match "first heard on different frames", message
     end
   end
 

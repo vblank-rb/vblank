@@ -86,14 +86,19 @@ class TestCommandLineCompareSound < Minitest::Test
     end
   end
 
-  # --line-up-within-frames moves the late one back in line, and says how far.
+  # --line-up-within-frames moves the late one back in line, and says how far. A move is a start that
+  # many frames apart, so it passes only where --first-heard-frames-apart allows as many.
   def test_a_late_one_lined_up_ends_with_nought_and_says_how_far_it_was_moved
     with_tunes do |dir|
       unmoved, unmoved_status = cli("compare", "tune.gba", "late.gba", "--tape", tape(dir), *STRICT, dir: dir)
+      too_far, too_far_status = cli("compare", "tune.gba", "late.gba", "--tape", tape(dir), *STRICT, "--line-up-within-frames", "4",
+                                    dir: dir)
       out, status = cli("compare", "tune.gba", "late.gba", "--tape", tape(dir), *STRICT, "--line-up-within-frames", "4",
-                        dir: dir)
+                        "--first-heard-frames-apart", "3", dir: dir)
 
       assert_equal DIFFERED, unmoved_status.exitstatus, unmoved
+      assert_equal DIFFERED, too_far_status.exitstatus, too_far
+      assert_match(/moved 3 frames earlier.*\n.*first heard on different frames/, too_far)
       assert_equal AGREED, status.exitstatus, out
       assert_match(/The second cartridge's sound was moved 3 frames earlier/, out)
     end

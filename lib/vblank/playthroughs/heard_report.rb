@@ -14,7 +14,8 @@ module VBlank
           alone = "On the #{difference.voice} voice alone: " if difference.voice
           "#{alone}#{[measure_words(difference, compared), frame_words(difference)].compact.join(' ')}"
         end
-        (hearing_lines(compared.hearing) + moved_lines(compared.moved_frames) + lines + voice_lines(compared.voices)).join("\n")
+        (hearing_lines(compared.hearing) + moved_lines(compared.moved_frames) + lines + voice_lines(compared.voices) +
+          unread_pitch_lines(compared.voices)).join("\n")
       end
 
       # How far the second cartridge's sound was moved to line up with the first's
@@ -70,16 +71,35 @@ module VBlank
         when :fall
           "The last sound takes a different time to fall silent: #{one} frames on the first cartridge and #{other} on the second."
         when :pitch then pitch_words(difference)
+        when :no_pitch then no_pitch_words
         end
       end
 
       # Both pitches on the first frame out, how far apart they are, and on how many frames.
       def self.pitch_words(difference)
         one, other = difference.measured
+        apart = " #{HeardComparison.cents_apart(one, other).round} cents apart. A semitone is 100 cents" if one && other
         "The two cartridges are heard at different pitches on #{difference.frames_over} " \
-          "#{difference.frames_over == 1 ? 'frame' : 'frames'}: #{format('%.1f', one)} Hz on the first and " \
-          "#{format('%.1f', other)} Hz on the second, #{HeardComparison.cents_apart(one, other).round} cents " \
-          "apart. A semitone is 100 cents."
+          "#{difference.frames_over == 1 ? 'frame' : 'frames'}: #{hertz_words(one)} on the first and " \
+          "#{hertz_words(other)} on the second,#{apart || ' where both are heard'}."
+      end
+
+      def self.hertz_words(pitch) = pitch ? "#{format('%.1f', pitch)} Hz" : "no pitch"
+
+      # The pitch was asked for, and the voices heard have none on any frame both are heard on.
+      def self.no_pitch_words
+        "Neither cartridge has a pitch on any frame both are heard on, so no pitch was held. The voices heard are a " \
+          "noise, a drum, or more than one note at once. To hold a pitch, choose one voice a side with `hearing:`, or " \
+          "remove `pitch_cents_apart:`."
+      end
+
+      # The voices played alone whose pitch was not held because neither cartridge had one there.
+      def self.unread_pitch_lines(voices)
+        unread = (voices || {}).select { |_, compared| compared.pitch_unread }.keys
+        return [] if unread.empty?
+
+        ["Played alone, #{unread.join(', ')} #{unread.one? ? 'has' : 'have'} no pitch on either cartridge, so " \
+         "#{unread.one? ? 'its' : 'their'} pitch was not held."]
       end
 
       # Both levels, and how many times as loud the louder is: a share of the louder reads oddly where
@@ -121,7 +141,8 @@ module VBlank
           "and #{difference.loudest[1]} on the second."
       end
       private_class_method :hearing_lines, :voice_list_words, :voice_lines, :measure_words, :level_words,
-                           :pitch_words, :times_as_loud_words, :never_heard_words, :frame_words
+                           :pitch_words, :hertz_words, :no_pitch_words, :times_as_loud_words, :never_heard_words,
+                           :frame_words
     end
   end
 end
