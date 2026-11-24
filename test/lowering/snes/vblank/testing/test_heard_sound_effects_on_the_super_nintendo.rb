@@ -116,10 +116,17 @@ class TestHeardSoundEffectsOnTheSuperNintendo < Minitest::Test
       assert_predicate cold, :alike?
       assert_predicate warm, :alike?
       assert_operator cold.first.first_heard, :>, 95, "frames are counted from power-on"
-      # bsnes's sound after a load is within a few thousandths of the console's (SNESKit#frames_sound_settles_after_load).
+      # bsnes's sound after a load is within a few thousandths of the console's (SNESKit#frames_sound_settles_after_load)
+      # on every frame a strike sounds through. The frame a strike ends on is cut off part way, at a sample a load
+      # can move by a few, and its loudest sample is the whole note's or a part of it as that sample falls, so
+      # the level is held over the frames the sound carries on past.
       [[cold.first, warm.first], [cold.second, warm.second]].each do |from_power_on, from_snapshot|
         assert_equal [from_power_on.first_heard, from_power_on.last_heard], [from_snapshot.first_heard, from_snapshot.last_heard]
-        assert_in_delta from_power_on.level, from_snapshot.level, from_power_on.level * 0.005
+        steady = (from_power_on.first_heard..from_power_on.last_heard).select do |frame|
+          from_power_on.heard_on?(frame) && from_power_on.heard_on?(frame + 1)
+        end
+        level = from_power_on.level_over(steady)
+        assert_in_delta level, from_snapshot.level_over(steady), level * 0.005
       end
       settle = VBlank::Console.for(:snes).frames_sound_settles_after_load
       assert_equal [TAPE_FRAMES - 95 + settle] * 2, warm.frames_stepped
