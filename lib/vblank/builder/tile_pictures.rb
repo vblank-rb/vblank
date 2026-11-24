@@ -163,12 +163,32 @@ module VBlank
                                "To fix this, draw it with `image :#{image}, colors: :#{colors}, ...`."
         end
 
-        places = picture.places.bytes
+        places = picture_places(name, image, picture).bytes
         (0...side).step(8).to_a.product((0...side).step(8).to_a).flat_map do |top, left|
           (0...8).flat_map do |row|
             places[((top + row) * side) + left, 8].each_slice(2).map { |near, far| near | (far << 4) }
           end
         end
+      end
+
+      # The place in its list each pixel of a picture is drawn at. A picture given as places has
+      # them; one drawn as text art or loaded from a file has colours, which are found in its list,
+      # the see-through ones being place 0.
+      def picture_places(name, image, picture)
+        return picture.places if picture.places
+
+        list = picture.colors
+        if list.any? { |color| IR::StartFile.marker?(color) }
+          raise ArgumentError, "tile_pictures :#{name} cannot find the places of the picture :#{image}. Its colors are " \
+                               "read from the data pack as the game starts. To fix this, give the picture `places:`."
+        end
+
+        (0...(picture.width * picture.height)).map do |at|
+          next 0 unless picture.drawn_at?(at)
+
+          color = picture.color_at(at)
+          list.each_index.find { |place| place.positive? && list[place] == color } || list.index(color)
+        end.pack("C*")
       end
 
       def refuse_bad_tile_pictures!(name, tiles, colors)
