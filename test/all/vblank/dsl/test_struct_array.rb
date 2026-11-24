@@ -819,6 +819,29 @@ class TestStructArray < Minitest::Test
     assert_equal [VBlank::Graphics::Color.resolve(:red), VBlank::Graphics::Color.resolve(:blue)], shown
   end
 
+  # An Array of Structs takes a place in `draw_in_order` as the pool it is: a green hero made
+  # after the Array is in front of a red drop by the order they are made in, and the order puts
+  # the drop in front, since it stands lower on the screen.
+  def test_an_array_of_structs_is_drawn_in_order_with_a_sprite
+    player = played(frames: 2 + framework_drawing_lag) do
+      screen :tiled, backdrop: :black
+      image(:drop, "#" => :red) { "########\n" * 8 }
+      image(:hero, "#" => :green) { "########\n" * 8 }
+      drops = Array.new(capacity: 2)
+      hero = sprite :hero, at: [10, 20]
+      draw_in_order hero, drops
+      started = 0
+      game_loop do
+        if started == 0
+          drops << Drop.new(10, 24)
+          started = 1
+        end
+      end
+    end
+
+    assert_equal VBlank::Graphics::Color.resolve(:red), player.screen.pixel(12, 25)
+  end
+
   # A save keeps an Array of Structs as it keeps the pool it is: the first pass puts a spark in
   # at x 5 and saves, the second moves it to 9, and the third loads, putting it back at 5.
   def test_a_save_keeps_an_array_of_structs

@@ -823,7 +823,7 @@ class TestDrawInOrder < Minitest::Test
       draw_in_order one, :b
     end
 
-    assert_match(/sprite or a pool/, message)
+    assert_match(/a sprite or an Array of Structs/, message)
   end
 
   def test_a_sprite_in_two_orders_is_refused
@@ -883,7 +883,7 @@ class TestDrawInOrder < Minitest::Test
       draw_in_order one, dust
     end
 
-    assert_match(/pool :dust draws nothing/, message)
+    assert_match(/pool :dust` draws nothing/, message)
   end
 
   # The order holds inside each layer. A hero and a guard standing in one layer, the lower one in

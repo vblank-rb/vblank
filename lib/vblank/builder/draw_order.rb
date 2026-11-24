@@ -109,7 +109,8 @@ module VBlank
       # * `take_turns:` - `false` (the default), or `true` or `:first` to put the first one named in
       #   front on the first frame shown, or `:last` for the last one named.
       def draw_in_order(*things, front: nil, take_turns: false, &key)
-        things = things.flatten
+        # An Array of Structs is ordered as the pool it is built as (DSL::StructArray).
+        things = things.flatten.map { |thing| thing.is_a?(DSL::StructArray) ? thing.pool : thing }
         turns = turn_start!(take_turns, front, key)
         front ||= :highest
         refuse_unknown_front!(front)
@@ -452,14 +453,14 @@ module VBlank
           return if thing.spriteful?
 
           raise ArgumentError,
-                "pool :#{thing.name} draws nothing itself, so draw_in_order has nothing of it to put in " \
-                "order. Give the pool `image:`, `facing:` or `frames:`."
+                "#{thing.author_words(opening: true)} draws nothing itself, so draw_in_order has nothing of " \
+                "it to put in order. #{thing.pictures_fix}"
         end
         return if thing.is_a?(DSL::HardwareSprite)
 
         raise ArgumentError,
-              "draw_in_order puts things in order, and each one must be a sprite or a pool. " \
-              "#{thing.inspect} is not one. Give it the handle that `sprite` or `pool` gave back."
+              "draw_in_order puts things in order, and each one must be a sprite or an Array of Structs " \
+              "drawn as sprites. #{thing.inspect} is not one. Give it a sprite or such an Array."
       end
 
       # Sprites in front are ordered among themselves only. A sprite in front (`in_front: true`) is
