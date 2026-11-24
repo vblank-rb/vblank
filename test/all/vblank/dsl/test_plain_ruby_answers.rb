@@ -327,16 +327,17 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
-  def test_a_named_array_changed_through_its_reader_by_another_part
-    agrees("@tallies.counts[at] += 1, counts named", reads: %i[n m], passes: 4) do
+  # Named, its Array is a variable per slot from its first number, before another part's line
+  # indexes it at a worked-out place through its reader: refused, naming a method of its class.
+  def test_a_named_array_changed_through_its_reader_by_another_part_is_refused
+    refused("@tallies.counts[at] += 1, counts named", /in its class/) do
       keeper = AnswerTallyKeeper.new(AnswerNamedTallies.new)
       at = 2
-      n = m = 0
+      n = 0
       game_loop do
         at = (at + 1) % 3
         keeper.bump(at)
         n = keeper.first
-        m = keeper.bump(1)
       end
     end
   end
@@ -369,6 +370,217 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A reader of the same name in another class, indexed at a worked-out place (AnswerTallies, and
+  # AnswerTallyKeeper's file line), leaves a named Array read only at known indexes a variable per
+  # slot, as its save keeps it.
+  def test_a_named_array_beside_another_class_reader_of_its_name_keeps_a_variable_per_slot
+    sizes_game = proc do
+      sizes = AnswerNamedSizes.new
+      tallies = AnswerTallies.new
+      at = 0
+      n = m = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+        n = sizes.counts[0] + sizes.counts[1]
+        m = tallies.counts[at]
+      end
+    end
+    agrees("sizes.counts[0] beside tallies.counts[at]", reads: %i[n m], passes: 4, &sizes_game)
+    assert_equal [:answer_tallies_counts], list_names(built_program(&sizes_game))
+  end
+
+  # A part made on every pass is a new one in Ruby, its Array starting again each time; the game
+  # would keep one list from power-on.
+  def test_a_part_made_every_pass_indexed_through_its_reader_is_refused
+    refused("t = Tallies.new; t.counts[at] += 1, in the game loop", /every frame/) do
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies = AnswerTallies.new
+        tallies.counts[at] += 1
+        n = tallies.counts[1] + tallies.counts[2]
+      end
+    end
+  end
+
+  def test_a_part_made_under_a_game_test_indexed_through_its_reader_is_refused
+    refused("t = Tallies.new if at == 1; t.counts[at] += 1", /every frame/) do
+      tallies = nil
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies = AnswerTallies.new if at == 1
+        tallies.counts[at] += 1 if tallies
+        n = tallies ? tallies.counts[1] : 0
+      end
+    end
+  end
+
+  # Part of a named Array would hold its game variables, where Ruby's part is a copy.
+  def test_part_of_a_named_array_is_refused
+    refused("c = sizes.counts[0..]; c[0] += 5", /a part of it/) do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop do
+        part = sizes.counts[0..]
+        part[0] += 5
+        n = sizes.counts[0]
+      end
+    end
+  end
+
+  # A game built after one that reads `counts` at a worked-out place builds as it does alone.
+  def test_a_game_built_after_another_builds_as_it_does_alone
+    alone = proc do
+      sizes = AnswerNamedSizes.new
+      n = 0
+      game_loop { n = sizes.counts[1] }
+    end
+    first = list_names(built_program(&alone))
+    built_program do
+      tallies = AnswerTallies.new
+      at = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+      end
+    end
+    assert_equal first, list_names(built_program(&alone))
+    assert_empty first
+  end
+
+  # A part's Array made with room, which its class body puts nothing into, filled while setting
+  # up from game code outside the class, from the class reopened, from a subclass and from a
+  # module, then walked and changed by game code.
+  def test_a_part_array_of_structs_filled_from_outside_its_class
+    agrees("flock.dots << Point.new(...), then walked", reads: %i[n], passes: 3) do
+      flock = AnswerFlock.new
+      flock.dots << AnswerPoint.new(1, 0, 0)
+      flock.dots << AnswerPoint.new(2, 0, 0)
+      n = 0
+      game_loop do
+        flock.dots.each { |dot| dot.x += 1 }
+        n = flock.total_x
+      end
+    end
+  end
+
+  def test_a_part_array_of_structs_filled_by_its_class_reopened
+    agrees("add in the class reopened", reads: %i[n], passes: 3) do
+      flock = AnswerFlock.new
+      flock.add(3)
+      n = 0
+      game_loop do
+        flock.dots.each { |dot| dot.x += 2 }
+        n = flock.total_x
+      end
+    end
+  end
+
+  def test_a_part_array_of_structs_filled_by_a_subclass
+    agrees("add_big in a subclass", reads: %i[n], passes: 3) do
+      flock = AnswerBigFlock.new
+      flock.add_big(1)
+      flock.add(2)
+      n = 0
+      game_loop do
+        flock.dots.each { |dot| dot.x += 1 }
+        n = flock.total_x
+      end
+    end
+  end
+
+  def test_a_part_array_of_structs_filled_by_a_module
+    agrees("add_dot in a module", reads: %i[n], passes: 3) do
+      flock = AnswerMixedFlock.new
+      flock.add_dot(4)
+      n = 0
+      game_loop do
+        flock.dots.each { |dot| dot.x += 1 }
+        n = flock.dots.sum(&:x)
+      end
+    end
+  end
+
+  # Game code outside the class puts things into a part's Array that its class body puts nothing
+  # into: it stays Ruby's, so the put happens once, while building. PLAIN_RUBY.md tells it.
+  def test_a_part_array_of_structs_filled_in_game_code_from_outside_its_class
+    known_gap("flock.dots << Point.new(...) in the game loop",
+              gap: "A part's Array that only code outside its class puts things into stays a Ruby Array",
+              reads: %i[n], passes: 3) do
+      flock = AnswerFlock.new
+      n = 0
+      at = 0
+      game_loop do
+        at += 1
+        flock.dots << AnswerPoint.new(at, 0, 0) if at < 3
+        n = flock.dots.size
+      end
+    end
+  end
+
+  # A named Array read through its reader at a worked-out place is a variable per slot from its
+  # first number, so the line is refused, naming a method of its class as the fix.
+  def test_a_named_array_read_through_its_reader_at_a_worked_out_index_is_refused
+    refused("tallies.counts[at] += 1, counts named", /in its class/) do
+      tallies = AnswerNamedTallies.new
+      at = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+      end
+    end
+  end
+
+  # The Array was read while setting up, where a local may keep it, before game code first
+  # changes it through a reader: its numbers would be Ruby's in that local.
+  def test_an_array_read_before_game_code_changes_it_through_a_reader_is_refused
+    refused("kept = t.counts; t.counts[at] += 1", /before/) do
+      tallies = AnswerTallies.new
+      kept = tallies.counts
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+        n = kept.sum
+      end
+    end
+  end
+
+  # Game code read the Array at a known index before another line changed it through a reader.
+  def test_an_array_read_by_game_code_before_a_reader_changes_it_is_refused
+    refused("n = t.counts[0]; t.counts[at] += 1", /before/) do
+      tallies = AnswerTallies.new
+      at = 0
+      n = 0
+      game_loop do
+        n = tallies.counts[0]
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+      end
+    end
+  end
+
+  # An Array two parts share, one changing it through its reader, the other reading it after.
+  def test_an_array_shared_with_a_part_that_only_reads_it_is_refused
+    refused("p1.counts[at] += 1, p2.counts[1], one Array", /same Array/) do
+      shared = [0, 0, 0]
+      one = AnswerSharedTallies.new(shared)
+      other = AnswerSharedTallies.new(shared)
+      at = 0
+      n = 0
+      game_loop do
+        at = (at + 1) % 3
+        one.counts[at] += 1
+        n = other.counts[1]
+      end
+    end
+  end
+
   def test_an_array_read_through_its_reader_at_known_indexes
     agrees("marks.marks[0] += 1", reads: %i[n m], passes: 3) do
       marks = AnswerMarks.new
@@ -383,7 +595,7 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   def test_an_array_from_a_reader_put_in_a_local_then_read_at_a_worked_out_index_is_refused
-    refused("marks = m.marks; marks[at]", /`part\.counts\[at\]`/) do
+    refused("marks = m.marks; marks[at]", /in its class/) do
       holder = AnswerMarks.new
       at = 0
       n = 0
@@ -2141,5 +2353,11 @@ class TestPlainRubyAnswers < Minitest::Test
         end
       end
     end
+  end
+
+  # The names of the lists +program+ makes, in the order it makes them.
+  private def list_names(node)
+    own = node.kind == :list_new ? [node.name] : []
+    own + node.children.flat_map { |child| list_names(child) }
   end
 end

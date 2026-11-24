@@ -99,8 +99,8 @@ module VBlank
         PLAIN_READERS_CONSTANT = :VBLANK_PLAIN_READERS
 
         # +labels+ are instance variables +owner+, a class or module, hands out through a reader of
-        # the same name that answers just what it holds (Rewriter#plain_reader_labels). A slot
-        # changed through a reader is matched to these alone (Uses#reader_marked?).
+        # the same name that answers just what it holds (Rewriter#plain_reader_labels), which a
+        # walk's read-ahead may read in the reader's place (#plain_reader?).
         def mark_plain_readers(owner, labels)
           name_in_module(owner, labels, constant: PLAIN_READERS_CONSTANT) if owner.is_a?(Module)
           nil
@@ -133,16 +133,11 @@ module VBlank
         # writer (LocalNames#changing_attributes). A game file's are kept for every build
         # (#record_changing_attributes).
         #
-        # +list_readers+ and +changed_readers+ are the game block's too: the readers whose answer it
-        # reads at an index it may work out, and whose slots it changes
-        # (LocalNames#readers_at_worked_out_keys, #readers_with_changed_slots). A game file's are
-        # kept for every build (#record_readers).
-        def mark_changing(owner, labels, attributes: [], list_readers: [], changed_readers: [])
+        # An Array changed or read at a worked-out index through a reader is not marked here: the
+        # line itself hands over the Array the reader answers (#indexed).
+        def mark_changing(owner, labels, attributes: [])
           case owner
-          when Builder
-            uses = owner.instance_variable_uses
-            uses.mark_changing_on_builder(labels, attributes)
-            uses.mark_readers_on_builder(list_readers, changed_readers)
+          when Builder then owner.instance_variable_uses.mark_changing_on_builder(labels, attributes)
           when Module
             name_in_module(owner, labels, constant: CHANGING_CONSTANT)
             Builder::Session.builder&.instance_variable_uses&.clear_class_name_cache
@@ -159,20 +154,6 @@ module VBlank
           return if names.empty? || Ractor.current != Ractor.main
 
           @changing_attributes_in_files = Ractor.make_shareable(changing_attributes_in_files | names)
-        end
-
-        # The readers game files read at an index they may work out (LocalNames#readers_at_worked_out_keys),
-        # and those whose slots they change (LocalNames#readers_with_changed_slots), as `:counts`,
-        # kept as #changing_attributes_in_files is.
-        def self.list_readers_in_files = @list_readers_in_files || Set.new.freeze
-
-        def self.changed_readers_in_files = @changed_readers_in_files || Set.new.freeze
-
-        def self.record_readers(list_readers:, changed_readers:)
-          return if Ractor.current != Ractor.main
-
-          @list_readers_in_files = Ractor.make_shareable(list_readers_in_files | list_readers) unless list_readers.empty?
-          @changed_readers_in_files = Ractor.make_shareable(changed_readers_in_files | changed_readers) unless changed_readers.empty?
         end
 
         def refuse_unsaved_naming_nothing!
@@ -382,10 +363,14 @@ module VBlank
         # answer. +in_text+ is a read put into a String or a Symbol, which can only be Ruby's.
         # +set_in_routine+ is a game block's own instance variable that a `func` or a scene sets
         # (#refuse_nil_set_in_routine!).
-        def read_value(owner, current, label, in_text: false, set_in_routine: false)
+        #
+        # A plain Array of numbers handed out, while setting up too, is noted with the block that
+        # gives the instance variable something else (Uses#note_array_handed): a line indexing it
+        # through a reader may decide it is the game's (#indexed).
+        def read_value(owner, current, label, in_text: false, set_in_routine: false, &store)
           current = current_or_ruby_number(current) { |number| yield number }
           uses = uses_while_recording(owner)
-          return current unless uses
+          return note_array_handed(owner, current, label, store) unless uses
 
           refuse_nil_set_in_routine!(label) if set_in_routine && current.nil?
 
@@ -395,6 +380,7 @@ module VBlank
             return variable
           end
           unless in_text
+            note_array_handed(owner, current, label, store)
             uses.note_read(owner, label, current)
             uses.note_flag_read(owner, label, current) if Uses::FLAGS.include?(current)
           end
@@ -412,6 +398,56 @@ module VBlank
                          "each `func` and scene after the game loop, so `#{label}` holds nothing yet while " \
                          "VBlank builds this line. To fix this, give `#{label}` its first value above the game " \
                          "loop.#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # +owner+'s +label+ hands out +current+. A plain Array of numbers is noted, by identity, in
+        # the build's record (Uses#note_array_handed), with +store+, the block that gives the
+        # instance variable something else. Returns +current+.
+        def note_array_handed(owner, current, label, store)
+          builder = Builder::Session.builder
+          return current unless builder && store && !owner.is_a?(Module) && current.instance_of?(Array) &&
+                                current.all?(Numeric) && !current.empty?
+
+          builder.instance_variable_uses.note_array_handed(current, owner, label, store,
+                                                           in_game_code: Builder::Session.recording?)
+          current
+        end
+
+        # A line indexes +array+, the answer of a reader call (`keeper.counts` in
+        # `keeper.counts[at] += 1`, LocalNames#reader_index_sites): at a key that may be worked out
+        # as the game plays (+worked_out+), and writing a slot (+changed+). The answer is what the
+        # line indexes.
+        #
+        # Only a plain Array of numbers an object's instance variable handed out just now, on a line
+        # of game code, is decided here, from that object alone: an index worked out makes it a list
+        # (made at power-on, holding the numbers Ruby holds now), a slot written at a known index a
+        # variable per slot. The instance variable holds what it became from then on, and is
+        # followed (Uses#note_changing_object). A reader of the same name in another class, or
+        # another object of this one, is never touched.
+        #
+        # Anything else is the line's as it is: a list or slot variables decided already, a copy a
+        # method made, a read while setting up, or a read at known indexes (noted as game code
+        # reading Ruby's numbers, which a later change refuses).
+        def indexed(array, worked_out:, changed:)
+          builder = Builder::Session.builder
+          return array unless builder && array.instance_of?(Array)
+
+          uses = builder.instance_variable_uses
+          hand_out = uses.take_array_hand_out(array)
+          return array unless hand_out && Builder::Session.recording?
+          return uses.note_array_read_in_game_code(array, hand_out) unless worked_out || changed
+
+          uses.refuse_array_handed_before!(array, hand_out)
+          owner = hand_out.owner
+          label = hand_out.label
+          # A part made by code that runs every frame is new on every pass in Ruby, its Array
+          # starting again, where the game would keep one from power-on.
+          refuse_part_made_every_pass!(owner, nil) if uses.made_every_pass?(owner)
+          uses.refuse_array_kept_twice!(array, owner, label)
+          uses.note_changing_object(owner, label)
+          made = worked_out ? builder.recording_at_boot { list_of(owner, label, array) } : game_variables_in(owner, label, array)
+          hand_out.store.call(made)
+          made
         end
 
         # What +owner+'s +label+ holds as a line of game code is about to write it: a named one's
@@ -770,17 +806,35 @@ module VBlank
           end
         end
 
-        # An Array read at an index the game works out becomes a list where the source shows that
-        # index: `@counts[at]`, or `part.counts[at]` through a reader. Reached any other way (the
-        # Array put in a local first), it was made a variable for each index already.
+        # An Array read at an index the game works out becomes a list where its own class's code
+        # shows that index (`@counts[at]`), or where a line first changes it through a reader
+        # (InstanceVariables.indexed). One decided before that (named with `game_variables`, or
+        # first read at known indexes) is a variable for each index already.
         class KeyedArray < Array
           include KeyedVariables
 
+          # Part of the Array (`counts[0..]`, `counts[1, 2]`) would be a new Ruby Array holding
+          # the same game variables, so a change to the part would change this Array too, where
+          # Ruby's part is a copy.
+          def [](*keys)
+            Steps.refuse_game_code!(part_taken_message) if keys.length > 1 || keys.first.is_a?(Range)
+
+            super
+          end
+
+          def slice(*keys) = self[*keys]
+
+          def part_taken_message
+            "This Array holds game variables, and this line takes a part of it, like `counts[0..]`. In Ruby " \
+              "the part is a copy, but here it would hold the same variables, so a change to it would change " \
+              "the Array too. To fix this, read the items one at a time, like `counts[0]`."
+          end
+
           def worked_out_key_message
             "This Array holds game variables, and this line takes one at an index that is worked out as the " \
-              "game plays. VBlank did not see an index like this where the Array is read, so it made a variable " \
-              "for each index, and it cannot find this one. To fix this, read the Array at the index on one " \
-              "line, like `@counts[at]` in its class or `part.counts[at]`, not through a local name."
+              "game plays. VBlank made a variable for each index where the Array got its first numbers, so " \
+              "it cannot find this one. To fix this, read the Array at the index in its class, like " \
+              "`def count_at(at) = @counts[at]`, and call that method here."
           end
         end
 
@@ -1229,9 +1283,9 @@ module VBlank
             @lists_on_builder = Set.new
             @changing_on_builder = Set.new
             @changing_attributes = Set.new
-            @list_readers = Set.new
-            @changed_readers = Set.new
             @arrays_kept = {}.compare_by_identity
+            @array_hand_outs = {}.compare_by_identity
+            @changing_objects = {}.compare_by_identity
             @chosen_on_builder = {}
             @names_by_class = {}
             @changing_by_class = {}
@@ -1357,15 +1411,13 @@ module VBlank
           def keep_arrays_as_lists_on_builder(labels) = @lists_on_builder.merge(labels)
 
           # Is an Array of numbers +owner+'s +label+ is given a list the game keeps
-          # (InstanceVariables.keep_arrays_as_lists)?
-          #
-          # So is one whose reader game code reads at an index it may work out (`keeper.counts[at]`,
-          # #reader_marked?), since the index needs a list as much as `@counts[at]` does.
+          # (InstanceVariables.keep_arrays_as_lists)? Its own class's code marks it, from the class's
+          # own lines. One indexed through a reader is decided where that line runs, from the Array
+          # the reader answers (InstanceVariables.indexed), never here by the reader's name.
           def kept_as_list?(owner, label)
             return @lists_on_builder.include?(label) if owner.is_a?(Builder)
-            return true if InstanceVariables.names_in_module(owner.class, constant: LISTS_CONSTANT).include?(label)
 
-            reader_marked?(owner, label, @list_readers | InstanceVariables.list_readers_in_files)
+            InstanceVariables.names_in_module(owner.class, constant: LISTS_CONSTANT).include?(label)
           end
 
           # Where one Ruby Array was made a list the game keeps (InstanceVariables.list_of): whose
@@ -1393,24 +1445,61 @@ module VBlank
             "`#{label}` of #{owner.is_a?(Builder) ? 'the game block' : "a `#{owner.class.name || 'part'}`"}"
           end
 
-          def mark_readers_on_builder(list_readers, changed_readers)
-            @list_readers.merge(list_readers)
-            @changed_readers.merge(changed_readers)
+          # One time an instance variable handed out a plain Array of numbers
+          # (InstanceVariables.note_array_handed): whose, the block that gives it something else,
+          # the line, and whether game code was recorded there.
+          ArrayHandOut = Data.define(:owner, :label, :store, :at, :in_game_code)
+
+          # +array+ was handed out by +owner+'s +label+. An Array another instance variable was
+          # made the game's from already is refused here: the two share it in Ruby.
+          def note_array_handed(array, owner, label, store, in_game_code:)
+            refuse_array_kept_twice!(array, owner, label) if @arrays_kept.key?(array)
+            (@array_hand_outs[array] ||= []) << ArrayHandOut.new(owner: owner, label: label, store: store,
+                                                                at: Messages::AuthorSource.author_file_and_line,
+                                                                in_game_code: in_game_code)
           end
 
-          # Is +owner+'s +label+ behind a reader named in +readers+? Code that calls a reader cannot
-          # tell the object's class, so the name is matched to every object with a reader of that
-          # name (`counts` for `@counts`), as a writer is in #changing?. Only a plain reader of
-          # +label+ counts (InstanceVariables.mark_plain_readers): a method of that name that
-          # answers a copy, or anything else, leaves the Array as it is.
-          def reader_marked?(owner, label, readers)
-            reader = label.to_s.delete_prefix("@").to_sym
-            return false unless readers.include?(reader) && owner.class.public_method_defined?(reader)
+          # The hand-out of +array+ the line indexing it just made (InstanceVariables.indexed), taken
+          # off the record; nil where none was noted.
+          def take_array_hand_out(array) = @array_hand_outs[array]&.pop
 
-            defined_in = owner.class.instance_method(reader).owner
-            defined_in.const_defined?(PLAIN_READERS_CONSTANT, false) &&
-              defined_in.const_get(PLAIN_READERS_CONSTANT, false).include?(label)
+          # Game code read +array+'s numbers as Ruby's, at known indexes, through +hand_out+: kept on
+          # the record as a read a later change cannot follow. Returns +array+.
+          def note_array_read_in_game_code(array, hand_out)
+            (@array_hand_outs[array] ||= []) << hand_out
+            array
           end
+
+          # +array+ is about to become the game's for +hand_out+'s instance variable. Any other
+          # time it was handed out it was Ruby's: game code reading Ruby's numbers, or a line
+          # setting up that a local or another part may keep it from. That line cannot follow
+          # this change, so it is refused, naming it. Another object handing it out shares it.
+          def refuse_array_handed_before!(array, hand_out)
+            earlier = @array_hand_outs.delete(array) || []
+            other = earlier.find { |each| !each.owner.equal?(hand_out.owner) || each.label != hand_out.label }
+            if other
+              @arrays_kept[array] = ArrayKept.new(owner: other.owner, label: other.label, at: " (at #{other.at})")
+              refuse_array_kept_twice!(array, hand_out.owner, hand_out.label)
+            end
+            return if earlier.empty?
+
+            refuse_array_read_before_change!(hand_out, earlier.first)
+          end
+
+          def refuse_array_read_before_change!(hand_out, read)
+            name = hand_out.label.to_s.delete_prefix("@")
+            words = kept_array_words(hand_out.owner, hand_out.label)
+            where = read.in_game_code ? "Game code reads it" : "A line reads it while the game is set up"
+            raise Refused, "This line changes #{words} as the game plays, or reads it at an index the game works " \
+                           "out. #{where} before this line (at #{read.at}), and there it is a plain Ruby Array: " \
+                           "it keeps the numbers Ruby gave it, so it does not see this change. To fix this, " \
+                           "change the Array in a method of its class, like `def bump(at) = @#{name}[at] += 1`, " \
+                           "and call that method here.#{Messages::AuthorSource.at_author_line}"
+          end
+
+          # +owner+'s +label+ was made the game's where a line indexed it through a reader
+          # (InstanceVariables.indexed): it is followed from then on, as one its class marks is.
+          def note_changing_object(owner, label) = (@changing_objects[owner] ||= Set.new) << label
 
           # Did a line naming +owner+'s +label+ (in its class or an ancestor) set `saved: false`?
           def marked_unsaved?(owner, label)
@@ -1552,13 +1641,13 @@ module VBlank
           #
           # An attribute game code changes through a writer counts for every object whose class has
           # that writer (`dial.level += 3` marks `@level` of anything with a `level=`), since the
-          # rewrite cannot tell the object's class. A slot changed through a reader counts the same
-          # way (`keeper.counts[at] += 1` marks `@counts` of anything with a `counts`).
+          # rewrite cannot tell the object's class. An Array changed through a reader counts for
+          # that object alone, from the line that changed it (#note_changing_object).
           def changing?(owner, label)
             return @changing_on_builder.include?(label) if owner.is_a?(Builder)
             return true if (@changing_by_class[owner.class] ||=
                               InstanceVariables.names_in_module(owner.class, constant: CHANGING_CONSTANT)).include?(label)
-            return true if reader_marked?(owner, label, @changed_readers | InstanceVariables.changed_readers_in_files)
+            return true if @changing_objects[owner]&.include?(label)
 
             attribute = label.to_s.delete_prefix("@").to_sym
             (@changing_attributes.include?(attribute) || InstanceVariables.changing_attributes_in_files.include?(attribute)) &&

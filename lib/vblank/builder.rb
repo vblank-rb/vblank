@@ -1548,6 +1548,22 @@ module VBlank
     # (#keeping_part)? DSL::PlainRuby::InstanceVariables refuses one whose numbers change.
     def made_every_pass? = recording_game_code? && !keeping_parts? # :nodoc:
 
+    # Runs the block with what it records (a list made and filled) set to run once at program
+    # start (#at_boot), wherever the build is recording, and returns what the block returns. A
+    # part's Array made the game's in game code (DSL::PlainRuby::InstanceVariables.indexed) is
+    # made this way, since the game must make it once, not on every pass of the line.
+    def recording_at_boot # :nodoc:
+      holder = IR::Build.loop_
+      @container_stack.push(holder)
+      made = begin
+        yield
+      ensure
+        @container_stack.pop
+      end
+      holder.children.dup.each { |node| at_boot(node) }
+      made
+    end
+
     # The part's things are in: its hidden number holds 1 from here on. Set inside the test the
     # last push recorded, where that ends the `initialize`, so a pass after the first sets nothing.
     def close_part_start(start)

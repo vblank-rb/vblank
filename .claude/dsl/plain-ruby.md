@@ -213,18 +213,28 @@ instance variables.
   `@counts = [0, 0]` in `initialize`, then `@counts[which] += 1` in game code, with any other index
   than those above, written in the class, in the class reopened or in a class made from it, in any
   file (`VBlank.require_game_file`): the class that reads it marks it, and the Array becomes the
-  game's at the first line of game code that reads it, after every file has run. Read through a
-  reader (`keeper.counts[which] += 1` in another part or the game block, `counts[which]` in the
-  class) it is a list too: the source keeps only the reader's name
-  (`LocalNames#readers_at_worked_out_keys`), so the Array of any object whose class has a plain
-  reader of that name (`attr_reader`, `attr_accessor`, or `def counts = @counts`:
-  `InstanceVariables.mark_plain_readers`) becomes one, and a slot changed through such a reader marks
-  the Array as changing, named or not (`LocalNames#readers_with_changed_slots`). A method of that
-  name answering anything else (a copy, `@counts.dup`) is left alone, and an index the game works
-  out into a copy stops with words saying the game does not keep that Array. An Array reached at a
-  worked-out index another way (put in a local first) is refused, naming the one-line form. One
-  Ruby Array two instance variables hold (handed to two parts) is refused where the second is made
-  a list (`Uses#refuse_array_kept_twice!`): each list is its own, where Ruby shares. It holds
+  game's at the first line of game code that reads it, after every file has run.
+- **Through a reader, the line decides from the real Array** (`keeper.counts[which] += 1` in another
+  part or the game block, `counts[which]` in the class): the rewrite hands the Array the reader call
+  answers to `InstanceVariables.indexed` (`LocalNames#reader_index_sites`), and the build's record
+  (`Uses#note_array_handed`, by identity, per build) knows which object's instance variable handed
+  it out. In game code an index the game works out makes that one Array a list (made at power-on,
+  `Builder#recording_at_boot`), a slot written at a known index a variable per slot; the instance
+  variable holds it from then on and is followed (`Uses#note_changing_object`). No reader name is
+  kept, so another class's reader of the same name, or a game built later in the process, is never
+  changed. Refused instead (`Uses#refuse_array_handed_before!`): the Array was read before that
+  line, by game code or at all while setting up (a local may keep Ruby's Array); and a named Array
+  (a variable per slot from its first number) read through a reader at a worked-out index
+  (`KeyedArray#worked_out_key_message`). Both name the fix: a method of its class
+  (`def bump(at) = @counts[at] += 1`). A part made by code that runs every frame (the game loop, a
+  `func`, or under a game test) and not kept is refused there too (`refuse_part_made_every_pass!`):
+  Ruby's Array starts again each pass, the list would not. A part made above `VBlank.game` works for
+  one game; a second game using it stops with a raw FrozenError, as on main. A method answering a copy (`@counts.dup`) is left alone, and
+  an index the game works out into a copy stops with words saying the game does not keep that
+  Array. Part of a named Array (`counts[0..]`, `counts[1, 2]`) is refused: it would hold the same
+  variables. One Ruby Array two instance variables hold (handed to two parts) is refused where the
+  second is made a list, or hands it out after the first was (`Uses#refuse_array_kept_twice!`):
+  each list is its own, where Ruby shares. Such a list holds
   its items and room for no more, holds fractions where a start is a Float, and a profile reads it
   by the name its variables would have had, `counts_by_number_part_counts`. A named Hash at a key
   the game works out is still refused: a Hash has no list to be.
@@ -609,6 +619,24 @@ Each is a friendly error naming the line.
 - An instance variable of a class itself (`@cache` in `def self.table`) is always plain Ruby.
 - An instance variable holding `true` or `false` that is not named is a flag of the build's: `if
   @open` is decided while building. Name it if the game sets and tests it as it plays.
+- `m = (h[:a] += 3)` on a Hash of game numbers answers the number before the change. Write the
+  change on its own line.
+- `==` between an Array of game numbers and another Array answers while building.
+- `dup`, `clone` or `first(2)` of an Array of named numbers holds the same variables, so a change
+  to the copy changes the Array.
+- An Array handed to a part from a local or a Struct field (`src = [0, 0, 0]; t = Holder.new(src)`)
+  and read through `src[1]` after `t.xs[at] += 1` answers Ruby's number from while building: the
+  part's instance variable holds the list, the local still the Ruby Array. A constant handed in
+  works.
+- A part's Array that only code outside its class puts things into in game code
+  (`flock.dots << Dot.new(...)`), or that game code adds to or turns as a whole through its reader
+  (`part.counts << 7`, `rotate!`), stays Ruby's: the change happens once, while building. The
+  same-class scan (`LocalNames#instance_variable_things_made`) is the only thing that makes a
+  part's Array of Structs a pool; filled from outside while setting up, it stays a Ruby Array of
+  Structs whose fields are followed, which answers alike.
+- A field changed through a writer elsewhere (`dial.level += 3`) is followed by the writer's
+  name (`changing_attributes_in_files`, process-wide): any object with that writer keeps the field
+  as a game number. Cost and save layout, not answers.
 
 ## When plain Ruby is not enough
 

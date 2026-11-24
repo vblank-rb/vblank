@@ -180,6 +180,17 @@ class AnswerSharedTallies
   def at(index) = @counts[index]
 end
 
+# A named Array read through a reader called `counts`, like AnswerTallies's, only at indexes known
+# while building: its slots stay a variable each, whatever another class's `counts` is read at.
+class AnswerNamedSizes
+  game_variables :counts
+  attr_reader :counts
+
+  def initialize
+    @counts = [3, 4]
+  end
+end
+
 # An Array of numbers read through its reader only at indexes known while building.
 class AnswerMarks
   game_variables :marks
@@ -450,5 +461,42 @@ class AnswerHanded
   def initialize(notes, points, x)
     notes << x
     points << AnswerPoint.new(x, 0, 0)
+  end
+end
+
+# A part's Array made with room for things, which its class body puts nothing into: what goes in
+# comes from a reopened class, a subclass, a module, or game code outside the class.
+class AnswerFlock
+  attr_reader :dots
+
+  def initialize
+    @dots = Array.new(capacity: 4)
+  end
+
+  def total_x = @dots.sum(&:x)
+end
+
+# The same class reopened, putting things into the Array.
+class AnswerFlock
+  def add(x) = @dots << AnswerPoint.new(x, 0, 0)
+end
+
+# A subclass putting things into its parent's Array.
+class AnswerBigFlock < AnswerFlock
+  def add_big(x) = @dots << AnswerPoint.new(x * 10, 0, 0)
+end
+
+# A module putting things into the Array of whatever includes it.
+module AnswerFlocking
+  def add_dot(x) = @dots << AnswerPoint.new(x, 1, 0)
+end
+
+# A class whose Array only the module fills.
+class AnswerMixedFlock
+  include AnswerFlocking
+  attr_reader :dots
+
+  def initialize
+    @dots = Array.new(capacity: 4)
   end
 end

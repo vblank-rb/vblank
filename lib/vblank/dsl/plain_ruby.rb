@@ -114,14 +114,10 @@ module VBlank
         code = "#{block.lambda? ? 'lambda' : 'proc'} #{rewriter.rewritten_block}"
         changing = rewriter.changing_instance_variables
         attributes = rewriter.changing_attributes
-        list_readers = rewriter.readers_at_worked_out_keys
-        changed_readers = rewriter.readers_with_changed_slots
-        marks = [changing, attributes, list_readers, changed_readers]
-        return code if marks.all?(&:empty?) || block.lambda?
+        return code if (changing.empty? && attributes.empty?) || block.lambda?
 
         "proc { |*__plain_ruby_given| #{Rewriter::INSTANCE_VARIABLES}.mark_changing(self, #{changing.inspect}, " \
-          "attributes: #{attributes.inspect}, list_readers: #{list_readers.inspect}, changed_readers: " \
-          "#{changed_readers.inspect}); (#{code}).call(*__plain_ruby_given) }"
+          "attributes: #{attributes.inspect}); (#{code}).call(*__plain_ruby_given) }"
       end
 
       def checked_source(rewriter, code, file, allow)
@@ -220,8 +216,6 @@ module VBlank
         return rewritten if library
 
         InstanceVariables.record_changing_attributes(rewriter.changing_attributes)
-        InstanceVariables.record_readers(list_readers: rewriter.readers_at_worked_out_keys,
-                                         changed_readers: rewriter.readers_with_changed_slots)
 
         checks = BlockChecks.new(root, file: path, allow: [])
         checks.refuse_outside_calls_in_file!
@@ -482,8 +476,8 @@ module VBlank
 
         # The instance variables the body of +node+ hands out through a reader of the same name
         # that answers just what it holds, as `:@counts`: `attr_reader :counts`, `attr_accessor`, or
-        # `def counts = @counts`. Code that changes a slot through a reader is matched to those
-        # alone (Uses#reader_marked?), never to a method that answers a copy or anything else.
+        # `def counts = @counts`. A walk's read-ahead may read the instance variable in place of
+        # such a reader (InstanceVariables.plain_reader?), never of one that answers a copy.
         def plain_reader_labels(node)
           return [] unless node.body.is_a?(Prism::StatementsNode)
 
@@ -512,14 +506,8 @@ module VBlank
         # (LocalNames#changing_instance_variables), as `:@score`. Asked once the block is rewritten.
         def changing_instance_variables = @names.changing_instance_variables.to_a
 
-        # ...the attributes it may change through a writer (LocalNames#changing_attributes),
+        # ...and the attributes it may change through a writer (LocalNames#changing_attributes).
         def changing_attributes = @names.changing_attributes.to_a
-
-        # ...the readers it reads at an index the game may work out (LocalNames#readers_at_worked_out_keys),
-        def readers_at_worked_out_keys = @names.readers_at_worked_out_keys.to_a
-
-        # ...and the readers whose slots it changes (LocalNames#readers_with_changed_slots).
-        def readers_with_changed_slots = @names.readers_with_changed_slots.to_a
 
         private
 
@@ -669,7 +657,18 @@ module VBlank
           "(if #{loop}.jump!(:#{jump_word(node)}, #{tests}#{value}) then #{copied_text(node)} end)"
         end
 
+        # A reader call whose answer is indexed (`keeper.counts` in `keeper.counts[at] += 1`) hands
+        # the Array it really answers to InstanceVariables.indexed, which decides from that Array
+        # and the object whose instance variable holds it, never from the reader's name.
         def call_text(node)
+          site = @names.reader_index_sites[node] if @follows_instance_variables
+          text = call_text_as_written(node)
+          return text unless site
+
+          "#{INSTANCE_VARIABLES}.indexed((#{text}), worked_out: #{site.worked_out}, changed: #{site.changed})"
+        end
+
+        def call_text_as_written(node)
           note_tail_of_answering_block(node)
           return "#{STEPS}.opposite(#{argument(node.receiver)})" if node.name == :! && node.receiver
           return "#{ARRAYS}.taken(#{argument(node.receiver)}, :#{node.name})" if game_array_item_taken?(node)
