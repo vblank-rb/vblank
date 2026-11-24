@@ -989,8 +989,13 @@ module VBlank
             # effect's is waiting, a frame spends up to AHEAD_TRIES looks at the mailbox on it, whether
             # the game has time or not, and stops as soon as it has all gone. That is what an effect's
             # note costs a frame, and a frame with nothing of an effect's waiting spends a compare.
+            #
+            # In a game whose effects are struck inside the frame (Strikes), the frame waits for all of
+            # it, up to Strikes::SENT_TRIES looks: a note sent after its time is late, and a game too
+            # busy to send from its wait would send the rest a pass later, after the MARKs of the frames
+            # after it. Sending a tick's few commands takes a fraction of a millisecond.
             def emit_ahead_sent_at_frame(asm, memory)
-              asm.ldy(AHEAD_TRIES)
+              asm.ldy(memory.reserved?(Strikes::FROM_SENT) ? Strikes::SENT_TRIES : AHEAD_TRIES)
               asm.label("rt_sound_ahead_try")
               asm.lda(asm.abs(memory[FRONT_LEFT]))
               asm.bne("rt_sound_ahead_waiting")

@@ -28,18 +28,31 @@ module VBlank
           # Timer 0 counts at 8000 a second with its divider at 1, and its 4-bit counter ($FD) is
           # read, and so cleared, each time round the program's wait for the next command, which is
           # far more often than the 2 milliseconds it takes to fill. The program adds it to NOW, a
-          # word of the direct page. Each frame of the music starts with MARK, sent at once rather
-          # than queued: the frame begins at BASE, which is NOW, or a frame after the last BASE if
-          # that is later, so frames the console caught up on in one go are struck a frame apart
-          # rather than on top of each other. A frame of the sound unit's clock is one unit short
-          # of a real one (#units_a_frame), so BASE never runs ahead of the frames the console
-          # shows. A note FROM names is due at BASE plus its offset, which is held below that frame.
+          # word of the direct page. Each frame of the music starts with MARK: the frame begins at
+          # BASE, which is NOW, or a frame after the last BASE if that is later, so frames the console
+          # caught up on in one go are struck a frame apart rather than on top of each other. A frame
+          # of the sound unit's clock is one unit short of a real one (#units_a_frame), so BASE never
+          # runs ahead of the frames the console shows. A note FROM names is due LEAD_COUNTS after
+          # BASE and its offset, which is held below that frame.
+          #
+          # ### In the order they were played
+          #
+          # MARK goes in the line ahead like the rest, so the sound unit is told each frame's MARK,
+          # then its FROMs, notes and UNTIL_NOWs, in the order the frames were played: a pass that
+          # took two frames sends the first frame's MARK and notes, then the second's, and a MARK
+          # never comes between a FROM and its UNTIL_NOW. A frame starts when its MARK comes, so a
+          # game too busy to send them on time has its notes struck their ticks apart from when they
+          # are sent, as late as all else it shows. The frame waits for the line to be sent
+          # (Sound#emit_ahead_sent_at_frame), so a game that has the time sends each MARK as its
+          # frame's music has been played, and LEAD_COUNTS covers the commands that come after it
+          # before a tick at the frame's start is due. Only when the line is full does MARK go at
+          # once, ahead of what is waiting.
           #
           # ### What it costs
           #
           # Nothing for a game without the word, whose program and runtime are as before. With it,
-          # the sound unit's program grows by its clock and its list, and a frame sends MARK at once
-          # (one turn of the mailboxes) and two more commands for each tick that strikes something.
+          # the sound unit's program grows by its clock and its list, and a frame sends MARK (one turn of
+          # the mailboxes) and two more commands for each tick that strikes something, waiting for them.
           # The list holds LIST_ENTRIES commands; one more that comes while it is full is done at
           # once, and a frame holds IR::Tunes::MOST_TICKS_A_FRAME ticks at most.
           module Strikes
@@ -83,6 +96,13 @@ module VBlank
             LIST_SECONDS = 0x80
             LIST_DUE_LOW = 0xA0
             LIST_DUE_HIGH = 0xC0
+            # How far behind its MARK a frame's notes are struck, in counts of the timer: four
+            # milliseconds, time for a tick's few commands to be sent after the MARK.
+            LEAD_COUNTS = 32
+            # How many looks at the mailbox a frame spends sending the line ahead before it gives up
+            # (Sound#emit_ahead_sent_at_frame): room for the whole line, each command given as many
+            # looks as a write is given for its answer (Sound::PATIENCE).
+            SENT_TRIES = Sound::AHEAD_ENTRIES * Sound::PATIENCE
 
             # The console's side: whether FROM was sent for the pass playing now and UNTIL_NOW is owed, and
             # where the tick playing now falls in the frame, in 256ths of the sound unit's counts.
@@ -211,12 +231,11 @@ module VBlank
             end
 
             # strikes_timing: MARK, FROM or UNTIL_NOW (COMMAND_COPY's second number), its first number FROM's
-            # offset in counts.
+            # offset in counts. Only UNTIL_NOW ends the list's taking commands, which FROM starts.
             def emit_timing(spc)
               frame = units_a_frame
               spc.instance_eval do
                 label "strikes_timing"
-                mov direct(LIST_INCOMING), imm(0)
                 mov :a, direct(COMMAND_COPY[3])
                 cmp :a, imm(MARK)
                 bne "strikes_timing_from"
@@ -242,16 +261,19 @@ module VBlank
                 ret
                 label "strikes_timing_from"
                 cmp :a, imm(FROM)
-                bne "strikes_timing_done"
+                bne "strikes_timing_until_now"
                 mov :a, direct(COMMAND_COPY[2])
                 clrc
+                adc :a, imm(LEAD_COUNTS) # held below a frame, so no carry
                 adc :a, direct(BASE)
                 mov direct(DUE), :a
                 mov :a, direct(BASE + 1)
                 adc :a, imm(0)
                 mov direct(DUE + 1), :a
                 mov direct(LIST_INCOMING), imm(1)
-                label "strikes_timing_done"
+                ret
+                label "strikes_timing_until_now"
+                mov direct(LIST_INCOMING), imm(0)
                 ret
               end
             end
@@ -289,7 +311,8 @@ module VBlank
 
             # --- the console's side ---
 
-            # rt_strikes_mark (JSL): MARK sent at once, as a frame of the music begins.
+            # rt_strikes_mark (JSL): MARK put in the line ahead as a frame of the music begins, or sent at
+            # once when the line is full.
             # rt_strikes_push (JSL): the command R2 with R0 and R1 put in the line ahead, the carry set
             # when it went in and clear when the line is full. rt_strikes_close (JSL): UNTIL_NOW sent after a
             # pass that sent FROM.
@@ -300,7 +323,11 @@ module VBlank
               asm.stz(asm.direct(Sound::R0))
               asm.lda(MARK)
               asm.sta(asm.direct(Sound::R1))
+              asm.jsl(asm.long("rt_strikes_push"))
+              asm.bcs("rt_strikes_mark_done")
               asm.jml(asm.long("rt_sound_command_at_once"))
+              asm.label("rt_strikes_mark_done")
+              asm.rtl
               emit_push(asm, memory)
               asm.label("rt_strikes_close")
               asm.lda(asm.abs(memory[FROM_SENT]))
