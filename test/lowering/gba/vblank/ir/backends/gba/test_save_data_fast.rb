@@ -252,7 +252,7 @@ class TestSaveDataFast < Minitest::Test
       game_loop do
         files[0].save if pressed(:a)
         pile.push 1
-        300.times { spin += 1 }
+        300.times { |n| spin += 1 + (n.even? ? 5 : -5) }
       end
     end
   end

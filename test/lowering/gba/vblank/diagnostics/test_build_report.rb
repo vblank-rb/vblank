@@ -17,8 +17,8 @@ class TestBuildReport < Minitest::Test
       screen :bitmap, tear_free: true
       clear_screen :black
       x = var :x, 0
-      func(:the_big_one) { 1000.times { x += 1 } }
-      func(:the_other_big_one) { 1000.times { x += 2 } }
+      func(:the_big_one) { 1000.times { |n| x += 1 + (n.even? ? 5 : -5) } }
+      func(:the_other_big_one) { 1000.times { |n| x += 2 + (n.even? ? 5 : -5) } }
       game_loop do
         call :the_big_one
         call :the_other_big_one
@@ -64,8 +64,8 @@ class TestBuildReport < Minitest::Test
     rom = VBlank.build("BRSETS", console: :gba, out: StringIO.new, err: StringIO.new, profile: false) do
       x = var :x, 0
       where = 0
-      func(:title_work) { 1200.times { x += 1 } }
-      func(:play_work) { 1200.times { x += 2 } }
+      func(:title_work) { 1200.times { |n| x += 1 + (n.even? ? 5 : -5) } }
+      func(:play_work) { 1200.times { |n| x += 2 + (n.even? ? 5 : -5) } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       game_loop do
@@ -87,9 +87,9 @@ class TestBuildReport < Minitest::Test
     rom = VBlank.build("BRMISS", console: :gba, out: StringIO.new, err: StringIO.new, profile: false) do
       x = var :x, 0
       where = 0
-      func(:title_work) { 1200.times { x += 1 } }
-      func(:play_work) { 1200.times { x += 2 } }
-      func(:play_more) { 1200.times { x += 3 } }
+      func(:title_work) { 1200.times { |n| x += 1 + (n.even? ? 5 : -5) } }
+      func(:play_work) { 1200.times { |n| x += 2 + (n.even? ? 5 : -5) } }
+      func(:play_more) { 1200.times { |n| x += 3 + (n.even? ? 5 : -5) } }
       scene(:title) { call :title_work }
       scene(:play) do
         call :play_work
@@ -126,7 +126,7 @@ class TestBuildReport < Minitest::Test
       x = var :x, 0
       scene(:play) do
         1200.times { |n| image(:"pic#{n}", "#" => :red) { "########\n" * 8 } }
-        900.times { |n| x = (x * (n + 3)) + (x / 7) }
+        900.times { |n| x = (x * ((n ^ 1) + 3)) + (x / 7) }
         sprite :pic0, at: [0, 0]
       end
       mode = var :mode, :play

@@ -28,11 +28,11 @@ class TestRoutinePieces < Minitest::Test
       t = 0
       func(:work) do
         if t >= 0
-          busy.times { a += 1 }
+          busy.times { |n| a += 1 + (n.even? ? 5 : -5) }
         end
         idle_parts.times do |part|
-          if t == -1 - part
-            idle.times { b += 1 }
+          if t == -1 - (part ^ 1)
+            idle.times { |n| b += 1 + (n.even? ? 5 : -5) }
           end
         end
       end
@@ -94,11 +94,11 @@ class TestRoutinePieces < Minitest::Test
       c = 0
       func(:work) do
         if tick >= 0
-          busy.times { a += 1 }
+          busy.times { |n| a += 1 + (n.even? ? 5 : -5) }
         end
         IDLE_PARTS.times do |part|
-          if tick == -1 - part
-            idle.times { c += 1 }
+          if tick == -1 - (part ^ 1)
+            idle.times { |n| c += 1 + (n.even? ? 5 : -5) }
           end
         end
       end
@@ -157,11 +157,11 @@ class TestRoutinePieces < Minitest::Test
       hoard = list :hoard, capacity: slots, full_of: 0
       func(:work) do
         if t >= 0
-          busy.times { a += 1 }
+          busy.times { |n| a += 1 + (n.even? ? 5 : -5) }
         end
         IDLE_PARTS.times do |part|
-          if t == -1 - part
-            idle.times { b += 1 }
+          if t == -1 - (part ^ 1)
+            idle.times { |n| b += 1 + (n.even? ? 5 : -5) }
           end
         end
       end
@@ -205,12 +205,13 @@ class TestRoutinePieces < Minitest::Test
       t = 0
       func(:work) do
         if t >= 0
-          busy.times { a += 1 }
+          busy.times { |n| a += 1 + (n.even? ? 5 : -5) }
         end
-        2.times do |part|
-          if t == -1 - part
-            900.times { b += 1 }
-          end
+        if t == -1
+          900.times { |n| b += 1 + (n.even? ? 5 : -5) }
+        end
+        if t == -2
+          900.times { |n| b += 1 + (n.even? ? 5 : -5) }
         end
       end
       game_loop do

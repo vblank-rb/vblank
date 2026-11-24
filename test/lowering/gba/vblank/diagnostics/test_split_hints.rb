@@ -20,7 +20,7 @@ class TestSplitHints < Minitest::Test
       y = 0
       game_loop do
         if x == 99_999
-          2400.times { x += 1 }
+          2400.times { |n| x += 1 + (n.even? ? 5 : -5) }
         end
         busy = __LINE__ + 1
         repeat(300) { y += 1 }
@@ -60,7 +60,7 @@ class TestSplitHints < Minitest::Test
     builder = Builder.new
     builder.instance_eval do
       x = var :x, 0
-      game_loop { 2400.times { x += 1 } if x == 99_999 }
+      game_loop { 2400.times { |n| x += 1 + (n.even? ? 5 : -5) } if x == 99_999 }
     end
     builder.finalize_program
     result = VBlank::Diagnostics::Profiler.run(assemble_rom(builder.program, name: "IDLE"), frames: 10, picture: false)

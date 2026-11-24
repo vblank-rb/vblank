@@ -697,7 +697,7 @@ class TestFastCodePlacement < Minitest::Test
       clear_screen :black
       list :big, capacity: 7000, fast: true # eats nearly all of the quick memory, and insists on it
       big = var :b, 0
-      func(:work, fast: true) { 400.times { big += 1 } }
+      func(:work, fast: true) { 400.times { |n| big += 1 + (n.even? ? 5 : -5) } }
       game_loop { wait_vblank; call :work }
     end
     builder.finalize_program
@@ -716,7 +716,7 @@ class TestFastCodePlacement < Minitest::Test
       clear_screen :black
       list :big, capacity: 7000, fast: true
       big = var :b, 0
-      func(:work, fast: true) { 400.times { big += 1 } }
+      func(:work, fast: true) { 400.times { |n| big += 1 + (n.even? ? 5 : -5) } }
       game_loop { wait_vblank; call :work }
     end
     builder.finalize_program
