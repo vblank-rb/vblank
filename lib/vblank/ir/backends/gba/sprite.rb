@@ -79,6 +79,11 @@ module VBlank
         # and last the layer it was declared in (ScreenLayout#sprite_layer_depth_table). Its
         # +attr2_base+ then leaves the depth out. nil for every other sprite.
         #
+        # +see_through_picks+ is the same kind of table of the see-through bit of the first word, for
+        # a sprite that can be put in and out of a see-through layer
+        # (ScreenLayout#sprite_see_through_table). Its +attr0_base+ then leaves the bit out. nil for
+        # every other sprite.
+        #
         # +piece_banks+ is set on a sprite whose pieces each name a bank of colours of their own (a
         # pose of several banks, SpritePictures#piece_banks): the bank bits of attribute 2 for each
         # word of +pose_words+, in its order, which the pose table holds after those words. Its
@@ -90,7 +95,7 @@ module VBlank
           :offset_x, :offset_y, :width, :height,
           :x, :y, :active, :angle, :scale, :transformed, :scales, :affine_slot,
           :attr0_base, :attr1_base, :attr2_base, :recolor, :recolor_banks,
-          :layer_pick, :layer_depths,
+          :layer_pick, :layer_depths, :see_through_picks,
         ) do
           # Does a frame work out part of this sprite's third word, rather than all of it
           # being settled when the cartridge is built?

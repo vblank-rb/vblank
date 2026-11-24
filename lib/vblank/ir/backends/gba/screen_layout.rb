@@ -290,6 +290,11 @@ module VBlank
           # the screen, and the table holds +scene_count+ rows for its values and one for any other.
           LayerDepths = Data.define(:table, :own, :scene_var, :scene_count)
 
+          # Where a sprite that can be put in and out of a see-through layer keeps the see-through
+          # bit of its first word for each layer, counted as LayerDepths counts them, and which
+          # entry is the layer it was declared in.
+          SeeThroughPicks = Data.define(:table, :own)
+
           # Everything that changes between poses that are not interchangeable, one word
           # each, read by the per-frame draw.
           #
@@ -783,9 +788,27 @@ module VBlank
           def object_transformed?(node) = self.class.transformed?(node)
           def object_scales?(node) = self.class.scales?(node)
 
-          # Is this sprite in a layer the program sees through? Then its own table entry
-          # marks it so, and the display blends it with what is behind it.
-          def see_through_object?(node) = @see_through.include?(node.layer)
+          # Is this sprite in a layer the program sees through, in every layer it can be put in? Then
+          # its own table entry marks it so, and the display blends it with what is behind it.
+          def see_through_object?(node) = sprite_layers(node).all? { |layer| @see_through.include?(layer) }
+
+          # The layers a sprite can be in, counted as #layer_depth_row counts them: each it can be put
+          # in, then the one it was declared in.
+          def sprite_layers(node) = [*node.layers, node.layer]
+
+          # The see-through bit of a sprite's first word for each layer it can be in, for a sprite put
+          # in and out of a see-through layer as the game runs, or nil for one whose bit is the same in
+          # every layer (#see_through_object?). The bit is the display's own: it blends that sprite
+          # with what is behind it, so moving the sprite out of the layer is clearing it.
+          def sprite_see_through_table(node)
+            words = sprite_layers(node).map { |layer| @see_through.include?(layer) ? LayerBlend::OBJ_SEMI_TRANSPARENT : 0 }
+            return nil if words.uniq.one?
+
+            blob = :"__see_through_picks_#{words.join('_')}"
+            @blobs[blob] = words.pack("V*")
+            keep_unpacked!(blob) # read from the middle, by the layer the game picked
+            SeeThroughPicks.new(table: blob, own: node.layers.length)
+          end
 
           # Turn the tiled backgrounds into the data tile hardware reads — one shared color
           # palette, the tile pictures, and a map per layer — and stash them as ROM blobs
@@ -3250,6 +3273,7 @@ module VBlank
               recolor: node.recolor, recolor_banks: sprite_recolor_bank_table(node),
               layer_pick: node.layer_pick && IR::Build.var_ref(node.layer_pick),
               layer_depths: sprite_layer_depth_table(node),
+              see_through_picks: sprite_see_through_table(node),
             )
           end
 

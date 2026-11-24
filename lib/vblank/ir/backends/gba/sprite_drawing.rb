@@ -1215,6 +1215,7 @@ module VBlank
 
             @emitter.place_label(draw)
             emit_store_object_picked_attr2(obj) if obj.picks_attr2?
+            emit_store_object_picked_attr0(obj) if obj.see_through_picks
             if obj.rooms
               emit_take_shared_room(obj)
             elsif obj.frames
@@ -1270,6 +1271,28 @@ module VBlank
               end
             end
             @primitives.store_var(ACC, OBJ_PICKED_ATTR2)
+          end
+
+          # Where the see-through bit of a sprite's first word this frame decides is held while its
+          # pieces are written, as OBJ_PICKED_ATTR2 holds the third word's part.
+          OBJ_PICKED_ATTR0 = :__obj_picked_attr0
+
+          # The see-through bit of the first word for the layer the sprite is in this frame, for a
+          # sprite put in and out of a see-through layer. The display blends a sprite whose word holds
+          # it with what is behind it, so it is the whole of being in that layer, as far as the blend
+          # goes (LayerBlend).
+          def emit_store_object_picked_attr0(obj)
+            emit_pick_from_table(obj.layer_pick, obj.see_through_picks)
+            @primitives.store_var(ACC, OBJ_PICKED_ATTR0)
+          end
+
+          # OR this frame's see-through bit into the first word being worked out in r0, for a sprite
+          # whose +attr0_base+ leaves it out.
+          def orr_picked_attr0(obj)
+            return unless obj.see_through_picks
+
+            @primitives.load_var(TMP, OBJ_PICKED_ATTR0)
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
           end
 
           # r0 = the word +choice+ picks out of +table+. A number past the last entry, or
@@ -1853,8 +1876,9 @@ module VBlank
             emit_move_far_place_off_screen(ROWS_DRAWN_AS_PUT, SCREEN_HEIGHT) unless drawn_as_put?(obj.y, ROWS_DRAWN_AS_PUT, obj.offset_y)
             mask_into_acc(0xFF)
             orr_acc(obj.attr0_base)
+            orr_picked_attr0(obj)
             emit_store_acc_in_row(row, 0)
-            emit_copy_attr0_to_twin(mirror)
+            emit_copy_attr0_to_twin(mirror, obj)
             # attr1 = (x & 0x1FF) | size
             @lowering.value(obj.x)
             @primitives.emit_add_const(ACC, ACC, obj.offset_x, TMP) unless obj.offset_x.zero?
@@ -1914,8 +1938,9 @@ module VBlank
             @emitter.emit(ASM.and_imm(TMP, POSE_WORD, 0x0C00))   # shape, still at bit 10
             @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 4))     # ...into bit 14
             orr_acc(obj.attr0_base) unless obj.attr0_base.zero?
+            orr_picked_attr0(obj)
             emit_store_acc_in_row(row, 0)
-            emit_copy_attr0_to_twin(mirror)
+            emit_copy_attr0_to_twin(mirror, obj)
             # attr1 = (x + how far right) & 0x1FF, then the size out of bits 12..13.
             @primitives.load_var(ACC, POSE_DRAW_X)
             @emitter.emit(ASM.lsr_imm(TMP, POSE_WORD, 14))
@@ -2018,9 +2043,16 @@ module VBlank
           # Drop the attr0 just written into the window twin's slot as well, with the bit
           # that makes it a window rather than a picture. The value is still in hand, so
           # this is two instructions and not a second sprite worked out from scratch.
-          def emit_copy_attr0_to_twin(mirror)
+          #
+          # The window mode shares its two bits with the see-through mode (LayerBlend::OBJ_SEMI_TRANSPARENT),
+          # and both set is a mode the display does not have, so a sprite that can be see-through has
+          # its bit cleared from the twin's word first.
+          def emit_copy_attr0_to_twin(mirror, obj)
             return unless mirror
 
+            if obj.see_through_picks || obj.attr0_base.anybits?(LayerBlend::OBJ_SEMI_TRANSPARENT)
+              @emitter.emit(ASM.bic_imm(ACC, ACC, LayerBlend::OBJ_SEMI_TRANSPARENT))
+            end
             orr_acc(OBJ_WINDOW_MODE)
             @primitives.store_halfword_acc(mirror)
           end
@@ -2057,8 +2089,9 @@ module VBlank
               mask_into_acc(0xFF)
               orr_acc(obj.attr0_base | OBJ_ROTSCALE | OBJ_DOUBLE_SIZE)
             end
+            orr_picked_attr0(obj)
             emit_store_acc_in_row(row, 0)
-            emit_copy_attr0_to_twin(mirror)
+            emit_copy_attr0_to_twin(mirror, obj)
             # attr1 = ((x - half_w) & 0x1FF) | size | affine-group index (bits 9..13)
             @lowering.value(obj.x)
             @emitter.emit(ASM.sub_imm(ACC, ACC, half_w)) unless half_w.zero?
