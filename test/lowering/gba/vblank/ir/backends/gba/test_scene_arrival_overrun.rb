@@ -354,6 +354,22 @@ class TestSceneArrivalOverrun < Minitest::Test
     end
   end
 
+  # A pass that takes the scene over part way down a picture (the pass before ran long): switching
+  # the layers off at once shows the last scene above the line the switch reached and the backdrop
+  # below it. The sending waits for the gap instead, so that picture is the last scene whole, as the
+  # interpreter shows it, and the picture after it is held as any late pass's is.
+  MID_PICTURE_LINES = [40, 80, 120, 140, 159].freeze
+
+  def test_a_scene_taken_over_part_way_down_a_picture_does_not_tear_that_picture
+    seen = MID_PICTURE_LINES.to_h do |line|
+      [line, pictures_from_power_on(handed_over(layers: 1, tile_count: 16, late: line, missed_gap: true))]
+    end
+
+    torn = seen.reject { |_, rows| rows.all? { |count| [0, 160].include?(count) } }
+    assert_empty torn, "pictures from power-on, as the rows of each that are the backdrop, by the line the pass reached: #{seen}"
+    assert_equal [seen.values.first], seen.values.uniq, "wherever down the picture it began: #{seen}"
+  end
+
   # A scene whose sending can need more than the gap leaves it holds its first picture wherever the
   # sending ends: two builds of one game move its pictures from different memories at different
   # speeds, and one ending in the gap where the other runs a few lines on must not show a different

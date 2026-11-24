@@ -836,6 +836,7 @@ module VBlank
               return @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
 
+            emit_wait_for_gap_if_drawing
             # The hold is read before it is cleared, and the display after: an interrupt between
             # any two of them leaves the held bits in ACC or on the display, never lost.
             @primitives.load_var(ACC, LAYERS_HELD)
@@ -847,6 +848,28 @@ module VBlank
             @primitives.store_var(ACC, saved)
             @emitter.emit(ASM.bic_imm(ACC, ACC, held_layer_bits))
             @emitter.emit(ASM.store_halfword(ACC, TMP))
+          end
+
+          # A sending that begins part way down a picture waits for the gap between pictures before
+          # it switches the layers off. A write to the display's settings takes effect from the line
+          # being drawn (GBATEK, "LCD I/O Display Control"), so switched off at once the picture
+          # showed the last scene above that line and the backdrop below it. Waiting, that picture
+          # is the last scene whole, as the interpreter shows it, and the sending runs in the gap
+          # that follows. Not while the display is forced blank, as it is until the first frame is
+          # set up: nothing is drawn then, and the wait would only delay the start. Uses ACC and TMP.
+          def emit_wait_for_gap_if_drawing
+            drawing = @emitter.gensym
+            gap = @emitter.gensym
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit(ASM.tst_imm(ACC, FORCED_BLANK))
+            @emitter.emit_branch(:bcond, gap, cond: :ne)    # switched off already: nothing is drawn
+            @emitter.emit_number(TMP, REG_VCOUNT)
+            @emitter.place_label(drawing)
+            @emitter.emit(ASM.load_halfword(ACC, TMP))      # the line being drawn
+            @emitter.emit(ASM.cmp_imm(ACC, SCREEN_HEIGHT))
+            @emitter.emit_branch(:bcond, drawing, cond: :lo) # lines 0 to 159 are the picture
+            @emitter.place_label(gap)
           end
 
           # After sending: write +reg+, the display's settings with the layers wanted back on: as

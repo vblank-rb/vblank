@@ -62,7 +62,7 @@
       "data": 5044
     },
     "dive": {
-      "code": 57208,
+      "code": 57408,
       "data": 0
     },
     "everywhere": {
@@ -134,7 +134,7 @@
       "data": 555
     },
     "hero": {
-      "code": 81416,
+      "code": 81576,
       "data": 0
     },
     "hero@snes": {
@@ -242,7 +242,7 @@
       "data": 0
     },
     "pong_gbc": {
-      "code": 41828,
+      "code": 41908,
       "data": 0
     },
     "pong_gbc@gbc": {
@@ -294,7 +294,7 @@
       "data": 3977
     },
     "shmup": {
-      "code": 37668,
+      "code": 37748,
       "data": 0
     },
     "snake": {
@@ -342,7 +342,7 @@
       "data": 6855
     },
     "tower": {
-      "code": 15996,
+      "code": 16116,
       "data": 0
     },
     "tower@gbc": {
