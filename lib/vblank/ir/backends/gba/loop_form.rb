@@ -61,6 +61,28 @@ module VBlank
           # call away, not laid out inline (see Drawing#emit_digit_routines).
           CALLS_A_ROUTINE = %i[div_fix pixels_overlap draw_column_at draw_digit].freeze
 
+          # The registers a fast-shape loop may keep its stepped numbers in (see
+          # Statements#emit_repeat_in_registers): a number the body works out as the count times a
+          # number written in the program steps by that number each turn, held in one of these
+          # rather than multiplied out from the count every time it is read.
+          STEP_REGISTERS = [4, 5, 6, 7, 8].freeze
+
+          # The kinds of node a body may hold for the loop to keep its stepped numbers in
+          # STEP_REGISTERS. A list of what is known to leave them alone, not of what is known to
+          # touch them, because much of the lowering works in them: a rectangle drawn at a place
+          # the game works out keeps its corners there, a sort its place in the list, a sound its
+          # channel's numbers. These are the plain kinds a counted Ruby loop's body is made of,
+          # numbers and lists and tests, which the lowering works out in r0 to r3 alone (a divide
+          # the game works out reaches the console's routine, and already keeps a loop from the
+          # fast shape). The test that sweeps each kind reads its code to prove it.
+          KEEPS_STEP_REGISTERS = %i[set add sub copy negate abs clamp if else int var_ref neg bit_not
+                                    binop list_get list_set table_get].freeze
+
+          # Whether everything in this loop's body leaves STEP_REGISTERS alone (KEEPS_STEP_REGISTERS).
+          def keeps_step_registers?(node)
+            node.children.all? { |statement| statement.walk.all? { |inner| KEEPS_STEP_REGISTERS.include?(inner.kind) } }
+          end
+
           # How many statements are worth bracketing before giving up the registers is cheaper.
           # A bracket is the count written out to its variable, then the registers saved and
           # restored around the statement — three instructions, or two for a loop counting down,

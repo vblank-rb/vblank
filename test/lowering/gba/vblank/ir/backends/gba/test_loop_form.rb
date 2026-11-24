@@ -274,6 +274,98 @@ class TestLoopForm < Minitest::Test
     assert_empty wrong, "these statement kinds left the loop around them counting wrong"
   end
 
+  # The same kind of claim for the registers a held loop keeps its stepped numbers in
+  # (LoopForm::STEP_REGISTERS): every kind LoopForm::KEEPS_STEP_REGISTERS names leaves them alone.
+  # Each body is a held loop alone in a routine of its own, and the routine's instructions are
+  # read for any that writes r4 to r8 or reaches other code (a write of the link register). A
+  # rectangle drawn at a place the game works out, which keeps its corners in r4 to r7, is read
+  # too, to show the reading finds one.
+  def test_the_kinds_that_keep_step_registers_write_none_of_them
+    bodies = step_sweep_bodies
+    rom = VBlank.build("STEPSWEEP", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      xs = list :xs, capacity: 8
+      bytes = list :bytes, capacity: 8, width: :byte
+      8.times { |i| xs << (i + 1) }
+      8.times { |i| bytes << i }
+      curve = table :curve, (0...8).map { |i| i * 3 }
+      n = var :n, 5
+      other = var :other, 2
+      b = self
+      made = {
+        set: ->(_i) { n = 3 },
+        add: ->(_i) { n += 1 },
+        sub: ->(_i) { n -= 1 },
+        copy: ->(_i) { b.copy_variable! :n, :other },
+        negate: ->(_i) { n.flip! },
+        abs: ->(_i) { n.abs! },
+        clamp: ->(_i) { n.clamp! 0, 9 },
+        approach: ->(_i) { n.approach! 4, 1 },
+        branch: ->(_i) { if n > 2 then n = 1 else n = 8 end },
+        arithmetic: ->(i) { n = ((other * 3) + (i * 5) - (n * other)) ^ (i << 2) },
+        bits: ->(i) { n = ~other & ((i | 3) >> 1) },
+        negative: ->(_i) { n = -other },
+        divides: ->(i) { n = (other / 4) + (i % 8) + (other / 3) + (n % 5) },
+        list_read: ->(i) { n = xs[i] + bytes[i] },
+        list_write: ->(i) { xs[i] = 2; bytes[i] = n },
+        table_read: ->(i) { n = curve[i] },
+        draw_rect_at: ->(_i) { b.draw_rect_at other, 20, 4, 4, :green },
+      }
+      made.each_key { |kind| func(:"body_#{kind}") { b.repeat(7) { |i| made[kind].call(i) } } }
+      game_loop { made.each_key { |kind| b.call :"body_#{kind}" } }
+    end
+    program = rom.built.source_program
+    backend = GBA.new
+    code = backend.lower(program)
+    loops = program.walk.select { |node| node.kind == :func && node.name.start_with?("body_") }
+                   .to_h { |func| [func.name.to_s.delete_prefix("body_").to_sym, func.children.find { |each| each.kind == :repeat }] }
+
+    assert_equal bodies, loops.keys
+    kept = loops.select { |_, loop| LoopForm.keeps_step_registers?(loop) }.keys
+    assert_equal bodies - [:draw_rect_at], kept, "every body but the rectangle is made of kinds that keep them"
+    covered = loops.values.flat_map { |loop| loop.children.flat_map { |statement| statement.walk.map(&:kind) } }.uniq
+    assert_empty LoopForm::KEEPS_STEP_REGISTERS - covered, "a kind said to keep the step registers that no body here holds"
+
+    touching = bodies.select do |kind|
+      span = backend.func_ranges.fetch(:"body_#{kind}")
+      table = backend.number_tables[:"body_#{kind}"]
+      instructions = table ? (span.begin...table.begin) : span
+      instructions.step(4).any? { |at| touches_step_registers?(code.byteslice(at, 4).unpack1("V")) }
+    end
+    assert_equal [:draw_rect_at], touching
+  end
+
+  private def step_sweep_bodies
+    %i[set add sub copy negate abs clamp approach branch arithmetic bits negative divides
+       list_read list_write table_read draw_rect_at]
+  end
+
+  # Whether one ARM instruction writes r4 to r8 or the link register, as a call does (GBATEK,
+  # "ARM Instruction Summary"): a branch with link or a software interrupt, a multiply's
+  # destination, a load's register or a write-back base, a block load's list, or a data
+  # processing destination other than a compare's.
+  private def touches_step_registers?(word)
+    written =
+      if (word & 0x0F000000) == 0x0B000000 || (word & 0x0F000000) == 0x0F000000 then [14]
+      elsif (word & 0x0FFFFFF0) == 0x012FFF10 || (word & 0x0E000000) == 0x0A000000 then []
+      elsif (word & 0x0FC000F0) == 0x00000090 then [(word >> 16) & 0xF]
+      elsif (word & 0x0F8000F0) == 0x00800090 then [(word >> 16) & 0xF, (word >> 12) & 0xF]
+      elsif ((word & 0x0E000090) == 0x00000090 && (word & 0x60) != 0) || (word & 0x0C000000) == 0x04000000
+        transferred_registers(word)
+      elsif (word & 0x0E000000) == 0x08000000
+        (word[20] == 1 ? (0..15).select { |reg| word[reg] == 1 } : []) + (word[21] == 1 ? [(word >> 16) & 0xF] : [])
+      elsif (word & 0x0C000000).zero?
+        (8..11).cover?((word >> 21) & 0xF) && word[20] == 1 ? [] : [(word >> 12) & 0xF]
+      else [14]
+      end
+    written.any? { |reg| LoopForm::STEP_REGISTERS.include?(reg) || reg == 14 }
+  end
+
+  # A single load or store: its register when it loads, and its base when the base is written back.
+  private def transferred_registers(word)
+    (word[20] == 1 ? [(word >> 12) & 0xF] : []) + (word[24].zero? || word[21] == 1 ? [(word >> 16) & 0xF] : [])
+  end
+
   # --- and both shapes count right, which is the half that matters ---
 
   # The same program either way: one loop the build can hold, one it cannot, both summing a
