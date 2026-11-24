@@ -32,7 +32,8 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
 
   # +notes+ notes +apart+ ticks apart, each +lasting+ ticks then a rest, at +rate+ ticks a second.
   # With +work+ each pass of the game counts that high first. The effect plays on pass +played_on+.
-  private def game(rate:, apart:, lasting:, notes: 5, work: 0)
+  # With +recording+ a silent recording loops from the second pass, and holds the timer.
+  private def game(rate:, apart:, lasting:, notes: 5, work: 0, recording: false)
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: :E5, length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: struck)])
@@ -41,8 +42,10 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
       sfx = sound_effects :sfx, { chime: effect }
       pass = var :pass, 0
       busy = var :busy, 0
+      quiet = (sample :quiet, pcm: Array.new(4000, 0) if recording)
       game_loop do
         pass += 1
+        quiet.play(loop: true) if recording && pass == 2
         sfx.play :chime if pass == PLAYED_ON
         repeat(work) { busy += 1 } if work.positive?
       end
@@ -103,6 +106,12 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
     assert_struck_apart(rate: 50, apart: 3, lasting: 1, notes: 8, work: SLOW_WORK) do |sound|
       assert_operator sound.passes, :<=, FRAMES / 2, "every pass takes two frames or more"
     end
+  end
+
+  # A game that plays a recording plays it on the timer, so the strikes wait for their lines on the
+  # display's line match instead (Pan Docs, "LCD Status Registers").
+  def test_a_game_playing_a_recording_strikes_its_notes_on_their_lines
+    assert_struck_apart(rate: 50, apart: 3, lasting: 1, recording: true)
   end
 
   # A note struck part way through a frame on a voice still sounding the note before, the new one

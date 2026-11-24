@@ -125,7 +125,8 @@ module VBlank
               end
               asm.load_high(h::TAC, :a) if clips && !dark # a timer counting the dark frames counts on
               asm.load_high(h::IF, :a)
-              asm.load(:a, clips || dark || strikes ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
+              asm.load(:a, (clips || dark || strikes ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK) |
+                           (memory && Strikes.line?(memory) ? h::INT_STAT : 0))
               asm.load_high(h::IE, :a)
               asm.ei
               asm.call("rt_start")

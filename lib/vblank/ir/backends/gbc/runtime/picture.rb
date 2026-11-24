@@ -1319,8 +1319,11 @@ module VBlank
               asm.load(:a, :b)
               asm.add_a([:hl])
               asm.load_high(h::SCX, :a)
-              asm.load_high(:a, h::IE)
-              asm.and_a(h::INT_STAT) # on already
+              # In a game whose sound effects' strikes wait for the line match (Runtime::Strikes), the
+              # display's interrupt stays on for them, and the end of each line is what is switched.
+              strikes = Strikes.line?(memory)
+              asm.load_high(:a, strikes ? h::STAT : h::IE)
+              asm.and_a(strikes ? STAT_HBLANK : h::INT_STAT) # on already
               asm.ret(:nz)
               asm.load_high(:a, h::IF) # the line interrupt asked for while it was off is not answered
               asm.and_a(~h::INT_STAT & 0xFF)
@@ -1333,9 +1336,15 @@ module VBlank
               asm.load_high(h::IE, :a)
               asm.ret
               asm.label("rt_bends_first_row_flat")
-              asm.load_high(:a, h::IE)
-              asm.and_a(~h::INT_STAT & 0xFF)
-              asm.load_high(h::IE, :a)
+              if strikes
+                asm.load_high(:a, h::STAT)
+                asm.and_a(~STAT_HBLANK & 0xFF)
+                asm.load_high(h::STAT, :a)
+              else
+                asm.load_high(:a, h::IE)
+                asm.and_a(~h::INT_STAT & 0xFF)
+                asm.load_high(h::IE, :a)
+              end
               asm.ret
 
               # The rest of the rows into BENDS, for the line interrupt to read, after the blank's
@@ -1381,6 +1390,12 @@ module VBlank
               # first, for the frame after the blank — which a pass running late leaves to this.
               asm.label("rt_hblank_interrupt")
               %i[af de hl].each { |pair| asm.push(pair) }
+              if Strikes.line?(memory) # the line match the strikes wait for, or a line's end
+                asm.call("rt_strikes_due")
+                asm.load_high(:a, h::STAT)
+                asm.and_a(STAT_HBLANK)
+                asm.jump_relative(:z, "rt_hblank_interrupt_done")
+              end
               covers = memory.reserved?(BAR_COVERS)
               emit_line_before_bar(asm, memory) if covers
               asm.load_high(:a, h::LY)

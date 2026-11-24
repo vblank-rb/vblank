@@ -581,7 +581,8 @@ module VBlank
               asm.load_high(h::TAC, :a)
               asm.call("rt_display_on")
               asm.call("rt_shown_is_passes")
-              asm.load(:a, clips || Strikes.any?(memory) ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
+              asm.load(:a, (clips || Strikes.any?(memory) ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK) |
+                           (Strikes.line?(memory) ? h::INT_STAT : 0))
               asm.load_high(h::IE, :a)
               asm.load_high(:a, h::IF)
               asm.and_a(~h::INT_TIMER & 0xFF)

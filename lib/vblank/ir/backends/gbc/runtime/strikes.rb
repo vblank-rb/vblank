@@ -36,8 +36,16 @@ module VBlank
           # the counts to go, so its interrupt comes as the line does (Pan Docs, "Timer and Divider
           # Registers"). The interrupt writes every entry whose line has come and sets the timer going
           # for the next, or stops it. A wait longer than the timer holds sets it for as long as it
-          # holds, and the interrupt sets it again. In a game that plays a recording the timer is the
-          # recording's (Runtime::Clips), and its notes are written as the frame plays, as before.
+          # holds, and the interrupt sets it again.
+          #
+          # In a game that plays a recording the timer is the recording's (Runtime::Clips), and the
+          # alarm is the display's line match instead (#emit_set_line): LYC set to the line the entry
+          # is due on, and the display's interrupt raised as it starts that line, which the line
+          # interrupt shares with a bent background's rows (Runtime::Picture, rt_hblank_interrupt): it
+          # answers the strikes first, and bends a row only at a line's end. The display's interrupt
+          # then stays on, and a background with no bend switches off the line's end rather than the
+          # interrupt. A game whose status bar covers the sprites holds the line match for the bar's
+          # top, and with a recording its notes are written as the frame plays, as before.
           #
           # ### Writes outside the pass
           #
@@ -78,13 +86,23 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # Reserved in a game whose recording holds the timer: the alarm is the display's line match.
+            LINE_ALARM = "rt strikes line alarm"
+
+            def reserve(memory, line: false)
               [STRIKING, HEAD, TAIL].each { |name| memory.reserve(name, 1) }
+              memory.reserve(LINE_ALARM, 1) if line
               [BLANK_LINES, BASE, ACCUM, DUE].each { |name| memory.reserve(name, 2) }
               memory.reserve_in_page(LIST, 0x100)
             end
 
             def any?(memory) = memory.reserved?(LIST)
+
+            # Is the alarm the display's line match (#emit_set_line), the timer being a recording's?
+            def line?(memory) = memory.reserved?(LINE_ALARM)
+
+            # The interrupt the alarm raises.
+            def alarm_interrupt(memory) = line?(memory) ? Console::GBCHardware::INT_STAT : Console::GBCHardware::INT_TIMER
 
             # The tick's place in its frame is kept in lines over 2^fraction_bits: lines and 256ths
             # where a tick is shorter than 255 lines, whole lines where it is longer (and a frame then
@@ -99,7 +117,7 @@ module VBlank
               emit_put(asm, memory)
               emit_line_now(asm, memory)
               emit_due(asm, memory)
-              emit_alarm(asm)
+              emit_alarm(asm) unless line?(memory)
               emit_frame(asm, memory, step)
               emit_later(asm)
               emit_multiply(asm)
@@ -133,7 +151,7 @@ module VBlank
               asm.label("rt_sound_put")
               %i[af bc de hl].each { |pair| asm.push(pair) }
               asm.load(:b, :a)
-              emit_hold_alarm(asm)
+              emit_hold_alarm(asm, memory)
               asm.load(:a, [memory[STRIKING]])
               asm.and_a(:a)
               asm.jump_relative(:z, "rt_sound_put_outside")
@@ -214,11 +232,11 @@ module VBlank
             # interrupts are on: IE without the timer, IE as it was kept on the stack. The music is
             # played with only the timer's interrupt let in (Runtime::Frame), so a strike due as it
             # plays is struck then, and never in the middle of the list being changed. Uses A.
-            def emit_hold_alarm(asm)
+            def emit_hold_alarm(asm, memory)
               h = Console::GBCHardware
               asm.load_high(:a, h::IE)
               asm.push(:af)
-              asm.and_a(~h::INT_TIMER & 0xFF)
+              asm.and_a(~alarm_interrupt(memory) & 0xFF)
               asm.load_high(h::IE, :a)
             end
 
@@ -275,7 +293,7 @@ module VBlank
               asm.xor_a(:a)
               asm.label("rt_strikes_body")
               asm.load(:b, :a)
-              emit_hold_alarm(asm)
+              emit_hold_alarm(asm, memory)
               asm.load(:a, :b)
               asm.push(:af) # whether every entry is written: kept at the top of the stack
               asm.label("rt_strikes_next")
@@ -306,7 +324,7 @@ module VBlank
               asm.jump_relative(:nz, "rt_strikes_write")
               asm.or_a(:e)
               asm.jump_relative(:z, "rt_strikes_write")
-              emit_set_timer(asm)
+              line?(memory) ? emit_set_line(asm) : emit_set_timer(asm)
               asm.jump_relative("rt_strikes_out")
 
               asm.label("rt_strikes_write")
@@ -322,8 +340,14 @@ module VBlank
               asm.jump("rt_strikes_next")
 
               asm.label("rt_strikes_empty")
-              asm.xor_a(:a)
-              asm.load_high(h::TAC, :a)
+              if line?(memory)
+                asm.load_high(:a, h::STAT)
+                asm.and_a(~Picture::STAT_LINE_MATCH & 0xFF)
+                asm.load_high(h::STAT, :a)
+              else
+                asm.xor_a(:a)
+                asm.load_high(h::TAC, :a)
+              end
               asm.label("rt_strikes_out")
               asm.pop(:af)
               emit_let_alarm(asm)
@@ -372,6 +396,35 @@ module VBlank
               asm.load_high(h::TMA, :a)
               asm.load(:a, TIMER_ON)
               asm.load_high(h::TAC, :a)
+            end
+
+            # The display's line match set for DE lines from now (1 or more), in a game whose recording
+            # holds the timer: LYC the line the display will be on then, or the line before this one,
+            # a frame on, where that is further. The display raises its interrupt as it starts that
+            # line (Pan Docs, "LCD Status Registers"), and the line interrupt answers it with
+            # rt_strikes_due (Runtime::Picture, rt_hblank_interrupt); written as the display is on that
+            # line already, it raises it at once.
+            def emit_set_line(asm)
+              h = Console::GBCHardware
+              asm.load(:a, :d)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_strikes_line_far")
+              asm.load(:a, :e)
+              asm.cp_a(LINES_A_FRAME)
+              asm.jump_relative(:c, "rt_strikes_line_near")
+              asm.label("rt_strikes_line_far")
+              asm.load(:e, LINES_A_FRAME - 1)
+              asm.label("rt_strikes_line_near")
+              asm.load_high(:a, h::LY)
+              asm.add_a(:e)
+              asm.cp_a(LINES_A_FRAME)
+              asm.jump_relative(:c, "rt_strikes_line_set")
+              asm.sub_a(LINES_A_FRAME)
+              asm.label("rt_strikes_line_set")
+              asm.load_high(h::LYC, :a)
+              asm.load_high(:a, h::STAT)
+              asm.or_a(Picture::STAT_LINE_MATCH)
+              asm.load_high(h::STAT, :a)
             end
 
             # rt_strikes_alarm: the timer's interrupt. It is stopped, and rt_strikes_due writes what
