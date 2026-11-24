@@ -827,13 +827,22 @@ module VBlank
           # Read-modify-write one pixel whose coordinates are computed at run time: the
           # address and which half to touch both come from the live x/y. r2/r3 hold
           # x/y; r1 the unit address; r0 the value being spliced; r4/r5 scratch.
+          #
+          # ## Why a pixel is a read, a change and a write
+          #
+          # A pixel here is one byte, a number picking out of the colour table, but video memory
+          # takes only whole 16-bit units, so a lone byte cannot be stored. The unit holding the
+          # pixel is read, its half is replaced, and the unit written back:
+          #
+          #   unit at an even address:  [ low byte: even x | high byte: odd x ]
+          #   read it (r0), keep the half that is not ours, put the colour number in ours, store it.
           def emit_pixel_buffered_runtime(node, index)
             @lowering.value(node.x)
             emit(ASM.mov_reg(2, ACC))
             @lowering.value(node.y)
             emit(ASM.mov_reg(3, ACC))
 
-            emit_number(4, SCREEN_WIDTH)
+            emit_number(4, SCREEN_WIDTH)    # a byte a pixel, so a row is SCREEN_WIDTH bytes
             emit(ASM.mul(4, 3, 4))          # r4 = y * width
             emit(ASM.add_reg(4, 4, 2))      # r4 = y*width + x (byte offset)
             load_var(5, BACKBUF)            # r5 = hidden page base
@@ -1222,6 +1231,16 @@ module VBlank
             bmp.height.times { |row| emit_blit_row_buffered(bmp, row) }
           end
 
+          #
+          # ## A row, from the picture to the page
+          #
+          #   picture row (bytes):     [ ..cut.. | shown part, r4 pixels | ..cut.. ]
+          #   copied by the engine:                r5 ---------------------> r3
+          #   hidden page, line r9:    [          ...      r3 ........ ]
+          #
+          # Each row goes through the same five steps below: is the line on the page, which part
+          # of the row is left after the sides, the odd single pixels at an area's edge, the two
+          # addresses, and the copy.
           def emit_blit_row_buffered(bmp, row)
             skip = gensym
             emit_add_const(BLIT_ROW_Y, BLIT_Y, row, SPARE)
