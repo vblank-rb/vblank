@@ -127,6 +127,11 @@ module VBlank
           # Where one picture ended up. +bank+ is nil for a wide picture (its numbers
           # run across the whole table); otherwise the group of sixteen it draws from.
           # +indices+ maps each of its colours to the number to write for that pixel.
+          # One group of colours being laid out: its 15-bit +colors+, whether an author's own list fixed
+          # them (+fixed+), the picture list it is kept to (+keeps_to+, or nil) and its +group+ of sixteen.
+          # Colours and fixed are written as pictures join it, so it is a Struct.
+          Bank = Struct.new(:colors, :fixed, :keeps_to, :group, keyword_init: true)
+
           Placement = Data.define(:bank, :indices) do
             def narrow? = !bank.nil?
 
@@ -243,7 +248,7 @@ module VBlank
             first_own = base.first_free_bank
             (@pictures - wide).sort_by { |picture| -picture.colors.size }.each do |picture|
               shared = base.laid.find { |bank| fits_existing_bank?(bank, picture) }
-              next place_in_existing_bank(picture, shared, shared[:group]) if shared
+              next place_in_existing_bank(picture, shared, shared.group) if shared
 
               bank = bank_for(picture, banks, first: first_own, room: room)
               next spilled << picture if bank.nil?
@@ -273,10 +278,10 @@ module VBlank
 
           # Can +picture+ read an existing group without changing it?
           def fits_existing_bank?(bank, picture)
-            return false unless bank[:keeps_to] == picture.keeps_to
-            return bank[:fixed] && self.class.same_drawn_colors?(bank[:colors], picture.authored) if picture.authored?
+            return false unless bank.keeps_to == picture.keeps_to
+            return bank.fixed && self.class.same_drawn_colors?(bank.colors, picture.authored) if picture.authored?
 
-            picture.colors.all? { |color| bank[:colors].include?(color) }
+            picture.colors.all? { |color| bank.colors.include?(color) }
           end
 
           def place_in_existing_bank(picture, bank, slot)
@@ -312,7 +317,7 @@ module VBlank
             place_wide(wide)
             @first_group_spare = @first_entry_shown && @entries.size == 1
 
-            banks = [] # each: { colors: [15-bit, ...], fixed: bool, keeps_to:, group: }
+            banks = []
             narrow = @pictures - wide
             spilled = []
             # Biggest first: a picture with many colours has the fewest banks it could
@@ -361,7 +366,7 @@ module VBlank
             group = next_group(picture, banks, first, room)
             return nil if group.nil?
 
-            banks << { colors: [], fixed: false, keeps_to: picture.keeps_to, group: group }
+            banks << Bank.new(colors: [], fixed: false, keeps_to: picture.keeps_to, group: group)
             banks.size - 1
           end
 
@@ -378,30 +383,30 @@ module VBlank
             group = first + banks.size
             return group if group < room
             return nil unless @first_group_spare && picture.keeps_to.nil?
-            return nil if banks.any? { |bank| bank[:group].zero? }
+            return nil if banks.any? { |bank| bank.group.zero? }
 
             0
           end
 
           def bank_takes?(bank, picture)
-            return false unless bank[:keeps_to] == picture.keeps_to
-            return bank[:fixed] && self.class.same_drawn_colors?(bank[:colors], picture.authored) if picture.authored?
-            return picture.colors.all? { |color| bank[:colors].include?(color) } if bank[:fixed]
+            return false unless bank.keeps_to == picture.keeps_to
+            return bank.fixed && self.class.same_drawn_colors?(bank.colors, picture.authored) if picture.authored?
+            return picture.colors.all? { |color| bank.colors.include?(color) } if bank.fixed
 
-            (bank[:colors] | picture.colors).size <= BANK_COLORS
+            (bank.colors | picture.colors).size <= BANK_COLORS
           end
 
           def place_narrow(picture, index, banks)
             bank = banks[index]
             if picture.authored?
-              bank[:colors] = picture.authored
-              bank[:fixed] = true
-            elsif !bank[:fixed] # an automatic picture that joined an authored bank only reads it
-              bank[:colors] |= picture.colors
+              bank.colors = picture.authored
+              bank.fixed = true
+            elsif !bank.fixed # an automatic picture that joined an authored bank only reads it
+              bank.colors |= picture.colors
             end
 
             indices = picture.colors.to_h { |color| [color, slot_in(bank, color)] }
-            @placements[picture.key] = Placement.new(bank: bank[:group], indices: indices)
+            @placements[picture.key] = Placement.new(bank: bank.group, indices: indices)
           end
 
           # An authored bank is the author's list as given, see-through slot included,
@@ -416,9 +421,9 @@ module VBlank
           # character comes out full of holes where his outline was. The author's own black
           # sits further along the list; that is the one to find.
           def slot_in(bank, color)
-            return drawable_slot(bank[:colors], color) if bank[:fixed]
+            return drawable_slot(bank.colors, color) if bank.fixed
 
-            bank[:colors].index(color) + 1
+            bank.colors.index(color) + 1
           end
 
           # Where +color+ sits in an authored list, looking only at the slots that draw.
@@ -434,12 +439,12 @@ module VBlank
             @laid = banks
             backdrop = @entries[0]
             banks.each do |bank|
-              start = bank[:group] * BANK_SIZE
+              start = bank.group * BANK_SIZE
               @entries[start, BANK_SIZE] = Array.new(BANK_SIZE, 0x0000)
-              bank[:colors].each_with_index do |color, offset|
+              bank.colors.each_with_index do |color, offset|
                 # An automatic bank keeps slot 0 for see-through; an authored one put
                 # its own see-through entry there.
-                @entries[start + offset + (bank[:fixed] ? 0 : 1)] = color
+                @entries[start + offset + (bank.fixed ? 0 : 1)] = color
               end
               @entries[0] = backdrop if start.zero? && @first_entry_shown
             end
