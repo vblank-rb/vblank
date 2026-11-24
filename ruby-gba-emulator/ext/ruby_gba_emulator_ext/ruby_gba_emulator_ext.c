@@ -1136,6 +1136,166 @@ mgba_core_bus_write32(VALUE self, VALUE addr, VALUE value)
     return Qnil;
 }
 
+/* What an Advance's state leaves out of its sound, kept after the state in the file.
+ *
+ * ### The pitch of each tone voice
+ *
+ * A voice's pitch is written to a register a game cannot read back: the low eleven bits of
+ * SOUND1CNT_X, SOUND2CNT_H and SOUND3CNT_X are write-only (GBATEK, "GBA Sound Channel 1"). The
+ * libmgba this is built against keeps a register as it reads, so its state holds no pitch, and
+ * loading one writes those registers back with the pitch bits clear: every tone sounding as the
+ * state was saved comes back at the lowest note the voice has, and the wave voice's rate is 0.
+ * (The square voice's sweep keeps a copy, the wave and second square voices nothing.)
+ *
+ * The state leaves out more of each voice than its pitch: where the wave voice is in its 32 steps
+ * (its phase), each voice's level until its next step, and when each voice last stepped, which it
+ * keeps from before the console's clock is put back, so a square voice comes back out of phase.
+ * So each voice is kept whole, as the emulator holds it, with how long before the save each last
+ * stepped, and put back so, on the clock as loaded.
+ *
+ * ### The sound already made
+ *
+ * The mixer hands its sound to blip_buf as steps from the last level it gave (lastLeft,
+ * lastRight), and blip_buf turns them into samples through its own running sum, with steps of
+ * the stretch still open waiting in its buffer (see read_blip_keeping_open_steps). None of that is
+ * in the state, so a console put back carries on from the level, sum and open steps of whatever
+ * it played before the load: a click, and the first frame's samples are not the ones the console
+ * made. All of it is kept here and put back, so the sound after a load is the sound it made.
+ *
+ * ### Where it is kept
+ *
+ * After the state, as a trailer of the probe's own: each speaker's blip_buf buffer, its ints as
+ * they lie, then the SoundTrailer, which ends with a mark. A state file is a PNG, and a reader of
+ * one stops at its last chunk, so the trailer is invisible to mGBA and to any other reader. Loading
+ * puts these back after mGBA has put back the rest. A state with no trailer (from mGBA itself), or
+ * written by a build whose voices or buffers are of another size, loads as mGBA loads it. */
+static const char SOUND_TRAILER_MARK[8] = { 'V', 'B', 'S', 'O', 'U', 'N', 'D', '1' };
+struct BlipKept {
+    unsigned long long offset;
+    int avail;
+    int size;
+    int integrator;
+};
+struct SoundTrailer {
+    struct BlipKept left;
+    struct BlipKept right;
+    /* Each voice whole, as the emulator holds it: its pitch, its phase, its level now. */
+    struct GBAudioSquareChannel square1;
+    struct GBAudioSquareChannel square2;
+    struct GBAudioWaveChannel wave;
+    struct GBAudioNoiseChannel noise;
+    int32_t voices_bytes;   /* the size of the four, so another build of mGBA's are not read */
+    int32_t since[4];       /* how long before now each voice last stepped (the noise voice's last event) */
+    int32_t clock;
+    int16_t last_left;
+    int16_t last_right;
+    int32_t buffer_bytes;   /* of each speaker's buffer, written before this */
+    char mark[8];           /* last, so a reader finds it at the end of the file */
+};
+
+#define VOICES_BYTES ((int32_t)(2 * sizeof(struct GBAudioSquareChannel) + sizeof(struct GBAudioWaveChannel) + \
+                                sizeof(struct GBAudioNoiseChannel)))
+
+static size_t
+blip_buffer_bytes(struct blip_t *blip)
+{
+    return (size_t)(((struct BlipBuffer *)blip)->size + BLIP_EXTRA_SAMPLES) * sizeof(int);
+}
+
+static void
+keep_blip(struct blip_t *blip, struct BlipKept *kept)
+{
+    struct BlipBuffer *m = (struct BlipBuffer *)blip;
+    kept->offset = m->offset;
+    kept->avail = m->avail;
+    kept->size = m->size;
+    kept->integrator = m->integrator;
+}
+
+static void
+put_back_blip(struct blip_t *blip, const struct BlipKept *kept, const void *buffer)
+{
+    struct BlipBuffer *m = (struct BlipBuffer *)blip;
+    m->offset = kept->offset;
+    m->avail = kept->avail;
+    m->integrator = kept->integrator;
+    memcpy(m + 1, buffer, blip_buffer_bytes(blip));
+}
+
+static void
+write_sound_trailer(struct mCore *core, struct VFile *vf)
+{
+    if (core->platform(core) != mPLATFORM_GBA) return;
+    struct GBA *gba = (struct GBA *)core->board;
+    struct GBAAudio *audio = &gba->audio;
+    struct SoundTrailer trailer;
+    memset(&trailer, 0, sizeof(trailer));
+    keep_blip(audio->psg.left, &trailer.left);
+    keep_blip(audio->psg.right, &trailer.right);
+    trailer.square1 = audio->psg.ch1;
+    trailer.square2 = audio->psg.ch2;
+    trailer.wave = audio->psg.ch3;
+    trailer.noise = audio->psg.ch4;
+    trailer.voices_bytes = VOICES_BYTES;
+    int32_t now = mTimingCurrentTime(&gba->timing);
+    trailer.since[0] = now - audio->psg.ch1.lastUpdate;
+    trailer.since[1] = now - audio->psg.ch2.lastUpdate;
+    trailer.since[2] = now - audio->psg.ch3.nextUpdate;
+    trailer.since[3] = now - (int32_t)audio->psg.ch4.lastEvent;
+    trailer.clock = audio->clock;
+    trailer.last_left = audio->lastLeft;
+    trailer.last_right = audio->lastRight;
+    trailer.buffer_bytes = (int32_t)blip_buffer_bytes(audio->psg.left);
+    memcpy(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark));
+
+    vf->seek(vf, 0, SEEK_END);
+    vf->write(vf, (struct BlipBuffer *)audio->psg.left + 1, (size_t)trailer.buffer_bytes);
+    vf->write(vf, (struct BlipBuffer *)audio->psg.right + 1, (size_t)trailer.buffer_bytes);
+    vf->write(vf, &trailer, sizeof(trailer));
+}
+
+static void
+read_sound_trailer(struct mCore *core, struct VFile *vf)
+{
+    if (core->platform(core) != mPLATFORM_GBA) return;
+    struct GBA *gba = (struct GBA *)core->board;
+    struct GBAAudio *audio = &gba->audio;
+    struct SoundTrailer trailer;
+    ssize_t size = vf->size(vf);
+    if (size < (ssize_t)sizeof(trailer)) return;
+    if (vf->seek(vf, -(off_t)sizeof(trailer), SEEK_END) < 0) return;
+    if (vf->read(vf, &trailer, sizeof(trailer)) != (ssize_t)sizeof(trailer)) return;
+    if (memcmp(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark)) != 0) return;
+
+    if (trailer.voices_bytes != VOICES_BYTES) return;
+    audio->psg.ch1 = trailer.square1;
+    audio->psg.ch2 = trailer.square2;
+    audio->psg.ch3 = trailer.wave;
+    audio->psg.ch4 = trailer.noise;
+    int32_t now = mTimingCurrentTime(&gba->timing);
+    audio->psg.ch1.lastUpdate = now - trailer.since[0];
+    audio->psg.ch2.lastUpdate = now - trailer.since[1];
+    audio->psg.ch3.nextUpdate = now - trailer.since[2];
+    audio->psg.ch4.lastEvent = (uint32_t)(now - trailer.since[3]);
+
+    size_t bytes = blip_buffer_bytes(audio->psg.left);
+    if ((size_t)trailer.buffer_bytes != bytes || trailer.left.size != ((struct BlipBuffer *)audio->psg.left)->size) return;
+    if (size < (ssize_t)(sizeof(trailer) + 2 * bytes)) return;
+    void *left = malloc(bytes);
+    void *right = malloc(bytes);
+    if (left && right &&
+        vf->seek(vf, -(off_t)(sizeof(trailer) + 2 * bytes), SEEK_END) >= 0 &&
+        vf->read(vf, left, bytes) == (ssize_t)bytes && vf->read(vf, right, bytes) == (ssize_t)bytes) {
+        put_back_blip(audio->psg.left, &trailer.left, left);
+        put_back_blip(audio->psg.right, &trailer.right, right);
+        audio->clock = trailer.clock;
+        audio->lastLeft = trailer.last_left;
+        audio->lastRight = trailer.last_right;
+    }
+    free(left);
+    free(right);
+}
+
 /* Core#save_state_to_file(path)                             */
 /* Save the complete emulator state to a file.               */
 /* Returns true on success, false on failure.                */
@@ -1148,12 +1308,13 @@ mgba_core_save_state_to_file(VALUE self, VALUE rb_path)
     Check_Type(rb_path, T_STRING);
     const char *path = StringValueCStr(rb_path);
 
-    struct VFile *vf = VFileOpen(path, O_CREAT | O_TRUNC | O_WRONLY);
+    struct VFile *vf = VFileOpen(path, O_CREAT | O_TRUNC | O_RDWR);
     if (!vf) {
         rb_raise(rb_eRuntimeError, "Cannot open state file for writing: %s", path);
     }
 
     bool ok = mCoreSaveStateNamed(mc->core, vf, SAVESTATE_ALL);
+    if (ok) write_sound_trailer(mc->core, vf);
     vf->close(vf);
     return ok ? Qtrue : Qfalse;
 }
@@ -1177,6 +1338,7 @@ mgba_core_load_state_from_file(VALUE self, VALUE rb_path)
     }
 
     bool ok = mCoreLoadStateNamed(mc->core, vf, SAVESTATE_ALL);
+    if (ok) read_sound_trailer(mc->core, vf);
     vf->close(vf);
     mc->feed_queue.known = 0; /* the sound queue is the state's now, and nothing says where its words came from */
     return ok ? Qtrue : Qfalse;

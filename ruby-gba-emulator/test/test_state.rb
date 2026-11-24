@@ -49,6 +49,43 @@ class TestRubyGBAEmulatorState < Minitest::Test
     end
   end
 
+  # The pitch of a voice is written to a register a game cannot read back, so mGBA's state, which
+  # puts the voices back from the registers as they read, has no pitch to give them: a tone held as
+  # the state is saved comes back as the lowest note there is. Nor does the state hold the sound
+  # already mixed. The probe keeps both with the state and gives them back, so the sound after a
+  # load is the sound the console made, sample for sample.
+  def test_a_tone_held_as_a_state_is_saved_is_heard_as_it_was_after_loading
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "moment.state")
+      rom = build_rom("TONE", code: "TTON") do
+        screen :bitmap
+        clear_screen :black
+        enable_sound
+        wave :square, :A4
+        wave :triangle, 440
+        game_loop {}
+      end
+
+      heard = ->(probe) { probe.audio_by_frame.map { |frame| frame.unpack("s<*") } }
+      played_on = with_probe(rom) do |probe|
+        probe.step(20)
+        probe.save_state(path)
+        probe.step(10)
+        [heard.call(probe), probe.wave_rate]
+      end
+      loaded = with_probe(rom) do |probe|
+        probe.load_state(path)
+        probe.step(10)
+        [heard.call(probe), probe.wave_rate]
+      end
+
+      assert_equal played_on.last, loaded.last, "the wave voice's pitch"
+      apart = played_on.first.flatten.zip(loaded.first.flatten).map { |one, other| (one - (other || 0)).abs }
+      assert_equal played_on.first.map(&:size), loaded.first.map(&:size), "as many samples each frame"
+      assert_equal 0, apart.max, "every sample of the ten frames after the state, the first apart at #{apart.index(&:positive?)}"
+    end
+  end
+
   def test_a_state_says_which_cartridge_it_came_from
     Dir.mktmpdir do |dir|
       path = File.join(dir, "moment.state")
