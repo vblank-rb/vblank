@@ -142,6 +142,60 @@ class TestPlainRubyArrays < Minitest::Test
     assert_equal [1, 1, 0, 1], player.list(:shown)
   end
 
+  # A game that wrote an Array is told about the Array it wrote, never a `list` line.
+  def test_a_table_copy_of_another_width_is_refused_naming_the_array
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        letters = table :letters, [1, 0, 1, 1]
+        shown = Array.new(4, 0)
+        game_loop { shown.copy_from letters, at: 0, count: 4 }
+      end
+    end
+
+    assert_match(/`shown.copy_from`/, error.message)
+    refute_match(/list :/, error.message)
+  end
+
+  def test_a_fill_past_the_end_is_refused_naming_the_array
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        board = Array.new(8, 0)
+        game_loop { board.fill 1, from: 6, count: 4 }
+      end
+    end
+
+    assert_match(/`board.fill`/, error.message)
+    refute_match(/list :/, error.message)
+  end
+
+  def test_a_fill_of_an_array_the_game_shifts_is_refused_naming_the_array
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        queue = Array.new(4, 0, capacity: 4)
+        game_loop do
+          queue.shift
+          queue << 1
+          queue.fill 0
+        end
+      end
+    end
+
+    assert_match(/Array `queue`/, error.message)
+    refute_match(/list :/, error.message)
+  end
+
+  def test_an_item_of_nil_is_refused_naming_the_array
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        marks = [1, 2]
+        game_loop { marks[0] = nil }
+      end
+    end
+
+    assert_match(/Array `marks`/, error.message)
+    refute_match(/list :/, error.message)
+  end
+
   # `shift` and `pop` hand back the item they drop, as Ruby's do; `first`, `last` and `empty?`
   # ask what is left.
   def test_shift_and_pop_hand_back_the_item_they_drop

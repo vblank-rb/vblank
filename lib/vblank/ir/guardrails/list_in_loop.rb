@@ -38,6 +38,15 @@ module VBlank
           NAME = :list_in_loop
           PLAIN_NAME = "a list declared every frame"
 
+          # +arrays+ are the lists a plain Ruby Array made, by name, with the local the game wrote
+          # (Guardrails::BuildFacts), so the warning names the Array and not a `list` line.
+          def initialize(arrays: {})
+            @arrays = arrays
+          end
+
+          # The same check, knowing which lists are Arrays the game wrote.
+          def told_of(facts) = ListInLoop.new(arrays: facts.collections_from_arrays)
+
           def detect(program)
             per_frame = per_frame_func_names(program)
             findings = []
@@ -56,10 +65,20 @@ module VBlank
           private
 
           def message_for(node, container)
+            local = @arrays[node.name]
+            return array_message(local, container) if local
+
             "The list :#{node.name} is declared inside #{per_frame_place(container)}. So it is " \
               "re-created empty every frame. Whatever you push onto it is lost on the next frame, and " \
               "its length never grows. You declare a list one time. To fix this, declare it in setup, " \
               "above the loop or outside the scene. Then push to it and read it inside the loop."
+          end
+
+          def array_message(local, container)
+            "The Array `#{local}` is made inside #{per_frame_place(container)}. So it is made again, empty, " \
+              "every frame. What you add to it is lost on the next frame, and its size never grows. To fix " \
+              "this, make the Array above the loop or outside the scene. Then add to it and read it inside " \
+              "the loop."
           end
         end
       end

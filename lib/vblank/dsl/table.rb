@@ -58,7 +58,8 @@ module VBlank
       # A table is stored in the cartridge, so nothing can be written into it as the game runs.
       def fill(*) # :nodoc:
         raise ArgumentError, "table :#{@name} is read-only: it is stored in the cartridge, so `fill` cannot " \
-                             "change it. To fill something the game changes, make it a `list`."
+                             "change it. To fill numbers the game changes, keep them in an Array, like " \
+                             "`cells = Array.new(64, 0)`."
       end
 
       # How many entries the table holds, as a plain Ruby number, since the size is fixed

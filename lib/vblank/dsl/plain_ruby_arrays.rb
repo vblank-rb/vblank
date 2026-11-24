@@ -157,6 +157,7 @@ module VBlank
           builder = owner.is_a?(Builder) ? owner : Builder::Session.builder
           owner = Builder::ListOwner.new(owner: [:array, declaration.source], at: declaration.declared_at)
           list_name = builder.plain_array_list_name(declaration.name, owner)
+          builder.record_collection_from_array(list_name, name)
           fraction_at = declaration.fraction_at || (declaration.declared_at if items.any? { |item| fraction?(item) })
           settings = settings.merge(holds: 0.0) if fraction_at
           list = if one_number_filling?(items, room)

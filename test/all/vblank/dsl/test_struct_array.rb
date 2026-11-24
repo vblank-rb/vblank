@@ -767,4 +767,35 @@ class TestStructArray < Minitest::Test
 
     assert_match(/has no `x` or `y`/, error.message)
   end
+
+  # A game that wrote an Array of Structs is told about the Array it wrote, never a `pool` line.
+  def test_a_picture_not_made_yet_is_refused_naming_the_array
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        screen :tiled
+        drops = Array.new(capacity: 4)
+        game_loop { drops << Drop.new(1, 2) }
+      end
+    end
+
+    assert_match(/Array `drops`/, error.message)
+    refute_match(/pool :/, error.message)
+  end
+
+  def test_other_colours_for_things_that_draw_nothing_are_refused_naming_the_array
+    error = assert_raises(ArgumentError) do
+      played(frames: 1) do
+        screen :tiled
+        colors :hurt, %i[transparent red]
+        sparks = Array.new(capacity: 4)
+        game_loop do
+          sparks << Spark.new(1, 2, 3)
+          sparks.each { |s| s.draw_with :hurt }
+        end
+      end
+    end
+
+    assert_match(/Array `sparks`/, error.message)
+    refute_match(/pool :/, error.message)
+  end
 end

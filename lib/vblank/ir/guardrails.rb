@@ -75,6 +75,14 @@ module VBlank
       #   apply   — a callable taking the program and returning the fixed program
       Fix = Data.define(:message, :apply)
 
+      # What the build learned while it ran that the tree does not hold, handed to a check that
+      # answers `told_of` for one that knows it:
+      #   variables_with_no_var_line — variables normal Ruby made, from no line of the author's
+      #   hidden_variable_notes      — the hidden variables, each with the line that made it
+      #   collections_from_arrays    — each list or pool a plain Ruby Array made, by name, with
+      #                                the local the game wrote, so a message names the Array
+      BuildFacts = Data.define(:variables_with_no_var_line, :hidden_variable_notes, :collections_from_arrays)
+
       # The result of a validation pass: the program (possibly auto-fixed) plus
       # every finding, so a caller can print warnings, raise on errors, or lower
       # the corrected tree.

@@ -402,15 +402,15 @@ module VBlank
         return if given.length < 2
 
         raise ArgumentError,
-              "pool :#{name} was given #{given.join(' and ')}. They all say which pictures the instances " \
-              "show. Use only one."
+              "#{pool_words(name, opening: true)} was given #{given.join(' and ')}. They all say which pictures " \
+              "its things show. Use only one."
       end
 
       def single_picture_art(name, image)
         size = @images[image] or
           raise ArgumentError,
-                "pool :#{name} draws image :#{image}, but no `image :#{image}` is defined yet. Define the " \
-                "image before the pool."
+                "#{pool_words(name, opening: true)} draws image :#{image}, but no `image :#{image}` is made " \
+                "yet. To fix this, make the image above the line that makes #{pool_words(name)}."
 
         PoolArt.new(poses: [image], dirs: nil, per_dir: 1, rate: nil,
                     hitbox: collision_box(name: image, images: [image], width: size[0], height: size[1],
@@ -432,15 +432,25 @@ module VBlank
         unknown = widths.keys - fields.keys
         unless unknown.empty?
           raise ArgumentError,
-                "pool :#{name} gives a width for :#{unknown.first}, which is not one of its fields. " \
-                "Its fields are #{fields.keys.join(', ')}."
+                "#{pool_words(name, opening: true)} gives a width for :#{unknown.first}, which is not one of " \
+                "its fields. Its fields are #{fields.keys.join(', ')}."
         end
         bad = widths.find { |_, width| !Build::ELEMENT_BYTES.key?(width) && width != UNSIGNED_HALF }
         return if bad.nil?
 
         raise ArgumentError,
-              "pool :#{name} gives field :#{bad.first} the width #{bad.last.inspect}. A width must be " \
-              ":byte (-128..127), :half (-32768..32767), :unsigned_half (0..65535) or :word."
+              "#{pool_words(name, opening: true)} gives field :#{bad.first} the width #{bad.last.inspect}. A " \
+              "width must be :byte (-128..127), :half (-32768..32767), :unsigned_half (0..65535) or :word."
+      end
+
+      # How a message names the pool +name+: the Array of Structs the game wrote, or its `pool`
+      # line (Builder#collection_words).
+      def pool_words(name, opening: false) = collection_words(name, verb: :pool, opening: opening)
+
+      # How the game makes a field narrower: `narrow` in its Struct's block, or `widths:` on a
+      # `pool` line.
+      def narrow_field_words(name, field = :hp)
+        collections_from_arrays.key?(name) ? "`narrow #{field}: :byte` in the Struct's block" : "`widths: { #{field}: :byte }`"
       end
 
       # The ways a console can keep a pool in memory (Console::Description#pool_layouts): as a list
@@ -484,6 +494,12 @@ module VBlank
       def check_width_holds_fractions!(name, field, default, width)
         return if width == :word || DSL::Fraction.bits_of(default).nil?
 
+        if collections_from_arrays.key?(name)
+          raise ArgumentError,
+                "#{pool_words(name, opening: true)} keeps :#{field} in a #{width}, and a line puts a fraction " \
+                "into :#{field}. A fraction needs a whole word. To fix this, remove :#{field} from `narrow`, " \
+                "or keep only whole numbers in it."
+        end
         raise ArgumentError,
               "pool :#{name} gives field :#{field} the width :#{width}, but it was declared with " \
               "#{default.inspect}, so it holds a fraction. A fraction needs a whole word. Remove the " \
@@ -526,10 +542,10 @@ module VBlank
       # (Console::Description#largest_memory_bytes).
       def refuse_pool_no_memory_holds!(pool, field_count, bytes)
         raise ArgumentError,
-              "pool :#{pool.name} has #{pool.capacity} instances of #{field_count} fields each. It needs about " \
-              "#{bytes / 1024}KB. A pool is kept whole in one memory. The largest memory of a #{console.title} " \
-              "holds #{console.largest_memory_bytes / 1024}KB. To fix this, use a smaller capacity. Or use fewer " \
-              "fields. Or give fields a smaller width, like `widths: { hp: :byte }`."
+              "#{pool_words(pool.name, opening: true)} has room for #{pool.capacity} things of #{field_count} " \
+              "fields each. It needs about #{bytes / 1024}KB. It is kept whole in one memory. The largest memory " \
+              "of a #{console.title} holds #{console.largest_memory_bytes / 1024}KB. To fix this, use a smaller " \
+              "capacity. Or use fewer fields. Or keep fields in less memory, like #{narrow_field_words(pool.name)}."
       end
 
       # A pool that insists on the quick memory and is too big to share it. `fast: true` is
@@ -538,12 +554,13 @@ module VBlank
       def refuse_oversized_fast_pool!(pool, field_count, bytes)
         quick = Messages::PlainWords::QUICK_MEMORY
         raise ArgumentError,
-              "pool :#{pool.name} has #{pool.capacity} instances of #{field_count} fields each. It needs about " \
-              "#{bytes / 1024}KB. `fast: true` keeps a pool in the console's #{quick}, and a pool there can use " \
-              "#{POOL_MAX_QUICK_BYTES / 1024}KB at most. The console has only 32KB of #{quick} in total, and " \
-              "the game's code is kept there too. To fix this, remove `fast: true`. Then the build keeps the " \
-              "pool in the roomier memory of the console, which is slower to read. Or use a smaller capacity. " \
-              "Or use fewer fields. Or give fields a smaller width, like `widths: { hp: :byte }`."
+              "#{pool_words(pool.name, opening: true)} has room for #{pool.capacity} things of #{field_count} " \
+              "fields each. It needs about #{bytes / 1024}KB. `fast: true` keeps it in the console's #{quick}, " \
+              "and a pool there can use #{POOL_MAX_QUICK_BYTES / 1024}KB at most. The console has only 32KB of " \
+              "#{quick} in total, and the game's code is kept there too. To fix this, remove `fast: true`. Then " \
+              "the build keeps it in the roomier memory of the console, which is slower to read. Or use a " \
+              "smaller capacity. Or use fewer fields. Or keep fields in less memory, like " \
+              "#{narrow_field_words(pool.name)}."
       end
 
       # Every list a pool keeps its instances in, and how wide a slot of each is, in the
@@ -654,6 +671,12 @@ module VBlank
       # a tiled screen and x/y position fields to place them by.
       def refuse_unspritable_pool!(name, fields)
         unless @screen_mode == :tiled
+          if collections_from_arrays.key?(name)
+            raise ArgumentError,
+                  "#{pool_words(name, opening: true)} holds things that are `drawn_as` sprites. Sprites need a " \
+                  "`screen :tiled`. To fix this, make the Array under one. Or remove `drawn_as` from the " \
+                  "Struct, and draw each thing in a walk of the Array on a bitmap screen."
+          end
           raise ArgumentError,
                 "pool :#{name} draws its instances, so they are hardware sprites. Hardware sprites need a " \
                 "`screen :tiled`. Declare the pool under one. Or give it no pictures and draw the pool " \

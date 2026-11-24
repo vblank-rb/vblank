@@ -67,6 +67,7 @@ module VBlank
         drawing = drawing.merge(facing: turned_facing(drawing[:facing])) if drawing[:facing]
         fields = kind.members.to_h { |member| [member, fraction_field?(member, declaration) ? 0.0 : 0] }
         name = builder.plain_array_list_name(*name_and_owner(owner, declaration))
+        builder.record_collection_from_array(name, @local)
         widths = PlainRuby::StructSettings.widths_of(kind)
         made = lambda do
           builder.declare_pool(name, fields, capacity: capacity, on_full: :stop, widths: widths, struct_fields: true,

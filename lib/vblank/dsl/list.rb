@@ -446,7 +446,7 @@ module VBlank
         problem = numberless_item_problem(value)
         return unless problem
 
-        raise ArgumentError, "`list :#{@name}` keeps numbers. #{problem}#{Messages::AuthorSource.at_author_line}"
+        raise ArgumentError, "#{@builder.collection_words(@name, opening: true)} keeps numbers. #{problem}#{Messages::AuthorSource.at_author_line}"
       end
 
       def numberless_item_problem(value)

@@ -24,6 +24,19 @@ class TestIRGuardrailListFilledByLoop < Minitest::Test
     assert_match(/#{File.basename(__FILE__)}:\d+/, said)
   end
 
+  # A game that wrote an Array is told how to start the Array full, never a `list` setting.
+  def test_an_array_pushed_full_in_a_loop_is_pointed_at_its_start
+    said = warnings do
+      cells = Array.new(capacity: 64, width: :byte)
+      repeat(64) { cells << 0 }
+      game_loop { cells[0] = 1 }
+    end
+
+    assert_match(/Array `cells`/, said)
+    assert_match(/Array\.new\(64, 0/, said)
+    refute_match(/full_of/, said)
+  end
+
   # A loop that stops itself once the list is full fills it the same way.
   def test_a_loop_that_stops_when_the_list_is_full_is_pointed_at_it_too
     said = warnings do

@@ -176,6 +176,7 @@ module VBlank
       @var_declarations = {}   # name → what its first `var` started it at, and where (see Variables#var)
       @plain_locals = {}       # [source, local's name] → its PlainLocal (see #plain_local_variable)
       @list_owners = {}        # list name → the ListOwner that declared it (see #claim_list_name!)
+      @collections_from_arrays = {} # list or pool name → the local of the Array that made it
       @name_dispatches = []    # [dispatch node, NameSet] — filled in at finalize, once every name is known
       @scene_name_sets = []    # the NameSet of each `call` that picks a scene, checked once every name is known
       @functions = {}          # name → deferred body block (evaluated at emit time)
@@ -437,6 +438,32 @@ module VBlank
       free.tap { claim_list_name!(free, owner) }
     end
 
+    # Records that the list or pool +name+ is a plain Ruby Array the game wrote as the local
+    # +local+ (DSL::PlainRuby::Arrays, DSL::StructArray), so a message names the Array.
+    def record_collection_from_array(name, local) # :nodoc:
+      @collections_from_arrays[name] = local
+    end
+
+    # Each list or pool a plain Ruby Array made, by name, with the local the game wrote, for the
+    # checks that run once the program is made (IR::Guardrails::BuildFacts).
+    def collections_from_arrays = @collections_from_arrays.dup.freeze # :nodoc:
+
+    # How a message names the list or pool +name+ to the author: the Array the game wrote
+    # (the Array `trail`), or the line of +verb+ that declared it (`list :trail`). +opening+ is
+    # for the start of a sentence (The Array `trail`).
+    def collection_words(name, verb: :list, opening: false) # :nodoc:
+      local = @collections_from_arrays[name]
+      return "`#{verb} :#{name}`" unless local
+
+      "#{opening ? 'The' : 'the'} Array `#{local}`"
+    end
+
+    # ...and a call of +method+ on it: `trail.fill`, or `list :trail.fill` for a `list` line.
+    def collection_call_words(name, method, verb: :list) # :nodoc:
+      local = @collections_from_arrays[name]
+      local ? "`#{local}.#{method}`" : "#{verb} :#{name}.#{method}"
+    end
+
     # The list itself, for `list` and for what declares one in its place (a plain Ruby Array).
     def declare_list(name, capacity:, holds: nil, width: :word, fast: nil, full_of: nil) # :nodoc:
       width = kept_unsigned_halves({ name => width }) { name }.fetch(name)
@@ -562,10 +589,10 @@ module VBlank
     # at a time only at its ends. On the console a run is held to the list's capacity; a run
     # written past that, or from before the first item, is refused here.
     def fill_list_run(list, value_node, from:, count:)
-      what = "list :#{list.name}.fill"
+      what = collection_call_words(list.name, :fill)
       if from.nil? != count.nil?
         raise ArgumentError, "#{what} was given #{from.nil? ? 'count:' : 'from:'} alone. To fill a run, give both " \
-                             "from: and count:. To fill the whole list, give neither."
+                             "from: and count:. To fill all the items, give neither."
       end
       from, count = from.nil? ? [0, list.length] : [from, count]
       refuse_fill_outside_list!(what, declared_list_node(list.name), from, count)
@@ -585,10 +612,10 @@ module VBlank
 
       shifted = @program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }
       name = filled.find { |list| shifted.include?(list) } or return
-      raise ArgumentError, "list :#{name} is filled with `fill`, and the game also uses `shift` on it. A shift moves " \
-                           "the first item, so the items are no longer one run in memory and `fill` cannot set " \
-                           "them at once. To fix this, set the items one at a time with `[]=`, or do not use " \
-                           "`shift` on list :#{name}."
+      raise ArgumentError, "#{collection_words(name, opening: true)} is filled with `fill`, and the game also uses " \
+                           "`shift` on it. A shift moves the first item, so the items are no longer one run in " \
+                           "memory and `fill` cannot set them at once. To fix this, set the items one at a time " \
+                           "with `[]=`, or do not use `shift` on #{collection_words(name)}."
     end
 
     def refuse_fill_outside_list!(what, made, from, count)
@@ -599,8 +626,8 @@ module VBlank
       size = DSL::Value.fixed_number(count)
       return unless made && start && size && start + size > made.capacity
 
-      raise ArgumentError, "#{what} sets items #{start} to #{start + size - 1}, and the list holds #{made.capacity}. " \
-                           "Give a run that ends inside the list, or give the list a bigger capacity."
+      raise ArgumentError, "#{what} sets items #{start} to #{start + size - 1}, and there is room for " \
+                           "#{made.capacity} items. Give a run that ends inside that room, or give a bigger capacity."
     end
 
     def declared_list_node(name)
@@ -608,7 +635,7 @@ module VBlank
     end
 
     def refuse_unfit_table_copy!(list, made, table, count, at)
-      what = "list :#{list.name}.copy_from"
+      what = collection_call_words(list.name, :copy_from)
       unless made
         raise ArgumentError, "#{what} copies into a list that is not declared. Declare it first with " \
                              "`list :#{list.name}, capacity: ...`."
@@ -629,8 +656,8 @@ module VBlank
                              "Give a count of #{table.length} or less."
       end
       if count > made.capacity
-        raise ArgumentError, "#{what} copies #{count} entries, and the list holds #{made.capacity}. " \
-                             "Give the list a capacity of #{count} or more."
+        raise ArgumentError, "#{what} copies #{count} entries, and there is room for #{made.capacity}. " \
+                             "Give a capacity of #{count} or more."
       end
       refuse_mismatched_table_copy!(what, list, made, table, count)
     end
@@ -642,7 +669,8 @@ module VBlank
       list_width = made.width || :word
       unless table.width == list_width
         raise ArgumentError, "#{what} copies from table :#{table.name}, which keeps each entry in a " \
-                             "#{table.width}. The list keeps each item in a #{list_width}. A copy moves " \
+                             "#{table.width}. #{collection_words(list.name, opening: true)} keeps each " \
+                             "item in a #{list_width}. A copy moves " \
                              "the entries as they are, so give both the same `width:`."
       end
       bytes = count * Build::ELEMENT_BYTES.fetch(list_width)
@@ -653,8 +681,8 @@ module VBlank
       return if table.fraction_bits == list.fraction_bits
 
       table_holds, list_holds = table.fraction_bits ? ["numbers with a fraction", "whole numbers"] : ["whole numbers", "numbers with a fraction"]
-      raise ArgumentError, "#{what} copies from table :#{table.name}, which holds #{table_holds}. The list holds " \
-                           "#{list_holds}. A copy moves the numbers as they are, so give both the same kind of number."
+      raise ArgumentError, "#{what} copies from table :#{table.name}, which holds #{table_holds}. " \
+                           "#{collection_words(list.name, opening: true)} holds #{list_holds}. A copy moves the numbers as they are, so give both the same kind of number."
     end
     # Defines an entry point of raw machine instructions, as an escape hatch for what the verbs
     # cannot say.

@@ -387,9 +387,10 @@ module VBlank
       def refuse_bad_faces!(name, faces)
         return if faces.nil? || (faces.is_a?(DSL::List) && faces.fraction_bits.nil?)
 
-        raise ArgumentError, "draw_place :#{name} was given faces: #{faces.inspect}. faces: needs a list of face " \
-                             "numbers. To fix this, make one with `list :seen, capacity: 64`, put in the numbers " \
-                             "that `face` gives, and give faces: that list."
+        raise ArgumentError, "draw_place :#{name} was given faces: #{faces.inspect}. faces: needs an Array of face " \
+                             "numbers that the game changes. To fix this, make one with " \
+                             "`seen = Array.new(capacity: 64)`, add the numbers that `face` gives, and give " \
+                             "faces: that Array."
       end
 
       # The window's four edges as values, refused unless they are four whole numbers.

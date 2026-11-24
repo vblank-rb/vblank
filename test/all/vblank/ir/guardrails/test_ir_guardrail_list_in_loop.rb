@@ -99,4 +99,20 @@ class TestIRGuardrailListInLoop < Minitest::Test
     assert_match(/bullets/, err.string)
     assert_match(/every frame/i, err.string)
   end
+
+  # A game that wrote an Array is told about the Array it wrote, never a `list` line.
+  def test_an_array_made_inside_the_loop_is_named_as_the_array
+    err = StringIO.new
+    VBlank.build("LIST", console: :gba, out: StringIO.new, err: err, profile: false) do
+      screen :bitmap
+      game_loop do
+        trail = Array.new(capacity: 8)
+        trail << 1
+      end
+    end
+
+    assert_match(/Array `trail`/, err.string)
+    assert_match(/every frame/i, err.string)
+    refute_match(/list :/, err.string)
+  end
 end

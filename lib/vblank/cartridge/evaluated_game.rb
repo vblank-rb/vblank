@@ -103,6 +103,9 @@ module VBlank
 
       def variables_with_no_var_line = @builder.variables_with_no_var_line
 
+      # Each list or pool a plain Ruby Array made, with the local the game wrote (IR::Guardrails::BuildFacts).
+      def collections_from_arrays = @builder.collections_from_arrays
+
       # The software sprites, in the order they were declared — which on a bitmap screen is
       # the order they are painted in.
       def sprites = @builder.sprites

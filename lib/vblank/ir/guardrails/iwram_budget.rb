@@ -132,7 +132,9 @@ module VBlank
           # fill the memory with variables it never declared, and "2205 variables" would not help
           # it look. The class is named rather than asked of self (`self.class`), which crashed
           # Ruby once with several Ractors building at once (Validator#plain_name says why).
-          def told_of(names, hidden_notes) = IwramBudget.new(made_names: names, hidden_notes: hidden_notes)
+          def told_of(facts)
+            IwramBudget.new(made_names: facts.variables_with_no_var_line, hidden_notes: facts.hidden_variable_notes)
+          end
 
           # One thing the program keeps in memory, as the messages name it: its +label+ ("pool
           # :enemy", "120 variables"), its +bytes+, and the +node+ of the line that declared it

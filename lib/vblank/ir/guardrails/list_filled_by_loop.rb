@@ -42,6 +42,15 @@ module VBlank
           NAME = :list_filled_by_loop
           PLAIN_NAME = "a list filled one item at a time"
 
+          # +arrays+ are the lists a plain Ruby Array made, by name, with the local the game wrote
+          # (Guardrails::BuildFacts), so the advice is the Array's start and not `full_of:`.
+          def initialize(arrays: {})
+            @arrays = arrays
+          end
+
+          # The same check, knowing which lists are Arrays the game wrote.
+          def told_of(facts) = ListFilledByLoop.new(arrays: facts.collections_from_arrays)
+
           def detect(program)
             capacities = program.walk.select { |node| node.kind == :list_new }.to_h { |node| [node.name, node.capacity] }
             program.children.filter_map do |node|
@@ -67,11 +76,24 @@ module VBlank
 
           def message_for(push, loop_node)
             where = loop_node.source ? " at #{loop_node.source}" : ""
+            local = @arrays[push.name]
+            return array_message(local, push, loop_node.count.value, where) if local
+
             value = push.value.value.zero? ? "`full_of: 0`" : "`full_of:` and the value the loop pushes"
             "The list :#{push.name} is filled one item at a time in a loop in setup#{where}. Each push " \
               "finds the place for its item and stores the length again, so the loop costs much more than " \
               "one fill, and the game shows its first picture later. To fill the list in one step, declare " \
               "it with #{value}, and remove the loop."
+          end
+
+          def array_message(local, push, size, where)
+            start = if push.value.value.zero? then "`Array.new(#{size}, 0)`"
+                    else "`Array.new(#{size}, n)`, where n is the number the loop adds"
+                    end
+            "The Array `#{local}` is filled one item at a time in a loop in setup#{where}. Each item added finds " \
+              "its place and stores the size again, so the loop costs much more than one fill, and the game shows " \
+              "its first picture later. To fill the Array in one step, make it full where it is made: " \
+              "#{start}, with the other settings it has now. Then remove the loop."
           end
         end
       end

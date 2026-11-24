@@ -493,8 +493,8 @@ module VBlank
         @recolors ||= begin
           unless spriteful?
             raise ArgumentError,
-                  "pool :#{@name} was told to draw_with other colors, but its instances draw nothing. " \
-                  "Give the pool pictures with image:, facing: or frames:."
+                  "#{author_words(opening: true)} was told to draw_with other colors, but its things draw " \
+                  "nothing. #{pictures_fix}"
           end
           @builder.make_pool_recolorable(self)
           recolors = Recolors.new(@builder, subject: "pool :#{@name}", poses: @art.poses)
@@ -520,8 +520,8 @@ module VBlank
       # recoloured. A pool also told another list is refused (#refuse_following_and_drawing_with!).
       private def follow_lists_chosen_at_start(lists, showing)
         unless spriteful?
-          raise ArgumentError, "pool :#{@name} was told to draw_with other colors, but its instances draw nothing. " \
-                               "Give the pool pictures with image:, facing: or frames:."
+          raise ArgumentError, "#{author_words(opening: true)} was told to draw_with other colors, but its things " \
+                               "draw nothing. #{pictures_fix}"
         end
         refuse_following_and_drawing_with! if @recolors
         stacked_objects.each do |node|
@@ -1095,6 +1095,19 @@ module VBlank
       # picks a scale of its own.
       def field_bits(field) = Fraction.bits_of(@fields[field]) # :nodoc:
 
+      # How a message names this pool to the author: the Array of Structs the game wrote, or its
+      # `pool` line (Builder#collection_words). Public for Instance, whose messages name it too.
+      def author_words(opening: false) = @builder.collection_words(@name, verb: :pool, opening: opening) # :nodoc:
+
+      # How to give this pool's things pictures: `drawn_as` in the Struct, or a `pool` setting.
+      def pictures_fix # :nodoc:
+        if @builder.collections_from_arrays.key?(@name)
+          "To fix this, give the Struct pictures with `drawn_as` in its block."
+        else
+          "Give the pool pictures with image:, facing: or frames:."
+        end
+      end
+
       private
 
       # The default policy: create in a free slot, or leave a full pool untouched. Guarded
@@ -1400,7 +1413,7 @@ module VBlank
           if row.nil?
             known = @pool.facing_names
             raise ArgumentError,
-                  "pool :#{@pool.name} has no direction #{direction.inspect}. " \
+                  "#{@pool.author_words(opening: true)} has no direction #{direction.inspect}. " \
                   "#{known.empty? ? 'It was not given facing: pictures.' : "It faces #{known.join(', ')}."}"
           end
           @pool.set_facing(@index, row)
@@ -1550,8 +1563,9 @@ module VBlank
         # The pool's collision box, or a friendly error if it has no size (no image).
         def require_box!
           @pool.hitbox || raise(ArgumentError,
-                                "pool :#{@pool.name} has no size, so an instance has no rectangle — give the " \
-                                "pool an `image:` to use overlaps? / the off-screen tests / clamp_to_screen")
+                                "#{@pool.author_words(opening: true)} has no size, so its things have no " \
+                                "rectangle for overlaps?, the off-screen tests and clamp_to_screen. " \
+                                "#{@pool.pictures_fix}")
         end
 
         # A field read like `b.x` becomes a FieldRef at this instance's slot.

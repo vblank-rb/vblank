@@ -98,7 +98,7 @@ class TestListFillWord < Minitest::Test
   end
 
   def test_a_fill_that_cannot_be_made_is_a_friendly_error
-    assert_match(/holds 4/, refused { list(:l, capacity: 4, width: :byte).fill 1, from: 2, count: 3 })
+    assert_match(/room for 4/, refused { list(:l, capacity: 4, width: :byte).fill 1, from: 2, count: 3 })
     assert_match(/from: -1/, refused { list(:l, capacity: 4, width: :byte).fill 1, from: -1, count: 2 })
     assert_match(/read-only/, refused { table(:t, [1, 2], width: :byte).fill 0 })
     assert_match(/fraction/, refused { list(:l, capacity: 4).fill var(:f, 1.5) })
