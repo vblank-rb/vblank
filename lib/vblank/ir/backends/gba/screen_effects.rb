@@ -27,7 +27,6 @@ module VBlank
           end
 
           include Console::Hardware
-          include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, palette_tint:, layer_blend:)
             @emitter = emitter
@@ -60,10 +59,10 @@ module VBlank
           def emit_camera(node)
             raise LoweringError, CAMERA_NEEDS_BITMAP if @layout.modes.default_mode == :tiled
 
-            write_reg16(REG_BG2PA, FIXED_ONE)
-            write_reg16(REG_BG2PB, 0)
-            write_reg16(REG_BG2PC, 0)
-            write_reg16(REG_BG2PD, FIXED_ONE)
+            @emitter.write_reg16(REG_BG2PA, FIXED_ONE)
+            @emitter.write_reg16(REG_BG2PB, 0)
+            @emitter.write_reg16(REG_BG2PC, 0)
+            @emitter.write_reg16(REG_BG2PD, FIXED_ONE)
             emit_camera_axis(node.x, REG_BG2X, :x)
             emit_camera_axis(node.y, REG_BG2Y, :y)
           end
@@ -81,9 +80,9 @@ module VBlank
           # BorderSprites).
           def emit_camera_axis(value, reg, way)
             @lowering.value(value)                   # r0 = the offset in whole pixels
-            emit(ASM.lsl_imm(ACC, ACC, 8))      # ...into the 8-fraction-bit format
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, 8))      # ...into the 8-fraction-bit format
             @layout.border&.emit_corner_off_reference(way)
-            store_word_acc(reg)
+            @primitives.store_word_acc(reg)
           end
 
           # Blend the whole picture toward black or white.
@@ -172,31 +171,31 @@ module VBlank
           # the display's sixteenths. A fade of nothing leaves the effect off rather than a fade
           # of nothing on, which is what a screen with a see-through layer looks for on arrival.
           def emit_walked_fade_by_display
-            load_var(KEPT, PaletteTint::TINT_ASKED)
+            @primitives.load_var(KEPT, PaletteTint::TINT_ASKED)
             emit_display_fade_from_kept
           end
 
           # KEPT holds a kept fade (its color is DARKEN or carries BRIGHTEN): tell the display.
           def emit_display_fade_from_kept
-            off = gensym
-            brighten = gensym
-            done = gensym
+            off = @emitter.gensym
+            brighten = @emitter.gensym
+            done = @emitter.gensym
             @palette_tint.emit_state_steps_in_sixteenths(KEPT) # a walk's steps, in the display's sixteenths
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, off, cond: :eq)
-            store_halfword_acc(REG_BLDY)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, off, cond: :eq)
+            @primitives.store_halfword_acc(REG_BLDY)
             emit_whole_screen_window
-            emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
-            emit(ASM.tst_imm(ACC, PaletteTint::DARKEN))
-            emit_branch(:bcond, brighten, cond: :eq)
-            write_reg16(REG_BLDCNT, BLD_DARKEN | placed_fade.blend_target_bits(nil))
-            emit_branch(:b, done)
-            place_label(brighten)
-            write_reg16(REG_BLDCNT, BLD_BRIGHTEN | placed_fade.blend_target_bits(nil))
-            emit_branch(:b, done)
-            place_label(off)
-            write_reg16(REG_BLDCNT, 0)
-            place_label(done)
+            @emitter.emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
+            @emitter.emit(ASM.tst_imm(ACC, PaletteTint::DARKEN))
+            @emitter.emit_branch(:bcond, brighten, cond: :eq)
+            @emitter.write_reg16(REG_BLDCNT, BLD_DARKEN | placed_fade.blend_target_bits(nil))
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(brighten)
+            @emitter.write_reg16(REG_BLDCNT, BLD_BRIGHTEN | placed_fade.blend_target_bits(nil))
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(off)
+            @emitter.write_reg16(REG_BLDCNT, 0)
+            @emitter.place_label(done)
           end
 
           # Which layers the fade reaches and which way, then how far.
@@ -205,10 +204,10 @@ module VBlank
             emit_fade_control(node)
 
             if (steps = constant_fade_steps(node))
-              write_reg16(REG_BLDY, steps)
+              @emitter.write_reg16(REG_BLDY, steps)
             else
               @lowering.value(display_steps_value(node))
-              store_halfword_acc(REG_BLDY)
+              @primitives.store_halfword_acc(REG_BLDY)
             end
           end
 
@@ -230,11 +229,11 @@ module VBlank
           # built, so the display is never handed an edge past it. +reaches+ nil is the whole
           # screen, and then the rectangle does not matter and nothing is written for it.
           def emit_fade_window(reaches, area)
-            write_reg16(REG_WIN0H, reaches ? (area[0] << 8) | area[2] : 0)
-            write_reg16(REG_WIN0V, reaches ? (area[1] << 8) | area[3] : 0)
+            @emitter.write_reg16(REG_WIN0H, reaches ? (area[0] << 8) | area[2] : 0)
+            @emitter.write_reg16(REG_WIN0V, reaches ? (area[1] << 8) | area[3] : 0)
             inside, outside = fade_window_switches(reaches)
-            write_reg16(REG_WININ, inside)
-            write_reg16(REG_WINOUT, outside)
+            @emitter.write_reg16(REG_WININ, inside)
+            @emitter.write_reg16(REG_WINOUT, outside)
           end
 
           # What the window's two regions are told: every layer shows in both, and the darkening
@@ -254,10 +253,10 @@ module VBlank
 
           def emit_fade_control(node)
             mode = node.toward == :white ? BLD_BRIGHTEN : BLD_DARKEN
-            write_reg16(REG_BLDCNT, mode | placed_fade.blend_target_bits(node.under))
+            @emitter.write_reg16(REG_BLDCNT, mode | placed_fade.blend_target_bits(node.under))
             # Where this fade sits in the stack, for the window twins to read. Only a
             # program that has twins writes it (see ScreenLayout, which makes the PlacedFade).
-            store_word_immediate(placed_fade.fade_stack_index(node.under), var_addr(EFFECT_LINE)) if placed_fade.any?
+            @primitives.store_word_immediate(placed_fade.fade_stack_index(node.under), @primitives.var_addr(EFFECT_LINE)) if placed_fade.any?
           end
 
           # How far the fade has come, in the sixteenths the hardware counts in, for an
@@ -303,26 +302,26 @@ module VBlank
           end
 
           def emit_fade_or_restore_blend(node)
-            hand_back = gensym
-            done = gensym
+            hand_back = @emitter.gensym
+            done = @emitter.gensym
             @lowering.value(display_steps_value(node))
-            emit(ASM.mov_reg(FADE_HELD, ACC))
-            emit(ASM.cmp_imm(FADE_HELD, 0))
-            emit_branch(:bcond, hand_back, cond: :eq)
+            @emitter.emit(ASM.mov_reg(FADE_HELD, ACC))
+            @emitter.emit(ASM.cmp_imm(FADE_HELD, 0))
+            @emitter.emit_branch(:bcond, hand_back, cond: :eq)
             emit_fade_control(node)
-            emit(ASM.mov_reg(ACC, FADE_HELD))
-            store_halfword_acc(REG_BLDY)
-            emit_branch(:b, done)
-            place_label(hand_back)
+            @emitter.emit(ASM.mov_reg(ACC, FADE_HELD))
+            @primitives.store_halfword_acc(REG_BLDY)
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(hand_back)
             @layer_blend.emit_restore_layer_blend
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # How far a fade or a tint goes in those sixteenths, when its amount is written in
           # the program — whole or with a fraction (see IR::Fading) — and nil when the game
           # works it out.
           def constant_fade_steps(node)
-            amount = const_int(node.amount)
+            amount = @primitives.const_int(node.amount)
             amount && FadeSteps.steps(amount, fraction_bits: node.fraction_bits, walked: false)
           end
 
@@ -371,11 +370,11 @@ module VBlank
                                                      mode: mode)
             end
 
-            write_reg16(PALETTE_START, Graphics::Color.resolve(node.color)) # the backdrop IS the tint
+            @emitter.write_reg16(PALETTE_START, Graphics::Color.resolve(node.color)) # the backdrop IS the tint
             emit_whole_screen_window
-            write_reg16(REG_BLDCNT, TINT_BLEND)
+            @emitter.write_reg16(REG_BLDCNT, TINT_BLEND)
             if (steps = constant_fade_steps(node))
-              write_reg16(REG_BLDALPHA, tint_weights(steps))
+              @emitter.write_reg16(REG_BLDALPHA, tint_weights(steps))
             else
               @lowering.value(display_steps_value(node))
               emit_blend_weights_from_acc
@@ -399,17 +398,17 @@ module VBlank
           # The block's code once for each kind of screen the game draws on, each run only while
           # the display is in that one: a compare against which screen is up, per kind.
           def emit_for_each_screen_kind
-            done = gensym
+            done = @emitter.gensym
             @layout.modes.modes_in_use.each do |mode|
-              other = gensym
-              load_var(ACC, MODE_STATE)
-              emit(ASM.cmp_imm(ACC, MODE_MARKERS.fetch(mode)))
-              emit_branch(:bcond, other, cond: :ne)
+              other = @emitter.gensym
+              @primitives.load_var(ACC, MODE_STATE)
+              @emitter.emit(ASM.cmp_imm(ACC, MODE_MARKERS.fetch(mode)))
+              @emitter.emit_branch(:bcond, other, cond: :ne)
               yield mode
-              emit_branch(:b, done)
-              place_label(other)
+              @emitter.emit_branch(:b, done)
+              @emitter.place_label(other)
             end
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # Put the tint kept in TINT_ASKED BACK as the display changes to +mode+'s screen.
@@ -429,7 +428,7 @@ module VBlank
               if @layer_blend.see_through?
                 @layer_blend.emit_blend_back_from_display_fade
               else
-                write_reg16(REG_BLDCNT, 0)
+                @emitter.write_reg16(REG_BLDCNT, 0)
               end
             end
           end
@@ -439,31 +438,31 @@ module VBlank
           KEPT = 2
 
           def emit_blend_to_kept_tint
-            skip = gensym
-            fade = gensym
-            load_var(KEPT, PaletteTint::TINT_ASKED)
-            emit(ASM.cmp_imm(KEPT, 0))
-            emit_branch(:bcond, skip, cond: :eq)
+            skip = @emitter.gensym
+            fade = @emitter.gensym
+            @primitives.load_var(KEPT, PaletteTint::TINT_ASKED)
+            @emitter.emit(ASM.cmp_imm(KEPT, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :eq)
             # A kept fade is the display's fade on this screen, not a tint (see
             # #emit_walked_fade_by_screen_up).
-            emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
-            emit(ASM.tst_imm(ACC, PaletteTint::DARKEN))
-            emit_branch(:bcond, fade, cond: :ne)
-            emit(ASM.tst_imm(ACC, PaletteTint::BRIGHTEN))
-            emit_branch(:bcond, fade, cond: :ne)
+            @emitter.emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
+            @emitter.emit(ASM.tst_imm(ACC, PaletteTint::DARKEN))
+            @emitter.emit_branch(:bcond, fade, cond: :ne)
+            @emitter.emit(ASM.tst_imm(ACC, PaletteTint::BRIGHTEN))
+            @emitter.emit_branch(:bcond, fade, cond: :ne)
             emit_tint_from_kept
-            emit_branch(:b, skip)
-            place_label(fade)
+            @emitter.emit_branch(:b, skip)
+            @emitter.place_label(fade)
             emit_display_fade_from_kept
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # KEPT holds a kept tint: the backdrop becomes its color and the picture is mixed with it.
           def emit_tint_from_kept
-            emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
-            store_halfword_acc(PALETTE_START) # the backdrop IS the tint
+            @emitter.emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
+            @primitives.store_halfword_acc(PALETTE_START) # the backdrop IS the tint
             emit_whole_screen_window # a tint set on another screen did not set where it reaches
-            write_reg16(REG_BLDCNT, TINT_BLEND)
+            @emitter.write_reg16(REG_BLDCNT, TINT_BLEND)
             @palette_tint.emit_state_steps_in_sixteenths(KEPT) # a walk's steps, in the display's sixteenths
             emit_blend_weights_from_acc
           end
@@ -481,10 +480,10 @@ module VBlank
           # the two sides — a color coming in, or what is behind showing through — and the
           # register does not care, so neither does this.
           def emit_blend_weights_from_acc
-            emit_number(TMP, BLD_MAX)
-            emit(ASM.sub_reg(TMP, TMP, ACC))              # r1 = what is left of the near side
-            emit(ASM.orr_reg_lsl(ACC, TMP, ACC, 8))       # ...with the far side's share above it
-            store_halfword_acc(REG_BLDALPHA)
+            @emitter.emit_number(TMP, BLD_MAX)
+            @emitter.emit(ASM.sub_reg(TMP, TMP, ACC))              # r1 = what is left of the near side
+            @emitter.emit(ASM.orr_reg_lsl(ACC, TMP, ACC, 8))       # ...with the far side's share above it
+            @primitives.store_halfword_acc(REG_BLDALPHA)
           end
 
           # Show the picture in blocks of this many pixels each way.
@@ -499,21 +498,21 @@ module VBlank
           # One the game works out is held to the sizes there are first, since the fields
           # are four bits wide and a number past them would spill into its neighbour.
           def emit_pixelate(node)
-            if (size = const_int(node.size))
+            if (size = @primitives.const_int(node.size))
               field = Blocks.size(size) - 1
               pair = field | (field << MOSAIC_DOWN_SHIFT)
-              return write_reg16(REG_MOSAIC, pair | (pair << MOSAIC_SPRITES_SHIFT))
+              return @emitter.write_reg16(REG_MOSAIC, pair | (pair << MOSAIC_SPRITES_SHIFT))
             end
 
             @lowering.value(node.size)
-            emit(ASM.cmp_imm(ACC, 1))
-            emit(ASM.mov_imm_cond(:lt, ACC, 1))
-            emit(ASM.cmp_imm(ACC, Blocks::LARGEST))
-            emit(ASM.mov_imm_cond(:gt, ACC, Blocks::LARGEST))
-            emit(ASM.sub_imm(ACC, ACC, 1))
-            emit(ASM.orr_reg_lsl(ACC, ACC, ACC, MOSAIC_DOWN_SHIFT)) # across and down
-            emit(ASM.orr_reg_lsl(ACC, ACC, ACC, MOSAIC_SPRITES_SHIFT)) # ...and the same pair again for sprites
-            store_halfword_acc(REG_MOSAIC)
+            @emitter.emit(ASM.cmp_imm(ACC, 1))
+            @emitter.emit(ASM.mov_imm_cond(:lt, ACC, 1))
+            @emitter.emit(ASM.cmp_imm(ACC, Blocks::LARGEST))
+            @emitter.emit(ASM.mov_imm_cond(:gt, ACC, Blocks::LARGEST))
+            @emitter.emit(ASM.sub_imm(ACC, ACC, 1))
+            @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, ACC, MOSAIC_DOWN_SHIFT)) # across and down
+            @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, ACC, MOSAIC_SPRITES_SHIFT)) # ...and the same pair again for sprites
+            @primitives.store_halfword_acc(REG_MOSAIC)
           end
 
           # An amount past either end settles at that end rather than running off it, the
@@ -523,10 +522,10 @@ module VBlank
           #
           # +most+ is the far end: the display's sixteen, or a walk's (see PaletteTint#walk_levels).
           def emit_clamp_blend_steps(most = BLD_MAX)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit(ASM.mov_imm_cond(:lt, ACC, 0))
-            emit(ASM.cmp_imm(ACC, most))
-            emit(ASM.mov_imm_cond(:gt, ACC, most))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit(ASM.mov_imm_cond(:lt, ACC, 0))
+            @emitter.emit(ASM.cmp_imm(ACC, most))
+            @emitter.emit(ASM.mov_imm_cond(:gt, ACC, most))
           end
         end
       end
