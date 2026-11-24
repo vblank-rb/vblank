@@ -534,8 +534,59 @@ module VBlank
           # written back to its memory once on the way out, so anything after the loop sees
           # the value it would have seen anyway.
           def emit_repeat_in_registers(node)
-            emit_repeat_loop(node) do
-              node.children.each { |stmt| @lowering.statement(stmt) }
+            steps = held_steps(node)
+            return emit_repeat_loop(node) { node.children.each { |stmt| @lowering.statement(stmt) } } if steps.empty?
+
+            @emitter.emit(ASM.push(*steps.values))
+            emit_repeat_loop(node, steps: steps) do
+              @primitives.with_products_in_registers(node.index, steps) { node.children.each { |stmt| @lowering.statement(stmt) } }
+            end
+            @emitter.emit(ASM.pop(*steps.values))
+          end
+
+          # The numbers a held loop keeps stepped, each factor with its register
+          # (LoopForm::STEP_REGISTERS), or none.
+          #
+          # A body that works a number out as the count times a number written in the program,
+          # `k * 12 + 4`, multiplies every turn, where the console's own loops add: the number
+          # is held in a register that starts at nought and has the factor added as each turn
+          # ends, beside the count's own add, and each read of it is that register, read straight
+          # into the instruction that uses it (Expressions#emit_operand). What a Ruby `times` the
+          # build folds into one loop works its stepping numbers out as
+          # (PlainRuby::Counts::KnownRounds).
+          #
+          # A factor is held where that pays: read more than once a turn, or one whose multiply is
+          # more than one instruction (Expressions.one_instruction_factor?). One read of a cheap
+          # factor costs the same either way, one instruction a turn, and holding it adds the
+          # registers' saving and restoring around the loop. The registers are saved and restored
+          # because code around the loop may keep something of its own in them. Only where every
+          # kind in the body leaves them alone (LoopForm.keeps_step_registers?), and at most as
+          # many factors as there are registers, the first read first.
+          def held_steps(node)
+            return {} if counts_down?(node) || !LoopForm.keeps_step_registers?(node)
+
+            reads = node.children.flat_map { |stmt| stmt.walk.filter_map { |inner| stepped_factor(inner, node.index) } }.tally
+            held = reads.select { |factor, count| count > 1 || !Expressions.one_instruction_factor?(factor) }.keys
+            held.first(LoopForm::STEP_REGISTERS.size).zip(LoopForm::STEP_REGISTERS).to_h
+          end
+
+          # The factor +node+ multiplies the loop's count +index+ by, or nil.
+          def stepped_factor(node, index)
+            return nil unless node.kind == :binop && node.op == :* && node.lhs.kind == :var_ref && node.lhs.name == index
+            return nil unless node.rhs.kind == :int && ![0, 1].include?(node.rhs.value)
+
+            node.rhs.value
+          end
+
+          # Each held number's register stepped on by its factor, as a turn ends.
+          def emit_steps_on(steps)
+            steps.each do |factor, reg|
+              if ASM.encode_rotated_immediate(factor) then @emitter.emit(ASM.add_imm(reg, reg, factor))
+              elsif ASM.encode_rotated_immediate(-factor) then @emitter.emit(ASM.sub_imm(reg, reg, -factor))
+              else
+                @emitter.emit_number(TMP, factor)
+                @emitter.emit(ASM.add_reg(reg, reg, TMP))
+              end
             end
           end
 
@@ -595,7 +646,10 @@ module VBlank
           # no branch out of the loop on the passes that go round. Moving the count into its
           # register sets the flags on the way, so that same instruction shows whether there is a
           # first pass to make at all.
-          def emit_repeat_loop(node, &body)
+          #
+          # +steps+ is the numbers the loop keeps stepped (#held_steps): each register set to
+          # nought before the first turn and stepped on as each turn ends.
+          def emit_repeat_loop(node, steps: {}, &body)
             return emit_countdown_loop(node, &body) if counts_down?(node)
 
             top = @emitter.gensym
@@ -605,9 +659,11 @@ module VBlank
             @emitter.emit_number(LoopForm::COUNTER, 0)
             @emitter.emit(ASM.subs_imm(LoopForm::LIMIT, ACC, 0))
             @emitter.emit_branch(:bcond, done, cond: :le)
+            steps.each_value { |reg| @emitter.emit_number(reg, 0) }
 
             @emitter.place_label(top)
             with_loop_jumps(node, done) { @primitives.with_var_in_register(node.index, LoopForm::COUNTER) { yield } }
+            emit_steps_on(steps)
             @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
             @emitter.emit_branch(:bcond, top, cond: :lt)

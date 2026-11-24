@@ -309,6 +309,7 @@ class TestLoopForm < Minitest::Test
         list_read: ->(i) { n = xs[i] + bytes[i] },
         list_write: ->(i) { xs[i] = 2; bytes[i] = n },
         table_read: ->(i) { n = curve[i] },
+        jumps: ->(i) { b.record_statement(VBlank::IR::Build.next_repeat) if i == 2; b.record_statement(VBlank::IR::Build.break_repeat) if n > 50; n += 1 },
         draw_rect_at: ->(_i) { b.draw_rect_at other, 20, 4, 4, :green },
       }
       made.each_key { |kind| func(:"body_#{kind}") { b.repeat(7) { |i| made[kind].call(i) } } }
@@ -337,7 +338,7 @@ class TestLoopForm < Minitest::Test
 
   private def step_sweep_bodies
     %i[set add sub copy negate abs clamp approach branch arithmetic bits negative divides
-       list_read list_write table_read draw_rect_at]
+       list_read list_write table_read jumps draw_rect_at]
   end
 
   # Whether one ARM instruction writes r4 to r8 or the link register, as a call does (GBATEK,
@@ -594,6 +595,52 @@ class TestLoopForm < Minitest::Test
     overhead = loop_overhead { |_b, counted, index| counted[:n] = index }
 
     assert_equal 4, overhead
+  end
+
+  # A body reading its index times a number the processor cannot multiply by in one instruction,
+  # `i * 12 + 3`, would load the twelve and multiply every pass. The loop keeps i * 12 in a
+  # register of its own instead, adding twelve as each pass ends, so the read is one ADD of the
+  # three. Written out, the stand-in variable is loaded, the twelve loaded, multiplied and added
+  # to: four instructions where the loop's read is one. The loop's add of twelve, its add,
+  # compare and branch, and the body finding the variable memory again are the other five.
+  # Multiplying from the count instead is four instructions, as written out, and the pass four
+  # more than written out rather than two.
+  def test_a_held_pass_that_reads_its_index_times_twelve_adds_twelve_as_it_ends
+    overhead = loop_overhead { |_b, counted, index| counted[:n] = (index * 12) + 3 }
+
+    assert_equal 2, overhead
+  end
+
+  # ...and what such a loop works out is what the interpreter works out: two numbers stepped in
+  # registers of their own, one of them read twice a pass, falling and rising, read under a test
+  # and past a `next`, and the loop's count written back as it ends.
+  def test_numbers_stepped_in_registers_read_what_the_count_would_give
+    rom = VBlank.build("LOOPSTEPS", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      rising = 0
+      falling = 0
+      twice = 0
+      last = 0
+      b = self
+      game_loop do
+        rising = 0
+        falling = 0
+        twice = 0
+        b.repeat(10) do |i|
+          rising += (i * 12) + 3
+          b.record_statement(VBlank::IR::Build.next_repeat) if i == 4
+
+          falling += 1000 + (i * -7)
+          twice += (i * 12) - (i * -7) if i > 2
+          last = i
+        end
+      end
+    end
+
+    assert_equal (0...10).sum { |i| (i * 12) + 3 }, read_var(rom, :rising)
+    assert_equal (0...10).reject { |i| i == 4 }.sum { |i| 1000 - (i * 7) }, read_var(rom, :falling)
+    assert_equal (3...10).reject { |i| i == 4 }.sum { |i| i * 19 }, read_var(rom, :twice)
+    assert_equal 9, read_var(rom, :last)
   end
 
   # ...and the same around a call, where the index is also written out to its variable before

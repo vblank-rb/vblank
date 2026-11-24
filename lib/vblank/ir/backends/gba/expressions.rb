@@ -153,6 +153,9 @@ module VBlank
           # which makes no difference to an operation that gives the same answer either way
           # round; what must have them in order goes through #emit_sides_in_order.
           def eval_binop(node)
+            held = @primitives.held_product_register(node)
+            return @emitter.emit(ASM.mov_reg(ACC, held)) if held
+
             node = constant_on_right(node)
             return if emit_constant_binop(node)
 
@@ -462,9 +465,11 @@ module VBlank
           # The register +lhs+ is read from by the one instruction that works on it: the register a
           # variable is held in for the moment (Primitives#held_register, a loop's count), read
           # straight into that instruction, or else ACC with +lhs+ worked out into it. The held
-          # register is only read, so the variable's register is never changed.
+          # register is only read, so the variable's register is never changed. A loop's count
+          # times a number it keeps stepped in a register of its own
+          # (Primitives#held_product_register) is read from that register the same way.
           def emit_operand(lhs)
-            held = lhs.kind == :var_ref && @primitives.held_register(lhs.name)
+            held = lhs.kind == :var_ref ? @primitives.held_register(lhs.name) : @primitives.held_product_register(lhs)
             return held if held
 
             @lowering.value(lhs)
@@ -567,6 +572,15 @@ module VBlank
 
           # x * d — a power of two is a shift, and anything else is already a single
           # multiply instruction, so there is nothing to improve on.
+          # Whether a multiply by +factor+ is one instruction: a shift, or the number shifted and
+          # added to or taken from itself (#emit_multiply_by_shifted_sum). Any other factor is
+          # loaded into a register and multiplied by, two instructions and a slower one.
+          def self.one_instruction_factor?(factor)
+            above = ConstantDivisor.power_of_two_bits(factor - 1)
+            below = ConstantDivisor.power_of_two_bits(factor + 1)
+            !ConstantDivisor.power_of_two_bits(factor).nil? || factor == -1 || above&.positive? || (below && below >= 2) || false
+          end
+
           def emit_constant_multiply(lhs, factor)
             bits = power_of_two_bits(factor)
             return emit_multiply_by_power_of_two(lhs, bits) if bits
@@ -689,8 +703,8 @@ module VBlank
           # x * 2**bits — one instruction, and exact: the low 32 bits of the product are
           # what a multiply would have left anyway.
           def emit_multiply_by_power_of_two(lhs, bits)
-            @lowering.value(lhs)
-            @emitter.emit(ASM.lsl_imm(ACC, ACC, bits))
+            source = emit_operand(lhs)
+            @emitter.emit(ASM.lsl_imm(ACC, source, bits))
             true
           end
 

@@ -19,6 +19,7 @@ module VBlank
             @vars = {}             # variable name -> IWRAM address
             @var_mentions = []     # [where in the code, variable name], one for each time one is named
             @held_registers = {}
+            @held_products = {}    # [variable name, factor] -> the register a loop steps it in
           end
 
           # The fill's word gets the first address there is, so this is called before the
@@ -140,6 +141,26 @@ module VBlank
           ensure
             @held_registers[name] = was
             @held_registers.delete(name) if was.nil?
+          end
+
+          # The register a loop holds +node+ in for the moment, when +node+ is a variable times a
+          # number written in the program that the loop keeps stepped (Statements#emit_held_steps),
+          # or nil.
+          def held_product_register(node)
+            return nil if @held_products.empty? || node.kind != :binop || node.op != :*
+            return nil unless node.lhs.kind == :var_ref && node.rhs.kind == :int
+
+            @held_products[[node.lhs.name, node.rhs.value]]
+          end
+
+          # For the block, read +name+ times each factor of +registers+ (factor => register) from
+          # its register.
+          def with_products_in_registers(name, registers)
+            was = @held_products
+            @held_products = was.merge(registers.to_h { |factor, reg| [[name, factor], reg] })
+            yield
+          ensure
+            @held_products = was
           end
 
           # Store the full 32-bit word in r0 to a fixed address.

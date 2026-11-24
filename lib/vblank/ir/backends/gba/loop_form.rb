@@ -76,7 +76,7 @@ module VBlank
           # the game works out reaches the console's routine, and already keeps a loop from the
           # fast shape). The test that sweeps each kind reads its code to prove it.
           KEEPS_STEP_REGISTERS = %i[set add sub copy negate abs clamp if else int var_ref neg bit_not
-                                    binop list_get list_set table_get].freeze
+                                    binop list_get list_set table_get next_repeat break_repeat].freeze
 
           # Whether everything in this loop's body leaves STEP_REGISTERS alone (KEEPS_STEP_REGISTERS).
           def keeps_step_registers?(node)
