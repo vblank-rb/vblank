@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "effect_strikes_heard"
 
 # A sound effect on a timer, struck inside the frame on the Super Nintendo (Runtime::Strikes). Its
 # notes are as far apart in time as their ticks, not rounded to the frames they fall in: a tick of
@@ -13,6 +14,8 @@ require "test_helper"
 # one before it left, counted in sample pairs from power-on, and the pairs a second the emulator
 # gives out, from how many its frames held.
 class TestSNESEffectStrikesInFrame < Minitest::Test
+  include EffectStrikesHeard
+
   DSP = VBlank::IR::Backends::SNES::DSPWrites
   Score = VBlank::Audio::Score
   Part = Score::Part
@@ -203,5 +206,24 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
                                                             frames: frames)
 
     assert_equal quiet.dsp_reads.size, run.dsp_reads.size
+  end
+
+  # The game's own sound over the effect (EffectStrikesHeard), within an eighth of a frame of where it
+  # is heard with the effect at the frame's start, at a tick a frame and a fifth, the rate a Super
+  # Nintendo sound driver's effects commonly keep. Left on the list, the effect's strike keys its note
+  # on over the game's sound part way through the frame.
+  #
+  # Not at the helper's four ticks a frame: a square note is nine commands through the mailboxes, which
+  # carry about 45 a frame, so four ticks' notes fill them and the game's own sound waits frames behind
+  # them.
+  GAME_SOUND_NEAR = Rational(1, 8)
+  GAME_SOUND_RATE = 50
+
+  def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:snes, :beep, near: GAME_SOUND_NEAR, rate: GAME_SOUND_RATE)
+  end
+
+  def test_the_games_wave_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:snes, :wave, near: GAME_SOUND_NEAR, rate: GAME_SOUND_RATE)
   end
 end

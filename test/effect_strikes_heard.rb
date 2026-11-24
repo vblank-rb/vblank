@@ -15,8 +15,11 @@ module EffectStrikesHeard
   Part = Score::Part
   Note = Score::Note
 
-  STARTED_ON = 10 # the pass the effect is asked for on
-  SOUNDED_ON = 16 # the pass the game's own sound is played on
+  # The frames from power-on the effect is asked for on, and the game's own sound played on: counted
+  # from power-on rather than in passes, since a console that takes longer to set up one build (a
+  # longer sound program to send) would otherwise play both a frame later in that build.
+  STARTED_ON = 10
+  SOUNDED_ON = 16
   FRAMES = 24
   RATE = 240 # ticks a second: four a frame, so the frame the game's sound is played in has one after it
   TICKS = 120
@@ -27,8 +30,8 @@ module EffectStrikesHeard
 
   # Where the game's own +sound+ (:beep or :wave) is first heard, in frames from power-on, and whether
   # it is still heard at the end of that frame. +on_timer+ false plays the effect at the frame's start.
-  def game_sound_heard(console:, on_timer:, sound:)
-    reader = VBlank::Diagnostics::Verifier.new(game_sound_cartridge(console, on_timer, sound), frames: 0)
+  def game_sound_heard(console:, on_timer:, sound:, rate: RATE)
+    reader = VBlank::Diagnostics::Verifier.new(game_sound_cartridge(console, on_timer, sound, rate), frames: 0)
     frames = Array.new(FRAMES) do
       reader.step(1)
       reader.last_frame_samples.each_slice(2).map(&:first)
@@ -38,21 +41,27 @@ module EffectStrikesHeard
     reader&.close
   end
 
-  private def game_sound_cartridge(console, on_timer, sound)
+  private def game_sound_cartridge(console, on_timer, sound, rate = RATE)
     low = (0...TICKS).map { |n| Note.new(at: n, key: :C3, length: 1, volume: 15) }
     quiet = [Note.new(at: 0, key: :C3, length: TICKS, volume: 0)]
     parts = sound == :wave ? [Part.new(plays: :wave, notes: low)] : [Part.new(notes: quiet), Part.new(notes: low)]
-    effect = Score.new(tempo: RATE, ticks_per_beat: 60, length: TICKS, plays_once: true, on_timer: on_timer, parts: parts)
+    effect = Score.new(tempo: rate, ticks_per_beat: 60, length: TICKS, plays_once: true, on_timer: on_timer, parts: parts)
     VBlank.build("STRIKES", console: console, out: nil, err: nil) do
       enable_sound
       define_sound :ping, frequency: 1500, duty: :half, decay: :none, volume: 15
       sfx = sound_effects :sfx, { chime: effect }
-      pass = var :pass, 0
+      started = var :started, 0
+      sounded = var :sounded, 0
       game_loop do
-        pass += 1
-        sfx.play :chime if pass == STARTED_ON
-        wave(:square, 1500) if sound == :wave && pass == SOUNDED_ON
-        beep(:ping) if sound == :beep && pass == SOUNDED_ON
+        if started == 0 && frames_since_power_on >= STARTED_ON
+          started = 1
+          sfx.play :chime
+        end
+        if sounded == 0 && frames_since_power_on >= SOUNDED_ON
+          sounded = 1
+          wave(:square, 1500) if sound == :wave
+          beep(:ping) if sound == :beep
+        end
       end
     end
   end
@@ -74,10 +83,10 @@ module EffectStrikesHeard
   end
 
   # The game's +sound+ heard within +near+ frames of where it is with the effect at the frame's start,
-  # and still heard at that frame's end.
-  def assert_game_sound_heard_over_effect(console, sound, near:)
-    at_start = game_sound_heard(console: console, on_timer: false, sound: sound)
-    struck = game_sound_heard(console: console, on_timer: true, sound: sound)
+  # and still heard at that frame's end, the effect's timer ticking +rate+ times a second.
+  def assert_game_sound_heard_over_effect(console, sound, near:, rate: RATE)
+    at_start = game_sound_heard(console: console, on_timer: false, sound: sound, rate: rate)
+    struck = game_sound_heard(console: console, on_timer: true, sound: sound, rate: rate)
 
     refute_nil at_start.onset, "the game's #{sound} heard with the effect at the frame's start"
     refute_nil struck.onset, "the game's #{sound} heard with the effect struck inside the frame"

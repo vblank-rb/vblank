@@ -58,11 +58,13 @@ module VBlank
           module Strikes
             # The command that tells the sound unit when (Sound's commands; the fifteenth, which no
             # other uses), and what its second number says: a frame begins, the commands after this
-            # are due at the offset its first number gives, or they are done at once again.
+            # are due at the offset its first number gives, they are done at once again, or the game's
+            # own sound is on the voice whose registers start at its first number (DROP).
             TIMING = 15
             MARK = 0
             FROM = 1
             UNTIL_NOW = 2
+            DROP = 3
 
             # The sound unit's timer: 8000 counts a second from timer 0 with its divider at 1, and the
             # control register's bits that switch timer 0 on and keep the built-in program readable.
@@ -149,6 +151,7 @@ module VBlank
               emit_mailbox_command(spc)
               emit_timing(spc)
               emit_store(spc)
+              emit_drop(spc)
               emit_swap_next(spc)
             end
 
@@ -277,6 +280,10 @@ module VBlank
                 movw direct(BASE), :ya
                 ret
                 label "strikes_timing_from"
+                cmp :a, imm(DROP)
+                bne "strikes_timing_not_drop"
+                jmp "strikes_drop"
+                label "strikes_timing_not_drop"
                 cmp :a, imm(FROM)
                 bne "strikes_timing_until_now"
                 mov :a, direct(COMMAND_COPY[2])
@@ -324,6 +331,86 @@ module VBlank
                 and_ :a, imm(LIST_ENTRIES - 1)
                 mov direct(LIST_TAIL), :a
                 inc direct(LISTED)
+                ret
+              end
+            end
+
+            # strikes_drop: the game's own sound is on the voice whose registers start at COMMAND_COPY's
+            # first number (IR::Tunes, "The game's own sound against a listed strike"). The console
+            # writes it as the game plays it, after the frame's ticks have been listed, so every listed
+            # write still waiting for that voice is dropped here, before it can strike over the game's
+            # sound: a write to one of the voice's own registers, and a write to the noise switches
+            # when the voice is the noise voice; the voice's bit is taken out of a waiting key-on and
+            # key-off, and the noise clock's bits out of a waiting flags write for the noise voice. A
+            # dropped entry becomes a key-off of no voice, which leaves KOFF as it is.
+            def emit_drop(spc)
+              dsp = DSPWrites
+              noise_base = dsp::NOISE_VOICE << 4
+              spc.instance_eval do
+                label "strikes_drop"
+                mov :a, direct(COMMAND_COPY[2])
+                4.times { lsr :a }
+                mov :x, :a
+                mov :a, abs_x("voice_bits")
+                eor :a, imm(0xFF)
+                mov direct(WORK), :a # every voice's bit but this one
+                mov :y, direct(LISTED)
+                beq "strikes_drop_done"
+                mov :x, direct(LIST_HEAD)
+                label "strikes_drop_entry"
+                mov :a, direct_x(LIST_COMMANDS)
+                cmp :a, imm(Sound::SET_KEY_OFF_BITS)
+                bne "strikes_drop_not_key_off"
+                mov :a, direct_x(LIST_FIRSTS)
+                and_ :a, direct(WORK)
+                mov direct_x(LIST_FIRSTS), :a
+                bra "strikes_drop_next"
+                label "strikes_drop_not_key_off"
+                cmp :a, imm(Sound::SET_FLAG_BITS)
+                bne "strikes_drop_not_flags"
+                mov :a, direct(COMMAND_COPY[2])
+                cmp :a, imm(noise_base)
+                bne "strikes_drop_next"
+                mov :a, direct_x(LIST_FIRSTS)
+                and_ :a, imm(~dsp::NOISE_CLOCK & 0xFF)
+                mov direct_x(LIST_FIRSTS), :a
+                bra "strikes_drop_next"
+                label "strikes_drop_not_flags"
+                cmp :a, imm(Sound::WRITE_DSP)
+                bne "strikes_drop_next"
+                mov :a, direct_x(LIST_FIRSTS)
+                cmp :a, imm(dsp::KEY_ON)
+                bne "strikes_drop_not_key_on"
+                mov :a, direct_x(LIST_SECONDS)
+                and_ :a, direct(WORK)
+                mov direct_x(LIST_SECONDS), :a
+                bra "strikes_drop_next"
+                label "strikes_drop_not_key_on"
+                cmp :a, imm(dsp::NOISE_ON)
+                bne "strikes_drop_not_noise_on"
+                mov :a, direct(COMMAND_COPY[2])
+                cmp :a, imm(noise_base)
+                bne "strikes_drop_next"
+                bra "strikes_drop_dropped"
+                label "strikes_drop_not_noise_on"
+                and_ :a, imm(0x08) # $x8 to $xF are the registers every voice shares
+                bne "strikes_drop_next"
+                mov :a, direct_x(LIST_FIRSTS)
+                and_ :a, imm(0xF0)
+                cmp :a, direct(COMMAND_COPY[2])
+                bne "strikes_drop_next"
+                label "strikes_drop_dropped"
+                mov :a, imm(Sound::SET_KEY_OFF_BITS)
+                mov direct_x(LIST_COMMANDS), :a
+                mov :a, imm(0)
+                mov direct_x(LIST_FIRSTS), :a
+                label "strikes_drop_next"
+                mov :a, :x
+                inc :a
+                and_ :a, imm(LIST_ENTRIES - 1)
+                mov :x, :a
+                dbnz :y, "strikes_drop_entry"
+                label "strikes_drop_done"
                 ret
               end
             end
@@ -388,8 +475,10 @@ module VBlank
             # rt_strikes_push (JSL): the command R2 with R0 and R1 put in the line ahead, the carry set
             # when it went in. A full line is sent from until there is room, up to SENT_TRIES looks at
             # the mailbox, and the carry is clear when none was made: every command of a tick goes the
-            # one way, so the sound unit takes a note's pitch and the note itself the same way. rt_strikes_close (JSL): UNTIL_NOW sent after a
-            # pass that sent FROM.
+            # one way, so the sound unit takes a note's pitch and the note itself the same way.
+            # rt_strikes_drop (JSL): DROP for the voice whose first register R0 names, sent as the
+            # game's own sound is, in the queue behind the frame's listed notes. rt_strikes_close
+            # (JSL): UNTIL_NOW sent after a pass that sent FROM.
             def emit(asm, memory)
               asm.label("rt_strikes_mark")
               asm.lda(TIMING)
@@ -403,6 +492,11 @@ module VBlank
               asm.label("rt_strikes_mark_done")
               asm.rtl
               emit_push(asm, memory)
+              asm.label("rt_strikes_drop") # R0 the voice's first register
+              asm.lda(DROP)
+              asm.sta(asm.direct(Sound::R1))
+              asm.lda(TIMING)
+              asm.jml(asm.long("rt_sound_command"))
               asm.label("rt_strikes_close")
               asm.lda(asm.abs(memory[FROM_SENT]))
               asm.beq("rt_strikes_close_done")

@@ -608,14 +608,25 @@ module VBlank
               emit_sound_entry([:noise, hit])
             end
 
-            # +entry+'s DSP writes, then its number into the cartridge's sound log.
+            # The voice each kind of the game's own sound plays on, as against a song's or an effect's.
+            GAME_SOUND_VOICES = { beep: DSPWrites::BEEP_VOICE, noise: DSPWrites::NOISE_VOICE,
+                                  wave: DSPWrites::WAVE_VOICE, stop_wave: DSPWrites::WAVE_VOICE }.freeze
+
+            # +entry+'s DSP writes, then its number into the cartridge's sound log. The game's own sound,
+            # in a game that strikes its effects inside the frame, first drops what the list still holds
+            # for its voice (Runtime::Strikes, DROP).
             def emit_sound_entry(entry)
+              voice = GAME_SOUND_VOICES[entry.first]
+              runtime_call("rt_strikes_drop", [Build.int(voice << 4)]) if voice && strikes_in_frame?
               DSPWrites.for_entry(entry, sound_voicing).each do |write|
                 command, *numbers = Runtime::Sound.command_for(write)
                 runtime_call(Runtime::Sound::ROUTINES.fetch(command), numbers.map { |number| Build.int(number) })
               end
               runtime_call("rt_sound_log", [Build.int(sound_entry_number(entry))])
             end
+
+            # Whether the game's sound effects are struck inside the frame (Runtime::Strikes).
+            def strikes_in_frame? = !IR::Tunes.effect_clock_step(@program, @program.described_console).nil?
 
             # The number the cartridge's sound log keeps +entry+ as, the next one the first time.
             def sound_entry_number(entry)
