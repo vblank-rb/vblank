@@ -14,6 +14,12 @@ require "differential"
 class TestQuickMemoryByScene < Minitest::Test
   include Differential
 
+  # Added to each round of a busy routine by turns, so each round is written out and the routine
+  # is as long as its count says: rounds alike but for a number counting up are made one loop
+  # (PlainRuby::Counts::KnownRounds), which takes no room to speak of. The two cancel over an even
+  # count, so a routine still adds its count times its step.
+  ALTERNATE = [5, -5].freeze
+
   # A game of two screens that each spend their frame in a routine of their own, each about
   # +adds+ additions long. It walks between them by itself: the title until frame 6, play
   # until frame 12, then the title again.
@@ -25,8 +31,8 @@ class TestQuickMemoryByScene < Minitest::Test
       b = 0
       t = 0
       where = 0
-      func(:title_work) { adds.times { a += 1 } }
-      func(:play_work) { adds.times { b += 1 } }
+      func(:title_work) { adds.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       game_loop do
@@ -53,8 +59,8 @@ class TestQuickMemoryByScene < Minitest::Test
       count = 0
       piles = Array.new(variables) { |n| var :"pile_#{n}", n }
       func(:tally) { count += 1 }
-      func(:title_work) { adds.times { a += 1 } }
-      func(:play_work) { adds.times { b += 1 } }
+      func(:title_work) { adds.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       func(:title_note) do
         8.times { a += 2 }
         call :tally
@@ -92,8 +98,8 @@ class TestQuickMemoryByScene < Minitest::Test
       b = 0
       t = 0
       where = var :where, :title
-      func(:title_work) { adds.times { a += 1 } }
-      func(:play_work) { adds.times { b += 1 } }
+      func(:title_work) { adds.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       game_loop do
@@ -115,8 +121,8 @@ class TestQuickMemoryByScene < Minitest::Test
       b = 0
       t = 0
       where = 0
-      func(:title_work) { adds.times { a += 1 } }
-      func(:play_work) { adds.times { b += 1 } }
+      func(:title_work) { adds.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       game_loop do
@@ -141,8 +147,8 @@ class TestQuickMemoryByScene < Minitest::Test
       b = 0
       t = 0
       where = 0
-      func(:title_work) { adds.times { a += 1 } }
-      func(:play_work) { adds.times { b += 1 } }
+      func(:title_work) { adds.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       screens = {}
@@ -170,7 +176,7 @@ class TestQuickMemoryByScene < Minitest::Test
       hearts = var :hearts, 3
       where = var :where, logos ? 2 : 0
       files = save_data(:file, copies: 1, fast: true) { keep hearts }
-      func(:play_work, fast: true) { adds.times { b += 1 } }
+      func(:play_work, fast: true) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:logos) { where = 0 if pressed(:a) } if logos
       scene(:files) { files[0].save if pressed(:a) }
       scene(:play) { call :play_work }
@@ -195,9 +201,9 @@ class TestQuickMemoryByScene < Minitest::Test
     builder.instance_eval do
       x = 0
       where = 0
-      func(:shared_work) { adds.times { x += 1 } }
-      func(:title_work) { adds.times { x += 2 } }
-      func(:play_work) { adds.times { x += 3 } }
+      func(:shared_work) { adds.times { |n| x += 1 + ALTERNATE[n % 2] } }
+      func(:title_work) { adds.times { |n| x += 2 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| x += 3 + ALTERNATE[n % 2] } }
       scene(:title) do
         call :shared_work
         call :title_work
@@ -232,9 +238,9 @@ class TestQuickMemoryByScene < Minitest::Test
       b = 0
       t = 0
       where = 0
-      func(:title_work) { adds.times { a += 1 } }
-      func(:play_work) { adds.times { b += 1 } }
-      func(:play_extra) { (adds / 4).times { b += 2 } }
+      func(:title_work) { adds.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
+      func(:play_extra) { (adds / 4).times { |n| b += 2 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene :play do
         ground = background :ground, tiles: :field, map: Array.new(30) { |row| ("#.." * 24)[row % 3, 70] }
@@ -268,8 +274,8 @@ class TestQuickMemoryByScene < Minitest::Test
       c = 0
       t = 0
       where = 0
-      func(:title_work) { work.times { a += 1 } }
-      func(:play_work) { work.times { b += 1 } }
+      func(:title_work) { work.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { work.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       game_loop do
@@ -277,7 +283,7 @@ class TestQuickMemoryByScene < Minitest::Test
         where = 1 if t == 3
         where = 0 if t == 9
         if where == 1
-          extra.times { c += 1 }
+          extra.times { |n| c += 1 + ALTERNATE[n % 2] }
         end
         call({ 0 => :title, 1 => :play }, number: :where)
       end
@@ -328,8 +334,8 @@ class TestQuickMemoryByScene < Minitest::Test
       b = var :b, 0
       c = 0
       where = var :where, 1
-      func(:title_work) { BIG.times { a += 1 } }
-      func(:play_work) { BIG.times { b += 1 } }
+      func(:title_work) { BIG.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work) { BIG.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene(:play) { call :play_work }
       game_loop do
@@ -355,8 +361,8 @@ class TestQuickMemoryByScene < Minitest::Test
       a = var :a, 0
       b = 0
       where = 0
-      func(:title_work) { BIG.times { a += 1 } }
-      func(:play_work, fast: true) { adds.times { b += 1 } }
+      func(:title_work) { BIG.times { |n| a += 1 + ALTERNATE[n % 2] } }
+      func(:play_work, fast: true) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:title) { call :title_work }
       scene :play do
         ground = background :ground, tiles: :field, map: Array.new(30) { "#" * 70 }
@@ -564,12 +570,12 @@ class TestQuickMemoryByScene < Minitest::Test
         voice(:bass) { 8.times { note :C3, :quarter } }
       end
       play_song :tune
-      func(:play_work) { adds.times { b += 1 } }
+      func(:play_work) { adds.times { |n| b += 1 + ALTERNATE[n % 2] } }
       scene(:files) { files[0].save if pressed(:a) }
       scene(:play) { call :play_work }
       game_loop do
         heap.push 1
-        300.times { spin += 1 }
+        300.times { |n| spin += 1 + ALTERNATE[n % 2] }
         where = 1 if pressed(:start)
         call({ 0 => :files, 1 => :play }, number: :where)
       end
