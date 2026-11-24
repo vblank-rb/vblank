@@ -78,6 +78,8 @@ module VBlank
                                "To fix this, call `keep` while the program is declared."
         end
         things.each do |thing|
+          # An Array of Structs is kept as the pool it is built as (DSL::StructArray).
+          thing = thing.pool if thing.is_a?(DSL::StructArray)
           next @save_data_keeping.fetch(name) << thing if thing.is_a?(KeptPart)
           next @save_data_keeping.fetch(name) << keep_pool_part(name, thing) if pool_part?(thing)
 
@@ -739,7 +741,8 @@ module VBlank
 
       def refuse_non_state_keep!(record, what)
         raise ArgumentError, "save_data :#{record} was asked to keep #{what}. A record keeps the game's " \
-                             "own state: the handles `var` and `list` give you. To fix this, pass one of those."
+                             "own state: a number the game changes, an Array the game changes, or an Array " \
+                             "of Structs. To fix this, give it one of those."
       end
 
       # --- what the handles call ---

@@ -939,7 +939,7 @@ class TestSaveData < Minitest::Test
 
   def test_what_a_record_cannot_keep_is_a_friendly_error
     assert_match(/a number worked out from other things/, refused { hearts = var :hearts, 3; save_data(:f) { keep hearts + 1 } })
-    assert_match(/`var` and `list`/, refused { save_data(:f) { keep 5 } })
+    assert_match(/an Array the game changes/, refused { save_data(:f) { keep 5 } })
     assert_match(/is a `save_var`/, refused { best = save_var :best, 0; save_data(:f) { keep best } })
     assert_match(/save_data :g keeps it too|keeps it\s+too/,
                  refused { h = var :h, 0; save_data(:f) { keep h }; save_data(:g) { keep h } })

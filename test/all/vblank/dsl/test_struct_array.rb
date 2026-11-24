@@ -768,6 +768,27 @@ class TestStructArray < Minitest::Test
     assert_match(/has no `x` or `y`/, error.message)
   end
 
+  # A save keeps an Array of Structs as it keeps the pool it is: the first pass puts a spark in
+  # at x 5 and saves, the second moves it to 9, and the third loads, putting it back at 5.
+  def test_a_save_keeps_an_array_of_structs
+    player = played(frames: 3) do
+      sparks = Array.new(capacity: 4)
+      files = save_data(:file) { keep sparks }
+      pass = 0
+      game_loop do
+        pass += 1
+        if pass == 1
+          sparks << Spark.new(5, 0, 0)
+          files[0].save
+        end
+        sparks.each { |s| s.x = 9 } if pass == 2
+        files[0].load if pass == 3
+      end
+    end
+
+    assert_equal [5], player.pool(:sparks, :x).compact
+  end
+
   # A game that wrote an Array of Structs is told about the Array it wrote, never a `pool` line.
   def test_a_picture_not_made_yet_is_refused_naming_the_array
     error = assert_raises(ArgumentError) do
