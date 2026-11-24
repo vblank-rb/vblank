@@ -56,7 +56,9 @@ module VBlank
         @last_heard = now
         @waiting = +"".b # what the socket would not take yet
         @writing = Mutex.new
+        @shut = false # closed by this end, which is done once
         send_each_line_at_once(io) if io.is_a?(TCPSocket)
+        @beat_stop = Queue.new # something put here stops the beat
         @beat = start_beat(beat_seconds)
       end
 
@@ -116,27 +118,50 @@ module VBlank
       # caller sleeps on its socket before it looks again (DirectRoom#wait_for_traffic).
       def seconds_until_silent = [@last_heard + @silent_seconds - now, 0].max
 
-      # Ends the line without losing what was sent on it last (SocketEnd).
+      # Ends the line without losing what was sent on it last: the beat is stopped first, so it cannot
+      # send a line twice, then what the socket has not taken yet is sent, waiting up to
+      # CLOSE_FLUSH_SECONDS for it (the room's last lines to a peer, its news that a player left above
+      # all), and the socket is closed politely (SocketEnd). Closing again does nothing.
       def close
-        @ended = true
-        @beat&.kill
-        @writing.synchronize { flush_waiting }
+        return if @shut
+
+        @shut = true
+        stop_beat
+        @writing.synchronize do
+          @ended = true
+          flush_waiting(CLOSE_FLUSH_SECONDS)
+        end
         SocketEnd.close(@io)
       end
+
+      # The longest a close waits for the socket to take what is waiting, in seconds.
+      CLOSE_FLUSH_SECONDS = 2
 
       private
 
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      # The thread that sends an empty line every +seconds+, until the line ends.
+      # The thread that sends an empty line every +seconds+, until #stop_beat.
       def start_beat(seconds)
         Thread.new do
           Thread.current.report_on_exception = false
-          until @ended
-            sleep seconds
-            write_line("")
-          end
+          write_line("") while @beat_stop.pop(timeout: seconds).nil?
         end
+      end
+
+      # Stops the beat and waits for it to end, so it is never part way through a write.
+      def stop_beat
+        @beat_stop << true
+        @beat.join
+      end
+
+      # The peer said nothing for too long: the line ends, and its socket is let go at once, with no
+      # polite close, since nobody is there to answer one.
+      def end_silent_line
+        @shut = true
+        stop_beat
+        @writing.synchronize { @ended = true }
+        @io.close
       end
 
       # The line and whatever was waiting, as much as the socket takes now. The beat's thread writes too.
@@ -150,11 +175,17 @@ module VBlank
         end
       end
 
-      def flush_waiting
+      # As much of what is waiting as the socket takes, waiting up to +seconds+ for it to take more.
+      def flush_waiting(seconds = 0)
+        deadline = now + seconds
         until @waiting.empty?
           written = @io.write_nonblock(@waiting, exception: false)
-          return if written == :wait_writable
+          if written == :wait_writable
+            left = deadline - now
+            return if left <= 0 || !IO.select(nil, [@io], nil, left)
 
+            next
+          end
           @waiting = @waiting.byteslice(written..)
         end
       rescue Errno::EPIPE, Errno::ECONNRESET, IOError
@@ -177,7 +208,11 @@ module VBlank
           return close
         end
       rescue IO::WaitReadable
-        @ended = true if now - @last_heard >= @silent_seconds
+        # The silence is counted from when this end last read something, not from when it came: an end
+        # that was itself held (a window paused, a machine that froze) reads what came meanwhile first,
+        # and counts again from there, so it gives a peer that went at that time the whole of
+        # +silent_seconds+ again before it takes it to have gone.
+        end_silent_line if now - @last_heard >= @silent_seconds
       rescue EOFError, Errno::ECONNRESET, IOError
         @ended = true
       end

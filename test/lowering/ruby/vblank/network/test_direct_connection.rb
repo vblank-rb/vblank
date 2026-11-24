@@ -168,6 +168,42 @@ class TestDirectConnection < Minitest::Test
     assert_predicate channel, :closed?
   end
 
+  # A line closed for silence lets its socket go: nothing more can come on it.
+  def test_a_line_closed_for_silence_closes_its_socket
+    _ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs, silent_seconds: 0.3, beat_seconds: 0.1)
+    Timeout.timeout(HANG_SECONDS) { channel.wait_for_text }
+
+    assert_predicate theirs, :closed?
+  end
+
+  # What a line was sent last, its peer's leaving above all, reaches the peer when the line closes,
+  # though the socket would not take it all at once: the close waits for it, a little while.
+  def test_what_the_socket_would_not_take_yet_is_sent_before_the_line_closes
+    ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs, beat_seconds: 60)
+    lines = Array.new(2000) { |index| "line #{index} #{'x' * 100}" }
+    reader = Thread.new { ours.read }
+    lines.each { |line| channel.send_text(line) }
+    channel.close
+
+    assert_equal lines, Timeout.timeout(HANG_SECONDS) { reader.value }.split("\n")
+  end
+
+  # Closing stops the beat before the last lines go, so no line is sent twice, however the two meet.
+  def test_a_line_closed_while_it_beats_sends_each_line_once
+    20.times do
+      ours, theirs = UNIXSocket.pair
+      channel = Network::LineChannel.new(theirs, beat_seconds: 0.001)
+      reader = Thread.new { ours.read }
+      sleep 0.005
+      channel.send_text("last")
+      channel.close
+
+      assert_equal 1, Timeout.timeout(HANG_SECONDS) { reader.value }.split("\n").count("last")
+    end
+  end
+
   def test_two_lines_with_nothing_to_say_keep_each_other_open
     ours, theirs = UNIXSocket.pair
     one = Network::LineChannel.new(ours, silent_seconds: 0.5, beat_seconds: 0.05)
