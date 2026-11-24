@@ -627,6 +627,7 @@ module VBlank
                                    var_addresses: var_addresses, loop_shapes: loop_shapes,
                                    runtime: @bookkeeping ? @bookkeeping.places(var_addresses) : @fault_stops.places,
                                    data_assets: data_assets,
+                                   func_spans: func_ranges.dup, number_tables: number_tables.dup,
                                    palette_entries: palette_entries,
                                    column_stretches: @stretched_columns&.to_h || {},
                                    compression: compression_report,

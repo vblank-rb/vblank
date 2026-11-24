@@ -123,6 +123,9 @@ module VBlank
     # instruction (see IR::Backends::GBA#routine_statements). It is what lets a profile say which
     # lines of any routine its time went to (Diagnostics::RoutineLines). +missed_routine_parts+ is
     # the same for the routines that missed the quick memory, at the addresses they run from.
+    # +func_spans+ is the byte span of each routine's code, counted from where the code starts in
+    # the cartridge, and +number_tables+ the part of a span that is a table of numbers the routine
+    # reads and not instructions (see Diagnostics::FuncDumper, which lists a routine from them).
     class BuildRecord < Data.define(:source_program, :placement, :var_addresses, :loop_shapes,
                                     :palette_entries, :column_stretches, :compression,
                                     :build_options, :findings, :emitted, :routines, :video_memory,
@@ -130,13 +133,13 @@ module VBlank
                                     :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
                                     :missed_routine_parts, :colors_short, :sprite_turns, :held_sprites,
-                                    :runtime, :data_assets, :gap_ends, :routine_statements)
+                                    :runtime, :data_assets, :gap_ends, :routine_statements, :func_spans, :number_tables)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
                      sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
                      video_copies: [], late_pages: [], gap_ends: [], lists: {}, sprite_runs: [], scene_sets: nil,
                      missed_routine_parts: {}, routine_statements: {}, colors_short: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
-                     data_assets: [], **rest)
+                     data_assets: [], func_spans: {}, number_tables: {}, **rest)
         super
       end
 

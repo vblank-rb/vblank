@@ -415,6 +415,9 @@ module VBlank
         --stats                  Say how far packing shrank the pictures and
                                  sounds, and what is kept in quick memory. The
                                  Advance's cartridge only.
+        --dump-arm[=NAME]        List the machine code of the Advance's
+                                 cartridge: every routine, or only the one
+                                 called NAME. For work on VBlank itself.
         --profile                Run the cartridge and report what it costs.
         --scene NAME             Profile this scene. Turns on --profile.
         --keys BUTTON ...        Profile with these buttons held. Turns on
@@ -469,6 +472,7 @@ module VBlank
     option :variant, banner: "NAME"
     option :profile, type: :boolean, default: false
     option :stats, type: :boolean, default: false
+    option :dump_arm, banner: "NAME", lazy_default: ""
     option :scene, banner: "NAME"
     option :keys, type: :array, banner: "BUTTON", default: []
     option :set, type: :array, banner: "NAME=VALUE", default: []
@@ -1905,6 +1909,7 @@ module VBlank
         raise Thor::Error, "--variant names the chip for one console. " \
                            "#{consoles_choice_message(game, 'build', game.consoles)}"
       end
+      refuse_dump_arm_without_advance!(consoles)
       built = {}
       failed = {}
       stops = []
@@ -1943,7 +1948,24 @@ module VBlank
         say rom.compression.summary_line if rom.compression&.any?
         say placement_line(rom) if rom.placement&.funcs&.any?
       end
+      dump_arm_of(rom) if options[:dump_arm] && console == :gba
       rom
+    end
+
+    def refuse_dump_arm_without_advance!(consoles)
+      return if options[:dump_arm].nil? || consoles.include?(:gba)
+
+      raise Thor::Error, "--dump-arm lists the code of the Game Boy Advance's cartridge. " \
+                         "This build makes none. Add --console gba."
+    end
+
+    # The machine code of every routine of +rom+, or of the one --dump-arm names, as the listing
+    # a game's `dump_func` prints.
+    def dump_arm_of(rom)
+      spans = rom.built.func_spans
+      names = options[:dump_arm].empty? ? spans.keys : [options[:dump_arm].to_sym]
+      VBlank::Diagnostics::FuncDumper.new(rom, spans, tables: rom.built.number_tables, out: $stdout, err: $stderr)
+                                     .dump(names)
     end
 
     # Why the consoles in +failed+ (console => reason) were not built, and the ways to stop

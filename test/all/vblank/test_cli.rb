@@ -379,6 +379,58 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # `--dump-arm` lists the machine code the build made: every routine, or the one it is given.
+  private def write_dumped_game(dir)
+    File.write(File.join(dir, "dumpy.rb"), <<~RUBY)
+      require "vblank"
+      Dumpy = VBlank.game "DUMPY", consoles: %i[gba], code: "BDMP", maker: "01" do
+        screen :bitmap
+        t = var :t, 0
+        func(:bump) { t += 3 }
+        func(:other) { t += 5 }
+        game_loop do
+          call :bump
+          call :other
+        end
+      end
+    RUBY
+  end
+
+  def test_dump_arm_lists_every_routine
+    Dir.mktmpdir do |dir|
+      write_dumped_game(dir)
+      out, status = cli("build", "dumpy.rb", "--dump-arm", dir: dir)
+      assert status.success?, out
+      assert_match(/=== func :bump /, out)
+      assert_match(/=== func :other /, out)
+      assert_match(/0x[0-9A-F]{4}: /, out)
+    end
+  end
+
+  def test_dump_arm_with_a_name_lists_only_that_routine
+    Dir.mktmpdir do |dir|
+      write_dumped_game(dir)
+      out, status = cli("build", "dumpy.rb", "--dump-arm=bump", dir: dir)
+      assert status.success?, out
+      assert_match(/=== func :bump /, out)
+      refute_match(/=== func :other /, out)
+    end
+  end
+
+  def test_dump_arm_with_an_unknown_name_says_so
+    Dir.mktmpdir do |dir|
+      write_dumped_game(dir)
+      out, = cli("build", "dumpy.rb", "--dump-arm=nope", dir: dir)
+      assert_match(/:nope not found/, out)
+    end
+  end
+
+  def test_dump_arm_is_in_the_help
+    out, status = cli("help", "build", dir: Dir.tmpdir)
+    assert status.success?, out
+    assert_match(/--dump-arm/, out)
+  end
+
   # `profile` is `build --profile` without the cartridge: same report, no .gba on disk.
   def test_profile_appears_in_the_command_list
     out, status = cli("help", dir: Dir.tmpdir)
