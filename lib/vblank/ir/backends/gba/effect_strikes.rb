@@ -65,6 +65,7 @@ module VBlank
           FLUSH = :__strikes_flush # every entry written now
           FOLD_PITCH = :__strikes_fold_pitch # r0 a pitch without its start bit, r1 the register
           FOLD_SHAPE = :__strikes_fold_shape # r0 a control register's low byte, r1 the register
+          FOLD_SPEAKERS = :__strikes_fold_speakers # r0 speaker switches to clear above the ones to set
 
           DUE_LINE = :__strikes_due_line # The line, from the start of the blank, a tick's writes are due on
           REMAINING = :__strikes_remaining # The 65536ths of a tick the effects' count had to go to the tick playing
@@ -207,6 +208,7 @@ module VBlank
             emit_answered
             emit_due(score, emit_upload_wave)
             emit_fold
+            emit_fold_speakers
           end
 
           private
@@ -384,6 +386,66 @@ module VBlank
               e.emit(ASM.cmp_reg_lsr(3, 5, 16))
               e.emit_branch(:bcond, write, cond: :hs)
             end
+          end
+
+          # FOLD_SPEAKERS (r0 the switches to clear above the ones to set, as a listed SPEAKERS entry holds
+          # them), for a song's note or the game's own sound setting its voice's speakers outside a tick's
+          # pass. Where the list holds a speaker write that changes any of those switches, the latest of
+          # them takes them in: the listed write would otherwise overtake this later one as it is struck,
+          # and leave the voice on the speakers the effect asked for. Otherwise SOUNDCNT_L is changed now.
+          # Keeps every register but r0, r1 and r12.
+          def emit_fold_speakers
+            e = @emitter
+            look, other, looked, now, done = Array.new(5) { e.gensym }
+            e.place_label(FOLD_SPEAKERS)
+            e.emit(ASM.push(2, 3, 4, 5, 6, 7, LR))
+            e.emit(ASM.load_immediate(5, 0)) # where the latest is, once found
+            e.emit(ASM.lsr_imm(4, ACC, 16)) # the switches to clear
+            @primitives.load_var(2, HEAD)
+            @primitives.load_var(3, TAIL)
+            e.place_label(look)
+            e.emit(ASM.cmp_reg(2, 3))
+            e.emit_branch(:bcond, looked, cond: :eq)
+            e.emit(ASM.load_immediate(7, @list))
+            e.emit(ASM.add_reg(7, 7, 2))
+            e.emit(ASM.ldr(LR, 7))
+            e.emit(ASM.lsl_imm(LR, LR, 16))
+            e.emit(ASM.lsr_imm(LR, LR, 16))
+            e.emit(ASM.cmp_imm(LR, SPEAKERS))
+            e.emit_branch(:bcond, other, cond: :ne)
+            e.emit(ASM.ldr_offset(6, 7, 4))
+            e.emit(ASM.lsr_imm(6, 6, 16))
+            e.emit(ASM.tst_reg(6, 4))
+            e.emit(ASM.mov_reg_cond(:ne, 5, 7))
+            e.place_label(other)
+            e.emit(ASM.add_imm(2, 2, ENTRY_BYTES))
+            emit_wrap(2)
+            e.emit_branch(:b, look)
+
+            e.place_label(looked)
+            e.emit(ASM.cmp_imm(5, 0))
+            e.emit_branch(:bcond, now, cond: :eq)
+            e.emit(ASM.ldr_offset(3, 5, 4))
+            e.emit(ASM.lsr_imm(6, 3, 16))
+            e.emit(ASM.orr_reg(6, 6, 4)) # the listed switches to clear, and these
+            e.emit(ASM.lsl_imm(3, 3, 16))
+            e.emit(ASM.lsr_imm(3, 3, 16))
+            e.emit(ASM.bic_reg(3, 3, 4)) # the listed ones to set, but these
+            e.emit(ASM.lsl_imm(7, ACC, 16))
+            e.emit(ASM.orr_reg_lsr(3, 3, 7, 16)) # and these as they are set now
+            e.emit(ASM.orr_reg_lsl(3, 3, 6, 16))
+            e.emit(ASM.str_offset(3, 5, 4))
+            e.emit_branch(:b, done)
+
+            e.place_label(now)
+            e.emit(ASM.load_immediate(TMP, REG_SOUNDCNT_L))
+            e.emit(ASM.load_halfword(3, TMP))
+            e.emit(ASM.bic_reg(3, 3, 4))
+            e.emit(ASM.lsl_imm(7, ACC, 16))
+            e.emit(ASM.orr_reg_lsr(3, 3, 7, 16))
+            e.emit(ASM.store_halfword(3, TMP))
+            e.place_label(done)
+            e.emit(ASM.pop(2, 3, 4, 5, 6, 7, PC))
           end
 
           # FOLD_PITCH and FOLD_SHAPE (r0 the value, r1 the register's address), for a write at the

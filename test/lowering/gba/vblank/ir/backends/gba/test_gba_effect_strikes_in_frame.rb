@@ -172,4 +172,58 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
   def test_a_shape_stepped_before_its_note_is_struck_waits_for_the_strike
     assert_unchanged_until_struck(duty: %i[eighth half])
   end
+
+  # An effect from the left speaker alone on both square voices, and the game's own beep on the second
+  # every pass, from both: the beep's pass comes after the frame's effects are played and before their
+  # strike, and its write of the speakers' switches folds into the listed one, so the beep keeps its
+  # voice on both speakers as it does where the effect plays at the frame's start. Read as SOUNDCNT_L's
+  # switch for the second voice's right speaker at each frame's end (GBATEK, "GBA Sound Control
+  # Registers"), in the 72 bytes of sound registers from 4000060h.
+  SOUNDCNT_L_AT = 0x20
+  SECOND_VOICE_RIGHT = 0x0200
+
+  # SOUNDCNT_L at each frame's end, from the frame after the effect starts. With +song+ a tune's
+  # second square part plays from the right on every frame in place of the beep, its note set at the
+  # frame's end by the player.
+  private def speaker_switches(on_timer:, song: false)
+    notes = ->(key) { (0...8).map { |n| Note.new(at: n * 3, key: key, length: 1, volume: 15) } }
+    effect = Score.new(tempo: 50, ticks_per_beat: 60, length: 24, plays_once: true, on_timer: on_timer,
+                       parts: [Part.new(pan: :left, notes: notes.call(:E5)), Part.new(pan: :left, notes: notes.call(:A5))])
+    tune = Score.new(tempo: 900, ticks_per_beat: 1, priority: 255,
+                     parts: [Part.new(notes: [Note.new(at: 0, key: :C4, length: 1, volume: 2)]),
+                             Part.new(pan: :right, notes: [Note.new(at: 0, key: :G4, length: 1, volume: 2)])])
+    cartridge = VBlank.build("STRIKES", console: :gba, out: nil, err: nil) do
+      enable_sound
+      define_sound :ping, frequency: 1500, duty: :half, decay: :none, volume: 15
+      music = (songs :music, [tune] if song)
+      sfx = sound_effects :sfx, { chime: effect }
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        music&.play 0
+        sfx.play :chime if pass == PLAYED_ON
+        beep :ping if !song && pass >= PLAYED_ON
+      end
+    end
+    reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
+    Array.new(PLAYED_ON + 35) do
+      reader.step(1)
+      reader.sound_registers.byteslice(SOUNDCNT_L_AT, 2).unpack1("v")
+    end.drop(PLAYED_ON + 2)
+  ensure
+    reader&.close
+  end
+
+  def test_the_games_beep_after_a_listed_speaker_write_keeps_its_speakers
+    struck = speaker_switches(on_timer: true).count { |switches| switches.nobits?(SECOND_VOICE_RIGHT) }
+
+    assert_equal 0, speaker_switches(on_timer: false).count { |switches| switches.nobits?(SECOND_VOICE_RIGHT) }, "the effect at the frame's start"
+    assert_equal 0, struck, "the effect struck inside the frame"
+  end
+
+  # A song that outranks the effect sets its voices' switches on every frame through the same fold, and
+  # they land as where the effect plays at the frame's start.
+  def test_a_songs_speakers_after_a_listed_speaker_write_are_kept
+    assert_equal speaker_switches(on_timer: false, song: true), speaker_switches(on_timer: true, song: true)
+  end
 end

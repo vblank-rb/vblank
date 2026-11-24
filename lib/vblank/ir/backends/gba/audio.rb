@@ -2555,6 +2555,7 @@ module VBlank
             @emitter.emit(ASM.lsr_imm(ACC, ACC, PAN_SHIFT))
             @emitter.emit(ASM.and_imm(ACC, ACC, 3)) if @shape_steps # the speaker, without the shapes above it
             return emit_listed_speakers(channel, row) if listing?
+            return emit_folded_speakers(channel, row) if striking?
 
             @emitter.emit(ASM.load_immediate(TMP, REG_SOUNDCNT_L))
             @emitter.emit(ASM.load_halfword(row, TMP))
@@ -2566,23 +2567,39 @@ module VBlank
             @emitter.emit(ASM.store_halfword(row, TMP))
           end
 
-          # ...listed, with the speaker in ACC: the voice's two switches to clear above the ones to
-          # set, so the strike leaves every other voice's switches as they are then
-          # (EffectStrikes::SPEAKERS).
-          def emit_listed_speakers(channel, row)
+          # ...outside a tick's pass in a game whose effects are struck inside the frame, with the speaker in
+          # ACC: the same switches folded into a listed speaker write of the voice, if there is one
+          # (EffectStrikes::FOLD_SPEAKERS), so the strike does not undo them.
+          def emit_folded_speakers(channel, row)
+            emit_speaker_switches(channel, row)
+            @emitter.emit(ASM.push(EffectStrikes::LR)) # the routine the note is written in returns by it
+            @emitter.emit_branch(:bl, EffectStrikes::FOLD_SPEAKERS)
+            @emitter.emit(ASM.pop(EffectStrikes::LR))
+          end
+
+          # ACC = the voice's two switches to clear above the ones to set, for the speaker in ACC. Uses +row+.
+          def emit_speaker_switches(channel, row)
             @emitter.emit(ASM.load_immediate(row, 0))
             @emitter.emit(ASM.cmp_imm(ACC, VBlank::Audio::Pan::RIGHT_BITS))
             @emitter.emit(ASM.add_imm_cond(:ne, row, row, left_speaker_bit(channel)))
             @emitter.emit(ASM.cmp_imm(ACC, VBlank::Audio::Pan::LEFT_BITS))
             @emitter.emit(ASM.add_imm_cond(:ne, row, row, right_speaker_bit(channel)))
             @emitter.emit(ASM.orr_imm(ACC, row, speaker_bits(channel) << 16))
+          end
+
+          # ...listed, with the speaker in ACC: the voice's two switches to clear above the ones to
+          # set, so the strike leaves every other voice's switches as they are then
+          # (EffectStrikes::SPEAKERS).
+          def emit_listed_speakers(channel, row)
+            emit_speaker_switches(channel, row)
             emit_listed_write(REG_SOUNDCNT_L)
           end
 
           # The game's own sound on +channel+ plays from both speakers, whichever a song's note left
           # its voice at. The screen's interrupt, where the player sets a voice's switches, is held
           # off while they are read and written, so it cannot set one between the two and have it
-          # undone.
+          # undone; and with it, every interrupt that strikes the effects, so the list holds still
+          # while the switches are folded into it.
           SAVED_IME = 2 # A statement's own register, as every low one is (see GAME_CALL_KEEPS)
 
           def emit_speakers_both(channel)
@@ -2592,10 +2609,15 @@ module VBlank
             @emitter.emit(ASM.load_halfword(SAVED_IME, TMP))
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @emitter.emit(ASM.store_halfword(ACC, TMP))
-            @emitter.emit(ASM.load_immediate(TMP, REG_SOUNDCNT_L))
-            @emitter.emit(ASM.load_halfword(ACC, TMP))
-            @emitter.emit(ASM.orr_imm(ACC, ACC, speaker_bits(channel)))
-            @emitter.emit(ASM.store_halfword(ACC, TMP))
+            if striking? # folded into a listed speaker write of the voice (EffectStrikes::FOLD_SPEAKERS)
+              @emitter.emit(ASM.load_immediate(ACC, (speaker_bits(channel) << 16) | speaker_bits(channel)))
+              @drawing.emit_call_irq_routine(EffectStrikes::FOLD_SPEAKERS)
+            else
+              @emitter.emit(ASM.load_immediate(TMP, REG_SOUNDCNT_L))
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
+              @emitter.emit(ASM.orr_imm(ACC, ACC, speaker_bits(channel)))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
+            end
             @emitter.emit(ASM.load_immediate(TMP, REG_IME))
             @emitter.emit(ASM.store_halfword(SAVED_IME, TMP))
           end
