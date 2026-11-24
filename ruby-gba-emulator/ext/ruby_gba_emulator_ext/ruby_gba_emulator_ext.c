@@ -176,6 +176,10 @@ struct counting_clock {
     uint8_t held[5];       /* ...what they are held at */
 };
 
+/* The bytes a GBA cartridge carries in its data to say it has a rumble motor (see
+ * GBA::Rumble::MARK in the framework). */
+#define MOTOR_MARK "VBLANK_RUMBLE_MOTOR_V1"
+
 /* A RUMBLE CARTRIDGE'S MOTOR. A Game Boy cartridge that says it has one (MBC5 with rumble)
  * turns it on and off with a bit of a register of its own, and mGBA tells whoever holds the
  * console's rumble that it did: this keeps how the motor stands, for Core#motor_on?. */
@@ -547,6 +551,25 @@ mgba_core_initialize(int argc, VALUE *argv, VALUE self)
 
     /* 8. Reset */
     core->reset(core);
+
+    /* 8a. A GBA cartridge that carries a rumble motor says so in its own data: the console's
+     * motor is on pin 3 of the cartridge's general-purpose port, and mGBA gives a port a
+     * motor only for the few real cartridges it knows by game code. A homebrew cartridge is on
+     * no such list, so the mark the framework puts in its data (MOTOR_MARK) is looked for here,
+     * after the reset so that it is not undone by it. */
+    if (core->platform(core) == mPLATFORM_GBA) {
+        struct GBA *gba = core->board;
+        const size_t mark_length = sizeof(MOTOR_MARK) - 1;
+        if (gba->memory.rom && gba->memory.romSize >= mark_length) {
+            const uint8_t *rom = (const uint8_t *)gba->memory.rom;
+            for (size_t at = 0; at + mark_length <= gba->memory.romSize; at++) {
+                if (rom[at] == (uint8_t)MOTOR_MARK[0] && memcmp(rom + at, MOTOR_MARK, mark_length) == 0) {
+                    GBAHardwareInitRumble(&gba->memory.hw);
+                    break;
+                }
+            }
+        }
+    }
 
     /* 8b. Re-query dimensions now that the ROM is loaded and the board
      * pointer is populated.  For GB/GBC, the pre-load query returns the

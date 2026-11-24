@@ -56,6 +56,7 @@ require_relative "gba/frames" # how many frames a pass of the game loop really t
 require_relative "gba/pass_bookkeeping" # how the run stands, in a cartridge built to be checked
 require_relative "gba/fault_stops" # where the game stops on a push onto a full list
 require_relative "gba/clock_chip" # the cartridge's clock chip, read once a pass
+require_relative "gba/rumble" # the cartridge's rumble motor, run a frame at a time
 require_relative "gba/raster"
 require_relative "gba/mixer"
 require_relative "gba/save_chips"
@@ -428,6 +429,7 @@ module VBlank
           @attribution = Attribution.new(@emit)
           @lowering = Lowering.new(progress: progress, emitter: @emit, attribution: @attribution)
           @clock_chip.lowering = @lowering
+          @rumble = Rumble.new(emitter: @emit, primitives: @primitives, lowering: @lowering)
           @save = Save.new(emitter: @emit, primitives: @primitives, lowering: @lowering, memory: @memory,
                            placement: self)
           @defined_sounds = {}   # name -> musical params (from define_sound)
@@ -524,9 +526,7 @@ module VBlank
           # Every kind's writer, registered once in one place — see {Lowering}. A declaration is
           # collected during the definitions pass, earlier in #lower, and emits nothing where it is
           # written: every kind that is one (see Nodes.of_role) emits nothing here. So do a row bend and
-          # a timer handler, armed from the definitions pass, a light's shade worked out there, and a
-          # rumble: the Advance's rumble cartridges are not made yet, so one is not felt
-          # (Description#rumbles).
+          # a timer handler, armed from the definitions pass, and a light's shade worked out there.
           @lowering.values_written_by(@expressions, Expressions::VALUE_KINDS)
           @lowering.values_written_by(@collision, Collision::VALUE_KINDS)
           @lowering.values_written_by(@lists, Lists::VALUE_KINDS)
@@ -534,7 +534,8 @@ module VBlank
           @lowering.values_written_by(@timers, Timers::VALUE_KINDS)
           @lowering.values_written_by(@clock_chip, ClockChip::VALUE_KINDS)
           @lowering.statements_written_by(Lowering::NothingEmitted,
-                                          IR::Nodes.of_role(:declaration) + %i[scroll_rows shade_outside rumble on_timer])
+                                          IR::Nodes.of_role(:declaration) + %i[scroll_rows shade_outside on_timer])
+          @lowering.statements_written_by(@rumble, Rumble::STATEMENT_KINDS)
           @lowering.statements_written_by(self, STATEMENT_KINDS)
           @lowering.statements_written_by(@statements, Statements::STATEMENT_KINDS)
           @lowering.statements_written_by(@save, Save::STATEMENT_KINDS)
@@ -953,6 +954,7 @@ module VBlank
           @uses_vblank = program.walk.any? { |node| node.kind == :wait_vblank }
           @lowering.gap_ends = IR::Frames.gap_ends(program) # where a measured run reads how late each gap ended
           @clock_chip.prepare(program) # whether anything reads the clock
+          @rumble.prepare(program, clock_used: @clock_chip.used?) # whether anything runs the motor
           @fault_stops.prepare(program) # whether anything can stop on a full list
           @mixer.prepare_mixer(program) # the software mixer's rate, buffers, voice slots, timer
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step
@@ -1117,6 +1119,7 @@ module VBlank
           # setting up in one that does (above).
           @bookkeeping&.emit_at_power_on unless counts_from_power_on
           @fault_stops.emit_at_power_on # nothing gone wrong yet
+          @rumble.emit_at_power_on # the motor's pin an output, and the motor still, before the interrupt steps it
           emit_irq_setup if uses_irq? # arm the interrupts the program needs (VBlank and/or timers)
           emit_input_init if @uses_pressed
           @clock_chip.emit_call_at_power_on # whether the cartridge has a clock, and its first reading
@@ -1158,7 +1161,10 @@ module VBlank
           # border are copied in once the picture it ran into is drawn.
           @bookkeeping&.emit_stopping(frames: @uses_vblank) { @sprite_drawing.emit_game_rows_back_at_stop(wait: false) }
           # Where a push onto a full list stops the game, from any memory.
-          @fault_stops.emit_fault_routine { @sprite_drawing.emit_game_rows_back_at_stop(wait: @uses_vblank) }
+          @fault_stops.emit_fault_routine do
+            @rumble.emit_stop
+            @sprite_drawing.emit_game_rows_back_at_stop(wait: @uses_vblank)
+          end
           # The interrupt dispatcher itself, reached only via the vector. When it was worth
           # keeping in the quick memory it has already been emitted inside the moved block.
           while_emitting_interrupt { emit_irq_handler } if uses_irq? && !irq_runs_fast?
@@ -1276,6 +1282,7 @@ module VBlank
         # does: an EEPROM's last block is written back rather than lost.
         def emit_halt(node)
           @save.emit_chip_end_of_pass if @uses_save
+          @rumble.emit_stop
           return @bookkeeping.emit_halt if @bookkeeping
 
           @sprite_drawing.emit_game_rows_back_at_stop(wait: @uses_vblank)
@@ -1527,6 +1534,8 @@ module VBlank
             # The pad, for the same reason: a press is the player's, made in real time, and a
             # game that takes two frames a pass must not miss one made between them.
             @expressions.emit_collect_presses if @uses_pressed
+            # ...and the motor, a frame of its pattern for every frame shown.
+            @rumble.emit_step
             emit_music_tick if @audio.needs_sound_player?
             # ...and between the two, a frame of every sounding note's shape, so a note that has
             # just started has climbed and one that has just ended is on its way down before the

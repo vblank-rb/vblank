@@ -121,8 +121,10 @@ module VBlank
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
         players_connected: works("always 1: a Game Boy Advance has one controller."),
-        rumble: works("nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, " \
-                      "so the game plays the same without it."),
+        rumble: works("the cartridge carries a rumble motor, and the motor runs on the frames the pattern " \
+                      "says. The build marks the cartridge so the emulator it is checked in runs a motor. Other " \
+                      "emulators run one only for the few real cartridges they know. A cartridge with a `clock` " \
+                      "has no motor, so a game that uses both is refused."),
         computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---

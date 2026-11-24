@@ -404,8 +404,8 @@ module VBlank
                               # The sprite table and the scroll are written straight into the
                               # console in the gap after the wait, and show on the frame after it.
                               sprites_placed_before_wait: false,
-                              # Its rumble cartridges are not made here yet: nothing is felt.
-                              rumbles: false,
+                              # A cartridge with a motor, for a game that rumbles (Backends::GBA::Rumble).
+                              rumbles: true,
                               # The logo and its chime, played from the player's own BIOS.
                               plays_bios_start_up: true, whole_screen_size: nil, extension: ".gba",
                               # The fill in ARM (Backends::GBA::Faces) tests a face's corners against
