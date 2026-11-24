@@ -21,20 +21,23 @@ class TestSpriteTableWritesCartridge < Minitest::Test
     end
   end
 
-  # Each entry of the table is four 16-bit numbers; three carry the sprite's own values.
+  # The three numbers of an entry that carry the sprite's own values.
+  Entry = Data.define(:x, :y, :tile)
+
+  # Each entry of the table is four 16-bit numbers.
   private def entries(table)
-    table.unpack("v*").each_slice(4).map { |across_y, across_x, tile, _| { y: across_y & 0xFF, x: across_x & 0x1FF, tile: tile & 0x3FF } }
+    table.unpack("v*").each_slice(4).map { |down, across, tile, _| Entry.new(x: across & 0x1FF, y: down & 0xFF, tile: tile & 0x3FF) }
   end
 
   def test_both_sprites_land_whole_in_the_sprite_table
     console = assert_emulator_loads_rom(assemble_rom(two_sprites.program, name: "OAMWRITE"), frames: 10)
     shown = entries(console.sprite_table)
 
-    red = shown.find { |entry| entry[:x] == 37 && entry[:y] == 53 }
-    blue = shown.find { |entry| entry[:y] == 70 && entry[:x] > 101 }
+    red = shown.find { |entry| entry.x == 37 && entry.y == 53 }
+    blue = shown.find { |entry| entry.y == 70 && entry.x > 101 }
 
     refute_nil red, "the still sprite's across and down must both be in the table"
     refute_nil blue, "the moving sprite's across and down must both be in the table"
-    refute_equal red[:tile], blue[:tile], "each sprite keeps its own picture number"
+    refute_equal red.tile, blue.tile, "each sprite keeps its own picture number"
   end
 end
