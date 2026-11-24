@@ -124,6 +124,7 @@ module VBlank
             emit_stop_wobble(Lane.new(:square, BEEP_CHANNEL))
             emit_end_shapes(Lane.new(:square, BEEP_CHANNEL))
             emit_end_swell(Lane.new(:square, BEEP_CHANNEL))
+            emit_drop_listed_voice(BEEP_CHANNEL)
             emit_speakers_both(BEEP_CHANNEL)
             emit_chip_writes(GameBoySound.beep_writes(**effect.to_h))
           end
@@ -137,6 +138,7 @@ module VBlank
           def emit_noise(node)
             hit = VBlank::Audio::Sound.resolve_noise(node.preset, pitch: node.pitch, decay: node.decay,
                                                      volume: node.volume, metallic: node.metallic)
+            emit_drop_listed_voice(NOISE_CHANNEL)
             emit_speakers_both(NOISE_CHANNEL)
             emit_chip_writes(GameBoySound.noise_hit_writes(**hit))
           end
@@ -146,6 +148,7 @@ module VBlank
           def emit_wave(node)
             samples = VBlank::Audio::Sound.wavetable(node.shape)
             emit_stop_wobble(Lane.new(:wave, WAVE_CHANNEL))
+            emit_drop_listed_voice(WAVE_CHANNEL)
             emit_speakers_both(WAVE_CHANNEL)
             emit_chip_writes(GameBoySound.wave_start_writes(samples, frequency: node.frequency, volume: node.volume))
             emit_forget_waveform
@@ -154,6 +157,7 @@ module VBlank
           # Silence the wave voice.
           def emit_stop_wave(_node = nil)
             emit_stop_wobble(Lane.new(:wave, WAVE_CHANNEL))
+            emit_drop_listed_voice(WAVE_CHANNEL)
             emit_chip_writes(GameBoySound.wave_stop)
             emit_forget_waveform
           end
@@ -2598,26 +2602,42 @@ module VBlank
           # The game's own sound on +channel+ plays from both speakers, whichever a song's note left
           # its voice at. The screen's interrupt, where the player sets a voice's switches, is held
           # off while they are read and written, so it cannot set one between the two and have it
-          # undone; and with it, every interrupt that strikes the effects, so the list holds still
-          # while the switches are folded into it.
+          # undone.
           SAVED_IME = 2 # A statement's own register, as every low one is (see GAME_CALL_KEEPS)
 
           def emit_speakers_both(channel)
             return unless @pans
 
-            @emitter.emit(ASM.load_immediate(TMP, REG_IME))
-            @emitter.emit(ASM.load_halfword(SAVED_IME, TMP))
-            @emitter.emit(ASM.load_immediate(ACC, 0))
-            @emitter.emit(ASM.store_halfword(ACC, TMP))
-            if striking? # folded into a listed speaker write of the voice (EffectStrikes::FOLD_SPEAKERS)
-              @emitter.emit(ASM.load_immediate(ACC, (speaker_bits(channel) << 16) | speaker_bits(channel)))
-              @drawing.emit_call_irq_routine(EffectStrikes::FOLD_SPEAKERS)
-            else
+            emit_interrupts_held do
               @emitter.emit(ASM.load_immediate(TMP, REG_SOUNDCNT_L))
               @emitter.emit(ASM.load_halfword(ACC, TMP))
               @emitter.emit(ASM.orr_imm(ACC, ACC, speaker_bits(channel)))
               @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
+          end
+
+          # The game's own sound on +channel+, in a game whose effects are struck inside the frame:
+          # every listed write of the voice still to come dropped (EffectStrikes::DROP_VOICE), so the
+          # game's sound, written at once after it, is what the voice keeps (IR::Tunes, "The game's
+          # own sound against a listed strike"). Every interrupt is held off meanwhile, so the list
+          # holds still.
+          def emit_drop_listed_voice(channel)
+            return unless striking?
+
+            emit_interrupts_held do
+              @emitter.emit(ASM.load_immediate(ACC, EffectStrikes.voice_registers_at(channel)))
+              @emitter.emit(ASM.load_immediate(TMP, speaker_bits(channel)))
+              @drawing.emit_call_irq_routine(EffectStrikes::DROP_VOICE)
+            end
+          end
+
+          # The block's code with every interrupt held off, IME kept in SAVED_IME meanwhile.
+          def emit_interrupts_held
+            @emitter.emit(ASM.load_immediate(TMP, REG_IME))
+            @emitter.emit(ASM.load_halfword(SAVED_IME, TMP))
+            @emitter.emit(ASM.load_immediate(ACC, 0))
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
+            yield
             @emitter.emit(ASM.load_immediate(TMP, REG_IME))
             @emitter.emit(ASM.store_halfword(SAVED_IME, TMP))
           end

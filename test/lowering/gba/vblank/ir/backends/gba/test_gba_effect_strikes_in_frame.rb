@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "effect_strikes_heard"
 
 # A sound effect on a timer, struck inside the frame on the Advance (GBA::EffectStrikes). Its notes
 # are as far apart in time as their ticks, not rounded to the frames they fall in: a tick of 50 a
@@ -16,6 +17,8 @@ require "test_helper"
 # fewer from frame to frame, so a place counted in pairs from power-on drifts against the console's
 # own clock, and a place in its frame does not.
 class TestGBAEffectStrikesInFrame < Minitest::Test
+  include EffectStrikesHeard
+
   Score = VBlank::Audio::Score
   Part = Score::Part
   Note = Score::Note
@@ -225,5 +228,17 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
   # they land as where the effect plays at the frame's start.
   def test_a_songs_speakers_after_a_listed_speaker_write_are_kept
     assert_equal speaker_switches(on_timer: false, song: true), speaker_switches(on_timer: true, song: true)
+  end
+
+  # The game's own sound over the effect (EffectStrikesHeard), within 1/20 of a frame of where it
+  # is heard with the effect at the frame's start.
+  GAME_SOUND_NEAR = Rational(1, 20)
+
+  def test_the_games_beep_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:gba, :beep, near: GAME_SOUND_NEAR)
+  end
+
+  def test_the_games_wave_before_a_listed_strike_on_its_voice_is_heard_over_it
+    assert_game_sound_heard_over_effect(:gba, :wave, near: GAME_SOUND_NEAR)
   end
 end

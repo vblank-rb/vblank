@@ -66,6 +66,7 @@ module VBlank
           FOLD_PITCH = :__strikes_fold_pitch # r0 a pitch without its start bit, r1 the register
           FOLD_SHAPE = :__strikes_fold_shape # r0 a control register's low byte, r1 the register
           FOLD_SPEAKERS = :__strikes_fold_speakers # r0 speaker switches to clear above the ones to set
+          DROP_VOICE = :__strikes_drop_voice # r0 a voice's first register's distance, r1 its speaker switches
 
           DUE_LINE = :__strikes_due_line # The line, from the start of the blank, a tick's writes are due on
           REMAINING = :__strikes_remaining # The 65536ths of a tick the effects' count had to go to the tick playing
@@ -209,7 +210,17 @@ module VBlank
             emit_due(score, emit_upload_wave)
             emit_fold
             emit_fold_speakers
+            emit_drop_voice
           end
+
+          # The registers of a voice, as distances from the I/O registers' start: SOUND1CNT_L to
+          # SOUND4CNT_H, eight bytes a voice (GBATEK, "GBA Sound Channel 1" to "4"). The wave voice
+          # has its wave RAM besides, and the listed waveforms.
+          VOICE_REGISTERS = 8
+          def self.voice_registers_at(channel) = REG_SOUND1CNT_L - IO_START + ((channel - 1) * VOICE_REGISTERS)
+          WAVE_VOICE_AT = 0x70
+          WAVE_RAM_AT = 0x90
+          WAVE_RAM_BYTES = 16
 
           private
 
@@ -389,7 +400,7 @@ module VBlank
           end
 
           # FOLD_SPEAKERS (r0 the switches to clear above the ones to set, as a listed SPEAKERS entry holds
-          # them), for a song's note or the game's own sound setting its voice's speakers outside a tick's
+          # them), for a song's note setting its voice's speakers outside a tick's
           # pass. Where the list holds a speaker write that changes any of those switches, the latest of
           # them takes them in: the listed write would otherwise overtake this later one as it is struck,
           # and leave the voice on the speakers the effect asked for. Otherwise SOUNDCNT_L is changed now.
@@ -444,6 +455,63 @@ module VBlank
             e.emit(ASM.lsl_imm(7, ACC, 16))
             e.emit(ASM.orr_reg_lsr(3, 3, 7, 16))
             e.emit(ASM.store_halfword(3, TMP))
+            e.place_label(done)
+            e.emit(ASM.pop(2, 3, 4, 5, 6, 7, PC))
+          end
+
+          # DROP_VOICE (r0 the distance of a voice's first register, VOICE_REGISTERS of them; r1 its
+          # two speaker switches), for the game's own sound on that voice: every listed write of the
+          # voice still to come is dropped, and its switches taken out of every listed speaker write,
+          # so the game's sound, written at once, is not overtaken by the strike (IR::Tunes, "The
+          # game's own sound against a listed strike"). The wave voice's waveforms and wave RAM go
+          # with it. A dropped entry becomes a speaker write that changes nothing, so DUE need not
+          # look for one. Keeps every register but r0, r1 and r12.
+          def emit_drop_voice
+            e = @emitter
+            look, voice, drop, step, done = Array.new(5) { e.gensym }
+            e.place_label(DROP_VOICE)
+            e.emit(ASM.push(2, 3, 4, 5, 6, 7, LR))
+            e.emit(ASM.orr_reg_lsl(4, TMP, TMP, 16)) # the switches to clear and to set alike
+            @primitives.load_var(2, HEAD)
+            @primitives.load_var(3, TAIL)
+            e.place_label(look)
+            e.emit(ASM.cmp_reg(2, 3))
+            e.emit_branch(:bcond, done, cond: :eq)
+            e.emit(ASM.load_immediate(7, @list))
+            e.emit(ASM.add_reg(7, 7, 2))
+            e.emit(ASM.ldr(LR, 7))
+            e.emit(ASM.lsl_imm(6, LR, 16))
+            e.emit(ASM.lsr_imm(6, 6, 16)) # the register's distance
+            e.emit(ASM.cmp_imm(6, SPEAKERS))
+            e.emit_branch(:bcond, voice, cond: :ne)
+            e.emit(ASM.ldr_offset(5, 7, 4))
+            e.emit(ASM.bic_reg(5, 5, 4))
+            e.emit(ASM.str_offset(5, 7, 4))
+            e.emit_branch(:b, step)
+
+            e.place_label(voice)
+            e.emit(ASM.sub_reg(5, 6, ACC))
+            e.emit(ASM.cmp_imm(5, VOICE_REGISTERS))
+            e.emit_branch(:bcond, drop, cond: :lo)
+            e.emit(ASM.cmp_imm(ACC, WAVE_VOICE_AT))
+            e.emit_branch(:bcond, step, cond: :ne)
+            e.emit(ASM.cmp_imm(6, WAVEFORM))
+            e.emit_branch(:bcond, drop, cond: :eq)
+            e.emit(ASM.sub_imm(5, 6, WAVE_RAM_AT))
+            e.emit(ASM.cmp_imm(5, WAVE_RAM_BYTES))
+            e.emit_branch(:bcond, step, cond: :hs)
+
+            e.place_label(drop)
+            e.emit(ASM.lsr_imm(LR, LR, 16))
+            e.emit(ASM.lsl_imm(LR, LR, 16))
+            e.emit(ASM.orr_imm(LR, LR, SPEAKERS))
+            e.emit(ASM.str(LR, 7))
+            e.emit(ASM.load_immediate(5, 0))
+            e.emit(ASM.str_offset(5, 7, 4))
+            e.place_label(step)
+            e.emit(ASM.add_imm(2, 2, ENTRY_BYTES))
+            emit_wrap(2)
+            e.emit_branch(:b, look)
             e.place_label(done)
             e.emit(ASM.pop(2, 3, 4, 5, 6, 7, PC))
           end

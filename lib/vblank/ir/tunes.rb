@@ -440,6 +440,21 @@ module VBlank
       # its tick's own time (the Super Nintendo's sound unit, the PlayStation's root counter) logs
       # and claims voices in this order too; only the moment the chip is told differs. A frame
       # holds MOST_TICKS_A_FRAME at most (Guardrails::Checks::EffectTimerTooFast).
+      #
+      # ### The game's own sound against a listed strike
+      #
+      # Every player plays the frame's ticks before the game's pass that follows, so the game's own
+      # sound on a voice (`beep`, `noise`, `wave`, `stop_wave`) comes after every note the frame's
+      # ticks wrote there, and the voice keeps the game's. A console that strikes inside the frame
+      # keeps that: the game's sound is written to the chip at once, as the game plays it, and every
+      # write to that voice still waiting on the strike list is dropped, the waveform the wave voice
+      # was to load with them, and the voice's speaker switches taken out of a waiting speaker write.
+      # Never folded into the waiting write, which would hold the game's sound back to the strike's
+      # line, with the effect's note sounding until then where the interpreter has the game's.
+      #
+      # A key-off and a key-on of one voice in one frame (an effect letting a voice go and a tune
+      # taking it back) stay two writes in that order, never merged into one: merged, the voice is
+      # never let go and the tune's note starts without its attack.
       def effect_clock_step(program, console)
         rate = effect_timer_rate(program) or return nil
         (rate * console.frame_seconds * CLOCK_MODULUS).floor
