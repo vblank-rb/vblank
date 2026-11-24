@@ -27,6 +27,7 @@ require_relative "runtime/chip_columns"
 require_relative "runtime/letterbox"
 require_relative "runtime/saving"
 require_relative "runtime/sound"
+require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/effects"
 require_relative "runtime/recordings"
@@ -69,7 +70,7 @@ module VBlank
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory, extra_buttons: c.extra_buttons, controllers: c.controllers) if c.chip?
             Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
-            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
+            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?, strikes: !c.effect_clock_step.nil?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
             Mosaic.reserve(memory) if c.mosaic

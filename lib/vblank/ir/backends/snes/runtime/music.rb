@@ -779,15 +779,19 @@ module VBlank
             # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
             # step), and on a frame with no tick neither pass over the effects is made.
             def emit_frames(asm, at, sharing, memory, clock_step = nil)
+              strikes = clock_step && memory.reserved?(Strikes::OPEN)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs("rt_music_switch"))
+              asm.jsl(asm.long("rt_strikes_mark")) if strikes
+              Strikes.emit_first_offset(asm, memory, EFFECT_CLOCK, clock_step) if strikes
               emit_step_effect_clock(asm, at, clock_step) if clock_step
-              emit_effect_pass(asm, at, "rt_sfx_above", clock_step) if sharing
+              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
               asm.lda(at.call(PLAYING))
               asm.beq("rt_music_frame_played")
               asm.jsr(asm.abs("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
-              emit_effect_pass(asm, at, "rt_sfx_below", clock_step) if sharing
+              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes) if sharing
+              emit_later_ticks(asm, at, memory, clock_step, strikes) if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
               asm.jsr(asm.abs("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)
@@ -795,21 +799,23 @@ module VBlank
               asm.rts
             end
 
-            # The sound effects' timer moved on a frame, inline: the step added to its count
-            # (EFFECT_CLOCK), and EFFECT_TICKED the carry, 1 for a tick and nought for none.
+            # The sound effects' timer moved on a frame, inline: the step's low 16 bits added to its
+            # count (EFFECT_CLOCK), and EFFECT_TICKED the frame's ticks, the step's whole counts and the
+            # carry.
             def emit_step_effect_clock(asm, at, step)
               asm.lda(at.call(EFFECT_CLOCK))
               asm.clc
-              asm.adc(step)
+              asm.adc(step & 0xFFFF)
               asm.sta(at.call(EFFECT_CLOCK))
-              asm.lda(0)
-              asm.rol
+              asm.lda(step >> 16) # LDA leaves the carry
+              asm.adc(0)
               asm.sta(at.call(EFFECT_TICKED))
             end
 
             # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
-            # effects' timer has no tick, when they are on one.
-            def emit_effect_pass(asm, at, routine, clock_step)
+            # effects' timer has no tick, when they are on one. With +strikes+ the pass's notes are
+            # struck inside the frame (Strikes), and END follows what it sent.
+            def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jsr(asm.abs(routine))
                 return
@@ -818,7 +824,27 @@ module VBlank
               asm.lda(at.call(EFFECT_TICKED))
               asm.beq("#{routine}_untimed")
               asm.jsr(asm.abs(routine))
+              asm.jsl(asm.long("rt_strikes_close")) if strikes
               asm.label("#{routine}_untimed")
+            end
+
+            # Each later tick of a frame the effects' timer ticks more than once on, inline after the
+            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame"),
+            # with +strikes+ each a tick further into the frame.
+            def emit_later_ticks(asm, at, memory, step, strikes)
+              asm.label("rt_sfx_later_tick")
+              asm.lda(at.call(EFFECT_TICKED))
+              asm.branch_long(:beq, "rt_sfx_later_ticks_done")
+              asm.dec
+              asm.sta(at.call(EFFECT_TICKED))
+              asm.branch_long(:beq, "rt_sfx_later_ticks_done")
+              Strikes.emit_next_offset(asm, memory, step) if strikes
+              asm.jsr(asm.abs("rt_sfx_above"))
+              asm.jsl(asm.long("rt_strikes_close")) if strikes
+              asm.jsr(asm.abs("rt_sfx_below"))
+              asm.jsl(asm.long("rt_strikes_close")) if strikes
+              asm.brl("rt_sfx_later_tick")
+              asm.label("rt_sfx_later_ticks_done")
             end
 
             # rt_music_switch: caught up with the tune the game names (Reference::Player#switch_to_wanted_song).

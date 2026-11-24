@@ -206,7 +206,9 @@ module VBlank
               [SET_BITS_COMMANDS.fetch(target), mask, bits]
             end
 
-            def reserve(memory, queued: false, effects: false)
+            # +strikes+ for a game whose sound effects are struck inside the frame (Strikes), which
+            # sends them ahead, so has a queue and effects too.
+            def reserve(memory, queued: false, effects: false, strikes: false)
               if queued
                 memory.reserve_table(QUEUE, QUEUE_ENTRIES * ENTRY_BYTES)
                 memory.reserve(QUEUE_HEAD, 2)
@@ -216,6 +218,7 @@ module VBlank
               if queued && effects
                 memory.reserve_table(AHEAD, AHEAD_ENTRIES * ENTRY_BYTES)
                 [AHEAD_HEAD, AHEAD_TAIL, ASKING_AHEAD, FRONT_LEFT, FORGET_KEEPS].each { |name| memory.reserve(name, 2) }
+                Strikes.reserve(memory) if strikes
               end
               memory.reserve(LIVE, 2)
               memory.reserve(SENT, 2)
@@ -280,10 +283,10 @@ module VBlank
             # (Samples.recording's pairs) last (Samples.image). #sections and #emit are each handed the
             # same lists, since rt_sound_start sends as many bytes as it is given. What does not fit in
             # the sound unit's memory, below the part its built-in program is kept in, is refused.
-            def image(waves, recordings: [], scenes: nil, whole_notes: false, chip_envelopes: false, sides: false)
+            def image(waves, recordings: [], scenes: nil, whole_notes: false, chip_envelopes: false, sides: false, strikes: false)
               first_own = (Samples::FIRST_WAVE + waves.size + recordings.size - scenes.sum(&:count) if scenes)
               program = driver(whole_notes: whole_notes, chip_envelopes: chip_envelopes, sides: sides,
-                               scene_sources_from: first_own).assembled.bytes
+                               scene_sources_from: first_own, strikes: strikes).assembled.bytes
               table_at = [TABLE_AT, (DRIVER_AT + program.size + 0xFF) & ~0xFF].max
               padding = Array.new(table_at - DRIVER_AT - program.size, 0)
               unless scenes
@@ -359,23 +362,40 @@ module VBlank
             # and +chip_envelopes+ one that is told each note's envelope bytes first. +scene_sources_from+
             # is the first source number of the recordings scenes load (#image), in a game that loads
             # them, whose program then takes them (#emit_scene_load_commands).
-            def driver(whole_notes: false, chip_envelopes: false, sides: false, scene_sources_from: nil)
+            #
+            # With +strikes+ (Strikes) it keeps a clock and a list of commands for later: each command
+            # is copied out of the mailboxes and done as a routine ("dispatch"), whose end returns
+            # rather than answering, so the list can do one later the same way.
+            def driver(whole_notes: false, chip_envelopes: false, sides: false, scene_sources_from: nil, strikes: false)
               ports = PORTS
+              told = strikes ? Strikes::TOLD : ports # where a command's three numbers are read
               past_key_off = whole_notes ? "whole" : "answer"
               spc = SPC700.new(origin: DRIVER_AT)
               spc.instance_eval do
                 mov :a, direct(ports[0]) # the number the console started it with
                 mov direct(LAST_ANSWERED), :a
+              end
+              Strikes.emit_timer_start(spc) if strikes
+              spc.instance_eval do
                 label "wait"
+                call "strikes_clock" if strikes
                 mov :a, direct(ports[0])
                 cmp :a, direct(LAST_ANSWERED)
                 beq "wait"
                 mov direct(LAST_ANSWERED), :a
-                mov :a, direct(ports[1])
+                if strikes
+                  call "strikes_take"
+                  mov :a, direct(LAST_ANSWERED)
+                  mov direct(ports[0]), :a
+                  bra "wait"
+                  label "dispatch" # A the command, its numbers in TOLD
+                else
+                  mov :a, direct(ports[1])
+                end
                 cmp :a, imm(WRITE_DSP)
                 bne "flag_bits"
-                mov direct(DSP_ADDRESS), direct(ports[2])
-                mov direct(DSP_DATA), direct(ports[3])
+                mov direct(DSP_ADDRESS), direct(told[2])
+                mov direct(DSP_DATA), direct(told[3])
                 bra "answer"
                 label "flag_bits"
                 cmp :a, imm(SET_FLAG_BITS)
@@ -387,18 +407,22 @@ module VBlank
                 bne(scene_sources_from ? "scene_loads" : past_key_off)
                 mov direct(DSP_ADDRESS), imm(DSPWrites::KEY_OFF)
                 label "set_bits"
-                mov :a, direct(ports[2]) # which bits change
+                mov :a, direct(told[2]) # which bits change
                 eor :a, imm(0xFF)
                 and_ :a, direct(DSP_DATA) # the register's other bits, as the DSP holds them
                 mov direct(KEPT_BITS), :a
-                mov :a, direct(ports[3])
-                and_ :a, direct(ports[2]) # the new bits
+                mov :a, direct(told[3])
+                and_ :a, direct(told[2]) # the new bits
                 or_ :a, direct(KEPT_BITS)
                 mov direct(DSP_DATA), :a
                 label "answer"
-                mov :a, direct(LAST_ANSWERED)
-                mov direct(ports[0]), :a
-                bra "wait"
+                if strikes
+                  ret
+                else
+                  mov :a, direct(LAST_ANSWERED)
+                  mov direct(ports[0]), :a
+                  bra "wait"
+                end
                 if scene_sources_from
                   label "scene_loads"
                   cmp :a, imm(LOAD_AT)
@@ -410,8 +434,9 @@ module VBlank
                   jmp "load_turns"
                 end
               end
-              emit_whole_note_commands(spc, chip_envelopes: chip_envelopes, sides: sides) if whole_notes
-              emit_scene_load_commands(spc, scene_sources_from) if scene_sources_from
+              emit_whole_note_commands(spc, chip_envelopes: chip_envelopes, sides: sides, told: told) if whole_notes
+              emit_scene_load_commands(spc, scene_sources_from, returns: strikes) if scene_sources_from
+              Strikes.emit_routines(spc) if strikes
               spc
             end
 
@@ -428,7 +453,9 @@ module VBlank
             # A turn is some seventy of the SPC700's cycles, and the SPC700 runs at about a million
             # cycles a second, so a frame of the screen's takes a few hundred turns (BYTES_A_FRAME).
             # The console's side of a turn is shorter, and mostly done while the SPC700 stores.
-            def emit_scene_load_commands(spc, sources_from)
+            # +returns+ for a program that does each command as a routine (#driver's +strikes+); its
+            # clock does not move while the turns come, so a note on its list waits until they end.
+            def emit_scene_load_commands(spc, sources_from, returns: false)
               ports = PORTS
               dsp = DSPWrites
               fold = lambda do
@@ -496,7 +523,7 @@ module VBlank
               spc.bra("load_turn")
               spc.label("load_turns_done")
               fold.call
-              spc.jmp("wait")
+              returns ? spc.ret : spc.jmp("wait")
             end
 
             # What the sound unit does with a note told whole, a voice's number being the high half of
@@ -510,8 +537,8 @@ module VBlank
             # the right in mailbox 3, where without it mailbox 3 is both. A note's two sides go ahead of
             # it as a new loudness (SIDES_COMMANDS), and the note leaves its volume registers alone, so
             # it is heard from its first sample where it sits.
-            def emit_whole_note_commands(spc, chip_envelopes: false, sides: false)
-              ports = PORTS
+            def emit_whole_note_commands(spc, chip_envelopes: false, sides: false, told: PORTS)
+              ports = told # where the command's numbers are read
               dsp = DSPWrites
               unless [dsp::VOLUME_LEFT, dsp::VOLUME_RIGHT, dsp::PITCH_LOW, dsp::PITCH_HIGH, dsp::SOURCE, dsp::ADSR1] == (0..5).to_a && dsp::GAIN == 7
                 raise ArgumentError, "a voice's registers are not in the order the sound program writes them"
@@ -605,7 +632,7 @@ module VBlank
             def image_for(memory, waves, recordings:, scenes:)
               image(waves, recordings: recordings, scenes: scenes, whole_notes: memory.reserved?(AHEAD),
                            chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES),
-                           sides: memory.reserved?(Recordings::SIDES))
+                           sides: memory.reserved?(Recordings::SIDES), strikes: memory.reserved?(Strikes::OPEN))
             end
 
             # What is sent across, in the cartridge, for rt_sound_start to send, in pieces of
@@ -664,6 +691,7 @@ module VBlank
               emit_log(asm, memory)
               emit_frame(asm, memory, songs, samples)
               emit_scene_load(asm, memory, made.scene_area) if scenes
+              Strikes.emit(asm, memory) if memory.reserved?(Strikes::OPEN)
             end
 
             # rt_sound_load_scene: the recordings of a scene sent into the scene area, R0 (a long
@@ -925,7 +953,10 @@ module VBlank
               asm.label("rt_sound_command") # the command in A, its two numbers in R0 and R1
               asm.sta(asm.direct(R2))
               asm.lda(asm.abs(memory[LIVE]))
-              if memory.reserved?(AHEAD)
+              if memory.reserved?(Strikes::OPEN)
+                asm.branch_long(:beq, "rt_sound_write_done")
+                Strikes.emit_write_ahead(asm, memory)
+              elsif memory.reserved?(AHEAD)
                 asm.branch_long(:beq, "rt_sound_write_done")
                 emit_write_ahead(asm, memory)
               else
@@ -939,6 +970,7 @@ module VBlank
               asm.label("rt_sound_write_at_once")
               asm.lda(WRITE_DSP)
               asm.sta(asm.direct(R2))
+              asm.label("rt_sound_command_at_once") # the command in R2, as rt_sound_command has it
               emit_write_at_once(asm, memory)
               asm.rtl
               emit_queue_room_made(asm, memory, samples)

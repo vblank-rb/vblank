@@ -335,9 +335,15 @@ module VBlank
 
           # Whether writes the log already counts are still queued for the sound unit, when its
           # registers cannot be held to the log yet.
+          #
+          # In a game whose sound effects are struck inside the frame (Runtime::Strikes), what the sound
+          # unit keeps on its list for later is still waiting too: the registers are read once it has
+          # struck them, as the frame ends.
           def sound_writes_waiting?
             sound = Runtime::Sound
-            @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
+            return true if @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
+
+            @places.runtime.key?(Runtime::Strikes::OPEN) && @core.apu_ram.getbyte(Runtime::Strikes::LISTED).positive?
           end
 
           # The recordings the cartridge's places held at the moment of +frame+, each [name, level], in
