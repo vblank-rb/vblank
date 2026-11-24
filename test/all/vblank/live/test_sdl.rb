@@ -583,6 +583,20 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A play told how many pictures to show ends after them even with the menu left open: a picture drawn
+  # while the game is held counts. The timeout only catches a hang.
+  def test_a_play_with_a_picture_limit_ends_with_the_menu_left_open
+    window = open_window
+    window.picture_limit = 5
+    press_key(SDL::MENU)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert Timeout.timeout(10) { window.hold_while_paused }
+    assert window.stop?
+  ensure
+    window&.close
+  end
+
   # A box too big for the window makes the window bigger, a whole number of times the picture, as the
   # desktop build's does: a Color game's window at the least scale is its 160 by 144 screen, too small
   # for what is wrong with a settings file. Answered, the window goes back to the player's size.

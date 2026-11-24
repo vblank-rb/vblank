@@ -123,6 +123,9 @@ module VBlank
       # each frame.
       def begin_play(device)
         @device = device
+        # A device that holds the game (a window paused, or with its menu open) is told the play's
+        # limit, so a held game still ends it.
+        @device.picture_limit = @stop_after_passes if @device.respond_to?(:picture_limit=)
         @passes = @frames = 0
         @paced_by_speaker = false
         @seconds_paused = 0

@@ -279,6 +279,7 @@ module VBlank
         @frame_work = nil # the game's work a pass over the last whole second, in milliseconds, as words
         @caption = caption || title
         @notice = nil # the line #notice shows, until @notice_ends on #now's clock
+        self.picture_limit = nil
         begin
           open_window(@caption, scale)
         rescue Failed
@@ -394,6 +395,7 @@ module VBlank
         count_frame_rate
         @sdl.SDL_UpdateTexture(@texture, nil, pixels.pack("v*"), @width * 2)
         redraw_window
+        @pictures_shown += 1
       end
 
       # Lines of words over black in place of a picture, while the game this window will play is
@@ -563,7 +565,16 @@ module VBlank
       # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
       # picture before it asks). Escape's press is read, not whether it is down now: Escape giving up
       # a choice is still down as the next picture is shown, and must not stop the play then.
-      def stop? = @closed
+      def stop? = @closed || (!@picture_limit.nil? && @pictures_shown >= @picture_limit)
+
+      # The most pictures a play shows (vblank run's --pictures), nil for no limit, told by the Session as
+      # it begins, and the count started again. A picture drawn while the game is held (paused, or the
+      # menu open) is a picture shown too, so a play with a limit ends however long it is held, as a play
+      # with nobody at the window must.
+      def picture_limit=(most)
+        @picture_limit = most
+        @pictures_shown = 0
+      end
 
       # The speed the menu sets while Tab is held, as SDL last heard it (#show reads what SDL has
       # heard), and 1 while it is not, whichever pass it is asked for.
@@ -583,6 +594,7 @@ module VBlank
           read_event if @sdl.SDL_WaitEventTimeout(@event, wait_milliseconds) != 0
           write_settings_when_due
           redraw_window
+          @pictures_shown += 1
         end
         resume_speaker
         true
@@ -1122,7 +1134,16 @@ module VBlank
 
       # How long the wait for the next thing to happen to a held window may be, in milliseconds:
       # until the settings are due to be written, or for ever (-1).
-      def wait_milliseconds = @write_settings_at ? [((@write_settings_at - now) * 1000).ceil, 0].max : -1
+      def wait_milliseconds
+        settings = @write_settings_at ? [((@write_settings_at - now) * 1000).ceil, 0].max : -1
+        return settings unless @picture_limit # a play with a limit draws a picture a frame while held
+
+        settings.negative? ? HELD_PICTURE_MILLISECONDS : [settings, HELD_PICTURE_MILLISECONDS].min
+      end
+
+      # How often a held window with a picture limit draws, in milliseconds: a frame of a screen that
+      # refreshes 60 times a second.
+      HELD_PICTURE_MILLISECONDS = 16
 
       def set_speaker_volume
         return unless live?(@speaker)
