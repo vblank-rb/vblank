@@ -676,7 +676,7 @@ module VBlank
         # written, since it is its timer's from power-on (see Nodes::OnTimer.of).
         def collect_definitions(node)
           @timer_handlers = Nodes::OnTimer.of(node)
-          @player.time_effects(IR::Tunes.effect_clock_step(node, @console))
+          @player.effect_clock_step = IR::Tunes.effect_clock_step(node, @console)
           node.walk do |n|
             case n.kind
             when :func

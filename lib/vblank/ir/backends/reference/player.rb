@@ -64,9 +64,9 @@ module VBlank
             @effect_clock = 0        # ...and its count, from power-on
           end
 
-          # The sound effects count their ticks on a timer that adds +step+ a frame
+          # The sound effects count their ticks on a timer that adds this a frame
           # (IR::Tunes.effect_clock_step), or on frames, for nil.
-          def time_effects(step) = @effect_clock_step = step
+          attr_writer :effect_clock_step
 
           # The name of the tune the player is on, or nil for none. It takes up what the program
           # named at the next frame, and drops a tune that played once on the frame after its end.
@@ -215,8 +215,8 @@ module VBlank
             return true unless @effect_clock_step
 
             @effect_clock += @effect_clock_step
-            ticked = @effect_clock >= IR::Tunes::CLOCK_TURN
-            @effect_clock %= IR::Tunes::CLOCK_TURN
+            ticked = @effect_clock >= IR::Tunes::CLOCK_MODULUS
+            @effect_clock %= IR::Tunes::CLOCK_MODULUS
             ticked
           end
 

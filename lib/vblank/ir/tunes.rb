@@ -417,7 +417,7 @@ module VBlank
       # as the frame's sound effects are about to play: it adds this step to a count of 16 bits, and
       # the frame has a tick when the count goes past the top and comes round. On a frame with no
       # tick the sound effects do nothing at all, and what was asked for waits; on one with a tick
-      # each plays one tick, as it plays a frame in a game with no timer. A tick is never shorter
+      # each plays one tick, as it plays a frame in a game with no timer. A tick is always longer
       # than a frame, so a frame never holds two.
       #
       # The step is the part of a tick a frame is, in 65536ths, rounded down: the console's own
@@ -426,12 +426,17 @@ module VBlank
       # whole numbers, so the interpreter and every build agree to the frame. Nil for a game whose
       # effects are not on a timer.
       #
-      # A tick shorter than a frame cannot be kept this way, and the build says so (Guardrails::
-      # Checks::EffectTickTooShort): a frame would hold more than one.
+      # A tick of a frame or shorter cannot be kept this way, and the build says so (Guardrails::
+      # Checks::EffectTickTooShort): the step would be the whole count or more, and a frame could
+      # hold more than one tick.
       def effect_clock_step(program, console)
         rate = effect_timer_rate(program) or return nil
-        (rate * console.frame_seconds * CLOCK_TURN).floor
+        (rate * console.frame_seconds * CLOCK_MODULUS).floor
       end
+
+      # A rate of the sound effects' timer as the messages about it give it: "50 times a second", or
+      # with three places of a fraction where it has one.
+      def timer_rate_words(rate) = "#{rate.denominator == 1 ? rate.to_i : rate.to_f.round(3)} times a second"
 
       # How many times a second the sound effects' timer ticks, or nil for none: the one rate every
       # effect of the game has (Builder#sound_effects holds them to one).
@@ -440,7 +445,7 @@ module VBlank
       end
 
       # The count the sound effects' timer keeps comes round at this: 16 bits.
-      CLOCK_TURN = 1 << 16
+      CLOCK_MODULUS = 1 << 16
 
       # ...and their song nodes, with every song the program plays: all it can sound.
       def playable_songs(program)

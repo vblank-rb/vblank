@@ -2,8 +2,8 @@
 
 require "test_helper"
 
-# Sound effects on a timer play one tick on a frame at most, so a timer faster than the console's
-# frames would lose ticks. The build stops and says the rate.
+# Sound effects on a timer play one tick on a frame at most, so a tick must be longer than one of
+# the console's frames. The build stops and says the rate.
 class TestEffectTickTooShortGuardrail < Minitest::Test
   include VBlank::IR::Build
 
@@ -14,15 +14,26 @@ class TestEffectTickTooShortGuardrail < Minitest::Test
             sound_effect_list(:sfx, [:"sfx.a"]))
   end
 
+  # As many ticks a second as the console shows frames: a tick exactly a frame long.
+  private def frame_rate(program) = 1 / program.described_console.frame_seconds
+
   def test_a_timer_faster_than_frames_stops_the_build
     findings = Check.new.detect(game(Rational(80)))
 
     assert_equal 1, findings.length
     assert findings.first.error?
-    assert_match(/one frame or longer/, findings.first.message)
+    assert_match(/longer than one frame/, findings.first.message)
+    assert_match(/80 times a second/, findings.first.message)
   end
 
-  def test_a_timer_of_a_frame_or_slower_is_quiet
+  def test_a_tick_exactly_a_frame_long_stops_the_build
+    findings = Check.new.detect(game(frame_rate(game(Rational(50)))))
+
+    assert_equal 1, findings.length
+    assert_match(/longer than one frame/, findings.first.message)
+  end
+
+  def test_a_tick_longer_than_a_frame_is_quiet
     assert_empty Check.new.detect(game(Rational(50)))
   end
 
