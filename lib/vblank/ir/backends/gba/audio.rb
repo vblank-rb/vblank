@@ -2646,7 +2646,7 @@ module VBlank
             emit_interrupts_held do
               @emitter.emit(ASM.load_immediate(ACC, EffectStrikes.voice_registers_at(channel)))
               @emitter.emit(ASM.load_immediate(TMP, speaker_bits(channel)))
-              @drawing.emit_call_irq_routine(EffectStrikes::DROP_VOICE)
+              @placement.emit_call_irq_routine(EffectStrikes::DROP_VOICE)
             end
           end
 
