@@ -34,6 +34,7 @@ module VBlank
         def note_round_start!(builder)
           @builder = builder
           @round_mark = builder.statement_mark
+          @round_variables = builder.variables_named
         end
 
         # `break` or `next`, under +tests+, the tests the game or Ruby asks between the jump and
@@ -49,8 +50,13 @@ module VBlank
 
         # What the round that made the loop the game's recorded, taken back out: the rounds before
         # it were Ruby's, written out and right as they are, and this one is the first round of
-        # the game's loop, recorded again inside it.
-        def game_round_statements = @builder.take_statements_since(@round_mark)
+        # the game's loop, recorded again inside it. A copy of a field given before the round,
+        # placed where it was given, stays (Builder#take_round_since).
+        def game_round_statements = @builder.take_round_since(@round_mark)
+
+        # The variables the build made for that round alone are forgotten, once the game's loop
+        # holds the round again.
+        def forget_round_variables! = @builder.forget_unnamed_variables_since(@round_variables)
 
         private
 

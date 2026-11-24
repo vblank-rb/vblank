@@ -1675,6 +1675,31 @@ class TestPlainRubyAnswers < Minitest::Test
     refute_empty field_copies(&game), "the field keeps no copy, though a timer changes px"
   end
 
+  # A field given its number just before a `loop do` keeps its copy, placed where it was given,
+  # once the round that makes the `loop do` the game's is taken back and recorded again inside the
+  # game's loop (Builder#take_round_since).
+  def test_a_struct_field_given_before_a_loop_do_keeps_its_copy_through_the_loop
+    game = proc do
+      screen :bitmap
+      px = 0
+      n = 0
+      game_loop do
+        px = 5
+        n = 0
+        point = AnswerPoint.new(px + 2, 0, 0)
+        loop do
+          px += 1
+          break if px > 8
+
+          n += point.x
+        end
+      end
+    end
+    agrees("point = AnswerPoint.new(px + 2, ...); loop do px += 1; break if px > 8; n += point.x end",
+           reads: %i[n px], passes: 3, &game)
+    assert_equal 1, field_copies(&game).size, "the round taken back leaves no copy of its own behind"
+  end
+
   # A Data object keeps the number it was made from, as a Struct does.
   def test_a_data_object_made_from_a_changing_number_keeps_a_copy
     agrees("AnswerFixedPoint.new(x: score), then score += 1", reads: %i[n], passes: 3) do

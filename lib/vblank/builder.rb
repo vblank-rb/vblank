@@ -201,6 +201,7 @@ module VBlank
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
+      @placed_at_marks = {}.compare_by_identity # a statement #record_at put at an earlier place → that place
       @counted_loop_notes = []
       @step_variables = {}.compare_by_identity # routine body → why → its shared hidden variable (#step_variable)
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
@@ -1233,6 +1234,38 @@ module VBlank
       children.slice!((start + 1)..)
     end
 
+    # The statements recorded since +mark+, taken out as #take_statements_since takes them, but for
+    # those #record_at put at +mark+ itself, which belong before it and stay (PlainRuby::Jumps: a
+    # round of `loop do` taken back, whose field copies were placed where the field was given).
+    def take_round_since(mark) # :nodoc:
+      placed, round = take_statements_since(mark).partition do |statement|
+        at = @placed_at_marks[statement]
+        at && at.container.equal?(mark.container) && at.last.equal?(mark.last)
+      end
+      mark.container.children.push(*placed)
+      round
+    end
+
+    # How many variables the build has named so far, for #forget_unnamed_variables_since.
+    def variables_named = @variables.size # :nodoc:
+
+    # The variables the build made for itself (`__...`) since it had named +count+, that no statement
+    # names now: those of statements taken back (#take_round_since), which take no memory and are
+    # not reported.
+    def forget_unnamed_variables_since(count) # :nodoc:
+      made = @variables.to_a.drop(count).select { |name| name.start_with?("__") }
+      return if made.empty?
+
+      named = Set.new
+      @program.walk { |node| node.named_operands.each { |_field, held| named.merge(Array(held).flatten.grep(Symbol)) } }
+      (made - named.to_a).each do |name|
+        @hidden_variable_notes.reject! { |note| note.name == name }
+        @variables.delete(name)
+        @unique_names.delete(name)
+        @fraction_vars.delete(name)
+      end
+    end
+
     # Records what the block records at +mark+, an earlier place, rather than where the builder
     # records now: just after the statement +mark+ names, in its container, however much was
     # recorded there since. Returns what the block returns.
@@ -1245,6 +1278,7 @@ module VBlank
       raise IR::InvariantError, "statements were put back at a place that is no longer recorded" unless start
 
       children.insert(start + 1, *made)
+      made.each { |statement| @placed_at_marks[statement] = mark }
       answer
     end
 

@@ -330,6 +330,27 @@ class TestPlainRubyJumps < Minitest::Test
     assert_equal [4, 13, 1, 5], [player[:steps], player[:total], player[:done], player[:at]]
   end
 
+  # The round that makes a `loop do` the game's is taken back and recorded again inside the game's
+  # loop. A hidden number that round alone made names nothing then, and is not kept or reported.
+  def test_a_loop_do_made_the_games_keeps_no_hidden_number_of_the_round_taken_back
+    game = proc do
+      a = 1
+      b = 2
+      game_loop do
+        loop do
+          a, b = b, a
+          break if a > 1
+        end
+      end
+    end
+    built = VBlank::Cartridge::EvaluatedGame.new(VBlank::DSL::PlainRuby.rewrite(game, checked: false))
+    named = built.program.walk.flat_map { |node| node.named_operands.flat_map { |_field, held| Array(held).flatten } }
+
+    hidden = built.hidden_variable_notes.map(&:name)
+    refute_empty hidden, "the swap keeps a hidden number"
+    assert_empty hidden - named
+  end
+
   def test_break_with_a_value_in_a_loop_the_game_runs_is_refused
     error = assert_raises(Refused) do
       built do

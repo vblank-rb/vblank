@@ -86,6 +86,7 @@ module VBlank
             refuse_changing_round!
           end
           refuse_changing_round! unless RoundShape.same?(switched, builder.last_recorded_statement.children)
+          jumps.forget_round_variables!
         end
 
         # Do two recordings of one block do the same? Each statement's kind, operands and the
