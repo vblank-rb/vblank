@@ -1152,11 +1152,6 @@ module VBlank
             @palette_tint.emit_tint_reset_if_tinting # the table now holds the originals again
           end
 
-          # This file's own seams, called as bare methods.
-          def backing_info(name) = @lists.backing_info(name)
-          def placed_fade = @layout.screen.placed_fade
-          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
-
           # What the screen up now does with a page finished too late (see IR::LatePages), kept
           # where the end of a pass can read it: nothing to wait, else one more than the row a
           # late page is still shown at once above — so a row of nothing, which shows a late
@@ -1783,7 +1778,7 @@ module VBlank
           # the other direction.
           def emit_save_region(node)
             backing_region_unsupported_in_buffered! if @lowering.mode == :buffered
-            info = backing_info(node.buffer)
+            info = @lists.backing_info(node.buffer)
             emit_rect_row_dma(node.x, node.y, info.width, info.height, info.base, vram: :src)
           end
 
@@ -1791,7 +1786,7 @@ module VBlank
           # like a blit but sourced from the backing store instead of a ROM image.
           def emit_restore_region(node)
             backing_region_unsupported_in_buffered! if @lowering.mode == :buffered
-            info = backing_info(node.buffer)
+            info = @lists.backing_info(node.buffer)
             emit_rect_row_dma(node.x, node.y, info.width, info.height, info.base, vram: :dest)
           end
 
@@ -2001,7 +1996,7 @@ module VBlank
             @emitter.emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
             @emitter.emit_number(SPARE, points.length)
             @text_points_used = true
-            emit_call_cold_routine(TEXT_POINTS)
+            @placement.emit_call_cold_routine(TEXT_POINTS)
           end
 
           TEXT_POINTS = Messages::MadeNames.make(:text_points_routine)
@@ -2087,7 +2082,7 @@ module VBlank
             @emitter.emit_number(1, x)
             @emitter.emit_number(2, y)
             @emitter.emit_number(3, color)
-            emit_call_cold_routine(digit_routine_label(node.font, font, width))
+            @placement.emit_call_cold_routine(digit_routine_label(node.font, font, width))
           end
 
           # The shared routine's label for a font, reserved the first time a digit in

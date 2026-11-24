@@ -1175,7 +1175,7 @@ module VBlank
           # The strike list's routines, inside the screen's interrupt with the effects' walk.
           def emit_strike_routines
             upload = @effect_waves && lambda do
-              upload_wave_in_interrupt? ? @emitter.emit_branch(:bl, UPLOAD_WAVE) : @drawing.emit_call_cold_routine(UPLOAD_WAVE)
+              upload_wave_in_interrupt? ? @emitter.emit_branch(:bl, UPLOAD_WAVE) : @placement.emit_call_cold_routine(UPLOAD_WAVE)
             end
             @strikes.emit_routines(score: MUSIC_SCORE, emit_upload_wave: upload)
           end
