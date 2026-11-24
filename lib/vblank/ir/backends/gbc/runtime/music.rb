@@ -122,8 +122,20 @@ module VBlank
 
             def entries_in_banks?(memory) = memory.reserved?(ENTRY_COPY)
 
+            # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
+            # its count, two bytes from power-on, and whether the frame playing now has a tick (not
+            # nought) or none. On a frame with none the effects are not played at all, and what was
+            # asked for waits for the tick.
+            EFFECT_CLOCK = "rt sfx clock"
+            EFFECT_TICKED = "rt sfx ticked"
+
             def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, waves: false, swells: false, noise_swells: false,
-                        banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false)
+                        banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false,
+                        effect_clock_step: nil)
+              if effect_clock_step
+                memory.reserve(EFFECT_CLOCK, 2)
+                memory.reserve(EFFECT_TICKED, 1)
+              end
               memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
               memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
               memory.reserve(TUNE_HELD, 1) if holds
@@ -254,13 +266,13 @@ module VBlank
             # any slides its pitch (GBC::Music#slides?), and +pans+ whether any plays from one speaker
             # (GBC::Music#pans?). Whether any wobbles is whether its place was reserved (#wobbles?).
             def emit(asm, memory, level:, songs:, effects: [], by_rank: [], fades: false, slides: false, pans: false,
-                     carries: false)
+                     carries: false, clock_step: nil)
               sharing = !effects.empty?
               emit_game_side(asm, memory, sharing)
               return emit_no_songs(asm) unless songs
 
               bytes = GBC::Music.note_bytes(slides, pans, shapes?(memory), wobbles?(memory), carries, note_waves?(memory))
-              emit_tick(asm, memory, level, sharing)
+              emit_tick(asm, memory, level, sharing, clock_step)
               emit_notes(asm, memory, level, sharing, fades, slides, pans, bytes)
               emit_wobbles(asm, memory, carries) if wobbles?(memory)
               emit_set_speakers(asm, memory) if pans
@@ -740,6 +752,25 @@ module VBlank
               asm.jump("rt_music_quiet")
             end
 
+            # The sound effects' timer moved on a frame: +step+ added to its count (EFFECT_CLOCK), and
+            # EFFECT_TICKED set from the carry, nought or $FF; A holds it too, and the zero flag is set for
+            # a frame with no tick.
+            def emit_step_effect_clock(asm, memory, step)
+              asm.load(:a, [memory[EFFECT_CLOCK]])
+              asm.load(:l, :a)
+              asm.load(:a, [memory[EFFECT_CLOCK] + 1])
+              asm.load(:h, :a)
+              asm.load(:de, step)
+              asm.add_hl(:de)
+              asm.load(:a, :l)
+              asm.load([memory[EFFECT_CLOCK]], :a)
+              asm.load(:a, :h)
+              asm.load([memory[EFFECT_CLOCK] + 1], :a)
+              asm.sbc_a(:a) # nought, less the carry: $FF for a tick
+              asm.load([memory[EFFECT_TICKED]], :a)
+              asm.and_a(:a)
+            end
+
             def emit_no_songs(asm)
               asm.label("rt_music_tick")
               asm.label("rt_music_quiet")
@@ -748,7 +779,7 @@ module VBlank
 
             # A game with sound effects plays a frame as the interpreter does (Reference::Player#advance):
             # the tune caught up with, the effects that outrank it, its parts, and the other effects.
-            def emit_tick(asm, memory, level, sharing)
+            def emit_tick(asm, memory, level, sharing, clock_step = nil)
               h = Console::GBCHardware
               asm.label("rt_music_tick")
               # Once the frame's notes are all written: where a swelling note is held under the music
@@ -769,8 +800,17 @@ module VBlank
                 asm.call("rt_music_switch")
                 asm.call("rt_music_end") if tune_plays_once?(memory)
                 asm.call("rt_music_tune_rank")
-                asm.call("rt_sfx_above")
-                asm.call("rt_music_song_frame")
+                if clock_step
+                  emit_step_effect_clock(asm, memory, clock_step)
+                  asm.call(:nz, "rt_sfx_above")
+                  asm.call("rt_music_song_frame")
+                  asm.load(:a, [memory[EFFECT_TICKED]])
+                  asm.and_a(:a)
+                  asm.ret(:z)
+                else
+                  asm.call("rt_sfx_above")
+                  asm.call("rt_music_song_frame")
+                end
                 asm.jump("rt_sfx_below")
                 asm.label("rt_music_switch")
               end

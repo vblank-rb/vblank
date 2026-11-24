@@ -409,6 +409,39 @@ module VBlank
         program.walk.select { |node| node.kind == :sound_effect_list }.flat_map(&:effects)
       end
 
+      # ### The timer the sound effects tick on
+      #
+      # A game whose sound effects say `on_timer:` (Audio::Score) counts their ticks on a timer of
+      # their rate, running from power-on, as a cartridge's own sound engine counts them on a timer
+      # of its sound chip's. Every player keeps the timer the same way, once a frame from the first,
+      # as the frame's sound effects are about to play: it adds this step to a count of 16 bits, and
+      # the frame has a tick when the count goes past the top and comes round. On a frame with no
+      # tick the sound effects do nothing at all, and what was asked for waits; on one with a tick
+      # each plays one tick, as it plays a frame in a game with no timer. A tick is never shorter
+      # than a frame, so a frame never holds two.
+      #
+      # The step is the part of a tick a frame is, in 65536ths, rounded down: the console's own
+      # frame (Console::Description#frame_seconds), not a round sixty a second, since the timer
+      # keeps real time and the console's frames are a little longer or shorter. Worked out from
+      # whole numbers, so the interpreter and every build agree to the frame. Nil for a game whose
+      # effects are not on a timer.
+      #
+      # A tick shorter than a frame cannot be kept this way, and the build says so (Guardrails::
+      # Checks::EffectTickTooShort): a frame would hold more than one.
+      def effect_clock_step(program, console)
+        rate = effect_timer_rate(program) or return nil
+        (rate * console.frame_seconds * CLOCK_TURN).floor
+      end
+
+      # How many times a second the sound effects' timer ticks, or nil for none: the one rate every
+      # effect of the game has (Builder#sound_effects holds them to one).
+      def effect_timer_rate(program)
+        program.walk.find { |node| node.kind == :song && node.timer_rate }&.timer_rate
+      end
+
+      # The count the sound effects' timer keeps comes round at this: 16 bits.
+      CLOCK_TURN = 1 << 16
+
       # ...and their song nodes, with every song the program plays: all it can sound.
       def playable_songs(program)
         names = effects(program)

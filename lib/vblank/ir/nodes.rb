@@ -2117,7 +2117,8 @@ module VBlank
       # others of its +group+ are the effects it stops (IR::Tunes.priority_of). +low_notes_intended+
       # means a note lower than its voice can play is played at the lowest it can on purpose.
       # +keeps_voices+ means a sound effect holds each voice it has taken until it ends, through a
-      # rest or a note at volume 0.
+      # rest or a note at volume 0. +timer_rate+ means a sound effect counts its ticks on a
+      # timer of that rate, and its events and +total_frames+ are in those ticks (IR::Tunes.effect_clock_step).
       class Song
         include Node
         kind :song
@@ -2125,7 +2126,7 @@ module VBlank
         category :sound
         operands name: :name, voices: :score, total_frames: :int, loop_frame: :int, priority: :int,
                  group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag,
-                 length_from_file: :file_song_length
+                 length_from_file: :file_song_length, timer_rate: :rate
 
         # +length_from_file+ is where the song's length and the tick it comes round to are in the
         # file the program is handed as it starts (a StartFile::SongLength), or absent for a song

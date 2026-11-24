@@ -117,7 +117,12 @@ module VBlank
             @effects_in_banks = effects_in_banks && !@effect_names.empty?
             @entries_in_banks = entries_in_banks && !@songs.empty?
             @banked = banked || @effects_in_banks || @entries_in_banks
+            @effect_clock_step = Tunes.effect_clock_step(program, program.described_console)
           end
+
+          # What the sound effects' timer adds a frame, or nil for effects that count frames
+          # (IR::Tunes.effect_clock_step).
+          attr_reader :effect_clock_step
 
           def banked? = @banked
           def effects_in_banks? = @effects_in_banks

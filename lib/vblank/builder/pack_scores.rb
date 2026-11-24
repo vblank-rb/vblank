@@ -175,7 +175,7 @@ module VBlank
 
         song.merge(length_from_file: IR::StartFile::SongLength.new(length: pack_number_in_start_file(score.length),
                                                                     loop_from: pack_number_in_start_file(score.loop_from),
-                                                                    tempo: score.tempo, ticks_per_beat: score.ticks_per_beat))
+                                                                    tempo: score.frame_timing.tempo, ticks_per_beat: score.frame_timing.ticks_per_beat))
       end
 
       # Where part +number+ of +score+ reads its notes in the start file. Only a part that plays
@@ -186,7 +186,7 @@ module VBlank
         # A wave of the pack a note names is read from where it is in the start file, as a part's is.
         waves = handle.waves.map { |wave| wave.is_a?(DSL::PackWave) ? pack_wave_in_start_file(wave, "A song") : written_wave(wave) }
         notes = IR::StartFile::Notes.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, instruments: instruments.freeze,
-                                         part: score.parts[number], tempo: score.tempo, ticks_per_beat: score.ticks_per_beat,
+                                         part: score.parts[number], tempo: score.frame_timing.tempo, ticks_per_beat: score.frame_timing.ticks_per_beat,
                                          who: "Part #{number} of a Score", recorded: recorded,
                                          voiced: slot.shape == :voiced_notes, takes_slide: takes_slide, waves: waves.freeze)
         refuse_keys_part_cannot_play!(notes, slot)

@@ -192,6 +192,7 @@ module VBlank
           songs = Lowering::Sound.songs?(program)
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
+          clock_step = (IR::Tunes.effect_clock_step(program, program.described_console) if effects.positive?)
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
           counted = IR::Frames.counts_from_power_on?(program)
@@ -204,7 +205,8 @@ module VBlank
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program),
                                   second_pad: Runtime::Frame.reads_second_pad?(program),
-                                  team_player: Runtime::Frame.reads_team_player?(program), bends: bends)
+                                  team_player: Runtime::Frame.reads_team_player?(program), bends: bends,
+                                  effect_clock_step: clock_step)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                                       streamed: try.settings.streamed,
@@ -216,7 +218,7 @@ module VBlank
                                              camera: lowering.camera?, colors: colors, sound: sound,
                                              music: (lowering.music_section if songs),
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level),
-                                             effects: effects,
+                                             effects: effects, effect_clock_step: clock_step,
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,

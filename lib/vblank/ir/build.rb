@@ -332,8 +332,12 @@ module VBlank
       #
       # +length_from_file:+ is where the song's length is in the file the program is handed as it
       # starts (a StartFile::SongLength); +total_frames+ is then the most it can last.
+      #
+      # +timer_rate:+ means a sound effect counts its ticks on a timer of that rate: its
+      # events and +total_frames+ are then in the timer's ticks (IR::Tunes.effect_clock_step).
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
-               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil)
+               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil,
+               timer_rate: nil)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -342,6 +346,7 @@ module VBlank
         said[:plays_once] = true if plays_once
         said[:keeps_voices] = true if keeps_voices
         said[:length_from_file] = length_from_file if length_from_file
+        said[:timer_rate] = timer_rate if timer_rate
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 

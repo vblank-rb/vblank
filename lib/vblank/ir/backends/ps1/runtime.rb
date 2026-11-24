@@ -50,7 +50,7 @@ module VBlank
           # the pads it reads (+pads+, Pads.pads_read).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {},
                       samples: false, recorded_pans: false, glides: false, tiles: false, colors: false, by_number: false,
-                      over_picture: false, counted: false, pads: 1)
+                      over_picture: false, counted: false, pads: 1, effect_clock_step: nil)
             Faces.reserve(memory) if faces
             Frame.reserve(memory, counted: counted)
             Pads.reserve(memory, pads: pads)
@@ -60,7 +60,8 @@ module VBlank
             Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
             Recordings.reserve(memory, sides: recorded_pans, glides: glides) if samples
-            Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
+            Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, effect_clock_step: effect_clock_step,
+                                  **notes) if songs
           end
 
           # The runtime's sections: the entry point, then everything else, and for a game that fills faces the
@@ -83,7 +84,7 @@ module VBlank
           # (Boot#emit), and nil for any other.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
                        samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false,
-                       count_at: nil)
+                       count_at: nil, effect_clock_step: nil)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             # A game with timers whose screen can be a tear-free painted one: its handlers paint ahead, on the page
@@ -107,7 +108,7 @@ module VBlank
             Collide.emit(asm) if collides
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
             Recordings.emit(asm, memory) if samples
-            Music.emit(asm, memory, level_at: music_level_at, effects: effects) if songs
+            Music.emit(asm, memory, level_at: music_level_at, effects: effects, effect_clock_step: effect_clock_step) if songs
             emit_start(asm, sound: sound, tiles: !tiled.nil?)
             emit_frame_begins(asm, frame_begins)
             [asm.section, *(faces ? [Faces.reciprocals_section(Lowering::TABLES_HOLDING), Faces.section(memory)] : [])]

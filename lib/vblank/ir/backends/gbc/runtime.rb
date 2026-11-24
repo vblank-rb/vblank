@@ -58,7 +58,7 @@ module VBlank
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false, waves: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
-                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false,
+                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false, effect_clock_step: nil,
                       walks_colors: false, grids_kept: false)
             # Must be first: the walk's tables share a page, and the first place there is fits them whole.
             Picture.reserve_walk_tables(memory) if walks_colors
@@ -74,7 +74,8 @@ module VBlank
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
                                   banked: banked_songs, holds: holds_music, effect_table: effect_table,
-                                  entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once)
+                                  entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once,
+                                  effect_clock_step: effect_clock_step)
           end
 
           # The runtime's sections: the processor's entry points, and everything else in one.
@@ -139,7 +140,7 @@ module VBlank
             Music.emit(asm, memory, level: music_level, songs: songs, effects: music&.effects || [],
                                     by_rank: music&.effects_by_rank || [], fades: music&.fades? || false,
                                     slides: music&.slides? || false, pans: music&.pans? || false,
-                                    carries: music&.carries? || false)
+                                    carries: music&.carries? || false, clock_step: music&.effect_clock_step)
             Saving.emit(asm, memory) if saves
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown
             Rumble.emit(asm, memory) if Rumble.any?(memory)

@@ -228,6 +228,18 @@ module PackScoresAtStartTests
     assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
   end
 
+  # A sound effect on a timer of 50 ticks a second (Audio::Score's `on_timer:`), its notes read from the
+  # pack: they are counted in the timer's ticks there too, not turned into frames as the game starts.
+  STRIKES = [[0, 3, 81, OWN, OWN], [3, 2, 76, OWN, 9], [5, 3, 81, OWN, OWN], [8, 2, 76, OWN, OWN], [10, 10, 81, OWN, 6]].freeze
+
+  def test_an_effect_on_a_timer_read_as_the_game_starts_plays_as_written_by_hand
+    assert_plays_as_written({ strikes: STRIKES }, frames: 60, buttons: %i[b]) do |notes_of|
+      { songs: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, key: 60)])], tempo: 150, length: 96)],
+        effects: [Score.new(parts: [Part.new(notes: notes_of.(:strikes))], tempo: 125, ticks_per_beat: 24, length: 20,
+                            on_timer: true)] }
+    end
+  end
+
   # A note's speaker and its noise clock, as a sound driver sets them for each note it strikes. A
   # square part takes each record's speaker (0 both, 1 the left, 2 the right) over its own, and one
   # that is no speaker is the part's; a part on the noise voice takes each record's clock (the

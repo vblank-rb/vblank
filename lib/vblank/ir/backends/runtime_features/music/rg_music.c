@@ -22,7 +22,8 @@
  * rg_game_sound_rules are described atop rg_sound.c.)
  *
  * rg_game_effects: how many sound effects there are, 1 if each wave note puts its waveform in — any
- * effect plays the wave voice, or a note names a waveform of its own (see wave_put_in) — then five
+ * effect plays the wave voice, or a note names a waveform of its own (see wave_put_in) — what the
+ * effects' timer adds a frame, 0 for effects that count frames (see step_effect_clock) — then five
  * numbers each, in the order they were declared — the song it plays (by
  * which the log names it), which entry of rg_game_music holds its notes, its rank
  * (IR::Tunes.effect_rank), its group (-1 for none, else which of the game's groups), and its
@@ -117,7 +118,8 @@
 #define NUMBERS_PER_PART 6
 #define EFFECT_COUNT (rg_game_effects[0])
 #define NOTES_PUT_IN_WAVEFORMS (rg_game_effects[1])
-#define EFFECT_ROWS 2
+#define EFFECT_CLOCK_STEP (rg_game_effects[2]) /* what the effects' timer adds a frame, 0 for none */
+#define EFFECT_ROWS 3
 #define NUMBERS_PER_EFFECT 6
 /* Each effect's numbers in rg_game_effects, by where they are in its row. */
 #define EFFECT_SONG 0
@@ -947,6 +949,19 @@ static void play_effect_frame(int32_t effect) {
 
 static void play_song_frame(void);
 
+/* The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step): a count
+ * of 16 bits from power-on, to which each frame adds EFFECT_CLOCK_STEP. A frame has a tick when the
+ * count comes round, and on a frame with none the effects do nothing (Reference::Player#advance). */
+static int32_t effect_clock;
+
+static bool step_effect_clock(void) {
+  if (EFFECT_CLOCK_STEP == 0) return true;
+  effect_clock += EFFECT_CLOCK_STEP;
+  bool ticked = effect_clock >= 0x10000;
+  effect_clock &= 0xFFFF;
+  return ticked;
+}
+
 /* Sound effects play around the song, highest rank first (IR::Tunes.effects_by_rank): the effects
  * that outrank the tune before its parts, the rest after. So a note that loses its voice to one
  * due on the same frame is never written at all — whoever writes a voice first on a frame keeps
@@ -955,16 +970,17 @@ static void rg_music_sound_frame(void) {
   if (level < 0) level = FULL_LEVEL;
   refuse_too_many_effects();
   switch_to_wanted_song();
-  for (int32_t effect = 0; effect < EFFECT_COUNT; effect++) {
+  bool ticked = step_effect_clock();
+  for (int32_t effect = 0; ticked && effect < EFFECT_COUNT; effect++) {
     effect_asked_now[effect] = effect_asked[effect];
     effect_asked[effect] = 0;
   }
   int32_t tune = playing >= 0 ? song[3] : -1;
   const int32_t *by_rank = &rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT)];
   int32_t at = 0;
-  while (at < EFFECT_COUNT && effect_row(by_rank[at])[EFFECT_RANK] > tune) play_effect_frame(by_rank[at++]);
+  while (ticked && at < EFFECT_COUNT && effect_row(by_rank[at])[EFFECT_RANK] > tune) play_effect_frame(by_rank[at++]);
   if (playing >= 0) play_song_frame();
-  while (at < EFFECT_COUNT) play_effect_frame(by_rank[at++]);
+  while (ticked && at < EFFECT_COUNT) play_effect_frame(by_rank[at++]);
   step_swells();
   step_wobbles();
   step_shapes();
@@ -1058,7 +1074,7 @@ static void rg_music_moment_printed(void) { printf("music_playing %d\n", (int)pl
 /* Where each number sits among the "music" field's. */
 enum {
   MUSIC_AT_WANTED, MUSIC_AT_PLAYING, MUSIC_AT_ENDED, MUSIC_AT_STOPS, MUSIC_AT_STOPS_SEEN, MUSIC_AT_HELD,
-  MUSIC_AT_SONG_FRAME, MUSIC_AT_LEVEL, MUSIC_AT_HOLDING_COUNT, MUSIC_AT_HOLDER_COUNT, MUSIC_STATE_NUMBERS,
+  MUSIC_AT_SONG_FRAME, MUSIC_AT_LEVEL, MUSIC_AT_HOLDING_COUNT, MUSIC_AT_HOLDER_COUNT, MUSIC_AT_EFFECT_CLOCK, MUSIC_STATE_NUMBERS,
 };
 
 enum {
@@ -1073,7 +1089,8 @@ enum {
 static void rg_music_visit_sound_state(void) {
   int reading = rg_state_reading();
   int64_t general[MUSIC_STATE_NUMBERS] = {wanted,     playing, ended, stops,         stops_seen,
-                                          music_held, song_frame, level, holding_count, holder_count};
+                                          music_held, song_frame, level, holding_count, holder_count,
+                                          effect_clock};
   rg_state_numbers("music", general, MUSIC_STATE_NUMBERS);
   if (general[MUSIC_AT_WANTED] < -1 || general[MUSIC_AT_WANTED] >= SONG_COUNT || general[MUSIC_AT_PLAYING] < -1 || general[MUSIC_AT_PLAYING] >= SONG_COUNT || general[MUSIC_AT_ENDED] < -1 ||
       general[MUSIC_AT_ENDED] >= SONG_COUNT || general[MUSIC_AT_HOLDING_COUNT] < 0 || general[MUSIC_AT_HOLDING_COUNT] > PARTS_MOST || general[MUSIC_AT_HOLDER_COUNT] < 0 || general[MUSIC_AT_HOLDER_COUNT] > RG_NOISE_VOICE)
@@ -1081,6 +1098,7 @@ static void rg_music_visit_sound_state(void) {
   wanted = (int32_t)general[MUSIC_AT_WANTED], playing = (int32_t)general[MUSIC_AT_PLAYING], ended = (int32_t)general[MUSIC_AT_ENDED], stops = (int32_t)general[MUSIC_AT_STOPS];
   stops_seen = (int32_t)general[MUSIC_AT_STOPS_SEEN], music_held = general[MUSIC_AT_HELD] != 0, song_frame = (int32_t)general[MUSIC_AT_SONG_FRAME], level = (int32_t)general[MUSIC_AT_LEVEL];
   holding_count = (int32_t)general[MUSIC_AT_HOLDING_COUNT], holder_count = (int32_t)general[MUSIC_AT_HOLDER_COUNT];
+  effect_clock = (int32_t)general[MUSIC_AT_EFFECT_CLOCK];
 
   /* The playing tune's parts, read again from the song, each from where the image says. */
   if (reading) {

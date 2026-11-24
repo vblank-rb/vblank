@@ -394,8 +394,9 @@ module StateImageTests
   # turned down, faded and turned again, a sound effect over it, a beep that fades on the second
   # voice, a hit on the noise voice, the game's own waveform on the wave voice, and, on a console
   # that mixes recordings, a recording that loops and one that plays once. Mid-note, mid-effect and
-  # mid-recording at the state, and changed again after it.
-  private def sounding_game
+  # mid-recording at the state, and changed again after it. +on_timer+ counts the effect on a timer
+  # of 50 ticks a second (Audio::Score), whose count the state keeps too.
+  private def sounding_game(on_timer: false)
     mixes = VBlank::Console.described(game_console).recordings_at_once.positive?
     builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
     builder.instance_eval do
@@ -409,7 +410,7 @@ module StateImageTests
         voice(:drums, plays: :noise) { note :C3, :quarter; rest :quarter; note :C5, :quarter, pan: :left; rest :quarter }
       end
       score = VBlank::Audio::Score
-      hit = score.new(tempo: 150, priority: 68, parts: [score::Part.new(volume: 12, notes: [
+      hit = score.new(tempo: 150, ticks_per_beat: on_timer ? 20 : 24, on_timer: on_timer, priority: 68, parts: [score::Part.new(volume: 12, notes: [
                                                          score::Note.new(at: 0, key: :E5, length: 20), score::Note.new(at: 20, key: :G5, length: 20)
                                                        ])])
       effects = sound_effects :sfx, { hit: hit }
@@ -454,7 +455,14 @@ module StateImageTests
   end
 
   def test_music_and_sound_under_way_come_back_from_the_state
-    program = sounding_game
+    assert_sound_comes_back(sounding_game)
+  end
+
+  def test_sound_effects_on_a_timer_come_back_from_the_state
+    assert_sound_comes_back(sounding_game(on_timer: true))
+  end
+
+  private def assert_sound_comes_back(program)
     unbroken_run = state_run.writing_state_after(STATE_AFTER)
     unbroken = sound_heard(unbroken_run, program, frames: STATE_AFTER + FRAMES_ON, from: STATE_AFTER)
     SPEAKERS.each { |side| refute unbroken[side].all?(&:zero?), "the game makes sound on the #{side}" }

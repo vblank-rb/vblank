@@ -229,6 +229,7 @@ module VBlank
         scores = scores_with_pack_notes(scores, "songs :#{name}")
         keys, members = record_scores(name: name, scores: scores, verb: :songs, entry: "Song") do |key, score|
           refuse_song_keeping_voices!(name, key, score)
+          refuse_song_on_timer!(name, key, score)
           next unless score.group
 
           raise ArgumentError, "Song #{key.inspect} of :#{name} has `group:`. A group says which sound effects " \
@@ -244,6 +245,53 @@ module VBlank
 
         raise ArgumentError, "Song #{key.inspect} of :#{name} has `keeps_voices:`. It says a sound effect holds " \
                              "its voices until it ends. Remove `keeps_voices:` from this Score."
+      end
+
+      private def refuse_song_on_timer!(name, key, score)
+        return unless score.on_timer
+
+        raise ArgumentError, "Song #{key.inspect} of :#{name} has `on_timer:`. Only a sound effect can count its " \
+                             "ticks on a timer. Remove `on_timer:` from this Score."
+      end
+
+      # A game's sound effects are all on the one timer, or none is: a cartridge's sound engine has
+      # the one, and every effect it plays keeps to it. So the first effect a game declares sets the
+      # rate, or no timer, for every effect after it (+@effect_timer+, as it is in Audio::Score's
+      # timer_rate: a rate, or nil).
+      private def refuse_effect_off_timer!(effect, score)
+        rate = score.timer_rate
+        if !defined?(@effect_timer)
+          @effect_timer = rate
+          @first_effect = effect
+          return
+        end
+        return if rate == @effect_timer
+
+        raise ArgumentError, effect_off_timer_message(effect, rate)
+      end
+
+      private def effect_off_timer_message(effect, rate)
+        if rate.nil? || @effect_timer.nil?
+          timed, frames = rate ? [effect, @first_effect] : [@first_effect, effect]
+          return "#{timed} has `on_timer: true`, and #{frames} does not. The sound effects of a game are " \
+                 "all on the timer, or none is. Give `on_timer: true` to every sound effect, or remove it from all."
+        end
+
+        "#{effect} ticks #{timer_rate_words(rate)}, and #{@first_effect} ticks #{timer_rate_words(@effect_timer)}. " \
+          "The sound effects of a game are on one timer, and it ticks at one rate. Give every sound effect the " \
+          "same `tempo:` and `ticks_per_beat:`."
+      end
+
+      private def timer_rate_words(rate) = "#{rate.denominator == 1 ? rate.to_i : rate.to_f.round(3)} times a second"
+
+      # `this_frame:` starts an effect on the frame it is asked for, and an effect on the timer starts on
+      # the timer's next tick.
+      private def refuse_this_frame_on_timer!(name, this_frame)
+        return unless this_frame && defined?(@effect_timer) && @effect_timer
+
+        raise ArgumentError, "Sound effect list :#{name} is played with `this_frame: true`, and its sound effects " \
+                             "have `on_timer: true`. An effect on the timer starts on the next tick of the timer. " \
+                             "Remove `this_frame:`."
       end
 
       # Hands over sound effects as data, and returns a list to play them from.
@@ -268,6 +316,7 @@ module VBlank
         keys, members = record_scores(name: name, scores: scores, verb: :sound_effects,
                                       entry: "Sound effect") do |key, score|
           refuse_looping_sound_effect!(effect: "Sound effect #{key.inspect} of :#{name}", score: score)
+          refuse_effect_off_timer!("Sound effect #{key.inspect} of :#{name}", score)
         end
         record(Build.sound_effect_list(name, members))
         VBlank::DSL::SoundEffectList.new(self, name, keys)
@@ -278,6 +327,7 @@ module VBlank
       # Hook behind SoundEffectList#play, documented on `sound_effects`.
       def play_sound_effect(name, which, this_frame: false)  # :nodoc:
         refuse_unknown_this_frame!(this_frame)
+        refuse_this_frame_on_timer!(name, this_frame)
         record(Build.play_sound_effect(name, which: DSL::Value.node_for(which), this_frame: this_frame))
       end
 

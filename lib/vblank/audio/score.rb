@@ -61,6 +61,15 @@ module VBlank
     # silence until the effect ends, the way a cartridge's own sound engine can, so a song note
     # falling in that silence is lost. It means nothing for a song.
     #
+    # A sound effect on a timer. A cartridge's own sound engine often counts an effect's ticks on a
+    # timer of its sound chip's, not in frames, so a tick that is not a whole number of frames falls
+    # part way through one, and the frames between its notes are not all alike. `on_timer: true` on
+    # an effect's Score plays it that way: its ticks are a timer's, at the rate its tempo and
+    # +ticks_per_beat+ set, running from power-on. The effect starts on the timer's first tick after
+    # it is asked for, and each note sounds on the frame its tick falls in. A tick is one frame or
+    # longer, the timer runs at one rate, and a game's effects are all on it or none is
+    # (Builder#sound_effects), since a cartridge's engine has the one timer.
+    #
     # A song whose length is in the player's data pack. A port reading its original's songs as the
     # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
     # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
@@ -69,7 +78,7 @@ module VBlank
     # `loop_from:` of the pack with every bit set is no loop (IR::StartFile.no_loop?): the song
     # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
-                        :low_notes_intended, :keeps_voices, :longest)
+                        :low_notes_intended, :keeps_voices, :longest, :on_timer)
 
     class Score
       # Frames a second, the rate the music is played at — the same round figure a song block's
@@ -85,8 +94,21 @@ module VBlank
       # it comes round to; left out, that is its start. A song that +plays_once+ does not come
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
-                     priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil)
+                     priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil,
+                     on_timer: false)
         super
+      end
+
+      # The tempo a Score's ticks are turned into frames by when the game is built: its own, or for one
+      # `on_timer:`, one tick a frame (FRAME_RATE ticks a second), since its ticks are counted on the
+      # timer as it plays (IR::Tunes.effect_clock_step).
+      def frame_timing = on_timer ? with(tempo: FRAME_RATE * 60, ticks_per_beat: 1) : self
+
+      # How many times a second the timer of a Score `on_timer:` ticks, or nil for one that is not.
+      def timer_rate
+        return unless on_timer
+
+        Rational(tempo.is_a?(Array) ? tempo.first.last : tempo) * ticks_per_beat / 60
       end
 
       # The score as the plain data every backend replays: each part's events as [frame,
@@ -95,13 +117,14 @@ module VBlank
       # the frame it loops from when it has an introduction.
       def to_song
         Checks.score!(self)
-        frames = Timing.new(self)
+        frames = Timing.new(frame_timing)
         ticks = length || last_tick
         total = [frames.at(ticks), 1].max
         song = { voices: parts.each_with_index.map { |part, n| part.to_voice(frames, total, "Part #{n} of a Score") },
                  total_frames: total,
                  priority: priority, group: group, low_notes_intended: low_notes_intended,
                  plays_once: plays_once, keeps_voices: keeps_voices }
+        song[:timer_rate] = timer_rate if on_timer
         return song unless loop_from
 
         Checks.loop_from!(loop_from, ticks) { frames.at(loop_from) < total }
@@ -112,7 +135,7 @@ module VBlank
       # frames they fall on, as #to_song asks of `loop_from:`. Builder::PackScores asks it of a loop
       # point read from the pack, which it holds rather than refuses.
       def comes_round_to?(tick)
-        frames = Timing.new(self)
+        frames = Timing.new(frame_timing)
         ticks = length || last_tick
         tick < ticks && frames.at(tick) < [frames.at(ticks), 1].max
       end
@@ -350,7 +373,17 @@ module VBlank
                                  "last, a whole number more than 0."
           end
           plays_once!(score)
+          on_timer!(score)
           score.parts.each_with_index { |part, number| part!(part, number) }
+        end
+
+        # A timer ticks at one rate, so a Score on one keeps one tempo.
+        def on_timer!(score)
+          true_or_false!(:on_timer, score.on_timer)
+          return unless score.on_timer && score.tempo.is_a?(Array) && score.tempo.map(&:last).uniq.size > 1
+
+          raise ArgumentError, "A Score has `on_timer: true` and a tempo that changes. A timer ticks at one " \
+                               "rate. Give `tempo:` one number, or remove `on_timer:`."
         end
 
         # A song either comes round or ends, so one that plays once has no place to come round to.

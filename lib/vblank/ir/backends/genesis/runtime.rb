@@ -40,7 +40,7 @@ module VBlank
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
                       sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false,
-                      second_pad: false, team_player: false, bends: false)
+                      second_pad: false, team_player: false, bends: false, effect_clock_step: nil)
             Frame.reserve(memory, counted: counted, second_pad: second_pad, team_player: team_player)
             Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles, bends: bends)
             Sound.reserve(memory) if sound
@@ -48,7 +48,8 @@ module VBlank
             return unless songs
           
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
-                                  steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides)
+                                  steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides,
+                                  effect_clock_step: effect_clock_step)
           end
 
           # The runtime's sections: the vectors' entry points first, then everything else in one.
@@ -82,7 +83,7 @@ module VBlank
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
                          backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
-                         poses: false, blocks: false, bends: false, count_at: nil)
+                         poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -97,7 +98,8 @@ module VBlank
                                       samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks, bends: bends)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
-            Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
+            Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts,
+                                    effect_clock_step: effect_clock_step) if music
             Recordings.emit(asm, memory) if plays
             emit_start(asm, samples: !plays.nil?, counting_at: (memory.displacement(Frame::COUNTING) if count_at))
             emit_frame_begins(asm, frame_begins)

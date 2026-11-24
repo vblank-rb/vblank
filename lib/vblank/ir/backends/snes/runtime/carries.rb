@@ -48,13 +48,15 @@ module VBlank
           # +sprites_over_picture+ shows sprites over a painted screen (Paint, "sprites over the picture").
           # +collides+ asks whether two sprites' drawn pixels touch (Collide), whose scratch takes 52
           # bytes of the direct page the game's busiest variables would otherwise have.
+          # +effect_clock_step+ is what the sound effects' timer adds a frame, or nil for effects that
+          # count frames (IR::Tunes.effect_clock_step).
           Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :controllers, :counts_players, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band,
-                                :doubled, :boxes, :sprites_over_picture) do
+                                :doubled, :boxes, :sprites_over_picture, :effect_clock_step) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -94,7 +96,8 @@ module VBlank
                   chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program),
                   recorded_pans: IR::Tunes.recorded_pans?(program), shown_band: Letterbox.band_of(program),
                   doubled: Lowering::Paint.doubled?(program), boxes: picture.boxes?(program),
-                  sprites_over_picture: Lowering::Paint.sprites_over_picture?(program))
+                  sprites_over_picture: Lowering::Paint.sprites_over_picture?(program),
+                  effect_clock_step: IR::Tunes.effect_clock_step(program, program.described_console))
             end
 
             # A Super FX on the board (Chip).

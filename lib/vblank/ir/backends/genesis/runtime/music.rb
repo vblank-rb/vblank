@@ -23,6 +23,11 @@ module VBlank
           # register across one. Where the player has got to is in work RAM, the tune, the part and the
           # note as addresses in the song table, which A0 and A1 are loaded from as each is wanted.
           module Music
+            # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
+            # its count, a word from power-on, and whether the frame playing now has a tick (its first byte
+            # $FF) or none.
+            EFFECT_CLOCK = "rt sfx clock"
+            EFFECT_TICKED = "rt sfx ticked"
             NAMED = "rt music named" # The tune the game named last (Genesis::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -80,7 +85,8 @@ module VBlank
 
             # +follows_level+ for a game that sets the music volume; +effects+ how many sound effects it has.
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
-                        slides: false, sides: false)
+                        slides: false, sides: false, effect_clock_step: nil)
+              [EFFECT_CLOCK, EFFECT_TICKED].each { |name| memory.reserve(name, 2) } if effect_clock_step
               memory.reserve(TUNE_HELD, 2) if holds
               memory.reserve(LOUDNESS_LIST, 2) if sides
               memory.reserve(SLIDE_CURSOR, 4) if slides
@@ -105,12 +111,12 @@ module VBlank
             # +level_at+ is where a game that sets its music volume keeps it (IR::Tunes::LEVEL), or nil;
             # +effects+ how many sound effects the game has; +recorded+ for a game with a part that plays a
             # recording.
-            def emit(asm, memory, level_at: nil, effects: 0, recorded: false)
+            def emit(asm, memory, level_at: nil, effects: 0, recorded: false, effect_clock_step: nil)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               sharing = effects.positive?
               emit_game_side(asm, at)
               emit_tune_hold(asm, at) if holds?(memory)
-              emit_frames(asm, at, sharing, memory)
+              emit_frames(asm, at, sharing, memory, sharing && effect_clock_step)
               emit_voice_changes(asm, at, memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
@@ -271,20 +277,42 @@ module VBlank
 
             # rt_music_frame: one frame of the player: with sound effects, Reference::Player#advance's order:
             # the tune caught up with, the effects that outrank it, its parts, and the other effects.
-            def emit_frames(asm, at, sharing, memory)
+            #
+            # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
+            # step): ADDI sets the carry as its count comes round, and SCS keeps that as the frame's
+            # tick. On a frame with no tick neither pass over the effects is made.
+            def emit_frames(asm, at, sharing, memory, clock_step = nil)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs_l("rt_music_switch"))
-              asm.jsr(asm.abs_l("rt_sfx_above")) if sharing
+              if clock_step
+                asm.add(:w, asm.imm(clock_step), at.call(EFFECT_CLOCK))
+                asm.scc(:cs, at.call(EFFECT_TICKED))
+              end
+              emit_effect_pass(asm, at, "rt_sfx_above", clock_step) if sharing
               asm.tst(:w, at.call(PLAYING))
               asm.branch(:eq, "rt_music_frame_played")
               asm.jsr(asm.abs_l("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
-              asm.jsr(asm.abs_l("rt_sfx_below")) if sharing
+              emit_effect_pass(asm, at, "rt_sfx_below", clock_step) if sharing
               asm.jsr(asm.abs_l("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs_l("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs_l("rt_music_wobbles")) if wobbles?(memory)
               asm.jsr(asm.abs_l("rt_music_shapes")) if steps_shapes?(memory)
               asm.rts
+            end
+
+            # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
+            # effects' timer has no tick, when they are on one.
+            def emit_effect_pass(asm, at, routine, clock_step)
+              unless clock_step
+                asm.jsr(asm.abs_l(routine))
+                return
+              end
+
+              asm.tst(:b, at.call(EFFECT_TICKED))
+              asm.branch(:eq, "#{routine}_untimed")
+              asm.jsr(asm.abs_l(routine))
+              asm.label("#{routine}_untimed")
             end
 
             # What changes as a note plays: each kind the game's songs have.

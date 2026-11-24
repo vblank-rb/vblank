@@ -540,7 +540,8 @@ module VBlank
 
           # Every sound effect, in the order declared, as the player reads it (see the layout atop
           # runtime/rg_sound.c): whether any of them plays the wave voice, which changes how that
-          # voice's waveform is put in; then each one's song, where its notes are, rank, group,
+          # voice's waveform is put in; what their timer adds a frame, nought for none
+          # (IR::Tunes.effect_clock_step); then each one's song, where its notes are, rank, group,
           # priority and whether it keeps its voices; and then the effects again, highest rank
           # first, which is the order a frame plays them in.
           def effects_table
@@ -556,7 +557,8 @@ module VBlank
             # note names a waveform of its own.
             plays_wave = songs.any? { |song| Tunes.parts_on(song, :wave).positive? } || !@sound_log.note_waves.empty? ||
                          !@sound_log.waves_of_records.empty?
-            sound_table("effects", [rows.size, plays_wave ? 1 : 0, *rows.flatten, *by_rank])
+            clock_step = Tunes.effect_clock_step(@program, @program.described_console) || 0
+            sound_table("effects", [rows.size, plays_wave ? 1 : 0, clock_step, *rows.flatten, *by_rank])
           end
 
           # The player reads the music volume the game keeps, when it keeps one: a game that never

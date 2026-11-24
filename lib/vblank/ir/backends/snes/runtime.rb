@@ -78,7 +78,8 @@ module VBlank
           def reserve_music(memory, carries)
             c = carries
             Music.reserve(memory, follows_level: c.follows_level, effects: c.effects, holds: c.holds_music, wobbles: c.wobbles,
-                                  steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides)
+                                  steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides,
+                                  effect_clock_step: c.effect_clock_step)
           end
 
           # The runtime's sections (a Made, with how much of the sound chip's memory the game uses):
@@ -212,7 +213,7 @@ module VBlank
             end
             if lowered[:music]
               Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts],
-                                      notes_apart: lowered[:music].notes_apart?)
+                                      notes_apart: lowered[:music].notes_apart?, effect_clock_step: carries.effect_clock_step)
             end
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
           end

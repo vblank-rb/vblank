@@ -60,7 +60,13 @@ module VBlank
             @swings = {}        # ...and where its last one left off, for a vibrato that carries
             @stepping_shapes = {}        # a square voice -> the shapes its note steps through, and its frame (#step_shapes)
             @swells = {}        # a square voice -> the song's swelling note it holds under the music volume (IR::Tunes::Swell)
+            @effect_clock_step = nil # what the sound effects' timer adds a frame, nil for no timer (IR::Tunes.effect_clock_step)
+            @effect_clock = 0        # ...and its count, from power-on
           end
+
+          # The sound effects count their ticks on a timer that adds +step+ a frame
+          # (IR::Tunes.effect_clock_step), or on frames, for nil.
+          def time_effects(step) = @effect_clock_step = step
 
           # The name of the tune the player is on, or nil for none. It takes up what the program
           # named at the next frame, and drops a tune that played once on the frame after its end.
@@ -180,15 +186,21 @@ module VBlank
           # effects that outrank the tune before its parts, the rest after. So a note that loses
           # its voice to one due on the same frame is never written at all, rather than written
           # and then covered — whoever writes a voice first on a frame is whoever keeps it.
+          #
+          # In a game whose sound effects are on a timer (IR::Tunes.effect_clock_step), they play only
+          # on a frame the timer ticks, each as far as one tick: on any other frame they do nothing,
+          # and an effect asked for waits for the tick, as one of its group to be cut off does.
           def advance(level: nil)
             switch_to_wanted_song
+            ticked = step_effect_clock
             asked = @asked.uniq
             @asked.clear
+            @asked.concat(asked) unless ticked
             tune = @playing ? IR::Tunes.song_rank(@songs[@playing]) : -1
             above, below = ranked_effects.partition { |_, rank| rank > tune }
-            above.each { |name, rank| play_effect_frame(name, rank, asked) }
+            above.each { |name, rank| play_effect_frame(name, rank, asked) } if ticked
             play_song_frame(level) if @playing
-            below.each { |name, rank| play_effect_frame(name, rank, asked) }
+            below.each { |name, rank| play_effect_frame(name, rank, asked) } if ticked
             step_swells
             step_wobbles
             step_shapes
@@ -196,6 +208,17 @@ module VBlank
           end
 
           private
+
+          # The sound effects' timer moved on a frame: true when the frame has a tick, which every
+          # frame has in a game whose effects count frames.
+          def step_effect_clock
+            return true unless @effect_clock_step
+
+            @effect_clock += @effect_clock_step
+            ticked = @effect_clock >= IR::Tunes::CLOCK_TURN
+            @effect_clock %= IR::Tunes::CLOCK_TURN
+            ticked
+          end
 
           def play_song_frame(level)
             apply_music_volume(level) if level

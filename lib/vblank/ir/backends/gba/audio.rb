@@ -390,6 +390,14 @@ module VBlank
           # effect still sounding after its frame writes it again.
           EFFECTS_BUSY = :__effects_busy
 
+          # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
+          # its count, kept in the top half of a word so that adding the step there sets the carry
+          # as the count comes round, and whether the frame playing now has a tick (1) or not (0).
+          # On a frame with no tick the walk of the effects is skipped, leaving EFFECTS_BUSY and
+          # every effect's state as they are, so what was asked for waits for the tick.
+          EFFECT_CLOCK = :__effect_clock
+          EFFECT_TICKED = :__effect_ticked
+
           # Who holds the console voice numbered +channel+: a rank, or 0 for nobody.
           def self.voice_rank(channel) = :"__voice_rank_#{channel}"
 
@@ -403,6 +411,7 @@ module VBlank
             @effect_lists = {}
             @effect_waves = false
             @effects_keep_voices = @effects.any? { |name| @songs.fetch(name).keeps_voices }
+            @effect_clock_step = IR::Tunes.effect_clock_step(program, program.described_console)
             return unless plays_sound_effects?
 
             slots = @effects.each_with_index.to_h
@@ -1059,6 +1068,7 @@ module VBlank
             done = @emitter.gensym
             finished = @emitter.gensym
 
+            emit_step_effect_clock(value, frame) if effects && @effect_clock_step
             @primitives.load_var(value, MUSIC_WANTED)
             @primitives.load_var(playing, MUSIC_PLAYING)
             if @any_plays_once
@@ -1119,6 +1129,18 @@ module VBlank
             emit_step_swells if in_interrupt && @swells.any?
             emit_step_wobbles if in_interrupt && @wobbles
             emit_step_shapes if in_interrupt && @shape_steps
+          end
+
+          # The sound effects' timer moved on a frame (EFFECT_CLOCK), in two free registers: the step
+          # added to the count's top half, and EFFECT_TICKED set from the carry.
+          def emit_step_effect_clock(count, ticked)
+            @primitives.load_var(count, EFFECT_CLOCK)
+            @emitter.emit(ASM.load_immediate(ticked, @effect_clock_step << 16))
+            @emitter.emit(ASM.adds_reg(count, count, ticked))
+            @emitter.emit(ASM.mov_imm_cond(:hs, ticked, 1))
+            @emitter.emit(ASM.mov_imm_cond(:lo, ticked, 0))
+            @primitives.store_var(count, EFFECT_CLOCK)
+            @primitives.store_var(ticked, EFFECT_TICKED)
           end
 
           # The registers a frame of the player works in: the score, an entry or a row in it, the
@@ -1272,6 +1294,11 @@ module VBlank
             @primitives.load_var(ACC, EFFECTS_BUSY)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit_branch(:bcond, quiet, cond: :eq)
+            if @effect_clock_step # no tick of the effects' timer this frame: as if quiet, and still busy
+              @primitives.load_var(ACC, EFFECT_TICKED)
+              @emitter.emit(ASM.cmp_imm(ACC, 0))
+              @emitter.emit_branch(:bcond, quiet, cond: :eq)
+            end
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @primitives.store_var(ACC, EFFECTS_BUSY)
             @emitter.emit_branch(:b, onward)
