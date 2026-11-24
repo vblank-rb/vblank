@@ -273,12 +273,15 @@ instance variables.
   own at its first read through the Struct, set where the field was given the number
   (`InstanceVariables.copy_field_number!`, `Builder#record_at`): a hidden one (`rom.profile` names it)
   for a Ruby field, the field's named one for a followed field. Nothing is kept where nothing
-  was recorded between the two, so `sparks << Spark.new(x, y, 1)` costs nothing. A field changed
+  was recorded between the two, so `sparks << Spark.new(x, y, 1)` costs nothing, nor where the
+  read is in the same block and the lines between are proven to leave the number alone
+  (`IR::Unchanging.left_alone_by?`): the number reads only variables, and the lines only draw,
+  test, or change other variables. A call, a wait, a loop, a list or a button between, or a read
+  in another block (a later pass, a routine), keeps the copy. A field changed
   under a test the game makes is given its variable at the test (`Writes.promote_attribute`).
   A `Data.define` class in a game file or block keeps the same copy for each field, beside the
   object, since it cannot change (`copy_data_field_number!`): its readers, `to_h` and
-  `deconstruct_keys` hand it. A copy is made wherever anything was recorded between the two,
-  whether or not that could change the number.
+  `deconstruct_keys` hand it, under the same proof.
 - **A name given a new Struct or Data object in game code, where game code read the one it held,
   is refused** (`Writes.refuse_object_replaced!`): the build records the line once, so the read
   found the old one, where Ruby's finds the one an earlier pass made. Keep one Struct and change

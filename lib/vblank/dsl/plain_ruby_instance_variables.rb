@@ -1291,9 +1291,19 @@ module VBlank
           return current unless builder && copied_into_field?(holder, field, current)
 
           mark = builder.instance_variable_uses.field_given_at(holder, field)
-          return current if mark && !builder.recorded_since?(mark)
+          return current if mark && unchanged_since?(builder, mark, current)
 
           mark ? builder.record_at(mark) { own_field_variable(holder, field, current) } : own_field_variable(holder, field, current)
+        end
+
+        # Is +value+ still the number it was at +mark+? Where nothing was recorded since, or only
+        # lines in the same block that leave what it reads alone (IR::Unchanging.left_alone_by?).
+        # A read in another block (a later pass, a routine, a loop's next round) has no such proof.
+        def unchanged_since?(builder, mark, value)
+          return true unless builder.recorded_since?(mark)
+
+          since = builder.statements_recorded_since(mark)
+          !since.nil? && IR::Unchanging.left_alone_by?(value.node, since)
         end
 
         # +holder+, a Data object, is just made: each field noted as given its number here.

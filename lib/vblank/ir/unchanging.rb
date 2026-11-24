@@ -22,6 +22,52 @@ module VBlank
         parts = PARTS[node.kind]
         !parts.nil? && parts.all? { |part| value?(node.operand_named(part), &known) }
       end
+
+      # The kinds of working-out whose number depends on the variables it reads and on nothing
+      # else: no button, no list, no clock, which change without a statement naming them.
+      READ_ONLY_VARIABLES = %i[int var_ref binop neg bit_not absolute shift_right clamped table_get mul_fix div_fix].freeze
+
+      # The statements that change one variable, and the operand naming it.
+      VARIABLE_WRITERS = Ractor.make_shareable({ set: :var, add: :var, sub: :var, negate: :var, abs: :var,
+                                                 negate_abs: :var, clamp: :var, copy: :dest })
+
+      # The statements that only draw, changing no variable, list or anything a working-out reads.
+      ONLY_DRAWING = %i[pixel fill_rect draw_rect_at blit blit_pose draw_text draw_digit clear_screen
+                        draw_column_at fill_face].freeze
+
+      # A test changes what its sides change, and nothing more.
+      TESTS = %i[if else].freeze
+
+      # Does running +statements+, one after another, leave the number +node+ works out as it was?
+      # The answer is yes only with a proof: +node+ reads only variables (READ_ONLY_VARIABLES), and
+      # each statement and everything it holds is a working-out, a test, a draw, or a change to a
+      # variable +node+ does not read. Anything else counts as a change (a call can change anything,
+      # and a wait lets the frame's timers run), so a missed proof costs a copy, never a wrong number.
+      def self.left_alone_by?(node, statements)
+        read = variables_read(node)
+        return false if read.nil?
+
+        statements.all? { |statement| statement.walk.all? { |each_node| leaves_variables?(each_node, read) } }
+      end
+
+      # The variables +node+ reads, or nil where it reads anything else.
+      def self.variables_read(node)
+        names = []
+        node.walk do |each_node|
+          return nil unless READ_ONLY_VARIABLES.include?(each_node.kind)
+
+          names << each_node.name if each_node.kind == :var_ref
+        end
+        names
+      end
+
+      # Does +node+, met inside a statement, leave every variable in +read+ alone?
+      def self.leaves_variables?(node, read)
+        return true if node.value? || ONLY_DRAWING.include?(node.kind) || TESTS.include?(node.kind)
+
+        operand = VARIABLE_WRITERS[node.kind]
+        !operand.nil? && !read.include?(node.operand_named(operand))
+      end
     end
   end
 end

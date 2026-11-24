@@ -1599,6 +1599,43 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A draw and a change to another number between the line that gives the field its number and
+  # the read leave that number as it was, so the field needs no copy of its own.
+  def test_a_struct_field_read_after_unrelated_lines_keeps_no_copy
+    game = proc do
+      screen :bitmap
+      px = 0
+      n = m = 0
+      game_loop do
+        px += 1
+        point = AnswerPoint.new(px + 2, 0, 0)
+        draw_rect_at(0, 0, 4, 4, :red)
+        m += 1
+        n = point.x
+      end
+    end
+    agrees("point = AnswerPoint.new(px + 2, ...); a draw; m += 1; n = point.x", reads: %i[n m], passes: 3, &game)
+    assert_empty field_copies(&game), "the field keeps a copy, though nothing between can change px"
+  end
+
+  # A change to the number the field was given, between, still needs the copy.
+  def test_a_struct_field_read_after_its_number_changes_keeps_a_copy
+    game = proc do
+      screen :bitmap
+      px = 0
+      n = 0
+      game_loop do
+        px += 1
+        point = AnswerPoint.new(px + 2, 0, 0)
+        draw_rect_at(0, 0, 4, 4, :red)
+        px += 5
+        n = point.x
+      end
+    end
+    agrees("point = AnswerPoint.new(px + 2, ...); px += 5; n = point.x", reads: %i[n px], passes: 3, &game)
+    refute_empty field_copies(&game)
+  end
+
   # A Data object keeps the number it was made from, as a Struct does.
   def test_a_data_object_made_from_a_changing_number_keeps_a_copy
     agrees("AnswerFixedPoint.new(x: score), then score += 1", reads: %i[n], passes: 3) do
@@ -3022,6 +3059,12 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   # The names of the lists +program+ makes, in the order it makes them.
+  # The hidden variables the build made to keep a Struct's field's number (Diagnostics::HiddenVariables).
+  private def field_copies(&game)
+    built = VBlank::Cartridge::EvaluatedGame.new(VBlank::DSL::PlainRuby.rewrite(game, checked: false))
+    built.hidden_variable_notes.select { |note| note.why == :field }
+  end
+
   private def list_names(node)
     own = node.kind == :list_new ? [node.name] : []
     own + node.children.flat_map { |child| list_names(child) }

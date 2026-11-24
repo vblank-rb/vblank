@@ -1253,6 +1253,16 @@ module VBlank
       !mark.container.equal?(@container_stack.last) || !mark.container.children.last.equal?(mark.last)
     end
 
+    # The statements recorded since +mark+, left where they are, or nil where the builder records
+    # in another container now: what those lines are cannot be told from one list.
+    def statements_recorded_since(mark)
+      return unless mark.container.equal?(@container_stack.last)
+
+      children = mark.container.children
+      start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+      start && children[(start + 1)..]
+    end
+
     # The statements recorded since +mark+, taken out of where they were recorded and handed back.
     def take_statements_since(mark)
       children = mark.container.children
