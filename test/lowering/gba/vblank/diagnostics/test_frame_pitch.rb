@@ -34,6 +34,26 @@ class TestFramePitch < Minitest::Test
     assert_in_delta 440, FramePitch.hertz_of(square(440), rate: RATE), 3
   end
 
+  # A frame's pitch is its own: the frame before is only room to look back into for a long wave.
+  # So a note's first frame after silence has its pitch, and a new note is read on its first frame.
+  def test_a_frame_is_heard_at_its_own_pitch_whatever_the_frame_before_held
+    frame = LENGTH / 2
+
+    assert_in_delta 0, cents(FramePitch.hertz_of(square(440, length: frame), rate: RATE, before: Array.new(frame, 0)), 440), 5
+    assert_in_delta 0, cents(FramePitch.hertz_of(square(660, length: frame), rate: RATE, before: square(440, length: frame)), 660), 5
+    before, held = square(65.41).each_slice(frame).to_a
+    assert_in_delta 0, cents(FramePitch.hertz_of(held, rate: RATE, before: before), 65.41), 5,
+                    "a wave longer than half a frame reaches back into the frame before"
+  end
+
+  # Above the top of a piano a wave is a few samples long, and not a whole number of them: such a
+  # note is read at its own pitch, not at a lower one where a few of its waves line up.
+  def test_a_very_high_note_is_not_read_lower
+    [6000, 8000].each do |hz|
+      assert_in_delta 0, cents(FramePitch.hertz_of(square(hz), rate: RATE), hz), 10, "a square at #{hz} Hz"
+    end
+  end
+
   def test_silence_and_noise_have_no_pitch
     random = Random.new(3)
 

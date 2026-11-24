@@ -107,17 +107,18 @@ module VBlank
 
       # The pitch each frame is heard at, in hertz, oldest first (FramePitch), or nil for a frame with
       # none: one at or under +heard_above+ (its loudest sample), a noise, or two notes at once. The
-      # two speakers are heard as one, and each frame is read with the frame before it, which a
-      # note under about 120 Hz needs for two of its waves. +rate+ is the samples a second on each
-      # speaker. Worked out each time it is asked, on the heard frames alone: it is for one voice
-      # heard alone, which only a comparison of pitch plays.
+      # two speakers are heard as one. Each frame's pitch is its own: the frame before is only room
+      # to look back into for a note under about 120 Hz, whose two waves do not fit in half a frame
+      # (FramePitch). +rate+ is the samples a second on each speaker. Worked out each time it is
+      # asked, on the heard frames alone: it is for one voice heard alone, which only a comparison of
+      # pitch plays.
       def pitch_by_frame(rate:, heard_above:)
         before = []
         each_frame.map do |frame|
           samples = frame.unpack("s<*")
           heard = FrameSound.loudest_of(samples) > heard_above
           mixed = samples.each_slice(2).map { |left, right| (left + (right || left)) / 2.0 }
-          (FramePitch.hertz_of(before + mixed, rate: rate) if heard).tap { before = mixed }
+          (FramePitch.hertz_of(mixed, rate: rate, before: before) if heard).tap { before = mixed }
         end
       end
 
