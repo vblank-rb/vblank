@@ -135,6 +135,31 @@ class TestPlainFileStructs < Minitest::Test
     end
   end
 
+  def test_a_struct_handed_to_a_block_that_reads_it_as_it
+    agrees("PlainFilePoints.yield_it_at(score) { score += 1; n = it.x }", reads: %i[n], passes: 3) do
+      score = n = 0
+      game_loop do
+        PlainFilePoints.yield_it_at(score) do
+          score += 1
+          n = it.x
+        end
+      end
+    end
+  end
+
+  # A Data object is followed as a copy, which `it` cannot be given.
+  def test_a_data_object_from_a_game_number_handed_to_it_is_refused
+    refused("PlainFilePoints.yield_fixed_at(score) { score += 1; n = it.x }", /`it` or `_1`.*name the block's parameter/m) do
+      score = n = 0
+      game_loop do
+        PlainFilePoints.yield_fixed_at(score) do
+          score += 1
+          n = it.x
+        end
+      end
+    end
+  end
+
   def test_a_struct_made_through_a_local_holding_its_class
     agrees("kind = PlainFileLocalClassPoint; kind.new(score, 0)", reads: %i[n], passes: 3) do
       score = 0

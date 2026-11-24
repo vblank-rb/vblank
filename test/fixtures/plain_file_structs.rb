@@ -16,6 +16,8 @@ PlainFileInnerPoint = Struct.new(:x, :y)         # Held in a field of another ob
 PlainFilePair = Struct.new(:inner, :n)           # The object holding it
 PlainFileBlockPoint = Struct.new(:x, :y)         # Handed to a block
 PlainFileYieldedPoint = Struct.new(:x, :y)       # Handed to a block that never names it
+PlainFileItPoint = Struct.new(:x, :y)            # Handed to a block that reads it as `it`
+PlainFileItFixedPoint = Data.define(:x, :y)      # A Data object handed to a block that reads it as `it`
 PlainFileLocalClassPoint = Struct.new(:x, :y)    # Made through a local holding the class
 PlainFileArgumentPoint = Struct.new(:x, :y)      # Handed to a method of game code
 PlainFileEarlyPoint = Struct.new(:x, :y)         # Two made before game code names either
@@ -31,6 +33,8 @@ module PlainFilePoints
   def self.pair(x) = PlainFilePair.new(PlainFileInnerPoint.new(x, 0), 0)
   def self.each_at(x) = yield(PlainFileBlockPoint.new(x, 0))
   def self.yield_at(x) = yield(PlainFileYieldedPoint.new(x, 0))
+  def self.yield_it_at(x) = yield(PlainFileItPoint.new(x, 0))
+  def self.yield_fixed_at(x) = yield(PlainFileItFixedPoint.new(x: x, y: 0))
   def self.argument_at(x) = PlainFileArgumentPoint.new(x, 0)
   def self.two_at(x) = [PlainFileEarlyPoint.new(x, 0), PlainFileEarlyPoint.new(x + 1, 0)]
   def self.child_at(x) = PlainFileChild.new(x, 0)

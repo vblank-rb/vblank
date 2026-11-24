@@ -623,7 +623,9 @@ module VBlank
         # +text+, the body +child+ of +node+, a method or a block of game code, first following the
         # objects its parameters hold (InstanceVariables.follow_objects_in): an object a plain file
         # made, handed to a method or yielded to a block, is first named there. A body with `rescue`
-        # is left as it is, since it cannot be put in parentheses.
+        # is left as it is, since it cannot be put in parentheses. A block that reads its argument
+        # as `it` or `_1` cannot be given a copy back, so a Data object that needs one there is
+        # refused (InstanceVariables.follow_unnamed_parameters).
         def arguments_followed_text(node, child, text)
           return text unless @follows_instance_variables && PARAMETERS_FOLLOWED.any? { |kind| node.is_a?(kind) }
           return text unless child.equal?(node.body)
@@ -634,10 +636,21 @@ module VBlank
                   when Prism::BlockNode then block_parameter_names(node.parameters)
                   else []
                   end
+          unnamed = node.is_a?(Prism::BlockNode) ? unnamed_parameter_names(node.parameters) : []
+          return "(#{INSTANCE_VARIABLES}.follow_unnamed_parameters([#{unnamed.join(', ')}]); #{text}\n)" if unnamed.any?
           return text if names.empty?
 
           listed = names.join(", ")
           "(#{listed}, = #{INSTANCE_VARIABLES}.follow_objects_in([#{listed}]); #{text}\n)"
+        end
+
+        # `it`, or `_1` up to the highest a block reads.
+        def unnamed_parameter_names(parameters)
+          case parameters
+          when Prism::ItParametersNode then ["it"]
+          when Prism::NumberedParametersNode then (1..parameters.maximum).map { |at| "_#{at}" }
+          else []
+          end
         end
 
         def parameter_names(parameters)

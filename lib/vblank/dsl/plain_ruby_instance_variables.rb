@@ -1267,6 +1267,22 @@ module VBlank
           Builder::Session.builder ? followed_held_objects(value, {}.compare_by_identity) : value
         end
 
+        # #follow_objects_in for a block's `it` or `_1`, +values+, which cannot be given a copy
+        # back: a Struct object is followed where it is, and a Data object that needs a copy is refused.
+        def follow_unnamed_parameters(values)
+          followed = follow_objects_in(values.dup)
+          changed = values.zip(followed).find { |given, copy| !copy.equal?(given) }
+          refuse_unnamed_data_parameter!(changed.first) if changed
+        end
+
+        def refuse_unnamed_data_parameter!(given)
+          name = given.class.name || "Data"
+          raise Refused, "This block reads an object of `#{name}` as `it` or `_1`. Its fields hold numbers the game " \
+                         "works out. VBlank must give the block a copy of the object to keep them. To fix this, " \
+                         "name the block's parameter, like `{ |point| ... }`." \
+                         "#{Messages::AuthorSource.at_author_line}"
+        end
+
         # +value+, or the copy that stands for it (a Data object's), each object in it followed.
         def followed_held_objects(value, seen)
           return seen.fetch(value) if seen.key?(value)

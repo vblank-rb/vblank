@@ -493,7 +493,7 @@ end
 
 Its locals stay its own, and its constants and methods are shared with the game. Its methods and blocks are checked as a game block is.
 
-A Struct or Data class can also be in a file loaded with plain `require`. When game code gives a name to an object of it, the object keeps the numbers it was made from, as in Ruby. This is also true for objects in an Array, a Hash or a field. If such an object is frozen and holds a number the game works out, the build stops and tells you.
+A Struct or Data class can also be in a file loaded with plain `require`. When game code gives a name to an object of it, the object keeps the numbers it was made from, as in Ruby. This is also true for objects in an Array, a Hash or a field. If such an object is frozen and holds a number the game works out, the build stops and tells you. A block that is given such a Data object and reads it as `it` or `_1` can also stop the build. Give the parameter a name, like `{ |point| ... }`.
 
 ## What is refused, and what to write instead
 

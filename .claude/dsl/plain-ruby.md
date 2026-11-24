@@ -592,7 +592,7 @@ instance variable, a method's argument or a block's named parameter, alone or in
 (`InstanceVariables.follow_objects_in`). Each field then keeps the number it held on that line,
 as in Ruby. A Struct object gets the accessors a game file's Struct has, on that object only, and
 a Data object is replaced by a copy whose fields hold copies of those numbers. The class does not
-change. A frozen object that holds a number the game works out is refused. A class from Ruby, a
+change. A frozen object that holds a number the game works out is refused, and so is a Data object needing a copy that a block reads as `it` or `_1` (name the parameter). A class from Ruby, a
 gem or VBlank is left alone.
 
 ## What is refused, and what to write instead
