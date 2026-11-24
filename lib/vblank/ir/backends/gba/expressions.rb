@@ -229,14 +229,19 @@ module VBlank
             lhs = node.lhs
             rhs = node.rhs
             if one_load?(rhs)
+              # Left worked out into r0, then the right loaded straight into r1: r0 is untouched.
               @lowering.value(lhs)
               emit_one_load(TMP, rhs)
               [ACC, TMP]
             elsif one_load?(lhs) && Expressions.changes_nothing?(rhs)
+              # Right worked out into r0, then the left loaded into r1, which is why the right
+              # must change nothing: the game wrote the left first.
               @lowering.value(rhs)
               emit_one_load(TMP, lhs)
               [TMP, ACC]
             else
+              # Both need working out. The left waits on the stack, since working out the right
+              # may use any scratch register, and comes back into r1.
               @lowering.value(lhs)
               @emitter.emit(ASM.push(ACC))
               @lowering.value(rhs)
@@ -978,18 +983,28 @@ module VBlank
           # It uses r0 and r1 for the numbers and r12 for where the variables are. The console's
           # own interrupt code saves all three before it gets here and puts them back after, so
           # the game it interrupted finds its registers as it left them.
+          #
+          # ## The three words it keeps
+          #
+          #   pad register (active-low) --invert, keep ten bits--> down now
+          #   down now & ~(down last frame)  = went down this frame
+          #   collected |= went down this frame
+          #
+          # KEYS_SEEN is what was down at the last frame, KEYS_COLLECTED the presses waiting for
+          # the game's next pass (#emit_latch_presses hands them over). A button held for many
+          # frames is down in KEYS_SEEN every time, so it is collected once.
           def emit_collect_presses
-            @emitter.emit_number(TMP, REG_KEYINPUT)
-            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, REG_KEYINPUT)         # r1 = the pad register's address
+            @emitter.emit(ASM.load_halfword(ACC, TMP))      # r0 = the pad: a 0 bit is a button down
             @emitter.emit(ASM.mvn_reg(ACC, ACC))            # invert: 1 bit now means "down"
             @emitter.emit(ASM.lsl_imm(ACC, ACC, 22))        # drop everything above the
             @emitter.emit(ASM.lsr_imm(ACC, ACC, 22))        # ten button bits
-            @primitives.load_var(TMP, KEYS_SEEN)
+            @primitives.load_var(TMP, KEYS_SEEN)            # r1 = what was down last frame
             @primitives.store_var(ACC, KEYS_SEEN)           # what is down now, for next frame
-            @emitter.emit(ASM.mvn_reg(TMP, TMP))
+            @emitter.emit(ASM.mvn_reg(TMP, TMP))            # r1 = the buttons that were up last frame
             @emitter.emit(ASM.and_reg(ACC, ACC, TMP))       # down now and not last frame
-            @primitives.load_var(TMP, KEYS_COLLECTED)
-            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
+            @primitives.load_var(TMP, KEYS_COLLECTED)       # r1 = presses already waiting
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))       # keep those too
             @primitives.store_var(ACC, KEYS_COLLECTED)
           end
 
