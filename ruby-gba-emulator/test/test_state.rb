@@ -86,6 +86,42 @@ class TestRubyGBAEmulatorState < Minitest::Test
     end
   end
 
+  # The Game Boy's sound chip in the same emulator leaves the same out of its state: a tune sounding
+  # as the state is saved is heard after a load as the console made it, sample for sample.
+  def test_a_color_tune_held_as_a_state_is_saved_is_heard_as_it_was_after_loading
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "moment.state")
+      rom = File.join(dir, "tune.gbc")
+      VBlank.build("TUNE", console: :gbc, out: nil, err: nil) do
+        enable_sound
+        song(:tune) do
+          voice(:lead) { volume 15; note :A4, :whole; note :C5, :whole }
+          voice(:bass) { volume 12; note :C4, :whole; note :E4, :whole }
+        end
+        play_song :tune
+        game_loop {}
+      end.write(rom)
+
+      heard = ->(probe) { probe.audio_by_frame.map { |frame| frame.unpack("s<*") } }
+      played_on = with_probe(rom) do |probe|
+        probe.step(30)
+        probe.save_state(path)
+        probe.step(10)
+        heard.call(probe)
+      end
+      loaded = with_probe(rom) do |probe|
+        probe.load_state(path)
+        probe.step(10)
+        heard.call(probe)
+      end
+
+      apart = played_on.flatten.zip(loaded.flatten).map { |one, other| (one - (other || 0)).abs }
+      assert_equal played_on.map(&:size), loaded.map(&:size), "as many samples each frame"
+      assert_operator played_on.flatten.map(&:abs).max, :>, 1000, "the tune is sounding"
+      assert_equal 0, apart.max, "every sample of the ten frames after the state, the first apart at #{apart.index(&:positive?)}"
+    end
+  end
+
   def test_a_state_says_which_cartridge_it_came_from
     Dir.mktmpdir do |dir|
       path = File.join(dir, "moment.state")

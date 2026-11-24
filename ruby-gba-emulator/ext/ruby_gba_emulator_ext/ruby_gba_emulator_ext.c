@@ -1136,7 +1136,13 @@ mgba_core_bus_write32(VALUE self, VALUE addr, VALUE value)
     return Qnil;
 }
 
-/* What an Advance's state leaves out of its sound, kept after the state in the file.
+/* What an Advance's or a Game Boy's state leaves out of its sound, kept after the state in the file.
+ *
+ * Both are the Game Boy's four voices (the Advance carries them inside), and libmgba keeps both
+ * the same way, so what follows is told of the Advance and holds of the Game Boy as well, whose
+ * pitch registers NR13, NR14, NR23, NR24, NR33 and NR34 are written and not read (Pan Docs,
+ * "Audio Registers"). On the Game Boy it is the sound already made that shows: a load came back
+ * at the right loudness, with the frames' samples split at other places and a click first.
  *
  * ### The pitch of each tone voice
  *
@@ -1222,44 +1228,76 @@ put_back_blip(struct blip_t *blip, const struct BlipKept *kept, const void *buff
     memcpy(m + 1, buffer, blip_buffer_bytes(blip));
 }
 
+/* Where the parts SoundTrailer keeps are, on an Advance or a Game Boy: the four voices (on the
+ * Advance, the Game Boy's chip inside it), the mixer's last level and its place in the stretch
+ * blip_buf has open, and the console's clock. False for another console. */
+struct SoundParts {
+    struct GBAudio *voices;
+    int16_t *last_left;
+    int16_t *last_right;
+    int *clock;
+    struct mTiming *timing;
+};
+
+static bool
+sound_parts(struct mCore *core, struct SoundParts *parts)
+{
+    switch (core->platform(core)) {
+    case mPLATFORM_GBA: {
+        struct GBA *gba = (struct GBA *)core->board;
+        *parts = (struct SoundParts){ &gba->audio.psg, &gba->audio.lastLeft, &gba->audio.lastRight,
+                                      &gba->audio.clock, &gba->timing };
+        return true;
+    }
+    case mPLATFORM_GB: {
+        struct GB *gb = (struct GB *)core->board;
+        *parts = (struct SoundParts){ &gb->audio, &gb->audio.lastLeft, &gb->audio.lastRight,
+                                      &gb->audio.clock, &gb->timing };
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 static void
 write_sound_trailer(struct mCore *core, struct VFile *vf)
 {
-    if (core->platform(core) != mPLATFORM_GBA) return;
-    struct GBA *gba = (struct GBA *)core->board;
-    struct GBAAudio *audio = &gba->audio;
+    struct SoundParts parts;
+    if (!sound_parts(core, &parts)) return;
+    struct GBAudio *voices = parts.voices;
     struct SoundTrailer trailer;
     memset(&trailer, 0, sizeof(trailer));
-    keep_blip(audio->psg.left, &trailer.left);
-    keep_blip(audio->psg.right, &trailer.right);
-    trailer.square1 = audio->psg.ch1;
-    trailer.square2 = audio->psg.ch2;
-    trailer.wave = audio->psg.ch3;
-    trailer.noise = audio->psg.ch4;
+    keep_blip(voices->left, &trailer.left);
+    keep_blip(voices->right, &trailer.right);
+    trailer.square1 = voices->ch1;
+    trailer.square2 = voices->ch2;
+    trailer.wave = voices->ch3;
+    trailer.noise = voices->ch4;
     trailer.voices_bytes = VOICES_BYTES;
-    int32_t now = mTimingCurrentTime(&gba->timing);
-    trailer.since[0] = now - audio->psg.ch1.lastUpdate;
-    trailer.since[1] = now - audio->psg.ch2.lastUpdate;
-    trailer.since[2] = now - audio->psg.ch3.nextUpdate;
-    trailer.since[3] = now - (int32_t)audio->psg.ch4.lastEvent;
-    trailer.clock = audio->clock;
-    trailer.last_left = audio->lastLeft;
-    trailer.last_right = audio->lastRight;
-    trailer.buffer_bytes = (int32_t)blip_buffer_bytes(audio->psg.left);
+    int32_t now = mTimingCurrentTime(parts.timing);
+    trailer.since[0] = now - voices->ch1.lastUpdate;
+    trailer.since[1] = now - voices->ch2.lastUpdate;
+    trailer.since[2] = now - voices->ch3.nextUpdate;
+    trailer.since[3] = now - (int32_t)voices->ch4.lastEvent;
+    trailer.clock = *parts.clock;
+    trailer.last_left = *parts.last_left;
+    trailer.last_right = *parts.last_right;
+    trailer.buffer_bytes = (int32_t)blip_buffer_bytes(voices->left);
     memcpy(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark));
 
     vf->seek(vf, 0, SEEK_END);
-    vf->write(vf, (struct BlipBuffer *)audio->psg.left + 1, (size_t)trailer.buffer_bytes);
-    vf->write(vf, (struct BlipBuffer *)audio->psg.right + 1, (size_t)trailer.buffer_bytes);
+    vf->write(vf, (struct BlipBuffer *)voices->left + 1, (size_t)trailer.buffer_bytes);
+    vf->write(vf, (struct BlipBuffer *)voices->right + 1, (size_t)trailer.buffer_bytes);
     vf->write(vf, &trailer, sizeof(trailer));
 }
 
 static void
 read_sound_trailer(struct mCore *core, struct VFile *vf)
 {
-    if (core->platform(core) != mPLATFORM_GBA) return;
-    struct GBA *gba = (struct GBA *)core->board;
-    struct GBAAudio *audio = &gba->audio;
+    struct SoundParts parts;
+    if (!sound_parts(core, &parts)) return;
+    struct GBAudio *voices = parts.voices;
     struct SoundTrailer trailer;
     ssize_t size = vf->size(vf);
     if (size < (ssize_t)sizeof(trailer)) return;
@@ -1268,29 +1306,29 @@ read_sound_trailer(struct mCore *core, struct VFile *vf)
     if (memcmp(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark)) != 0) return;
 
     if (trailer.voices_bytes != VOICES_BYTES) return;
-    audio->psg.ch1 = trailer.square1;
-    audio->psg.ch2 = trailer.square2;
-    audio->psg.ch3 = trailer.wave;
-    audio->psg.ch4 = trailer.noise;
-    int32_t now = mTimingCurrentTime(&gba->timing);
-    audio->psg.ch1.lastUpdate = now - trailer.since[0];
-    audio->psg.ch2.lastUpdate = now - trailer.since[1];
-    audio->psg.ch3.nextUpdate = now - trailer.since[2];
-    audio->psg.ch4.lastEvent = (uint32_t)(now - trailer.since[3]);
+    voices->ch1 = trailer.square1;
+    voices->ch2 = trailer.square2;
+    voices->ch3 = trailer.wave;
+    voices->ch4 = trailer.noise;
+    int32_t now = mTimingCurrentTime(parts.timing);
+    voices->ch1.lastUpdate = now - trailer.since[0];
+    voices->ch2.lastUpdate = now - trailer.since[1];
+    voices->ch3.nextUpdate = now - trailer.since[2];
+    voices->ch4.lastEvent = (uint32_t)(now - trailer.since[3]);
 
-    size_t bytes = blip_buffer_bytes(audio->psg.left);
-    if ((size_t)trailer.buffer_bytes != bytes || trailer.left.size != ((struct BlipBuffer *)audio->psg.left)->size) return;
+    size_t bytes = blip_buffer_bytes(voices->left);
+    if ((size_t)trailer.buffer_bytes != bytes || trailer.left.size != ((struct BlipBuffer *)voices->left)->size) return;
     if (size < (ssize_t)(sizeof(trailer) + 2 * bytes)) return;
     void *left = malloc(bytes);
     void *right = malloc(bytes);
     if (left && right &&
         vf->seek(vf, -(off_t)(sizeof(trailer) + 2 * bytes), SEEK_END) >= 0 &&
         vf->read(vf, left, bytes) == (ssize_t)bytes && vf->read(vf, right, bytes) == (ssize_t)bytes) {
-        put_back_blip(audio->psg.left, &trailer.left, left);
-        put_back_blip(audio->psg.right, &trailer.right, right);
-        audio->clock = trailer.clock;
-        audio->lastLeft = trailer.last_left;
-        audio->lastRight = trailer.last_right;
+        put_back_blip(voices->left, &trailer.left, left);
+        put_back_blip(voices->right, &trailer.right, right);
+        *parts.clock = trailer.clock;
+        *parts.last_left = trailer.last_left;
+        *parts.last_right = trailer.last_right;
     }
     free(left);
     free(right);
