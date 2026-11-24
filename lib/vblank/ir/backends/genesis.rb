@@ -245,12 +245,14 @@ module VBlank
         end
 
         # Where each vector points: reset starts the game, the vertical blank counts the frame and
-        # reads the pad, the horizontal blank does nothing, and every way the processor can fault
+        # reads the pad, the line interrupt strikes sound effects in a game that strikes them inside the
+        # frame (Runtime::Strikes) and does nothing in any other, and every way the processor can fault
         # stops the game saying so. A vector not named points where reset does.
         def vectors(linked)
           faults = %i[bus_error address_error illegal zero_divide chk trapv privilege trace line_a line_f]
+          line = linked.places.key?("rt_strikes_line") ? "rt_strikes_line" : "rt_unused_interrupt"
           { reset: linked.address_of("rt_reset"), vertical_interrupt: linked.address_of("rt_vblank_interrupt"),
-            horizontal_interrupt: linked.address_of("rt_unused_interrupt") }
+            horizontal_interrupt: linked.address_of(line) }
             .merge(faults.to_h { |fault| [fault, linked.address_of("rt_exception")] })
         end
       end

@@ -280,21 +280,27 @@ module VBlank
             # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
             # step): ADDI sets the carry as its count comes round, and SCS keeps that as the frame's
             # tick. On a frame with no tick neither pass over the effects is made.
+            #
+            # With Strikes, a tick's pass lists its chips' writes to be made at the tick's own line, and once
+            # the frame has played what is due already is made.
             def emit_frames(asm, at, sharing, memory, clock_step = nil)
+              strikes = clock_step && Strikes.strikes?(memory)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs_l("rt_music_switch"))
+              Strikes.emit_set_frame_base(asm, at, EFFECT_CLOCK) if strikes
               emit_step_effect_clock(asm, at, clock_step) if clock_step
-              emit_effect_pass(asm, at, "rt_sfx_above", clock_step) if sharing
+              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
               asm.tst(:w, at.call(PLAYING))
               asm.branch(:eq, "rt_music_frame_played")
               asm.jsr(asm.abs_l("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
-              emit_effect_pass(asm, at, "rt_sfx_below", clock_step) if sharing
-              emit_later_ticks(asm, at) if clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
+              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes) if sharing
+              emit_later_ticks(asm, at, clock_step, strikes) if clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
               asm.jsr(asm.abs_l("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs_l("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs_l("rt_music_wobbles")) if wobbles?(memory)
               asm.jsr(asm.abs_l("rt_music_shapes")) if steps_shapes?(memory)
+              Strikes.emit_due_now(asm) if strikes
               asm.rts
             end
 
@@ -310,20 +316,27 @@ module VBlank
             end
 
             # Each later tick of a frame the effects' timer ticks more than once on, inline after the
-            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame").
-            def emit_later_ticks(asm, at)
+            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame"),
+            # with +strikes+ each a tick further into the frame.
+            def emit_later_ticks(asm, at, step, strikes)
               asm.label("rt_sfx_later_tick")
               asm.subq(:w, 1, at.call(EFFECT_TICKED))
               asm.branch(:le, "rt_sfx_later_ticks_done")
+              if strikes
+                Strikes.emit_next_tick(asm, at)
+                Strikes.emit_striking_on(asm, at, step)
+              end
               asm.jsr(asm.abs_l("rt_sfx_above"))
               asm.jsr(asm.abs_l("rt_sfx_below"))
+              Strikes.emit_striking_off(asm, at) if strikes
               asm.bra("rt_sfx_later_tick")
               asm.label("rt_sfx_later_ticks_done")
             end
 
             # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
-            # effects' timer has no tick, when they are on one.
-            def emit_effect_pass(asm, at, routine, clock_step)
+            # effects' timer has no tick, when they are on one. With +strikes+ its writes are made at its
+            # tick's own line (Strikes).
+            def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jsr(asm.abs_l(routine))
                 return
@@ -331,7 +344,9 @@ module VBlank
 
               asm.tst(:w, at.call(EFFECT_TICKED))
               asm.branch(:eq, "#{routine}_untimed")
+              Strikes.emit_striking_on(asm, at, clock_step) if strikes
               asm.jsr(asm.abs_l(routine))
+              Strikes.emit_striking_off(asm, at) if strikes
               asm.label("#{routine}_untimed")
             end
 

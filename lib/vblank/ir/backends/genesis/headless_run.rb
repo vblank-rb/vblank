@@ -135,8 +135,40 @@ module VBlank
           
             logged = half(runtime_place(Runtime::Sound::LOGGED))
             read_sound_entries(logged)
-            @chip_reads << [logged, [@core.psg_registers, @core.fm_registers]]
+            @chip_reads << [logged, chip_registers_after_strikes]
             logged
+          end
+
+          # The chips' registers as they will be once Runtime::Strikes has made what its list holds, in a game
+          # whose sound effects are struck inside the frame: writes the log already counts can still be waiting
+          # there for their line, so each listed write is laid over the registers read now, oldest first.
+          def chip_registers_after_strikes
+            psg = @core.psg_registers
+            fm = @core.fm_registers.dup
+            strikes = Runtime::Strikes
+            return [psg, fm] unless @places.runtime.key?(strikes::LIST)
+
+            at = half(runtime_place(strikes::HEAD))
+            tail = half(runtime_place(strikes::TAIL))
+            until at == tail
+              what, first, second = (0..2).map { |word| half(runtime_place(strikes::LIST) + at + (word * 2)) }
+              what.anybits?(strikes::PSG) ? lay_psg_write(psg, first, second) : fm.setbyte(first, second & 0xFF)
+              at = (at + strikes::ENTRY_BYTES) & strikes::LIST_MASK
+            end
+            [psg, fm]
+          end
+
+          # A PSG command byte +first+ (and +second+, the rest of a voice's length of wave) laid over +psg+, as
+          # the emulator reads its registers back.
+          def lay_psg_write(psg, first, second)
+            voice = (first >> 5) & 3
+            if first.anybits?(0x10)
+              psg[ChipWrites.psg_volume_register(voice)] = first & 0x0F
+            elsif voice == ChipWrites::NOISE_VOICE
+              psg[ChipWrites::PSG_NOISE_SETTING_REGISTER] = first & 0x07
+            else
+              psg[ChipWrites.psg_tone_register(voice)] = (first & 0x0F) | ((second & 0x3F) << 4)
+            end
           end
           
           def sound? = @places.runtime.key?(Runtime::Sound::LOGGED)

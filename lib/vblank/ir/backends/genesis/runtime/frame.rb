@@ -252,9 +252,9 @@ module VBlank
             # count, and nil for any other.
             def emit(asm, memory, sound: false, samples: false, count_at: nil)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_interrupt(asm, at, samples, counting: !count_at.nil?)
-              emit_wait(asm, at, sound, memory.reserved?(LAST_PASS))
-              emit_show_pass(asm, at, count_at && asm.disp(5, Memory.displacement(count_at)))
+              emit_interrupt(asm, at, samples, counting: !count_at.nil?, strikes: Strikes.strikes?(memory))
+              emit_wait(asm, at, sound, memory.reserved?(LAST_PASS), strikes: Strikes.strikes?(memory))
+              emit_show_pass(asm, at, count_at && asm.disp(5, Memory.displacement(count_at)), strikes: Strikes.strikes?(memory))
               emit_buttons(asm, memory, at)
               emit_stopping(asm, at)
             end
@@ -267,7 +267,10 @@ module VBlank
             # +counting+ for a game that counts the frames setting up takes: while COUNTING is set the
             # interrupt only counts the frame, since the buttons' reading would let the Z80 go before
             # its program is in, and work RAM past the counting block is still being cleared.
-            def emit_interrupt(asm, at, samples, counting: false)
+            #
+            # +strikes+ for a game whose sound effects are struck inside the frame: the frame's lines go on
+            # their clock, and what is due as the blank begins is made (Strikes#emit_blank).
+            def emit_interrupt(asm, at, samples, counting: false, strikes: false)
               asm.label("rt_vblank_interrupt")
               if counting
                 asm.tst(:w, at.call(COUNTING))
@@ -277,6 +280,7 @@ module VBlank
               asm.jsr(asm.abs_l(samples ? "rt_z80_kept_off_for_pad" : "rt_pad_read"))
               asm.addq(:l, 1, at.call(FRAMES))
               asm.move(:w, asm.imm(1), at.call(VBLANK))
+              Strikes.emit_blank(asm, at) if strikes
               asm.movem_pop(:l, :d0, :d1, :d2, :d3)
               asm.rte
               if counting
@@ -294,12 +298,15 @@ module VBlank
             # the frame boundary, before anything is read of the frame (Reference#advance_frame).
             #
             # +numbered+ for a game whose reader names the last pass it compares by number (LAST_PASS).
-            def emit_wait(asm, at, sound, numbered)
+            # +strikes+ for a game whose sound effects are struck inside the frame: the line interrupt switched
+            # off before the wait when nothing is listed (Strikes's rt_strikes_quiet).
+            def emit_wait(asm, at, sound, numbered, strikes: false)
               asm.label("rt_wait_vblank")
               asm.addq(:l, 1, at.call(PASSES))
               asm.jsr(asm.abs_l("rt_frame_begins_unless_last"))
               asm.jsr(asm.abs_l("rt_tint_prepare"))
               asm.jsr(asm.abs_l("rt_picture_prepare"))
+              asm.jsr(asm.abs_l("rt_strikes_quiet")) if strikes
               asm.move(:w, asm.imm(1), at.call(WAITING))
               asm.jsr(asm.abs_l("rt_show_pass"))
               asm.tst(:l, at.call(HOLD))
@@ -345,7 +352,11 @@ module VBlank
             # the same ones, and the buttons the interrupt of that frame read are the first frame's.
             # +count+ is the place of the count of frames since power-on in a game that reads it
             # (#emit_setting_up_counted).
-            def emit_show_pass(asm, at, count)
+            #
+            # +strikes+ for a game whose sound effects are struck inside the frame: with nothing listed the game
+            # sleeps with the line interrupt held off, so it is not woken every few lines for nothing
+            # (Strikes#emit_line).
+            def emit_show_pass(asm, at, count, strikes: false)
               asm.label("rt_show_pass")
               asm.tst(:w, at.call(DISPLAY_ON))
               asm.branch(:ne, "rt_show_pass_on")
@@ -374,6 +385,16 @@ module VBlank
               asm.ori_to_sr(INTERRUPTS_OFF_BITS)
               asm.tst(:w, at.call(VBLANK))
               asm.branch(:ne, "rt_sleep_until_vblank_done")
+              if strikes # D0 kept: the upload sleeps here in the middle of its work
+                asm.movem_push(:l, :d0)
+                asm.move(:w, at.call(Strikes::HEAD), asm.d(0))
+                asm.cmp(:w, at.call(Strikes::TAIL), asm.d(0))
+                asm.movem_pop(:l, :d0) # the flags are the compare's
+                asm.branch(:ne, "rt_sleep_until_vblank_listed")
+                asm.stop(INTERRUPTS_ON | Strikes::LINE_INTERRUPT_MASK)
+                asm.bra("rt_sleep_until_vblank_wait")
+                asm.label("rt_sleep_until_vblank_listed")
+              end
               asm.stop(INTERRUPTS_ON)
               asm.bra("rt_sleep_until_vblank_wait")
               asm.label("rt_sleep_until_vblank_done")

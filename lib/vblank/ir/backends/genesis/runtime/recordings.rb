@@ -690,7 +690,7 @@ module VBlank
               asm.move(:w, asm.imm(0x100 | (ChipWrites::SPEAKERS + 2)), asm.d(0))
               asm.move(:w, asm.disp(4, SIDE), asm.d(1))
               asm.branch(:eq, unless_kept) if unless_kept # SIDE_KEPT is nought
-              asm.jsr(asm.abs_l("rt_fm_write"))
+              asm.jsr(asm.abs_l("rt_fm_unlisted")) # made as the music plays, with the recording (Strikes)
               asm.label(unless_kept) if unless_kept
             end
 

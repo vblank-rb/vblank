@@ -10,6 +10,7 @@ require_relative "runtime/tint"
 require_relative "runtime/picture"
 require_relative "runtime/collide"
 require_relative "runtime/sound"
+require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/effects"
 require_relative "runtime/recordings"
@@ -50,6 +51,7 @@ module VBlank
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
                                   steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides,
                                   effect_clock_step: effect_clock_step)
+            Strikes.reserve(memory) if effects.positive? && effect_clock_step
           end
 
           # The runtime's sections: the vectors' entry points first, then everything else in one.
@@ -100,6 +102,7 @@ module VBlank
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts,
                                     effect_clock_step: effect_clock_step) if music
+            Strikes.emit(asm, memory) if Strikes.strikes?(memory)
             Recordings.emit(asm, memory) if plays
             emit_start(asm, samples: !plays.nil?, counting_at: (memory.displacement(Frame::COUNTING) if count_at))
             emit_frame_begins(asm, frame_begins)

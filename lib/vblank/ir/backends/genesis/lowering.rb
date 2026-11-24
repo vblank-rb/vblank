@@ -385,6 +385,7 @@ module VBlank
               value = plane_size_register if register == Console::GenesisHardware::REG_PLANE_SIZE
               value = backdrop_register if register == Console::GenesisHardware::REG_BACKDROP
               value = Console::GenesisHardware::MODE3_HSCROLL_LINES if register == Console::GenesisHardware::REG_MODE3 && bends.any?
+              value = Runtime::Strikes::STRIDE - 1 if register == Console::GenesisHardware::REG_HINT && Runtime::Strikes.wanted?(@program)
               Console::GenesisHardware::VDP_REGISTER | (register << 8) | value
             end
             asm.data_words(words)
