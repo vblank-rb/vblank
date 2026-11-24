@@ -145,6 +145,26 @@ module VBlank
       # first instruction cannot be used instead: for a loop that waits for the screen, that is
       # the instruction asking the console to sleep, and the console's own startup can enter
       # that one twice.
+      # What stopped the game, in the interpreter's words, or nil while nothing has. A cartridge that
+      # can stop on a full list keeps what went wrong where its build record says
+      # (IR::Backends::GBA::FaultStops); one that cannot keeps nothing, and nothing goes wrong in it.
+      def went_wrong
+        refuse_missing_build_record!("where it keeps what went wrong")
+        at = @rom.built.runtime[IR::Backends::GBA::Runtime::Frame::FAULT] or return nil
+
+        ensure_rendered!
+        code, place, first, second = (0...4).map { |k| IR::Int32.wrap(mem32(at + (k * 4))) }
+        return nil if code.zero?
+
+        list = @rom.built.lists.find { |_, kept| kept.base == place }&.first
+        case code
+        when IR::Backends::CartridgeFaults::LIST_FULL then IR::Faults.list_full(list, first)
+        when IR::Backends::CartridgeFaults::INDEX_OUT_OF_RANGE then IR::Faults.index_out_of_range(list, first, second)
+        when IR::Backends::CartridgeFaults::STOP_FULL then IR::Nodes::StopFull.words(@rom.source_program, second, first)
+        else "the game went wrong (#{code})"
+        end
+      end
+
       def passes
         refuse_missing_build_record!("where its game loop is, so its passes cannot be counted")
         unless @count_passes

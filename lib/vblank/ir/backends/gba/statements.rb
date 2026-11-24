@@ -78,7 +78,7 @@ module VBlank
 
           # The lists (Lists), which a stepped walk holds a register on a thing of
           # (#emit_stepped_walk), and the program, whose walks it asks the shared plan about.
-          attr_writer :lists, :program
+          attr_writer :lists, :program, :fault_stops
 
           # Where a loop counting up in the quick memory keeps how many passes it makes, by its index.
           def self.limit_var(index) = DerivedNames.join(index, "__limit")
@@ -140,11 +140,16 @@ module VBlank
           # if: run the then-body when the condition is non-zero. With no else, a
           # false condition jumps past the body. With an else, a false condition
           # jumps to the else-body, and the then-body jumps over it to the end.
+          #
+          # An else that only stops the game (a full pool's stop) is written out of line, after
+          # the routine (FaultStops#later): a spawn that fits then costs one branch not taken, as
+          # an `if` with no else does, where an else inline would cost a jump over it each time.
           def emit_if(node)
             else_node = node.else
-            # A full pool's stop writes nothing here yet (Lists#emit_stop_full), so an else of
-            # nothing else is left out, and a stopping spawn costs what a dropping one does.
-            else_node = nil if else_node && only_stops?(else_node)
+            if else_node && only_stops?(else_node)
+              stop = @fault_stops.later { else_node.children.each { |stmt| @lowering.statement(stmt) } }
+              return emit_then_only(node, skip: stop)
+            end
 
             if else_node
               else_label = @emitter.gensym
@@ -157,17 +162,22 @@ module VBlank
               @emitter.place_label(end_label)
             else
               skip = @emitter.gensym
-              @expressions.emit_branch_when(node.cond, holds: false, to: skip)
-              # A block of the game loop that runs for one scene alone is that scene's routine
-              # (see SceneQuickMemory#prepare_scene_loop_work), and only called from here.
-              routine = @placement.scene_loop_routine_for(node)
-              routine ? @placement.emit_call_func(routine) : node.children.each { |stmt| @lowering.statement(stmt) }
+              emit_then_only(node, skip: skip)
               @emitter.place_label(skip)
             end
           end
 
+          # +node+'s then-body, after a jump to +skip+ when its test fails.
+          def emit_then_only(node, skip:)
+            @expressions.emit_branch_when(node.cond, holds: false, to: skip)
+            # A block of the game loop that runs for one scene alone is that scene's routine
+            # (see SceneQuickMemory#prepare_scene_loop_work), and only called from here.
+            routine = @placement.scene_loop_routine_for(node)
+            routine ? @placement.emit_call_func(routine) : node.children.each { |stmt| @lowering.statement(stmt) }
+          end
+
           # Whether every statement under +node+ is a full pool's stop, or a test choosing between
-          # stops: nothing this lowering writes, with a test that changes nothing.
+          # stops.
           def only_stops?(node)
             node.children.all? do |child|
               case child.kind
@@ -205,14 +215,20 @@ module VBlank
             @emitter.place_label(top)
             if @placement.fast_funcs.include?(Placement::FRAME_ROUTINE)
               @placement.emit_call_func(Placement::FRAME_ROUTINE)
-            else
-              start = @emitter.pos
-              node.children.each { |stmt| @lowering.statement(stmt) }
-              # Remember how big it came out: the measuring pass reads this to decide
-              # whether moving it would fit.
-              @functions.func_ranges[Placement::FRAME_ROUTINE] = (start...@emitter.pos)
+              return @emitter.emit_branch(:b, top)
             end
+
+            start = @emitter.pos
+            node.children.each { |stmt| @lowering.statement(stmt) }
+            # Remember how big it came out: the measuring pass reads this to decide
+            # whether moving it would fit.
+            @functions.func_ranges[Placement::FRAME_ROUTINE] = (start...@emitter.pos)
             @emitter.emit_branch(:b, top)
+            # Its stops follow the jump back (FaultStops), and are counted in its size, as they
+            # are inside it moved into a routine of its own.
+            stops = @emitter.pos
+            @fault_stops.emit_pending
+            @functions.stop_bytes[Placement::FRAME_ROUTINE] = @emitter.pos - stops
           end
 
           # repeat: a counted loop. The count is evaluated once into a hidden limit (matching

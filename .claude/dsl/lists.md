@@ -62,8 +62,8 @@ end
   single step: `capacity: 145` then takes 256, and the 111 slots between are room paid for that can
   never be filled. So a queue that is shifted wants a power-of-two capacity. A plain row is also the
   faster to read, having no head to look up first. Neither changes what the list holds or does.
-- **A push onto a full list stops the game**, naming the list, where Ruby would grow the Array (the
-  Advance cartridge drops the item for now). `trail.shift if trail.size == 4` makes room first, and
+- **A push onto a full list stops the game**, naming the list, where Ruby would grow the Array.
+  `trail.shift if trail.size == 4` makes room first, and
   `scores << s if scores.size < 8` skips the new item.
 - **Answers about every item:** `sum`, `min`, `max` and `include?` walk the items the list holds as
   the game plays, a loop over them each time, and keep the answer in a hidden variable. `min` and

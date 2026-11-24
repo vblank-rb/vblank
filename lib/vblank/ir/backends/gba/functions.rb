@@ -37,11 +37,17 @@ module VBlank
             @funcs = {}
             @minted = {}
             @func_ranges = {}
+            @stop_bytes = {}
             @number_tables = {}
           end
 
-          attr_writer :modes, :drawing
+          attr_writer :modes, :drawing, :fault_stops
           attr_reader :funcs, :func_ranges
+
+          # The bytes of stops (FaultStops) a routine written in place keeps outside its range, by
+          # name: the game loop's body left inline, whose range ends where the jump back to its top
+          # is, which a reader counts its passes by. A routine of its own keeps them inside.
+          attr_reader :stop_bytes
 
           # Where each routine's number table is, for the routines that have one: the last
           # part of the routine's own span, which holds numbers and not instructions. Anything
@@ -112,6 +118,7 @@ module VBlank
               fnode.children.each { |stmt| @lowering.statement(stmt) }
             end
             @emitter.emit(ASM.pop(15))                           # pop {pc}  (return)
+            @fault_stops&.emit_pending # where its stops go, inside its span
             table_start = @emitter.pos
             @emitter.close_number_table
             @number_tables[name] = (table_start...@emitter.pos) if @emitter.pos > table_start

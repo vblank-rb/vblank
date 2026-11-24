@@ -117,7 +117,7 @@ module VBlank
                            :late_passes, :split_hints, :list_touches, :late_hand_overs,
                            :pages_shown_at_once, :pages_shown_part_way, :power_on_pass, :colors_short,
                            :sprites_left_out, :gap_overruns, :routine_lines, :gaps_into_picture,
-                           :gap_writes_missed) do
+                           :gap_writes_missed, :went_wrong) do
         # +split_hints+ are the parts of routines that missed the quick memory worth making a
         # `func` of (see SplitHints), busiest first. +list_touches+ is how many times the run read
         # or wrote each list, by its name. +late_hand_overs+ are the scenes that run late on the
@@ -136,11 +136,16 @@ module VBlank
         # each with its time by line (see RoutineLines); empty where nobody asked. +gaps_into_picture+
         # are the passes whose gap after the wait changed the display while the picture was drawn
         # (see GapIntoPicture), in the order they ran; +gap_writes_missed+ how many runs of those
-        # changes the emulator had no room to keep, so a list cut short says so.
+        # changes the emulator had no room to keep, so a list cut short says so. +went_wrong+ is
+        # the number of what stopped the game in the run (IR::Backends::CartridgeFaults, kept where
+        # GBA::FaultStops keeps it), nought where nothing did, nil for a game that cannot stop so.
         def initialize(split_hints: [], list_touches: {}, late_hand_overs: [], pages_shown_at_once: 0,
                        pages_shown_part_way: 0, power_on_pass: nil, colors_short: nil, sprites_left_out: nil,
                        gap_overruns: [], routine_lines: [], gaps_into_picture: [], gap_writes_missed: 0,
-                       **rest) = super
+                       went_wrong: nil, **rest) = super
+
+        # Whether the game stopped in the run, as a push onto a full list stops it.
+        def stopped? = !went_wrong.nil? && went_wrong.nonzero?
 
         def dropping_frames? = fps < 59.5
 
@@ -247,7 +252,8 @@ module VBlank
             # few more frames — and those frames are not the frames that were measured.
             lost_sounds = drops_in(probe, losses.sounds)
             counted = { colors_short: count_in(probe, losses.colors_short_at),
-                        sprites_left_out: count_in(probe, losses.sprites_left_out_at) }
+                        sprites_left_out: count_in(probe, losses.sprites_left_out_at),
+                        went_wrong: count_in(probe, rom.built.runtime[IR::Backends::GBA::Runtime::Frame::FAULT]) }
             loaded_sets = sets_in(rom, probe)
             routines = rom.built.routines_with_sets(loaded_sets)
             [measured,
@@ -875,7 +881,10 @@ module VBlank
 
         full = run(rom, frames: frames, keys: keys, picture: false, split_hints: false,
                         holding: writes + collections.flat_map(&:writes), presses: presses)
-        return nil unless full.dropping_frames?
+        # Held full, a scene that adds to a list or pool without testing its size stops the game,
+        # as it would on the day it filled: that day it stops rather than slows, so there is no
+        # speed to warn of.
+        return nil if full.stopped? || !full.dropping_frames?
 
         Growth.new(scene: scene, reading: full,
                    collections: collections.one? ? collections : collections_used_more(collections, now, full))

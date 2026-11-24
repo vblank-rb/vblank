@@ -939,14 +939,15 @@ module VBlank
             end
           end
 
-          # stop_full: a full pool told to stop. The cartridge has no way to stop with words yet, so
-          # it writes nothing and the spawn is dropped, as a push onto a full list is (below).
-          def emit_stop_full(_node) = nil
+          # stop_full: a full pool told to stop, as the interpreter stops it (Reference#exec_stop_full).
+          def emit_stop_full(node) = @fault_stops.emit_stop_full(node)
+
+          attr_writer :fault_stops
 
           # list_push: append at the tail — slot (head + length) & mask — then grow
-          # length by one. If the list is already full the push is dropped rather than
-          # overwriting the oldest item (hardware has no way to raise, so it stays
-          # safe and quiet; the interpreter is what flags the overflow in testing).
+          # length by one. A push onto a full list stops the game, as the interpreter's does
+          # (Reference#exec_list_push), naming the list and its capacity: the stop is written out
+          # of line (FaultStops), so a push that fits costs the one branch not taken it always did.
           def emit_list_push(node)
             info = list_info(node.name)
             length = length_var(node.name)
@@ -954,8 +955,7 @@ module VBlank
             @primitives.load_var(ACC, length)            # r0 = length (the tail offset)
             emit_capacity(TMP, node.name, info)
             @emitter.emit(ASM.cmp_reg(ACC, TMP))                  # length - capacity
-            skip = @emitter.gensym
-            @emitter.emit_branch(:bcond, skip, cond: :ge)         # full => drop the push
+            @emitter.emit_branch(:bcond, @fault_stops.list_full_stop(info[:base]), cond: :ge) # r1 = the capacity
 
             emit_slot_address(info, node.name)         # r1 = &slot[(head+length)&mask]
             @emitter.emit(ASM.push(TMP))                          # hold the address across the value eval
@@ -966,7 +966,6 @@ module VBlank
             @primitives.load_var(ACC, length)                        # length += 1
             @emitter.emit(ASM.add_imm(ACC, ACC, 1))
             @primitives.store_var(ACC, length)
-            @emitter.place_label(skip)
           end
 
           # list_drop: remove one item. A shift (:front) advances head past the oldest

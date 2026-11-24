@@ -55,6 +55,7 @@ require_relative "gba/timers"
 require_relative "gba/frame_boundary_calls" # A bend or tick calling a routine the game is inside
 require_relative "gba/frames" # how many frames a pass of the game loop really took
 require_relative "gba/pass_bookkeeping" # how the run stands, in a cartridge built to be checked
+require_relative "gba/fault_stops" # where the game stops on a push onto a full list
 require_relative "gba/clock_chip" # the cartridge's clock chip, read once a pass
 require_relative "gba/raster"
 require_relative "gba/mixer"
@@ -437,6 +438,7 @@ module VBlank
           @divide = Divide.new(emitter: @emit, memory: @memory, primitives: @primitives)
           @frames = Frames.new(emitter: @emit, primitives: @primitives)
           @bookkeeping = (PassBookkeeping.new(emitter: @emit, primitives: @primitives, memory: @memory) if checked)
+          @fault_stops = FaultStops.new(emitter: @emit, memory: @memory, bookkeeping: @bookkeeping, placement: self)
           @clock_chip = ClockChip.new(emitter: @emit, primitives: @primitives, placement: self)
           # The kind-keyed dispatch that replaces eval_value's case. Every statement in the
           # program goes through it, which also makes it the one place that can say how far
@@ -465,6 +467,7 @@ module VBlank
           @primitives.lists = @lists # a collection's counters go where it went
           @expressions.lists = @lists # a slot written in the program is one load, as a variable is
           @lists.expressions = @expressions # a draw order's sort branches on whether each thing shows
+          @lists.fault_stops = @fault_stops # a push onto a full list stops the game
           # `placement: self` — Placement is not its own object yet (see its class
           # comment); its methods live directly on this instance, so handing self in is
           # what makes the dependency an explicit constructor argument instead of a bare
@@ -476,8 +479,10 @@ module VBlank
           # as that routine is emitted (see #emit_irq_handler).
           @timer_handlers = {}
           @functions = Functions.new(emitter: @emit, lowering: @lowering, placement: self)
+          @functions.fault_stops = @fault_stops # a routine's stops are written after it
           @statements = Statements.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                        expressions: @expressions, placement: self, functions: @functions)
+          @statements.fault_stops = @fault_stops # a full pool's stop, written out of line
           @framebuffer = Framebuffer.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                          divide: @divide)
           @raster = Raster.new(emitter: @emit, primitives: @primitives, memory: @memory,
@@ -620,7 +625,7 @@ module VBlank
         def build_record(program)
           VBlank::Cartridge::BuildRecord.new(source_program: program, placement: iwram_report,
                                    var_addresses: var_addresses, loop_shapes: loop_shapes,
-                                   runtime: @bookkeeping ? @bookkeeping.places(var_addresses) : {},
+                                   runtime: @bookkeeping ? @bookkeeping.places(var_addresses) : @fault_stops.places,
                                    data_assets: data_assets,
                                    palette_entries: palette_entries,
                                    column_stretches: @stretched_columns&.to_h || {},
@@ -958,6 +963,7 @@ module VBlank
           @uses_vblank = program.walk.any? { |node| node.kind == :wait_vblank }
           @lowering.gap_ends = IR::Frames.gap_ends(program) # where a measured run reads how late each gap ended
           @clock_chip.prepare(program) # whether anything reads the clock
+          @fault_stops.prepare(program) # whether anything can stop on a full list
           @mixer.prepare_mixer(program) # the software mixer's rate, buffers, voice slots, timer
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step
           refuse_samples_without_vblank!
@@ -1120,6 +1126,7 @@ module VBlank
           # game that does not read the count, so its cartridge is the bytes it was; at the top of
           # setting up in one that does (above).
           @bookkeeping&.emit_at_power_on unless counts_from_power_on
+          @fault_stops.emit_at_power_on # nothing gone wrong yet
           emit_irq_setup if uses_irq? # arm the interrupts the program needs (VBlank and/or timers)
           emit_input_init if @uses_pressed
           @clock_chip.emit_call_at_power_on # whether the cartridge has a clock, and its first reading
@@ -1151,6 +1158,7 @@ module VBlank
             emit_top_level(program)
           end
           refuse_variables_past_quick_memory!
+          emit_top_level_stops
           emit_functions
           emit_hot_functions # the routines worth running from the quick memory, as one block
           emit_mix_routine # the mixer's inner loop, placed in ROM and copied to IWRAM at boot
@@ -1159,6 +1167,8 @@ module VBlank
           # Where a checked build's game halts or goes wrong; the game's sprite rows a sending hid in a
           # border are copied in once the picture it ran into is drawn.
           @bookkeeping&.emit_stopping(frames: @uses_vblank) { @sprite_drawing.emit_game_rows_back_at_stop(wait: false) }
+          # Where a push onto a full list stops the game, from any memory.
+          @fault_stops.emit_fault_routine { @sprite_drawing.emit_game_rows_back_at_stop(wait: @uses_vblank) }
           # The interrupt dispatcher itself, reached only via the vector. When it was worth
           # keeping in the quick memory it has already been emitted inside the moved block.
           while_emitting_interrupt { emit_irq_handler } if uses_irq? && !irq_runs_fast?
@@ -1331,6 +1341,15 @@ module VBlank
           message = @top.overrun_message(over: over, variables: @memory.near_bytes - lists_near,
                                          kept: @memory.far_bytes + lists_near)
           raise QuickMemoryOverrun.new(message, bytes: over)
+        end
+
+        # The stops the game's own code outside any routine jumps to (FaultStops), after a guard
+        # its last line never falls through.
+        def emit_top_level_stops
+          return unless @fault_stops.pending?
+
+          emit(ASM.loop_forever)
+          @fault_stops.emit_pending
         end
 
         # Forwards to @divide (see {Divide}).

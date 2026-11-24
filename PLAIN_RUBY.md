@@ -306,7 +306,7 @@ A list is named after its local, so a test or a profile reads `trail` by that na
 | Limit | Write instead |
 |---|---|
 | It cannot grow past its room; game code adding to it needs `capacity:` | `Array.new(capacity: 8)` |
-| A push onto a full Array stops the game (the Advance cartridge drops it for now) | `trail << x if trail.size < 8` |
+| A push onto a full Array stops the game | `trail << x if trail.size < 8` |
 | `Array.new(8)` with no start: its items would be nil | `Array.new(8, 0)`, or `Array.new(capacity: 8)` |
 | Its size or capacity worked out as the game plays | A number or a constant |
 | A whole number the game works out and a fraction in one Array | `.to_f` on the whole number |

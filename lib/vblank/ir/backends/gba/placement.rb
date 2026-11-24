@@ -511,7 +511,7 @@ module VBlank
 
           # Each func's size in bytes, likewise read off the throwaway pass.
           def func_sizes
-            @functions.func_ranges.transform_values(&:size)
+            @functions.func_ranges.to_h { |name, range| [name, range.size + @functions.stop_bytes.fetch(name, 0)] }
           end
 
           # The calls to a routine the build made for itself that each routine holds, read off
@@ -703,6 +703,16 @@ module VBlank
 
             emit_load_label_address(ADDR, label)
             emit_call_through(ADDR)
+          end
+
+          # ...and a jump there that does not come back (FaultStops), which grows the same way
+          # when its routine moves, and is counted the same way.
+          def emit_jump_to_cold_routine(label)
+            generated_call_sites << [@emit.pos, nil]
+            return emit_branch(:b, label) unless @emitting_hot
+
+            emit_load_label_address(ADDR, label)
+            emit(ASM.bx(ADDR))
           end
 
           # Call a routine emitted inside the screen's interrupt routine, past its return (see

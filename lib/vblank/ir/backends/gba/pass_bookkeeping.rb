@@ -141,6 +141,16 @@ module VBlank
             @emitter.place_label(within)
           end
 
+          # What went wrong is in the record (FaultStops#emit_fault_routine): the game stops as it
+          # stops on a list read past its end.
+          def emit_went_wrong
+            emit_word(Frame::STATE, Frame::WENT_WRONG)
+            emit_jump_far(stopping_label)
+          end
+
+          # Where what went wrong is kept, a word each (Frame::FAULT).
+          def fault_at = @fault_at ||= @memory.alloc(Frame::FAULT_BYTES)
+
           # Where a halt and a fault go, emitted once at the end of the program: the frame after
           # shows what the game drew last, then the end is marked as on the screen and the game
           # sleeps from frame to frame. A held pass stops at the same sleep, with its own pass shown.
@@ -181,7 +191,6 @@ module VBlank
           def stopped_label = @stopped_label ||= @emitter.gensym
 
           def steps_at = @steps_at ||= @memory.alloc(Frame::STEPS_KEPT)
-          def fault_at = @fault_at ||= @memory.alloc(Frame::FAULT_BYTES)
         end
       end
     end

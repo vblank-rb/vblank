@@ -14,7 +14,7 @@
       "data": 16281
     },
     "bird": {
-      "code": 7316,
+      "code": 7344,
       "data": 0
     },
     "breakout": {
@@ -62,7 +62,7 @@
       "data": 5044
     },
     "dive": {
-      "code": 56924,
+      "code": 57212,
       "data": 0
     },
     "everywhere": {
@@ -134,7 +134,7 @@
       "data": 555
     },
     "hero": {
-      "code": 81620,
+      "code": 81500,
       "data": 0
     },
     "hero@snes": {
@@ -146,7 +146,7 @@
       "data": 0
     },
     "lake": {
-      "code": 4782,
+      "code": 4894,
       "data": 0
     },
     "lake@snes": {
@@ -294,11 +294,11 @@
       "data": 3977
     },
     "shmup": {
-      "code": 37436,
+      "code": 37672,
       "data": 0
     },
     "snake": {
-      "code": 35248,
+      "code": 35340,
       "data": 0
     },
     "snake@snes": {
@@ -306,11 +306,11 @@
       "data": 16690
     },
     "snake_buffered": {
-      "code": 37584,
+      "code": 37692,
       "data": 0
     },
     "sparks": {
-      "code": 2976,
+      "code": 3148,
       "data": 0
     },
     "sparks@snes": {
@@ -358,7 +358,7 @@
       "data": 8091
     },
     "two_rooms": {
-      "code": 36898,
+      "code": 36834,
       "data": 0
     },
     "two_rooms@ps1": {

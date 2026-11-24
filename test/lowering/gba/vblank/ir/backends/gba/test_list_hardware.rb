@@ -226,12 +226,9 @@ class TestListHardware < Minitest::Test
     assert_same_markers(prog, [[99, :green], [95, nil], [104, nil]])
   end
 
-  def test_overflow_is_bounded_on_hardware
-    # The interpreter *raises* on a push past capacity; hardware can't, so it must
-    # instead bound the list safely — drop the extra pushes, keep the oldest two,
-    # and never let length run past capacity. So this is a console-only check: push
-    # four into a capacity-2 list and confirm exactly the first two (30, 90) are
-    # drawn, with the overflowing 150/210 absent.
+  # A push onto a full list stops the game, as the interpreter's does, and the cartridge keeps
+  # what went wrong: the two pushes that fit are kept, and nothing after the third runs.
+  def test_a_push_onto_a_full_list_stops_on_hardware
     require_emulator!
 
     prog = program(
@@ -239,18 +236,19 @@ class TestListHardware < Minitest::Test
       list_new(:xs, 2),
       list_push(:xs, 30),
       list_push(:xs, 90),
-      list_push(:xs, 150), # full -> dropped
-      list_push(:xs, 210), # full -> dropped
+      list_push(:xs, 150), # full: the game stops here
+      list_push(:xs, 210),
       draw_each_marker(:xs),
       halt,
     )
 
-    rom = VBlank::Cartridge::ROM.assemble(GBA.new.lower(prog), title: "LISTOF", code: "BLOF", maker: "01")
+    backend = GBA.new
+    rom = VBlank::Cartridge::ROM.assemble(backend.lower(prog), title: "LISTOF", code: "BLOF", maker: "01",
+                                                               built: backend.build_record(prog))
     v = assert_emulator_loads_rom(rom)
-    assert v.pixel_is?(30, ROW, :green), "the first push survives"
-    assert v.pixel_is?(90, ROW, :green), "the second push survives"
-    assert v.pixel_is?(150, ROW, :black), "the overflowing third push is dropped"
-    assert v.pixel_is?(210, ROW, :black), "the overflowing fourth push is dropped"
+    assert_match(/`xs` is full: it has room for 2/, v.went_wrong)
+    assert_equal [30, 90], v.list(:xs)
+    assert v.pixel_is?(30, ROW, :black), "nothing after the stop is drawn"
   end
 
   # Two lists and a variable in one expression, which is what a pool walk is made of and

@@ -82,6 +82,27 @@ class TestCheckedBuild < Minitest::Test
     end
   end
 
+  # A list of three pushed onto a fourth time stops it as the interpreter stops it: the number for a
+  # full list, the list's place and its capacity.
+  def test_a_push_onto_a_full_list_stops_the_game_and_keeps_what_went_wrong
+    rom = checked_cartridge do
+      screen :bitmap
+      items = list :items, capacity: 3
+      count = 0
+      game_loop do
+        count += 1
+        items.push count
+      end
+    end
+    play(rom, 10) do |core, at|
+      fault = at.fetch(Frame::FAULT)
+      assert_equal Frame::WENT_WRONG, core.bus_read32(at.fetch(Frame::STATE))
+      assert_equal [Frame::LIST_FULL, 3], [core.bus_read32(fault), core.bus_read32(fault + 8)]
+      assert_equal rom.built.lists.fetch(:items).base, core.bus_read32(fault + 4)
+      assert_equal Frame::END_SHOWN, core.bus_read32(at.fetch(Frame::SHOWN))
+    end
+  end
+
   def test_a_game_that_halts_says_so_and_shows_its_end
     rom = checked_cartridge do
       screen :bitmap
