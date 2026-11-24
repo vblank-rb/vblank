@@ -614,7 +614,10 @@ module VBlank
           end
           row |= GLIDES if sounds && IR::Tunes.glides?(event)
           levels = recorded_level_record(channel, sounds ? IR::Tunes.mix_loudness(volume) : 0, &number_of) if follows
-          [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row, levels]
+          # A recorded note's loudness is in its row and its level record, in the mixer's 512 steps,
+          # so a volume with a fraction is heard as written. The note's volume word holds a whole
+          # number: the volume rounded up, which keeps a quiet note's word above nought.
+          [frame, head, keep_group([]), frequency.zero? ? 0 : volume.ceil, sounds, row, levels]
         end
 
         # A recorded note under the music volume, at every level there is: the group that logs its
