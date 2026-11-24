@@ -93,6 +93,14 @@ module VBlank
             @reserved_because = because
           end
 
+          # Take the next hardware timer nobody holds, for the build's own use, once the game's own
+          # timers have theirs (#register_timers): its index, or nil when all four are held.
+          def claim_spare
+            return nil if @next_hw_timer >= NUM_HW_TIMERS
+
+            (@next_hw_timer += 1) - 1
+          end
+
           # Assign each named timer its hardware timer index (0-3) up front, so a
           # timer_start/timer_stop/timer_ticks anywhere in the tree already knows which
           # registers to touch. A timer whose overflow count is read also gets a cascade

@@ -83,7 +83,12 @@ module VBlank
           end
 
           def emit_register_writes(writes)
-            writes.each { |address, value| @emitter.write_reg16(address, value) }
+            writes.each do |address, value|
+              next @emitter.write_reg16(address, value) unless listing?
+
+              @emitter.emit(ASM.load_immediate(ACC, value))
+              emit_listed_write(address)
+            end
           end
 
           # GameBoySound's writes, at the Advance's addresses.
@@ -461,9 +466,9 @@ module VBlank
 
           # How much of the roomy memory the sound effects' table will take, read off the program
           # before it is lowered, for the build's memory check (Roomy.reserved_by_build): an entry for
-          # each effect, as #prepare_sound_effects claims it, or nought for a game with none.
-          def self.effect_table_bytes(program)
-            songs = effect_songs(program)
+          # each effect, as #prepare_sound_effects claims it, or nought for a game with none. Given
+          # the effects' song nodes (#effect_songs).
+          def self.effect_table_bytes(songs)
             return 0 if songs.empty?
 
             Memory.whole_words(songs.size * effect_slot_bytes(effect_lanes(songs)))
@@ -1070,6 +1075,7 @@ module VBlank
             done = @emitter.gensym
             finished = @emitter.gensym
 
+            @strikes.emit_frame_begun(EFFECT_CLOCK) if effects && striking?
             emit_step_effect_clock(value, frame) if effects && @effect_clock_step
             @primitives.load_var(value, MUSIC_WANTED)
             @primitives.load_var(playing, MUSIC_PLAYING)
@@ -1132,6 +1138,42 @@ module VBlank
             emit_step_swells if in_interrupt && @swells.any?
             emit_step_wobbles if in_interrupt && @wobbles
             emit_step_shapes if in_interrupt && @shape_steps
+            @strikes.emit_frame_ended if effects && striking?
+          end
+
+          # The sound effects struck inside the frame, in a game whose effects are on a timer and
+          # where an alarm is free for them (EffectStrikes); nil otherwise. Taken once the game's own
+          # timers and the mixer's have theirs. +line_free+ answers whether the display's line match
+          # is free, asked once the build knows.
+          def prepare_effect_strikes(timers:, line_free:)
+            @strikes = nil
+            return unless plays_sound_effects? && @effect_clock_step
+
+            @strikes = EffectStrikes.new(emitter: @emitter, primitives: @primitives, memory: @memory,
+                                         step: @effect_clock_step, line_free: line_free,
+                                         timer: timers.claim_spare)
+          end
+
+          attr_reader :strikes
+
+          # Are the effects' notes struck inside the frame?
+          def striking? = @strikes&.striking? || false
+
+          # The strike list's routines, inside the screen's interrupt with the effects' walk.
+          def emit_strike_routines
+            upload = @effect_waves && lambda do
+              upload_wave_in_interrupt? ? @emitter.emit_branch(:bl, UPLOAD_WAVE) : @drawing.emit_call_cold_routine(UPLOAD_WAVE)
+            end
+            @strikes.emit_routines(score: MUSIC_SCORE, emit_upload_wave: upload)
+          end
+
+          # Is the sound effects' step being written with its register writes listed, not done?
+          def listing? = @listing
+
+          # The halfword in ACC put on the strike list for the sound register at +address+.
+          def emit_listed_write(address)
+            @emitter.emit(ASM.load_immediate(TMP, address))
+            emit_call_interrupt_routine(EffectStrikes::PUT)
           end
 
           # The sound effects' timer moved on a frame (EFFECT_CLOCK), in two free registers: the step
@@ -1162,6 +1204,7 @@ module VBlank
             @emitter.emit_branch(:bcond, over, cond: :ls)
             @emitter.emit(ASM.sub_imm(ACC, ACC, 1))
             @primitives.store_var(ACC, EFFECT_TICKED)
+            @strikes.emit_next_tick if striking?
             @emitter.emit_load_data_address(TUNE_REGS.first, MUSIC_SCORE)
             @emitter.emit(ASM.load_immediate(EFFECT_OUTRANKS, 0))
             emit_point_at_busy_effects
@@ -1428,7 +1471,9 @@ module VBlank
             onward = e.gensym
             e.place_label(SOUND_EFFECT_STEP)
             e.emit(ASM.push(Mixer::LR))
+            @listing = striking?
             calling_interrupt_routines_from_cartridge { emit_sound_effect_step_body(onward) }
+            @listing = false
             e.place_label(onward)
             e.emit(ASM.pop(PC))
             emit_upload_wave_routine if @effect_waves && !upload_wave_in_interrupt?
@@ -1546,7 +1591,13 @@ module VBlank
             @emitter.emit(ASM.load_halfword_offset(TMP, row, ROW_PITCH_AT))
             @emitter.emit(ASM.tst_imm(TMP, 0x8000))
             @emitter.emit_branch(:bcond, rest, cond: :eq)
-            upload_wave_in_interrupt? ? emit_call_interrupt_routine(UPLOAD_WAVE) : @emitter.emit_branch(:bl, UPLOAD_WAVE)
+            if listing?
+              emit_listed_write(EffectStrikes::IO_START + EffectStrikes::WAVEFORM)
+            elsif upload_wave_in_interrupt?
+              emit_call_interrupt_routine(UPLOAD_WAVE)
+            else
+              @emitter.emit_branch(:bl, UPLOAD_WAVE)
+            end
             @emitter.place_label(rest)
           end
 
@@ -2211,6 +2262,8 @@ module VBlank
             end
             [[4, regs[:reg_a]], [6, regs[:reg_b]]].each do |offset, addr|
               @emitter.emit(ASM.load_halfword_offset(ACC, at, offset))
+              next emit_listed_write(addr) if listing?
+
               @emitter.emit(ASM.load_immediate(TMP, addr))
               @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
@@ -2220,6 +2273,8 @@ module VBlank
           def emit_clear_sweep(regs)
             regs[:const].each do |addr, value|
               @emitter.emit(ASM.load_immediate(ACC, value))
+              next emit_listed_write(addr) if listing?
+
               @emitter.emit(ASM.load_immediate(TMP, addr))
               @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
@@ -2319,8 +2374,16 @@ module VBlank
               @emitter.emit(ASM.mov_reg_lsr_reg(WORK_REG, WORK_REG, TMP))
               @emitter.emit(ASM.and_imm(WORK_REG, WORK_REG, 3))
               @emitter.emit(ASM.lsl_imm(WORK_REG, WORK_REG, 6)) # where the duty sits in the register
-              @emitter.emit(ASM.load_immediate(TMP, music_voice_regs(lane)[:reg_a]))
-              @emitter.emit(ASM.strb(WORK_REG, TMP))
+              if striking? # onto a listed strike of the voice's control, if there is one
+                @emitter.emit(ASM.push(ACC))
+                @emitter.emit(ASM.mov_reg(ACC, WORK_REG))
+                @emitter.emit(ASM.load_immediate(TMP, music_voice_regs(lane)[:reg_a]))
+                @emitter.emit_branch(:bl, EffectStrikes::FOLD_SHAPE)
+                @emitter.emit(ASM.pop(ACC))
+              else
+                @emitter.emit(ASM.load_immediate(TMP, music_voice_regs(lane)[:reg_a]))
+                @emitter.emit(ASM.strb(WORK_REG, TMP))
+              end
               @emitter.emit(ASM.add_imm(ACC, ACC, 1))
               @primitives.store_var(ACC, var.call(:frame))
               @emitter.place_label(still)
@@ -2488,6 +2551,8 @@ module VBlank
             @emitter.emit(ASM.ldr_offset(ACC, row, WOBBLE_AT))
             @emitter.emit(ASM.lsr_imm(ACC, ACC, PAN_SHIFT))
             @emitter.emit(ASM.and_imm(ACC, ACC, 3)) if @shape_steps # the speaker, without the shapes above it
+            return emit_listed_speakers(channel, row) if listing?
+
             @emitter.emit(ASM.load_immediate(TMP, REG_SOUNDCNT_L))
             @emitter.emit(ASM.load_halfword(row, TMP))
             @emitter.emit(ASM.bic_imm(row, row, speaker_bits(channel)))
@@ -2496,6 +2561,19 @@ module VBlank
             @emitter.emit(ASM.cmp_imm(ACC, VBlank::Audio::Pan::LEFT_BITS))
             @emitter.emit(ASM.add_imm_cond(:ne, row, row, right_speaker_bit(channel)))
             @emitter.emit(ASM.store_halfword(row, TMP))
+          end
+
+          # ...listed, with the speaker in ACC: the voice's two switches to clear above the ones to
+          # set, so the strike leaves every other voice's switches as they are then
+          # (EffectStrikes::SPEAKERS).
+          def emit_listed_speakers(channel, row)
+            @emitter.emit(ASM.load_immediate(row, 0))
+            @emitter.emit(ASM.cmp_imm(ACC, VBlank::Audio::Pan::RIGHT_BITS))
+            @emitter.emit(ASM.add_imm_cond(:ne, row, row, left_speaker_bit(channel)))
+            @emitter.emit(ASM.cmp_imm(ACC, VBlank::Audio::Pan::LEFT_BITS))
+            @emitter.emit(ASM.add_imm_cond(:ne, row, row, right_speaker_bit(channel)))
+            @emitter.emit(ASM.orr_imm(ACC, row, speaker_bits(channel) << 16))
+            emit_listed_write(REG_SOUNDCNT_L)
           end
 
           # The game's own sound on +channel+ plays from both speakers, whichever a song's note left
@@ -2584,8 +2662,14 @@ module VBlank
               @emitter.emit(ASM.load_immediate(WRITE_REG, PITCH_MOST))
               @emitter.emit(ASM.cmp_reg(TMP, WRITE_REG))
               @emitter.emit(ASM.mov_reg_cond(:gt, TMP, WRITE_REG))
-              @emitter.emit(ASM.load_immediate(WRITE_REG, music_voice_regs(lane)[:reg_b]))
-              @emitter.emit(ASM.store_halfword(TMP, WRITE_REG))
+              if striking? # onto a listed strike of the voice's pitch, if there is one
+                @emitter.emit(ASM.mov_reg(ACC, TMP))
+                @emitter.emit(ASM.load_immediate(TMP, music_voice_regs(lane)[:reg_b]))
+                @emitter.emit_branch(:bl, EffectStrikes::FOLD_PITCH)
+              else
+                @emitter.emit(ASM.load_immediate(WRITE_REG, music_voice_regs(lane)[:reg_b]))
+                @emitter.emit(ASM.store_halfword(TMP, WRITE_REG))
+              end
               @emitter.place_label(still)
             end
           end
@@ -2599,6 +2683,11 @@ module VBlank
             @emitter.emit(ASM.lsr_imm(ACC, ACC, 16 + SLIDE_PITCH_BIT)) # the pitch is the high half
             @emitter.emit(ASM.and_imm(ACC, ACC, 1)) # the one bit
             @emitter.emit(ASM.orr_reg_lsl(TMP, TMP, ACC, SLIDE_LOW_WIDTH))
+            if listing?
+              @emitter.emit(ASM.mov_reg(ACC, TMP))
+              return emit_listed_write(REG_SOUND1CNT_L)
+            end
+
             @emitter.emit(ASM.load_immediate(ACC, REG_SOUND1CNT_L))
             @emitter.emit(ASM.store_halfword(TMP, ACC))
           end

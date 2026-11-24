@@ -168,8 +168,10 @@ module VBlank
           def self.reserved_by_build(program)
             ranked = Audio.effects_rank_voices?(program)
             save_bytes = Memory.whole_words(SaveChip.roomy_bytes_of(IR::SaveLayout.memory_of(program)))
+            effects = Audio.effect_songs(program)
             [Reservation.new(label: "the sound mixer's buffers", bytes: Mixer.roomy_bytes(program, ranked: ranked)),
-             Reservation.new(label: "the sound effects table", bytes: Audio.effect_table_bytes(program)),
+             Reservation.new(label: "the sound effects table", bytes: Audio.effect_table_bytes(effects)),
+             Reservation.new(label: "the sound effects' strike list", bytes: EffectStrikes.list_bytes(effects)),
              Reservation.new(label: "the save memory's working space", bytes: save_bytes),
              Reservation.new(label: "the background cell changes", bytes: held_tiles_bytes(program))]
               .select { |item| item.bytes.positive? }

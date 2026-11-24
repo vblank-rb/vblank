@@ -45,6 +45,7 @@ require_relative "gba/buffered"
 require_relative "gba/faces" # a face of a place filled with its picture, on the tear-free screen
 require_relative "gba/sound_registers"
 require_relative "gba/main_volume" # the main volume a game names, as SOUNDCNT's three settings
+require_relative "gba/effect_strikes" # sound effects on a timer, written to the chip as each tick comes
 require_relative "gba/audio"
 require_relative "gba/divide"
 require_relative "gba/expressions"
@@ -959,6 +960,8 @@ module VBlank
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step
           refuse_samples_without_vblank!
           register_timers(program) # assign each named timer its hardware timer index(es)
+          # ...and a spare one for the sound effects' strikes, in a game whose effects are on a timer
+          @audio.prepare_effect_strikes(timers: @timers, line_free: -> { !mixes_at_first_line? })
           @boundary_calls.prepare(program) # Which handlers wait, and what bends and ticks save
           prepare_pixel_masks(program) # solid-pixel tables for any per-pixel collision test
           resolve_modes(program)
@@ -1432,6 +1435,7 @@ module VBlank
           enabled |= IRQ_HBLANK if interrupts_rows?
           enabled |= IRQ_VCOUNT if mixes_at_first_line?
           irq_timers.each { |_, info| enabled |= timer_irq_bit(info[:rate]) }
+          enabled |= @audio.strikes.interrupt_bit if @audio.striking?
 
           # Which moments the display announces: the gap between frames (so wait_vblank
           # can sleep until one), and the gap after every line it draws (so a bending
@@ -1442,6 +1446,7 @@ module VBlank
           announce |= DISPSTAT_VBLANK_IRQ if @uses_vblank
           announce |= DISPSTAT_HBLANK_IRQ if interrupts_rows?
           announce |= DISPSTAT_VCOUNT_IRQ if mixes_at_first_line? # line 0, so bits 8-15 stay clear
+          announce |= @audio.strikes.display_announces if @audio.striking?
 
           write_io_halfword(REG_IME, 0)                          # interrupts off while we wire things up
           write_io_halfword(REG_DISPSTAT, announce) unless announce.zero?
@@ -1551,6 +1556,9 @@ module VBlank
               mix_waits_for_gap? ? @mixer.emit_mixer_fill_after_gap_writes : emit_mixer_fill
             end
           end
+          # The sound effects' strike list's alarm: a timer, or the line match where every timer is
+          # the game's (EffectStrikes).
+          emit_irq_source(@audio.strikes.interrupt_bit) { @audio.strikes.emit_alarm_answered } if @audio.striking?
           irq_timers.each do |name, info|
             emit_irq_source(timer_irq_bit(info[:rate])) do
               # Where this handler's first instruction sits, kept so a profile can count how
@@ -1583,6 +1591,7 @@ module VBlank
           # Audio#calling_interrupt_routines_from_cartridge).
           @mixer.emit_music_voice_routines if @mixer.music_takes_voices?
           @audio.emit_sound_effects_routine if @audio.plays_sound_effects?
+          @audio.emit_strike_routines if @audio.striking?
           @audio.emit_note_wave_routine
           # ...and, in a game that asks for a tune `this_frame: true`, the player's big steps as
           # routines the music step above calls too (see Audio#emit_tune_routines), and the
