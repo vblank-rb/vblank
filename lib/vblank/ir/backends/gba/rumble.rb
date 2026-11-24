@@ -19,11 +19,12 @@ module VBlank
         # pass that takes two frames steps the motor twice, as the interpreter's does.
         #
         # A clock chip talks on pins 0 to 2 of the same port (GBATEK, "GBA Cart Real-Time Clock"), so
-        # the hardware can carry both, as a cartridge with a tilt sensor and a motor does (GBATEK,
-        # "GBA Cart Rumble"). This build does not share the port yet: the clock's routines write
-        # the whole port a bit at a time and would stop the motor, and the motor's step in the
-        # screen's interrupt could land in the middle of a talk with the clock. So a game that
-        # reads the clock and rumbles is refused, saying so.
+        # a cartridge carries both, as one with a tilt sensor and a motor does (GBATEK, "GBA Cart
+        # Rumble"). A write to the port sets all four pins at once, so in a game with both each side
+        # keeps the other's: the motor's bit is kept in MOTOR_ON, which every write of the clock's
+        # adds in (ClockChip#motor_shared), and while the clock talks (TALKING) the interrupt's step
+        # only notes the motor's bit, since a write then would cut into the talk. The clock's last
+        # write of a talk puts the motor's bit as it stands then.
         class Rumble
           include Console::Hardware
 
@@ -43,6 +44,11 @@ module VBlank
           MARK = "VBLANK_RUMBLE_MOTOR_V1"
           MARK_BLOB = :__rumble_motor_mark
 
+          # In a game that reads the clock as well: the motor's bit as the step last set it (0 or
+          # MOTOR), and whether the clock is part way through a talk on the port.
+          MOTOR_ON = :__rumble_motor_on
+          TALKING = :__clock_talking
+
           STATEMENT_KINDS = %i[rumble].freeze
 
           def initialize(emitter:, primitives:, lowering:)
@@ -56,15 +62,19 @@ module VBlank
           # the same as before there was a motor.
           def used? = @used
 
-          # Note whether the program rumbles, give the two numbers their places and put the mark in
-          # the cartridge's data. A game that reads the clock as well is refused.
+          # Does the clock share the port (#prepare)?
+          def shares_port? = @shares_port
+
+          # Note whether the program rumbles, give the numbers their places and put the mark in the
+          # cartridge's data. A game that reads the clock as well shares the port with it.
           def prepare(program, clock_used:)
             @used = program.walk.any? { |node| node.kind == :rumble }
+            @shares_port = @used && clock_used
             return unless @used
 
-            refuse_rumble_with_clock! if clock_used
             @primitives.var_addr(LEFT)
             @primitives.var_addr(BITS)
+            [MOTOR_ON, TALKING].each { |name| @primitives.var_addr(name) } if @shares_port
             @emitter.data_blobs[MARK_BLOB] = MARK.b
           end
 
@@ -82,6 +92,7 @@ module VBlank
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, LEFT)
             @primitives.store_var(ACC, BITS)
+            [MOTOR_ON, TALKING].each { |name| @primitives.store_var(ACC, name) } if @shares_port
             @emitter.write_reg16(DIRECTION, MOTOR)
             @emitter.write_reg16(PINS, 0)
           end
@@ -135,6 +146,22 @@ module VBlank
             @emitter.emit(ASM.and_imm(ACC, TMP, 1))
             @emitter.emit(ASM.lsl_imm(ACC, ACC, 3))                # bit 0 of the pattern is pin 3
             @emitter.place_label(write)
+            if @shares_port
+              # Noted for the clock's writes; the pins are left alone while it talks.
+              talking = @emitter.gensym
+              @primitives.store_var(ACC, MOTOR_ON)
+              @primitives.load_var(TMP, TALKING)
+              @emitter.emit(ASM.cmp_imm(TMP, 0))
+              @emitter.emit_branch(:bcond, talking, cond: :ne)
+              emit_store_pins
+              @emitter.place_label(talking)
+            else
+              emit_store_pins
+            end
+          end
+
+          # The motor's bit in r0 onto the port.
+          def emit_store_pins
             @emitter.emit_number(TMP, PINS)
             @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
@@ -145,17 +172,8 @@ module VBlank
 
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, LEFT)
-            @emitter.emit_number(TMP, PINS)
-            @emitter.emit(ASM.store_halfword(ACC, TMP))
-          end
-
-          private
-
-          def refuse_rumble_with_clock!
-            raise LoweringError,
-                  "This game reads or sets the clock and also calls `rumble`. The clock and the rumble motor " \
-                  "share one port of the cartridge, and this build cannot drive both yet. To fix this, " \
-                  "remove `rumble`, or leave the clock out."
+            @primitives.store_var(ACC, MOTOR_ON) if @shares_port
+            emit_store_pins
           end
         end
       end

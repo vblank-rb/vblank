@@ -36,7 +36,7 @@ and a test fails when the two differ.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: a Game Boy Advance has one controller.
-- `rumble` — works: the cartridge carries a rumble motor, and the motor runs on the frames the pattern says. The build marks the cartridge so the emulator it is checked in runs a motor. Other emulators run one only for the few real cartridges they know. The motor shares a port with the `clock`, and this build cannot drive both yet, so a game that uses both is refused.
+- `rumble` — works: the cartridge carries a rumble motor, and the motor runs on the frames the pattern says. The build marks the cartridge so the emulator it is checked in runs a motor. Other emulators run one only for the few real cartridges they know. A game can read the `clock` and rumble too: the clock and the motor share the cartridge's port.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `enable_sound` — works: `main_volume:` sets the main volume of the sound chip to the nearest of its eight steps, from an eighth to all. At 0, the sound stays off. The square, wave and noise voices can also play at a half or a quarter of each step, so a quiet main volume is nearer. Recordings play at half or at all, whichever is nearer.

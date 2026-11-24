@@ -955,6 +955,7 @@ module VBlank
           @lowering.gap_ends = IR::Frames.gap_ends(program) # where a measured run reads how late each gap ended
           @clock_chip.prepare(program) # whether anything reads the clock
           @rumble.prepare(program, clock_used: @clock_chip.used?) # whether anything runs the motor
+          @clock_chip.motor_shared = @rumble.shares_port? # ...and shares the clock's port
           @fault_stops.prepare(program) # whether anything can stop on a full list
           @mixer.prepare_mixer(program) # the software mixer's rate, buffers, voice slots, timer
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step

@@ -146,6 +146,10 @@ module VBlank
           # Handed in once it exists.
           attr_writer :lowering
 
+          # Does a rumble motor share the port's pin 3 (Rumble#shares_port?)? Then every write to the
+          # port keeps the motor's bit, and a talk is marked while it runs. Set once both are prepared.
+          attr_writer :motor_shared
+
           # Does this program read or set the clock at all? Nothing here is emitted for one that
           # does neither.
           def prepare(program)
@@ -479,7 +483,8 @@ module VBlank
           # first: at power-on they point nowhere, and a pin that is not the console's ignores what
           # is written to it, so the chip would never hear CS go low.
           def emit_start_conversation(command)
-            @emitter.emit(ASM.load_immediate(TMP, SCK | SIO | CS))
+            emit_talk_marked(1) if @motor_shared
+            @emitter.emit(ASM.load_immediate(TMP, SCK | SIO | CS | motor_pin))
             @emitter.emit(ASM.store_halfword_offset(TMP, BASE, DIRECTION))
             emit_pins(SCK)
             emit_pins(SCK | CS)
@@ -487,16 +492,74 @@ module VBlank
             @emitter.emit_branch(:bl, SEND)
             return if command.nobits?(0x80) # the read bit, as the byte is kept turned round
 
-            @emitter.emit(ASM.load_immediate(TMP, SCK | CS))
+            @emitter.emit(ASM.load_immediate(TMP, SCK | CS | motor_pin))
             @emitter.emit(ASM.store_halfword_offset(TMP, BASE, DIRECTION))
           end
 
           # ...and it ends with CS low.
-          def emit_end_conversation = emit_pins(SCK)
+          #
+          # With a motor on pin 3, the talk is marked over first, so the interrupt's step writes the
+          # port again. The motor's bit is then written as it stands, and read again after: a step
+          # that landed between the read and the write wrote its own bit and was then written over,
+          # so a bit that changed is written once more. Uses TMP and BITS.
+          def emit_end_conversation
+            return emit_pins(SCK) unless @motor_shared
 
-          def emit_pins(value)
-            @emitter.emit(ASM.load_immediate(TMP, value))
+            again = @emitter.gensym
+            emit_talk_marked(0)
+            @emitter.place_label(again)
+            @primitives.load_var(BITS, Rumble::MOTOR_ON)
+            @emitter.emit(ASM.orr_imm(TMP, BITS, SCK))
             @emitter.emit(ASM.store_halfword(TMP, BASE))
+            @primitives.load_var(TMP, Rumble::MOTOR_ON)
+            @emitter.emit(ASM.cmp_reg(TMP, BITS))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
+          end
+
+          # The talk marked begun (1) or over (0) for the motor's step (Rumble::TALKING). Uses TMP.
+          def emit_talk_marked(on)
+            @emitter.emit(ASM.load_immediate(TMP, on))
+            @primitives.store_var(TMP, Rumble::TALKING)
+          end
+
+          # The motor's pin, which stays the console's to drive, where a motor shares the port.
+          def motor_pin = @motor_shared ? Rumble::MOTOR : 0
+
+          # The pins set to +value+ from code the game runs, and the motor's bit with them. Uses TMP.
+          def emit_pins(value)
+            return emit_routine_pins(value) unless @motor_shared
+
+            @primitives.load_var(TMP, Rumble::MOTOR_ON)
+            @emitter.emit(ASM.orr_imm(TMP, TMP, value))
+            @emitter.emit(ASM.store_halfword(TMP, BASE))
+          end
+
+          # The pins set to +value+ inside SEND and RECEIVE, which hold the motor's bit in MOTOR_HELD
+          # (#emit_hold_motor_bit). Uses TMP.
+          def emit_routine_pins(value)
+            @emitter.emit(ASM.load_immediate(TMP, value))
+            @emitter.emit(ASM.orr_reg(TMP, TMP, MOTOR_HELD)) if @motor_shared
+            @emitter.emit(ASM.store_halfword(TMP, BASE))
+          end
+
+          # Where SEND and RECEIVE keep the motor's bit, saved and given back round them.
+          MOTOR_HELD = 4
+
+          # SEND and RECEIVE start: the motor's bit read into MOTOR_HELD, whose caller's number is kept
+          # on the stack. The variables' base may not be in its register inside a routine, so the
+          # address is loaded whole.
+          def emit_hold_motor_bit
+            return unless @motor_shared
+
+            @emitter.emit(ASM.push(MOTOR_HELD))
+            @emitter.emit_number(MOTOR_HELD, @primitives.var_addr(Rumble::MOTOR_ON))
+            @emitter.emit(ASM.ldr(MOTOR_HELD, MOTOR_HELD))
+          end
+
+          # ...and they end, MOTOR_HELD given back.
+          def emit_return_from_routine
+            @emitter.emit(ASM.pop(MOTOR_HELD)) if @motor_shared
+            @emitter.emit(ASM.return)
           end
 
           # Send the byte in ACC, lowest bit first: each bit put on SIO with the clock low, then
@@ -506,18 +569,20 @@ module VBlank
           def emit_send_routine
             bit = @emitter.gensym
             @emitter.place_label(SEND)
+            emit_hold_motor_bit
             @emitter.emit(ASM.load_immediate(BITS, 8))
             @emitter.place_label(bit)
             @emitter.emit(ASM.and_imm(TMP, ACC, 1))
             @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))           # the bit, on SIO
             @emitter.emit(ASM.orr_imm(TMP, TMP, CS))
+            @emitter.emit(ASM.orr_reg(TMP, TMP, MOTOR_HELD)) if @motor_shared
             3.times { @emitter.emit(ASM.store_halfword(TMP, BASE)) }
             @emitter.emit(ASM.orr_imm(TMP, TMP, SCK))
             @emitter.emit(ASM.store_halfword(TMP, BASE))
             @emitter.emit(ASM.lsr_imm(ACC, ACC, 1))
             @emitter.emit(ASM.subs_imm(BITS, BITS, 1))
             @emitter.emit_branch(:bcond, bit, cond: :ne)
-            @emitter.emit(ASM.return)
+            emit_return_from_routine
             @emitter.place_label(DerivedNames.routine_end(SEND))
           end
 
@@ -529,12 +594,13 @@ module VBlank
           def emit_receive_routine
             bit = @emitter.gensym
             @emitter.place_label(RECEIVE)
+            emit_hold_motor_bit
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @emitter.emit(ASM.load_immediate(BITS, 8))
             @emitter.place_label(bit)
-            emit_pins(CS)
+            emit_routine_pins(CS)
             4.times { @emitter.emit(ASM.store_halfword(TMP, BASE)) }
-            emit_pins(CS | SCK)
+            emit_routine_pins(CS | SCK)
             @emitter.emit(ASM.load_halfword(TMP, BASE))
             @emitter.emit(ASM.lsr_imm(TMP, TMP, 1))
             @emitter.emit(ASM.and_imm(TMP, TMP, 1))           # SIO
@@ -542,7 +608,7 @@ module VBlank
             @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 7))
             @emitter.emit(ASM.subs_imm(BITS, BITS, 1))
             @emitter.emit_branch(:bcond, bit, cond: :ne)
-            @emitter.emit(ASM.return)
+            emit_return_from_routine
             @emitter.place_label(DerivedNames.routine_end(RECEIVE))
           end
         end

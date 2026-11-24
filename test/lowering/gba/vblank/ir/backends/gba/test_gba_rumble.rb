@@ -94,17 +94,29 @@ class TestGBARumble < Minitest::Test
     refute_includes after[PRESS + 2..], "#"
   end
 
-  def test_a_game_with_a_clock_cannot_rumble
-    error = assert_raises(VBlank::IR::Backends::GBA::LoweringError) do
-      VBlank.build("BOTH", console: :gba, err: StringIO.new, out: StringIO.new) do
-        screen :tiled, backdrop: :black
-        game_loop do
-          rumble frames: 4, pattern: 0xFF if clock.present?
-        end
+  # The clock chip talks on pins 0 to 2 of the same port and the motor is pin 3 (GBATEK, "GBA
+  # Cart Real-Time Clock", "GBA Cart Rumble"), so a game reads the clock and rumbles on one
+  # cartridge: each pass reads the time while the motor runs its pattern.
+  def test_a_game_reads_the_clock_while_the_motor_runs
+    rom = VBlank.build("BOTH", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :tiled, backdrop: :black
+      now = clock
+      hour = var :hour, -1
+      second = var :second, -1
+      game_loop do
+        hour = now.hour
+        second = now.second
+        rumble frames: 10, pattern: "##..#.#." if pressed(:a)
       end
     end
-
-    assert_match(/clock/, error.message)
-    assert_match(/rumble/, error.message)
+    key = VBlank::Console::Hardware::KEY_A
+    v = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.built.var_addresses,
+                                               clock: Time.new(2026, 10, 22, 21, 7, 5),
+                                               keys: ->(played) { played + 1 == PRESS ? key : 0 })
+    felt = Array.new(PRESS + 40) { v.step.motor_on? ? "#" : "." }.join
+  
+    assert_equal "##..#.#.##", felt[/#.*#/], "the motor runs the pattern for the ten frames"
+    assert_equal 21, v.var(:hour), "the clock reads right beside it"
+    assert_operator v.var(:second), :>=, 5
   end
 end
