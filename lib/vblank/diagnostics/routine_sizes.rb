@@ -7,8 +7,8 @@ module VBlank
     module RoutineSizes
       module_function
 
-      # The twelve biggest routines, and how much of +whole+ (the words after \"in\", such as
-      # \"a cartridge of 8 banks\") the game's code is. Nothing for no sizes.
+      # The twelve biggest routines, and how much of +whole+ (the words after "in", such as
+      # "a cartridge of 8 banks") the game's code is. Nothing for no sizes.
       def render(sizes, out, whole:)
         return if sizes.empty?
 
