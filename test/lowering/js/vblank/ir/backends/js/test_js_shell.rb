@@ -385,6 +385,16 @@ class TestJSShell < Minitest::Test
     end
   end
 
+  # A frame whose top page is of the same site reads that page's address, over the referrer.
+  def test_a_framed_page_of_the_same_site_copies_the_top_pages_address
+    Dir.mktmpdir do |folder|
+      out = open_without_storage(folder, ["framed-same-origin:https://host.example/arcade", "no-local-storage",
+                                          "referrer:https://host.example/elsewhere"])
+
+      assert_equal "clipboard https://host.example/arcade", out.grep(/\Aclipboard /).first
+    end
+  end
+
   def test_a_framed_page_with_no_address_given_copies_the_page_that_framed_it
     Dir.mktmpdir do |folder|
       out = open_without_storage(folder, ["framed", "no-local-storage", "referrer:https://host.example/play"])
