@@ -2326,6 +2326,18 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # An Array of Structs made outside the game's block, walked by game code that changes their
+  # fields: each Struct's numbers are the game's, starting from Ruby's, as a single Struct made
+  # there is. The Array itself stays Ruby's, so a game built twice starts each build from Ruby's.
+  def test_an_array_of_structs_made_outside_the_game_walked
+    ruby = ruby_answers(3, %i[n], &walked_outside_dots(made_with_no_game { [AnswerPoint.new(3, 0, 0)] }))
+    game = walked_outside_dots(made_with_no_game { [AnswerPoint.new(3, 0, 0)] })
+    first = game_player.run(built_program(&game), frames: 3)[:n]
+    second = game_player.run(built_program(&game), frames: 3)[:n]
+
+    assert_equal [ruby[:n], ruby[:n]], [first, second]
+  end
+
   # A part made outside the game's block, as one kept in a constant of a game file is, and the game
   # built twice, as a build for two consoles does: each build plays it from where Ruby left it.
   def test_a_part_made_outside_the_game_built_twice
@@ -3355,6 +3367,17 @@ class TestPlainRubyAnswers < Minitest::Test
   # A part made as above `VBlank.game`, with no game being built. An earlier test on this thread
   # can leave a builder it made by hand current, so the part is made as plain Ruby on purpose.
   private def made_with_no_game(&) = VBlank::Builder::Session.running_as_plain_ruby(&)
+
+  # Game code walking +dots+, an Array of points made outside the game's block, moving each.
+  private def walked_outside_dots(dots)
+    proc do
+      n = 0
+      game_loop do
+        dots.each { |dot| dot.x += 1 }
+        n = dots[0].x
+      end
+    end
+  end
 
   # The game asking the EQUALITY_QUESTIONS case +name+ of game numbers each pass.
   private def equality_question(name)

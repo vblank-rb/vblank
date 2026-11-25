@@ -1403,7 +1403,9 @@ module VBlank
             end
             value.singleton_class.prepend(followed_struct_accessors(value.class))
           end
-          start_found_object(value)
+          # A game file's Struct starts itself as it is made while a game is built. One found here
+          # unstarted was made outside this build (above `VBlank.game`, in a constant), not by game code.
+          start_found_object(value, made_outside: value.class.include?(FollowedFields))
           value.members.each do |field|
             replace_held(value, field_as_held(value, field), seen) { |copy| hold_in_field(value, field, copy) }
           end
@@ -1434,11 +1436,12 @@ module VBlank
         end
 
         # +holder+ is started as its class's `initialize` starts one made while building, unless
-        # this build started it already.
-        def start_found_object(holder)
+        # this build started it already. +made_outside+ is a Struct made outside this build: it
+        # lives across every pass, so its fields are followed even where game code first finds it.
+        def start_found_object(holder, made_outside: false)
           return if Builder::Session.builder.instance_variable_uses.object_started?(holder)
 
-          holder.is_a?(Data) ? start_data_fields(holder) : start_fields(holder)
+          holder.is_a?(Data) ? start_data_fields(holder) : start_fields(holder, made_outside: made_outside)
         end
 
         # Was +made+ written in the game's own source: a file that is not Ruby's, a gem's or VBlank's?
@@ -1688,15 +1691,18 @@ module VBlank
         # +holder+, a Struct, is just made: counted as the next of its class, which names its
         # variables in the order they were made (Uses#made_name), each field noted as given its
         # number here (#note_field_given), and each named one given its game variable
-        # (#first_variable).
-        def start_fields(holder)
+        # (#first_variable). One +made_outside+ this build (#start_found_object) is never taken for
+        # one game code made, however late game code first finds it.
+        def start_fields(holder, made_outside: false)
           builder = Builder::Session.builder
           return unless builder
 
           uses = builder.instance_variable_uses
           uses.note_object_started(holder)
           uses.note_object_made(holder)
-          uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil) if Builder::Session.recording?
+          if Builder::Session.recording? && !made_outside
+            uses.note_made_in_game_code(holder, builder.made_every_pass? ? builder.recording_container : nil)
+          end
           holder.members.each do |field|
             note_field_given(holder, field) if field_as_held(holder, field).is_a?(Value)
             next unless named_field?(holder, field)

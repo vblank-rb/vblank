@@ -1611,7 +1611,7 @@ end
 <details>
 <summary>Don't: make a part above <code>VBlank.game</code> and change its Array. Do: make it inside</summary>
 
-The game keeps a part's Array or Hash only when the part is made inside the game block. A part made above it is made one time, before VBlank builds the game, and a game built for two consoles cannot share it. A part whose numbers alone change works anywhere.
+The game keeps a part's Array or Hash only when the part is made inside the game block. A part made above it is made one time, before VBlank builds the game, and a game built for two consoles cannot share it. A part whose numbers alone change works anywhere. So does an Array of Structs made above it, such as `dots = [Dot.new(3, 0)]`: game code can walk it and change each Struct's numbers, and the Array stays a Ruby Array of the same size.
 
 With this class in `tallies.rb`:
 

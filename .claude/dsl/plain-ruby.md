@@ -264,7 +264,7 @@ instance variables.
   game's, by a reader or by its own class (`refuse_part_made_outside!`), saying to make it inside the
   game's block: those places would be the first build's alone, and a second build for another
   console would record into the first one's finished program. Its numbers alone still work, each
-  build starting from Ruby's number. A method answering a copy (`@counts.dup`) is left alone, and
+  build starting from Ruby's number, and so do the fields of a game file's Struct made outside it: one game code first finds unstarted, in a walk of a Ruby Array (`dots.each { |dot| dot.x += 1 }`), is started as one set up, never as one game code made (`InstanceVariables.start_found_object(made_outside:)`), so its fields are followed. A method answering a copy (`@counts.dup`) is left alone, and
   an index the game works out into a copy stops with words saying the game does not keep that
   Array. Part of a named Array (`counts[0..]`, `counts[1, 2]`, `first(2)`, `last(2)`, `take`,
   `drop`) and a copy of one (`dup`, `clone`, `reverse`, `rotate`, `values_at`, `+`) are refused
