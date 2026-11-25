@@ -42,11 +42,21 @@ module VBlank
         # It goes on to name the biggest of them and ends "If a list or a pool is small,
         # remove `fast: false` from it. Then the build can put it in the quick memory."
         #
+        # ### One list does not fit in one part of the memory
+        #
+        # On a console that keeps all of a list in one part of its work memory (the Color), the
+        # whole can fit while one list does not. The error is at that list's line:
+        #
+        # > list :<name> needs about <size>. A <console> keeps all of a list in one part of its
+        # > work memory. The largest part holds <size>. To fix this, give the list a smaller
+        # > capacity. Or use narrower items (`width: :byte`).
+        #
         # ### What else the message can say
         #
         # Where the build keeps part of the roomier memory for itself (for sound or saves), the
         # message adds "The build keeps about <size> of the roomier memory for its own use:
-        # <list>." Where a `save_data` record is among the biggest users, it adds "A save_data
+        # <list>." Where it keeps part of the one work memory for a feature the game uses (the
+        # Color's color tables for fades), it adds the same sentence about the work memory. Where a `save_data` record is among the biggest users, it adds "A save_data
         # record holds a copy of everything it keeps". Where the game made variables with no
         # `var` line, it adds "These names are variables with no `var` line: <names>." and can
         # say how many are copies, with the advice:
@@ -162,13 +172,15 @@ module VBlank
               cold_bytes = cold.sum(&:cold_bytes)
               return cold_overflow_findings(cold, cold_bytes, roomier, reserved, console) if cold_bytes > roomier
             end
-            return list_too_big_findings(program, console, kit) if total <= console.free_work_memory_bytes + roomier
+            work_reserved = console.roomier_memory? ? [] : kit.work_memory_reserved(program)
+            free = console.free_work_memory_bytes - work_reserved.sum(&:bytes)
+            return list_too_big_findings(program, console, kit) if total <= free + roomier
 
             # Blame the biggest user, which is the capacity to shrink. The plain
             # variable count and the sprites' save-buffers are sums over the whole
             # program with no one declaration behind them, so a program whose biggest
             # user is one of those blames the program itself.
-            [Finding.new(check: NAME, severity: :error, message: message(total, users, reserved, console),
+            [Finding.new(check: NAME, severity: :error, message: message(total, users, reserved, console, work_reserved),
                          node: users.first.node || :program)]
           end
 
@@ -197,9 +209,9 @@ module VBlank
           end
 
           def list_too_big_message(label, bytes, most, console)
-            "#{label} keeps a list of about #{human_size(bytes)}. A #{console.title} keeps each list whole in one " \
-              "part of its work memory, and the largest part holds #{human_size(most)}. To fix this, give the " \
-              "list a smaller capacity. Or use narrower items (`width: :byte`)."
+            "#{label} needs about #{human_size(bytes)}. A #{console.title} keeps all of a list in one part of its " \
+              "work memory. The largest part holds #{human_size(most)}. To fix this, give the list a smaller " \
+              "capacity. Or use narrower items (`width: :byte`)."
           end
 
           # The cold collections are over the roomier memory on their own. A collection marked
@@ -297,9 +309,9 @@ module VBlank
 
           def round_up_word(bytes) = (bytes + 3) & ~3
 
-          def message(total, users, reserved, console)
+          def message(total, users, reserved, console, work_reserved)
             "This program reserves about #{human_size(total)} of memory for its data. But " \
-              "#{memory_message(console)}#{reserved_message(reserved)} The biggest users are #{top_users(users)}. To fix this, use a " \
+              "#{memory_message(console)}#{reserved_message(reserved)}#{work_reserved_message(work_reserved)} The biggest users are #{top_users(users)}. To fix this, use a " \
               "smaller capacity for a pool or a list. Or use fewer fields. Or use narrower items " \
               "(`width: :byte`).#{variables_advice(console)}#{save_record_advice(users)} Then it all " \
               "fits.#{made_variables_message}"
@@ -398,6 +410,14 @@ module VBlank
 
             parts = reserved.map { |item| "#{item.label} (#{human_size(item.bytes)})" }.join(", ")
             " The build keeps about #{human_size(reserved.sum(&:bytes))} of the roomier memory for its own use: #{parts}."
+          end
+
+          # What the build keeps in the one work memory for itself, for what this game uses.
+          def work_reserved_message(reserved)
+            return "" if reserved.empty?
+
+            parts = reserved.map { |item| "#{item.label} (#{human_size(item.bytes)})" }.join(", ")
+            " The build keeps about #{human_size(reserved.sum(&:bytes))} of the work memory for its own use: #{parts}."
           end
 
           def top_users(users)

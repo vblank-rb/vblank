@@ -41,6 +41,66 @@ class TestGBCMemory < Minitest::Test
     (Memory::LOW_END - Memory::FIRST) + (Memory::HIGH_END - Memory::HIGH_START) - memory.used
   end
 
+  # The build check counts what the runtime keeps for a feature of the game before anything is
+  # lowered (ColorKit#work_memory_reserved); the lowering's own memory is the answer key. A small
+  # game with the feature and the same game without it differ by what the kit says. Each feature
+  # is the bodies of the two games, without it and then with it, their loops included.
+  private def kit_features
+    plain = proc { game_loop {} }
+    tiles = proc do
+      colors :ball, %i[transparent red green white]
+      image :art, width: 8, height: 16, colors: :ball, places: [1] * 128
+      set = sprite_tiles :ball_tiles, count: 1, colors: :ball
+      image :ball, tiles_from: :ball_tiles, pieces: [[0, 0, 0]]
+      sprite :ball, at: [40, 40]
+      set
+    end
+    recording = proc do
+      enable_sound
+      sample :boom, pcm: [40, -40] * 400, rate: 8000
+    end
+    {
+      "a fade" => [plain, proc { game_loop { fade :black, 50 } }],
+      "a tint" => [plain, proc { game_loop { tint :red, 50 } }],
+      "a load of sprite tiles" => [proc { instance_exec(&tiles); game_loop {} },
+                                   proc { set = instance_exec(&tiles); game_loop { set.copy_from :art, at: 1, count: 1, to: 0 } }],
+      "a recording played once" => [proc { instance_exec(&recording); game_loop {} },
+                                    proc { boom = instance_exec(&recording); game_loop { boom.play if pressed(:a) } }],
+      "a recording played round" => [proc { instance_exec(&recording); game_loop {} },
+                                     proc { boom = instance_exec(&recording); game_loop { boom.play(loop: true) if pressed(:a) } }],
+      "the motor" => [plain, proc { game_loop { rumble frames: 12 if pressed(:a) } }],
+    }
+  end
+
+  private def memory_used_by(body)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      instance_exec(&body)
+    end
+    b.finalize_program
+    program = b.program
+    memory = Memory.new
+    lowering = GBC::Lowering.new(program, memory: memory)
+    # The flags the backend hands the runtime for these features (GBC#lower).
+    GBC::Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects,
+                                 together: lowering.groups_up_together?, walks_colors: lowering.walks_colors?,
+                                 tile_loads: lowering.loads_sprite_tiles?, clips: lowering.clips.any?,
+                                 clip_laps: lowering.clips.loops?, rumble: lowering.rumbles?)
+    [memory.used, VBlank::Console.for(:gbc).work_memory_reserved(program).sum(&:bytes)]
+  end
+
+  def test_the_kits_count_of_what_the_runtime_keeps_matches_the_lowerings_memory
+    kit_features.each do |name, (without_body, with_body)|
+      without, nothing = memory_used_by(without_body)
+      used, kit_bytes = memory_used_by(with_body)
+
+      assert_equal 0, nothing, "the game without #{name} is counted nothing"
+      assert_operator kit_bytes, :>, 0, name
+      assert_equal used - without, kit_bytes, "the runtime keeps #{used - without} bytes for #{name}"
+    end
+  end
+
   # A table read with its page in one register sits in one page: first, at the first place with
   # nothing lost; later, moved up to the next page rather than across one.
   def test_a_place_in_one_page_never_crosses_a_page

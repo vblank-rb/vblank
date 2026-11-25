@@ -315,6 +315,35 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_empty findings_for(prog)
   end
 
+  # What the Color's runtime keeps for a game that fades is the game's memory too: a game left
+  # 50 bytes by the old count has 46 short once the color tables for fades are taken out.
+  private def color_game_with_list_leaving_free(bytes_free, *extra)
+    room = VBlank::Console::COLOR.free_work_memory_bytes - bytes_free - (4 * Budget::WORD)
+    program(
+      screen(:tiled),
+      list_of_bytes(:trail, room / 2), # two lists, since no one list may pass the larger half
+      list_of_bytes(:tail, room / 2),
+      *extra,
+      loop_(wait_vblank, halt),
+      console: :gbc,
+    )
+  end
+
+  def test_a_color_game_that_fades_is_counted_with_the_fades_tables
+    assert_empty findings_for(color_game_with_list_leaving_free(50)), "fits by the old count"
+
+    findings = findings_for(color_game_with_list_leaving_free(50, fade(toward: :black, amount: 50)))
+
+    assert_equal 1, findings.size
+    assert findings.first.error?
+    assert_match(/color tables for fades/, findings.first.message)
+    assert_match(/keeps about 96B of the work memory/, findings.first.message)
+  end
+
+  def test_a_color_game_that_fades_with_room_for_the_tables_is_not_flagged
+    assert_empty findings_for(color_game_with_list_leaving_free(200, fade(toward: :black, amount: 50)))
+  end
+
   # On the Color variables share the one memory with the lists, so fewer of them is a fix too.
   def test_a_color_program_with_too_many_variables_is_told_to_use_fewer
     count = (VBlank::Console::COLOR.free_work_memory_bytes / Budget::WORD) + 64
