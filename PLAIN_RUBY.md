@@ -1,396 +1,85 @@
 # Plain Ruby in a game
 
-**Rule of thumb.** Simple Ruby works: numbers, `if`, `while` and `each` loops, Arrays of numbers, Structs, and small classes with methods. Clever Ruby often does not work: chains of `map` and `select` on an Array the game changes, text that does more than show a number the game changes, Arrays inside Arrays, Hashes that get new keys or are copied, and metaprogramming such as `eval`. When a line cannot work, VBlank stops the build with a message. The message names the line and tells you what to write instead. A few lines build with no message and do something you do not expect. The two lists near the end of this page, [Refused](#refused) and [Builds, but surprises you](#builds-but-surprises-you), give each case.
+**Rule of thumb.** Simple Ruby works: numbers, `if`, `while` and `each` loops, Arrays of numbers, Structs, and small classes with methods. Clever Ruby often does not work: chains of `map` and `select` on an Array the game changes, text that does more than show a number the game changes, Arrays inside Arrays, Hashes that get new keys or are copied, and metaprogramming such as `eval`.
 
-A VBlank game is ordinary Ruby, and it follows one rule: the game file runs once, while the game is built, and the code inside a game block such as `game_loop` is recorded and played on the console every frame. A test, a sum or a loop on a number the game keeps becomes part of the game; the same line on a plain Ruby value is worked out once, while building, and costs the console nothing.
+When a line cannot work, VBlank stops the build with a message. The message names the line and tells you what to write instead. A few lines build with no message and do something you do not expect.
+
+The three lists at the end of this page give each case: [Refused](#refused), [Builds, but surprises you](#builds-but-surprises-you) and [What costs more](#what-costs-more).
 
 ## Built now, or played later
 
-Code inside a game block is played as the game runs; everything around it runs once, while the game is built.
+The game file runs once, while VBlank builds the game. The code inside a game block is recorded, and the console plays it every frame. A test, a sum or a loop on a number the game keeps is part of the game, and the same line on a plain Ruby value is worked out once, while building.
 
 ```ruby
 screen :bitmap
 size = 8 * 2               # worked out once, while building
-x = 0                      # the game keeps this number
-game_loop do
-  x += 1 if held(:right)   # tested and changed on every pass
-  clear_screen :black
-  draw_rect_at x, 40, size, size, :yellow
-end
-```
-
-The game blocks are `game_loop`, `scene`, `func`, `once_a_frame`, `every`, `after`, `repeat`, `each_pass`, a timer's `on_tick` and a menu's `item`.
-
-The same `if` can be either kind. A test on a number the game keeps, a button or a sprite's place is a branch in the game, taken or not on each pass. A test on a plain value is decided while building: one side is in the game and the other is not.
-
-```ruby
-screen :bitmap
-big = true                 # a plain value: decided while building
+big = true                 # a plain value: its test is decided while building
 hp = 3                     # a number the game keeps
 game_loop do
-  hp -= 1 if pressed(:a)
+  hp -= 1 if pressed(:a)   # tested and changed on every pass
   clear_screen :black
-  draw_rect_at 10, 10, 16, 16, :red if hp > 0
+  draw_rect_at 10, 10, size, size, :red if hp > 0
   draw_text "BIG", 10, 40, :white if big
+  draw_text "HP #{hp}", 10, 60, :white, digits: 2
 end
 ```
 
-A number the game keeps can go in drawn text, as Ruby puts one in a String: `"HP #{hp}"` or `hp.to_s`. `draw_text` draws the words, and each number as `draw_number` draws it, where the words before it end. A number takes the room `draw_number` gives it, 4 digits unless `digits:` says otherwise, and is drawn to the right of that room, so a shorter number leaves a gap before it.
+The game blocks are `game_loop`, `scene`, `func`, `once_a_frame`, `every`, `after`, `repeat`, `each_pass`, a timer's `on_tick` and a menu's `item`. `"HP #{hp}"` and `hp.to_s` put a number the game keeps into drawn text, as `draw_number` draws it.
 
-```ruby
-screen :bitmap
-hp = 3
-game_loop do
-  hp -= 1 if pressed(:a)
-  clear_screen :black
-  draw_text "HP #{hp}", 10, 10, :white, digits: 2
-end
-```
+Limits: see [Refused › Text and symbols](#text-and-symbols).
 
 ## Game variables
 
-A name that game code changes is a number the game keeps; a name nothing in game code changes stays plain Ruby and costs nothing.
+A name that game code changes is a number the game keeps. A name that nothing in game code changes stays plain Ruby and costs nothing. A kept name can start as a whole number, a Float, `true` or `false`, a symbol, `nil`, or a sum of constants.
 
 ```ruby
 screen :bitmap
 speed = 2                  # never changed in game code: plain Ruby
-hp = 10                    # changed below: the game keeps it
-game_loop do
-  hp -= speed if pressed(:b)
-end
-```
-
-A kept name can start as a whole number, a Float (a number with a fraction), `true` or `false`, a symbol, `nil`, or a sum of constants.
-
-```ruby
-screen :bitmap
 x = 240 / 2                # a sum worked out while building
-speed = 0.5
+fall = 0.5
 alive = true
 mode = :title
 game_loop do
-  x += 1
-  speed += 0.25 if alive
+  x += speed
+  fall += 0.25 if alive
   alive = false if x > 200
   mode = :over unless alive
 end
 ```
 
-A symbol is a game state: compare it with `==`, and `call mode` runs the routine or scene of that name.
+A symbol is a game state: compare it with `==`, and `call mode` runs the routine or scene of that name. Each name is its own number, so two names given one number are two numbers, and the same name in two routines is two.
 
-Each name is its own number. Two names given one number are two numbers, and the same name in two routines is two.
-
-A name first set inside a game block is set again every time the block runs, so it starts afresh on each pass. A number that must last from pass to pass is set above the game loop.
-
-```ruby
-screen :bitmap
-total = 0                  # lasts: set once, above the loop
-game_loop do
-  this_pass = 0            # starts at 0 on every pass
-  this_pass += 1
-  total += this_pass
-end
-```
-
-A method's own names are set each time the method runs, as in Ruby.
-
-## Instance variables
-
-A part of a game is a plain class. An instance variable that game code may change is a number the game keeps, as a local is. VBlank finds these in the source: a line that works one out from what it holds (`@lit = 1 - @lit`, `@ticks += 1`, `@counts[at] += 1`), wherever it is, and a line that sets one inside a `func`, `game_loop` or other game block. Any other instance variable is plain Ruby, and so is one of these until game code first reads or changes it: a count bumped while the game is built stays a Ruby number there.
-
-```ruby
-# A lamp whose on-or-off number the game keeps
-class Lamp
-  def initialize(build)
-    @lit = 0
-    build.func(:switch_lamp) { @lit = 1 - @lit }
-  end
-
-  attr_reader :lit
-end
-```
-
-Such an instance variable is the game's from the first line of game code that reads or changes it, starting from the number Ruby gave it, wherever it is read: in another routine, through `attr_reader`, or in another part it was handed to. A routine that draws the lamp reads the game's number even where it comes before the routine that switches it. A change from outside the class through a writer counts too: `dial.level += 3`, or `lamp.lit = 1` in a game block. Where game code sets an instance variable outright in a method of its own (`def open! = @open = true`) and another routine reads it, VBlank cannot see the change in the source, and stops with a message: write `game_variables :open` in the class's body. A `game_loop`, a scene and a `func` run every frame, so a line there that makes a part makes a new one on every pass in Ruby. A part whose numbers or Arrays change cannot be made that way: VBlank stops with a message. Make it above the game loop, or keep it with `||=`, which makes it the first time the line runs and keeps the same part after, in Ruby and in the game:
-
-```ruby
-# A ship kept with ||=: made the first time the line runs, and the same ship after
-Ship = Struct.new(:x, :y)
-screen :bitmap
-game_loop do
-  ship = (@ship ||= Ship.new(120, 80)) # made inside the loop, as a scene makes what is its own
-  ship.x += 1
-  clear_screen :black
-  draw_rect_at ship.x, ship.y, 4, 4, :white
-end
-```
-
-A part kept with `||=` is made once, so what its `initialize` hands another part goes in once, while VBlank builds the game, as in Ruby: a block it adds to another part's Array (`hooks.after { @count += 1 }`), or names (`costume.wear(%i[crouch leap])`). The block then runs wherever the other part runs it, on every pass. The same line run from the game loop itself would add to the Array on every pass in Ruby, so it stops with a message.
-
-A local of the game's own block, set above the game loop, keeps a part the same way: `counter = nil` above it, then `counter ||= Counter.new` in it. A part kept by another part with `||=` is kept only if that other part is kept too: a part made on every pass makes what it keeps on every pass as well. One name kept with `||=` on two lines that make different things (`@enemy ||= Bat.new` in one routine, `@enemy ||= Rat.new` in another) stops with a message, since Ruby keeps whichever runs first.
-
-A part kept so starts from the numbers its `initialize` gives, and what its `initialize` puts into an Array it makes there goes in on the first pass alone. `rom.profile` names the hidden number that keeps it to once, and a save that keeps the Array keeps that number too; to skip it, make the part above the game loop. A part whose numbers never change (a spot that only answers questions) can be made anywhere. A push in `initialize` into an Array the part was handed runs each time the line making the part runs, as in Ruby, and so does everything else `initialize` does in the game, such as drawing or putting up a picture.
-
-The number is named after the class and the instance variable: `lamp_lit` for `@lit` of a `Lamp`, and `score` for the game block's own `@score`. A profile and a test read it by that name. Written in the class's body, `game_variables busy: :lamp_wait` gives the number a name of the game's own, and `game_variables :damage, saved: false` marks numbers a save never keeps.
-
-A Hash or Array of numbers that game code changes is a number for each key, where every key is known while building: a number, a symbol or a constant written out, or the name a Ruby loop over something written out gives.
-
-A part's Hash or Array that holds only symbols stays a Ruby one: names filled while the part is set up, like `@used |= names` in `initialize`. Game code can ask about it (`@used.intersect?(AIMS)`), and Ruby answers while the game is built. A line of game code that changes it stops with a message. To let the game change it, name it with `game_variables :used`.
-
-A Hash written out in the game block, `h = { a: 1, b: 2 }`, works the same way when game code changes it at a key: `h[:a] += 3`, `h[:b] = 0`, or `m = (h[:a] += 3)`, which gives `m` the new number as Ruby does. The numbers are named after the local and the key, `h_a` and `h_b`. The game keeps one number for each key, so a key the Hash does not have stops the build, and so does a method that adds, removes or changes many keys in one step (`store`, `merge!`, `delete`, `transform_values!`, `clear` and the others). Change one key at a time instead. A copy of such a Hash, `dup`, `merge`, `select`, `slice` and the others that answer a new Hash holding its numbers, stops the build too: in Ruby the copy keeps its own numbers, and the game's would change with the Hash. So does an Array of its values kept in game code, `v = h.values` or `h.to_a`; read it where it is made instead, as in `h.values.sum`, `h.values.max` or `h.values.each { ... }`.
-
-A Hash written out in game code that the game only reads, or hands to a verb, stays a Ruby Hash, whatever it holds. So does one whose keys the game sets to values Ruby knows while the game is built: `options = { at: [60, 40], press: :a }`, then `options[:press] = press` and `menu :main, **options`, or `screens = { 0 => :title }`, then `screens[2] = :over if hard` and `call screens, number: state`. Ruby makes it again on each pass, with the same values. A Hash becomes a number for each key when the game works out what goes in a key, as in `h[:a] += 3` or `h[:a] = speed`, or when the Hash is written above the game loop and game code changes a key.
-
-```ruby
-# One count for each side, kept by the game
-class Tilt
-  SIDES = %i[left right].freeze
-
-  def initialize(build)
-    @counters = SIDES.to_h { |side| [side, 0] }
-    build.func(:count_tilts) do
-      SIDES.each do |side|
-        @counters[side] += 1 if build.held(side)
-      end
-    end
-  end
-end
-```
-
-Such an Array read at an index the game works out is a list the game keeps, as the next section tells: in its own class (`@counts[at] += 1`), or in another part or the game block through its reader (`tally.counts[at] += 1`, with `attr_reader :counts`). Through a reader, the line itself decides, for that one part: another class with a reader of the same name is not changed. That line must be the first to use the Array in game code, and nothing may read the Array while setting up: a line before it that read the Array kept Ruby's numbers, so the build stops naming that line. An Array named with `game_variables` has a number for each index from its first number, so reading it through a reader at an index the game works out stops the build too. In both cases, change or read the Array at the worked-out index in a method of its class (`def bump(at) = @counts[at] += 1`), and call that method. Such a Hash at a key the game works out is refused. One Array handed to two parts that both keep it stops the build with a message: the game keeps an Array for each part, where Ruby shares one.
-
-A Struct's fields work the same way: `point.x += 1` in game code makes `x` of a Struct made above the game loop a number the game keeps, read any way Ruby reads a Struct (`point.x`, `point[:x]`, `to_a`, `each`, `dig`, a pattern). `point.x, point.y = point.y, point.x` swaps them. A field keeps its own copy of a number, as in Ruby: `Point.new(score, 0)` or `point.x = score` holds the number `score` had on that line, and a later change to `score` leaves the field alone. A `Data` object made from a number keeps it the same way. That copy is a hidden number, which `rom.profile` lists. It costs nothing where the field was given numbers the game keeps (not an Array's item or a button), it is read in the same block as that line, the lines between only draw, test, or change other numbers, and no timer's `on_tick` changes those numbers.
-
-```ruby
-# A point made from the score, which keeps the score it was given
-Point = Struct.new(:x, :y)
-screen :bitmap
-score = 0
-point = Point.new(score, 50)
-game_loop do
-  score += 1
-  point.x += 2
-  clear_screen :black
-  draw_rect_at point.x, point.y, 2, 2, :white
-end
-```
-
-A line in game code that gives a name a new Struct, after game code read the one the name held, stops with a message: in Ruby, that read gets the one an earlier pass made. Keep one Struct and change its fields. A `Data` object cannot change, so the same line with `point.with(x: point.x + 1)` stops too: use a Struct.
-
-## Arrays
-
-An Array that game code changes is a list the game keeps, named after its local, and Ruby's Array verbs work on it as Ruby says.
-
-```ruby
-screen :bitmap
-hero_x = 0
-trail = Array.new(capacity: 4)   # empty, with room for 4
-game_loop do
-  hero_x += 1 if held(:right)
-  trail.shift if trail.size == 4
-  trail << hero_x
-  clear_screen :black
-  trail.each { |x| draw_rect_at x, 50, 2, 2, :red }
-end
-```
-
-What an Array the game keeps can do:
-
-| Method | What it does |
-|---|---|
-| `<<`, `push`, `append` | Adds to the end; stops the game if it is full |
-| `shift` | Drops the first item and hands it back |
-| `pop` | Drops the last item and hands it back |
-| `[]`, `[]=`, `+=` on an item | Reads or changes one item |
-| `first`, `last` | Reads the first or the last item |
-| `size`, `length`, `empty?` | Tells how many items it holds |
-| `fill` | Sets every item to one number |
-| `copy_from` | VBlank's, not Ruby's: copies a run of a `table` in at once |
-| `each`, `each_with_index` | A loop over the items, run as the game plays |
-| `sum`, `min`, `max`, `include?` | Looks at every item; `min` and `max` of none are 0 |
-| `==`, `!=`, `eql?` with an Array | Compares every item, as Ruby does: equal only when the sizes match and each pair of items is equal |
-| `sort!`, `sort_by!`, `reverse!` | Puts the items in order (see below) |
-
-Any other Array method is refused, and so is `==` between two Arrays the game keeps: see [Refused](#refused).
-
-A part keeps one in an instance variable the same way. Make it with `capacity:` in `initialize`, and add to it in a method of the same class body:
-
-```ruby
-class Scores
-  def initialize
-    @scores = Array.new(capacity: 8)
-  end
-
-  def add(score)
-    @scores << score if @scores.size < 8
-  end
-
-  def total = @scores.sum
-end
-```
-
-What these cost:
-
-- `item = trail.shift` keeps the dropped item in a hidden number: one word of quick memory, and a copy each time the line runs. `trail.shift` on its own keeps nothing. To skip the cost, read `trail.first`, then `trail.shift`.
-- `sum`, `min`, `max`, `include?` and `==` with an Array cost more the more items the Array holds.
-- `rom.profile` lists every line that makes a hidden number.
-
-```ruby
-# Add up a growing list, and find its best
-screen :bitmap
-scores = Array.new(capacity: 8)
-total = 0
-best = 0
-game_loop do
-  scores << 3 if scores.size < 8
-  total = scores.sum
-  best = scores.max
-  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
-end
-```
-
-`sort!` puts the items in order, the smallest first, as Ruby's does. `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` put the biggest first. Items that are level keep their order. A sort moves items back one at a time, so it costs little for a list that is nearly in order and more the more items move. `rom.profile` lists each line that sorts and what it costs. For the smallest item alone, `min` costs less. For a list that rarely changes, sort it when it changes, not on every pass.
-
-```ruby
-# Keep the last five scores, biggest first
-screen :bitmap
-scores = Array.new(5, 0)
-t = 0
-game_loop do
-  t += 1
-  scores[t % 5] = (t * 37) % 100
-  scores.sort! { |a, b| b <=> a }
-  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
-end
-```
-
-```ruby
-# Change one item at a time, in place
-screen :bitmap
-ripple = Array.new(8, 0.0)       # 8 items, each 0.0: numbers with a fraction
-marks = [3, 1, 4]                # 3 items, and room for no more
-at = 0
-game_loop do
-  ripple[at] += 1.5
-  marks[1] += 1
-  at = (at + 1) % 8
-end
-```
-
-VBlank adds `capacity:` to `Array.new`, because a console sets a list's memory aside before the game starts, so a list cannot grow as a Ruby Array does. An Array that game code adds to needs `capacity:`, the most items it can hold. `Array.new(4, 0, capacity: 8)` starts with 4 items and has room for 8.
-
-Two more settings can be left out, and change only what the list costs:
-
-- `width: :byte` or `width: :half` keeps each item in less memory. A number too big for the slot keeps its low bits, with no error: 200 in a `:byte` reads back as -56.
-- `fast: true` or `fast: false` sets which memory the list is kept in, the quick memory or the roomy one. It changes only how long a read takes.
-
-Whether an Array holds fractions is read from what goes into it: its start, and every value game code puts in with `<<`, `push`, `[]=` and the like. A Float, a name given one, or `.to_f` makes it an Array of fractions. A whole number written out, such as `0`, fits either kind.
-
-```ruby
-# A fraction going in makes an Array of fractions
-screen :bitmap
-speeds = Array.new(capacity: 8)
-vx = 0.5
-game_loop do
-  vx += 0.25
-  speeds << vx if speeds.size < 8
-end
-```
-
-An Array used only while the game is built stays Ruby's, and so does an Array of sprites or anything but numbers. A Ruby loop in a game block runs while building too, so an Array it fills with numbers known then is Ruby's, laid out again on every pass.
-
-Such an Array can hold numbers the game works out, as in `[a, b].max`. The game then works out `max`, `min`, `minmax`, `count`, `any?`, `all?`, `none?` and `include?` as it plays, and gives Ruby's answer. A question that needs a test's answer while building is refused, naming the line: `find`, `select` and the others that pick items by a test the game decides, and `<=>` on a number the game works out where Ruby asks it: `sort`, `max_by`, `clamp` or code of your own outside the game. So is a question that compares the items while building, where an item, a value given or a block's answer is a number the game works out, or holds one (a Struct by its fields, an Array or Hash by what it holds): `uniq`, `tally`, `group_by`, `index(7)`, `find_index(7)`, `rindex(7)`, `-`, `&`, `|`, `difference`, `intersection`, `union`, `intersect?` and `delete(7)`. Compare the numbers one at a time with `==` instead. A Range of such numbers, `low..high`, still builds. `a <=> b` written in game code is a number the game works out, -1, 0 or 1, as Ruby's, and so is `[a, b] <=> [c, d]`.
-
-```ruby
-# Arrays that stay plain Ruby
-screen :bitmap
-steps = [1, 2]
-steps << 3                       # changed while building: a Ruby Array of three
-total = 0
-game_loop do
-  total = steps.sum
-  xs = []
-  3.times { |n| xs << (n * 8) }  # a Ruby loop: a Ruby Array of 0, 8 and 16
-  xs.each { |x| draw_rect_at x, 10, 4, 4, :red }
-end
-```
-
-A list is named after its local, so a test or a profile reads `trail` by that name. In a file loaded with `VBlank.require_game_file`, the file's name comes first: `walker_trail` in `walker.rb`.
-
-### An Array of Structs
-
-Many things of one kind, each with fields (bullets, enemies, sparks), are an Array of Structs. Where game code puts `Spark.new(...)` into an Array and changes it, the game keeps it as a pool, and each thing a walk hands the block is a `Spark` whose fields change where they stand.
-
-```ruby
-# A shower of sparks, each falling at its own speed
-Spark = Struct.new(:x, :y, :vy) do
-  def fall
-    self.y += vy
-  end
-end
-screen :bitmap
-sparks = Array.new(capacity: 32)
-frame = 0
-game_loop do
-  frame += 1
-  sparks.shift if sparks.size == 32        # full: take out the oldest
-  sparks << Spark.new(frame % 240, 0.0, 1.5)
-  sparks.each(&:fall)
-  sparks.delete_if { |s| s.y > 150 }
-  clear_screen :black
-  sparks.each { |s| draw_rect_at s.x, s.y, 2, 2, :yellow }
-end
-```
-
-- `<<`, `push` and `append` put a thing in; `shift` takes out the oldest and `clear` all of them; `delete_if` and `reject!` take out those the block's test holds for.
-- `each` walks them oldest first, `reverse_each` newest first, and `each_with_index` hands the place in the walk too. `size`, `length`, `count`, `empty?` and `any?` count them.
-- On a tiled screen, `drawn_as :spark` in the Struct's block shows each thing as a sprite at its `x` and `y`, and `drawn_as facing: {...}, frames: [...], rate: 8` takes what a sprite takes. Name only the picture facing right, and facing left is that picture mirrored. `layer: :swimmers` stands each thing in that layer. A thing in a walk answers `face`, `draw_with`, `move`, `overlaps?`, its edges and the screen-edge tests, as a sprite does. Two more are VBlank's, not Ruby's: `sparks.blocked_by(room)` stops each thing at the walls of the background `room` when it moves, and `sparks.put_in_layer :walking` moves every thing to another layer.
-- `sort_by! { |s| s.y }` puts them in order by one field, the smallest first, and `sort_by! { |s| -s.y }` or `sort_by!(&:y).reverse!` the biggest first. `sort_by! { |s| [s.y, -s.x] }` sorts by `y`, and where two have the same `y`, by `x` the biggest first. It changes the order they are walked in, and so drawn in. A sort inside a walk of the same Array is refused: sort after the walk. A Struct can say its own order, as in Ruby: `include Comparable` and `def <=>(other) = y <=> other.y` in its block (`other.y <=> y` for the biggest first, `[y, x] <=> [other.y, other.x]` for ties). Then `sort!` sorts by that order, at the cost of `sort_by!`, and `min`, `max` and `minmax` hand back the things it puts first and last, in one walk each. Two things compare by it with `<`, `>`, `<=`, `>=` and `between?`, and with Comparable, `==` holds where `<=>` gives 0, as in Ruby; `eql?` compares every field. A comparing block, `sort! { |a, b| b.y <=> a.y }` or `max { |a, b| a.x <=> b.x }`, orders by itself, by the same rule. On an empty Array, `min` and `max` hand back no thing, and as a test the answer is false, as Ruby's nil: `if (m = things.min)`. `min(2)` is refused, since it makes a new Array, and so is `clamp` between two different things, where Ruby can stop with an error. A `<=>` that does not compare fields one by one is refused, and so is `sort!` on a Struct with no `<=>`.
-- Two things compare as Structs do: `a == b` when every field is equal, `a.equal?(b)` when they are the same thing. A thing kept in a name after its walk (`pick = s if s.x == 10`) is still that thing.
-- `narrow :x, :y` in the Struct's block keeps each of those fields in half a word, and `narrow kind: :byte` in a byte, for a big Array.
-- A field holds fractions where a line puts one in: `Spark.new(x, 0.0, 1.5)`, or `s.vy = 0.5` in a walk.
-- A member can have any name Ruby allows. A member named as what a thing answers, such as `left` or `move`, means the member, as in Ruby.
-- A part keeps one in an instance variable the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class.
-- `Array.new` needs `capacity:`, and takes `fast:` too. Each field of a thing put in must hold a number. A `Data` class is refused, since its fields cannot change. Other Array methods are refused as they are for an Array of numbers.
-- A push onto a full Array stops the game (see [Builds, but surprises you](#builds-but-surprises-you)): `shift` first to make room, as above, or test `size` first. A thing taken out inside a walk gives its place back only when the walk ends, so a `<<` written in a walk after a `shift` written in the same walk stops the build, and a `<<` in a walk that needs a place a routine the walk called took out stops the game saying so: add the new thing after the walk. A `<<` in a walk of an Array with room joins it at once, and only the walk it is in does not visit it.
+Limits: see [Refused › Numbers and tests](#numbers-and-tests) and [Builds, but surprises you](#builds-but-surprises-you).
 
 ## Changing a variable
 
-`=`, `+=`, `-=`, `*=`, `|=` and `&=` change a number the game keeps, and a name holds a value, as in Ruby.
+`=`, `+=`, `-=`, `*=`, `|=` and `&=` change a number the game keeps, and a name holds a value, as in Ruby. `a, b = b, a` swaps two numbers on every pass. `x ||= 2` changes only `false` or `nil`, as in Ruby, so a number, 0 too, is kept.
 
 ```ruby
 screen :bitmap
 hp = 5
-flags = 0
 best = 0
-game_loop do
-  hp -= 1 if pressed(:a)
-  flags |= 4
-  flags &= ~1
-  best = hp if hp > best       # best keeps hp's number, not hp itself
-end
-```
-
-`a, b = b, a` swaps two numbers, on every pass. `x ||= 2` changes only `false` or `nil`, as in Ruby: a number, 0 too, is kept.
-
-A method's argument is a copy: changing it inside the method leaves the caller's number as it was, and the build warns about such a line. Return the number instead.
-
-Numbers have `abs`, `clamp` and `approach`, and `abs!`, `clamp!` and `approach!` change the number they are called on.
-
-`floor`, `ceil`, `round` and `truncate` give a whole number from a fraction as Ruby's do, and `round` takes a half away from zero (-2.5 becomes -3). `succ` and `pred` add or take away 1 from a whole number. `x**2` works where the power is written in the game, from 0 to 32. `q, r = cell.divmod(30)` gives Ruby's answer on whole numbers, negative ones too.
-
-```ruby
-# Keep a number between 0 and 100
-screen :bitmap
 x = 10
 game_loop do
-  x += 3 if pressed(:a)
+  hp -= 1 if pressed(:a)
+  best = hp if hp > best       # best keeps hp's number, not hp itself
+  x += 3 if pressed(:b)
   x.clamp!(0, 100)
 end
 ```
 
+Numbers have these methods, as Ruby's do:
+
+- `abs`, `clamp` and `approach`, and `abs!`, `clamp!` and `approach!`, which change the number they are called on.
+- `floor`, `ceil`, `round` and `truncate` give a whole number from a fraction. `round` takes a half away from zero: -2.5 becomes -3.
+- `succ` and `pred` add or take away 1 from a whole number, and `q, r = cell.divmod(30)` gives Ruby's answer, for negative numbers too.
+- `x**2` works where the power is written in the game, from 0 to 32.
+
+Limits: see [Refused › Numbers and tests](#numbers-and-tests).
+
 ## Tests
 
-`if`, `elsif`, `else`, `unless`, `case`, the ternary and the trailing forms work as in Ruby, and so does Ruby's truthiness: only `nil` and `false` are false.
+`if`, `elsif`, `else`, `unless`, `case`, the ternary and the trailing forms work as in Ruby. Only `nil` and `false` are false, as in Ruby, and `&&`, `||` and `!` skip the right side as Ruby does. A `case` on a number the game keeps takes numbers, symbols, ranges, comma lists and constants, and a `case` whose arms each `call` a scene is the game's scene dispatch.
 
 ```ruby
 screen :bitmap
@@ -407,52 +96,13 @@ game_loop do
 end
 ```
 
-Compare a number to test its value: `if hp > 0`, never `if hp`, which is always true, as in Ruby. `&&`, `||` and `!` join tests, and the right side is skipped as in Ruby.
-
-A `case` on a number the game keeps takes numbers, symbols, ranges, comma lists and constants. A `case` whose arms each `call` a scene is the game's scene dispatch.
+Compare a number to test it: `if hp > 0`. Limits: see [Builds, but surprises you](#builds-but-surprises-you) and [Refused › Numbers and tests](#numbers-and-tests).
 
 ## Loops
 
-`while` and `until` on a test the game makes are loops in the game, asked again on every round.
+`while` and `until` on a test the game makes are loops in the game. `n.times`, `upto`, `downto`, `step`, `(a...b).each` and `for i in a...b` go round as often as Ruby says, and when a count or an end is a number the game keeps, the game counts it as it plays. `break` and `next` work in every loop, as in Ruby.
 
 ```ruby
-screen :bitmap
-row = 0
-game_loop do
-  row = 0
-  while row < 4
-    draw_rect_at 10, row * 10, 4, 4, :green
-    row += 1
-  end
-end
-```
-
-Ruby's counting loops go round as often as Ruby says: `n.times { |i| }`, `a.upto(b) { |i| }`, `a.downto(b) { |i| }`, `a.step(b, 2) { |i| }`, `(a...b).each { |i| }` and `for i in a...b`. When a count or an end is a number the game keeps, the loop is a loop in the game, and it goes round as many times as the number holds when the loop starts. When every number is written in the source or known while building, the build chooses, and the same game always builds the same way:
-
-- Small rounds are written out once for each time round, which is the fastest. Rounds are small while together they have a size of at most 64. One `draw_rect_at` line is a size of 5, so 4 rounds of two such lines are written out.
-- Larger rounds are one loop the game runs, which costs the room of one round. The round number `i` is then a number the game counts. Each round then costs time that a round written out does not: the loop counts and goes back, and works out each number that counts up with `i`.
-- Rounds that differ in more than a number that counts up are written out, however large: a colour or a picture picked by `i` while building, a value read from a Ruby Array at `i`, or a test on `i`. Only a round written out knows its `i` while building.
-
-`rom.profile` lists each such loop with its line, its size and what the build chose.
-
-```ruby
-# One loop counted by a game number, one written out
-screen :bitmap
-lives = 3
-game_loop do
-  clear_screen :black
-  lives -= 1 if pressed(:a)
-  lives.times { |i| draw_rect_at 10 + (i * 20), 10, 8, 8, :blue }   # one box for each life
-  2.times { |i| draw_rect_at 10 + (i * 20), 30, 8, 8, :green }      # written out two times
-end
-```
-
-A step the game works out is refused: write the step as a number. A range that ends at a game number goes round with `each`, `step` or `for`; other methods on it, such as `map`, are refused.
-
-`break` and `next` work in every loop, as in Ruby: `break` leaves the loop, and `next` goes round again. A `loop do` runs while building, as Ruby runs it, until its `break` or `next` is under a test the game makes. From that round on, it is a loop the game runs. Then its body cannot read a plain value that changes on each round, such as `steps.next`: that is refused.
-
-```ruby
-# Find the first even number past a mark, skipping and stopping
 screen :bitmap
 wanted = 3
 found = 0
@@ -471,11 +121,209 @@ game_loop do
 end
 ```
 
-A `break` that gives a value, as in `break 5`, is refused in a loop the game runs. Set a variable before the `break`.
+A `loop do` runs while building, as Ruby runs it, until its `break` or `next` is under a test the game makes. From that round on, it is a loop the game runs. Limits: see [Refused › Loops and leaving a block](#loops-and-leaving-a-block) and [What costs more](#what-costs-more).
+
+## Instance variables
+
+A part of a game is a plain class. An instance variable that game code changes is a number the game keeps, as a local is. Game code anywhere reads that number: another routine, `attr_reader`, or a writer such as `lamp.lit = 1`.
+
+```ruby
+# A lamp whose on-or-off number the game keeps
+class Lamp
+  def initialize(build)
+    @lit = 0
+    build.func(:switch_lamp) { @lit = 1 - @lit }
+  end
+
+  attr_reader :lit
+end
+```
+
+The number is named after the class and the instance variable: `lamp_lit` for `@lit` of a `Lamp`, and `score` for the game block's own `@score`. In the class body, `game_variables busy: :lamp_wait` gives the number a name of your own, and `game_variables :damage, saved: false` keeps numbers out of a save.
+
+Limits: see [Refused › Parts and instance variables](#parts-and-instance-variables) and [Builds, but surprises you](#builds-but-surprises-you).
+
+## Parts made in game code
+
+A `game_loop`, a scene and a `func` run every frame, so a line there that makes a part makes a new one on every pass. Keep the part with `||=`: it is made the first time the line runs, and the same part is used after, in Ruby and in the game. A local works too: `counter = nil` above the game loop, then `counter ||= Counter.new` in it.
+
+```ruby
+# A ship kept with ||=: made the first time the line runs, and the same ship after
+Ship = Struct.new(:x, :y)
+screen :bitmap
+game_loop do
+  ship = (@ship ||= Ship.new(120, 80)) # made inside the loop, as a scene makes what is its own
+  ship.x += 1
+  clear_screen :black
+  draw_rect_at ship.x, ship.y, 4, 4, :white
+end
+```
+
+Limits: see [Refused › Parts and instance variables](#parts-and-instance-variables), [Builds, but surprises you](#builds-but-surprises-you) and [What costs more](#what-costs-more).
+
+## Structs
+
+`point.x += 1` in game code makes `x` of a Struct made above the game loop a number the game keeps. Game code reads it any way Ruby reads a Struct: `point.x`, `point[:x]`, `to_a`, `each`, `dig` or a pattern. A field keeps its own copy of a number, as in Ruby, so a later change to `score` leaves `Point.new(score, 0)` alone, and a `Data` object keeps its numbers the same way.
+
+```ruby
+# A point made from the score, which keeps the score it was given
+Point = Struct.new(:x, :y)
+screen :bitmap
+score = 0
+point = Point.new(score, 50)
+game_loop do
+  score += 1
+  point.x += 2
+  point.x, point.y = point.y, point.x if pressed(:a)   # a swap
+  clear_screen :black
+  draw_rect_at point.x, point.y, 2, 2, :white
+end
+```
+
+Limits: see [Refused › Parts and instance variables](#parts-and-instance-variables) and [What costs more](#what-costs-more).
+
+## Hashes
+
+A Hash written out with keys known while building, such as `h = { a: 1, b: 2 }`, keeps one number for each key that game code changes. The numbers are named after the local and the key, `h_a` and `h_b`. A key is known while building when it is a number, a symbol or a constant written out, or the name that a Ruby loop over something written out gives, as in `SIDES.each { |side| @counters[side] += 1 }`.
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+m = 0
+game_loop do
+  h[:b] = 0 if pressed(:a)
+  m = (h[:a] += 3)           # m gets the new number, as in Ruby
+end
+```
+
+A Hash that game code only reads, or hands to a verb, stays a Ruby Hash, and so does one whose keys get values known while building (`options[:press] = :a`, then `menu :main, **options`). Ruby makes such a Hash again on each pass, with the same values.
+
+Limits: see [Refused › Hashes](#hashes-1).
+
+## Arrays
+
+An Array that game code changes is a list the game keeps, named after its local: `trail`, or `walker_trail` in a file `walker.rb`. A console sets the memory of a list aside before the game starts, so an Array that game code adds to needs `capacity:`, the most items it can hold. `Array.new(4, 0, capacity: 8)` starts with 4 items and has room for 8, and `[3, 1, 4]` has 3 items and no room for more.
+
+```ruby
+screen :bitmap
+hero_x = 0
+trail = Array.new(capacity: 4)   # empty, with room for 4
+game_loop do
+  hero_x += 1 if held(:right)
+  trail.shift if trail.size == 4
+  trail << hero_x
+  clear_screen :black
+  trail.each { |x| draw_rect_at x, 50, 2, 2, :red }
+end
+```
+
+Limits: see [Refused › Arrays](#arrays-1), [Builds, but surprises you](#builds-but-surprises-you) and [What costs more](#what-costs-more).
+
+### What an Array the game keeps can do
+
+| Method | What it does |
+|---|---|
+| `<<`, `push`, `append` | Adds to the end; stops the game if it is full |
+| `shift` | Drops the first item and hands it back |
+| `pop` | Drops the last item and hands it back |
+| `[]`, `[]=`, `+=` on an item | Reads or changes one item |
+| `first`, `last` | Reads the first or the last item |
+| `size`, `length`, `empty?` | Tells how many items it holds |
+| `fill` | Sets every item to one number |
+| `copy_from` | VBlank's, not Ruby's: copies a run of a `table` in at once |
+| `each`, `each_with_index` | A loop over the items, run as the game plays |
+| `sum`, `min`, `max`, `include?` | Looks at every item; `min` and `max` of none are 0 |
+| `==`, `!=`, `eql?` with an Array | Compares every item, as Ruby does: equal only when the sizes match and each pair of items is equal |
+| `sort!`, `sort_by!`, `reverse!` | Puts the items in order (see below) |
+
+A part keeps one in an instance variable: it makes the Array with `capacity:` in `initialize`, and adds to it in a method of the same class body. A part's Array read at an index the game works out is a list too, in its class (`@counts[at] += 1`) or through its reader (`tally.counts[at] += 1`).
+
+### Sorting
+
+- `sort!` puts the items in order, the smallest first, as Ruby's does. Items that are level keep their order.
+- `sort! { |a, b| b <=> a }`, `sort_by! { |n| -n }` and `sort!.reverse!` put the biggest first.
+- What a sort costs is under [What costs more](#what-costs-more).
+
+```ruby
+# Keep the last five scores, biggest first
+screen :bitmap
+scores = Array.new(5, 0)
+t = 0
+game_loop do
+  t += 1
+  scores[t % 5] = (t * 37) % 100
+  scores.sort! { |a, b| b <=> a }
+  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
+end
+```
+
+### Arrays that stay Ruby
+
+An Array used only while the game is built stays a Ruby Array, and so does an Array of sprites or of anything but numbers. A Ruby loop in a game block runs while building, so an Array it fills with numbers known then is Ruby's, made again on every pass. Such an Array can hold numbers the game works out, and `[a, b].max`, `min`, `minmax`, `count`, `any?`, `all?`, `none?` and `include?` give Ruby's answer as the game plays.
+
+```ruby
+# Arrays that stay plain Ruby
+screen :bitmap
+steps = [1, 2]
+steps << 3                       # changed while building: a Ruby Array of three
+total = 0
+game_loop do
+  total = steps.sum
+  xs = []
+  3.times { |n| xs << (n * 8) }  # a Ruby loop: a Ruby Array of 0, 8 and 16
+  xs.each { |x| draw_rect_at x, 10, 4, 4, :red }
+end
+```
+
+A Range of game numbers, `low..high`, builds. `a <=> b` and `[a, b] <=> [c, d]` in game code are numbers the game works out, -1, 0 or 1, as Ruby's are. Limits: see [Refused › Arrays](#arrays-1).
+
+### An Array of Structs
+
+Many things of one kind, each with fields, are an Array of Structs: bullets, enemies, sparks. Where game code puts `Spark.new(...)` into an Array made with `capacity:`, the game keeps it as a pool. Each thing a walk hands the block is a `Spark` whose fields change where they stand.
+
+```ruby
+Spark = Struct.new(:x, :y, :vy)
+screen :bitmap
+sparks = Array.new(capacity: 32)
+frame = 0
+game_loop do
+  frame += 1
+  sparks.shift if sparks.size == 32        # full: take out the oldest
+  sparks << Spark.new(frame % 240, 0.0, 1.5)
+  sparks.each { |s| s.y += s.vy }
+  sparks.delete_if { |s| s.y > 150 }
+  clear_screen :black
+  sparks.each { |s| draw_rect_at s.x, s.y, 2, 2, :yellow }
+end
+```
+
+- `<<`, `push` and `append` put a thing in. `shift` takes out the oldest, `clear` takes out all, and `delete_if` and `reject!` take out those the block's test holds for.
+- `each` walks them oldest first, `reverse_each` newest first, and `each_with_index` gives the place in the walk too. `size`, `length`, `count`, `empty?` and `any?` count them.
+- `a == b` when every field is equal, and `a.equal?(b)` when they are the same thing. A thing kept in a name after its walk (`pick = s if s.x == 10`) is still that thing.
+- A field holds fractions where a line puts one in. A member can have any name Ruby allows, and a member named as what a thing answers, such as `left` or `move`, means the member.
+- A part keeps one the same way: `@enemies = Array.new(capacity: 8)` in `initialize`, and `@enemies << Enemy.new(...)` in a method of the same class. `Array.new` takes `fast:` too.
+
+Limits: see [Refused › Arrays of Structs](#arrays-of-structs) and [Builds, but surprises you](#builds-but-surprises-you).
+
+### Sorting an Array of Structs
+
+- `sort_by! { |s| s.y }` puts them in order by one field, the smallest first. `sort_by! { |s| -s.y }` or `sort_by!(&:y).reverse!` put the biggest first.
+- `sort_by! { |s| [s.y, -s.x] }` sorts by `y`, and where two have the same `y`, by `x`, the biggest first. A sort changes the order of the walk, and so the order of drawing.
+- A Struct can give its own order, as in Ruby: `include Comparable` and `def <=>(other) = y <=> other.y` in its block. Write `other.y <=> y` for the biggest first, and `[y, x] <=> [other.y, other.x]` for ties.
+- With that order, `sort!` sorts, and `min`, `max` and `minmax` give the things it puts first and last. `<`, `>`, `<=`, `>=` and `between?` compare two things, `==` holds where `<=>` gives 0, and `eql?` compares every field.
+- A comparing block, `sort! { |a, b| b.y <=> a.y }` or `max { |a, b| a.x <=> b.x }`, orders by itself, by the same rule.
+- On an empty Array, `min` and `max` give no thing, and as a test the answer is false, as Ruby's nil: `if (m = things.min)`.
+
+### Showing an Array of Structs as sprites
+
+- On a tiled screen, `drawn_as :spark` in the Struct's block shows each thing as a sprite at its `x` and `y`.
+- `drawn_as facing: {...}, frames: [...], rate: 8` takes what a sprite takes. Name only the picture that faces right: the picture that faces left is that picture, mirrored.
+- `layer: :swimmers` puts each thing in that layer, and `sparks.put_in_layer :walking` moves every thing to another layer.
+- A thing in a walk answers `face`, `draw_with`, `move`, `overlaps?`, its edges and the screen-edge tests, as a sprite does. `sparks.blocked_by(room)` stops each thing at the walls of the background `room` when it moves.
 
 ## Splitting a game into files
 
-A file of game code is loaded with `VBlank.require_game_file`, never `require_relative`, and is read as game code as a whole.
+A file of game code is loaded with `VBlank.require_game_file`, never `require_relative`, and VBlank checks its methods and blocks as it checks a game block. Its locals stay its own, and its constants and methods are shared with the game. A Struct or Data class can also be in a file loaded with plain `require`, and its objects keep the numbers they were made from, as in Ruby.
 
 ```ruby
 VBlank.require_game_file "lamp"   # lamp.rb, beside this file
@@ -487,9 +335,7 @@ VBlank.game "LAMPS", consoles: %i[gba] do
 end
 ```
 
-Its locals stay its own, and its constants and methods are shared with the game. Its methods and blocks are checked as a game block is.
-
-A Struct or Data class can also be in a file loaded with plain `require`. When game code gives a name to an object of it, the object keeps the numbers it was made from, as in Ruby. This is also true for objects in an Array, a Hash or a field. If such an object is frozen and holds a number the game works out, the build stops and tells you. A block that is given such a Data object and reads it as `it` or `_1` can also stop the build. Give the parameter a name, like `{ |point| ... }`.
+Limits: see [Refused › Parts and instance variables](#parts-and-instance-variables).
 
 ## Refused
 
@@ -1149,6 +995,168 @@ end
 
 </details>
 
+<details>
+<summary>Don't: <code>0.step(10, by)</code> with a game number as the step. Do: a step in the code</summary>
+
+When the game counts a `step` as it plays, the step must be a whole number written in the code, and not 0.
+
+Refused:
+
+```ruby
+screen :bitmap
+by = 1
+game_loop do
+  by += 1 if pressed(:a)
+  0.step(10, by) { |i| draw_rect_at i, 0, 1, 1, :red }
+end
+```
+
+VBlank says:
+
+```
+This `step` uses a number that the game keeps, so the game counts as it plays. Then the step must be a whole number in the code, and not 0, as in `0.step(n, 2)`. To fix this, write the step as a number.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+by = 1
+game_loop do
+  by += 1 if pressed(:a)
+  0.step(10, 2) { |i| draw_rect_at i, 0, 1, 1, :red }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>(0...n).map</code> with a game number <code>n</code>. Do: <code>(0...n).each</code></summary>
+
+The game counts through such a range as it plays. The range can go round with `each` or `step`, or in a `for` loop, and nothing else.
+
+Refused:
+
+```ruby
+screen :bitmap
+n = 3
+game_loop do
+  n += 1 if pressed(:a)
+  (0...n).map { |i| draw_rect_at i, 0, 1, 1, :red }
+end
+```
+
+VBlank says:
+
+```
+This range goes to a number that the game keeps, and it is asked for `map`. The game counts through such a range as it plays, so the range can only go round with `each` or `step`, or in a `for` loop. To fix this, write `(0...n).each do |i|` and do the work in the loop.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+n = 3
+game_loop do
+  n += 1 if pressed(:a)
+  (0...n).each { |i| draw_rect_at i, 0, 1, 1, :red }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>steps.next</code> in a <code>loop do</code> the game runs. Do: count a game number</summary>
+
+A `loop do` with a `break` under a game test is a loop the game runs. The game keeps the value of one round only, so a plain value that changes on each round cannot be read there.
+
+Refused:
+
+```ruby
+screen :bitmap
+hp = 3
+total = 0
+steps = [1, 2, 3].each
+game_loop do
+  hp -= 1 if pressed(:a)
+  loop do
+    break if hp > 1
+    total += steps.next
+  end
+end
+```
+
+VBlank says:
+
+```
+This `loop do` is a loop the game runs, since a `break` or `next` in it is under a test the game makes. But its body reads a plain Ruby value that changes on each round, such as `steps.next`. The game keeps one round's value only. To fix this, read the values from an Array the game keeps, at a number the game counts.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+hp = 3
+total = 0
+game_loop do
+  hp -= 1 if pressed(:a)
+  at = 0
+  loop do
+    break if hp > 1 || at > 2
+    at += 1
+    total += at
+  end
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>break 5</code> in a loop the game runs. Do: set a variable, then <code>break</code></summary>
+
+The game cannot give a value from a loop.
+
+Refused:
+
+```ruby
+screen :bitmap
+at = 0
+found = 0
+game_loop do
+  at = 0
+  found = while at < 10
+    at += 1
+    break 5 if at > 3
+  end
+end
+```
+
+VBlank says:
+
+```
+`break` gives a value here, in a loop the game runs. The game cannot give a value from a loop. To fix this, set a variable before the `break`, and write `break` alone.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+at = 0
+found = 0
+game_loop do
+  at = 0
+  while at < 10
+    at += 1
+    if at > 3
+      found = 5
+      break
+    end
+  end
+end
+```
+
+</details>
+
 ### Arrays
 
 <details>
@@ -1407,7 +1415,7 @@ end
 <details>
 <summary>Don't: whole game numbers and fractions in one Array. Do: <code>.to_f</code></summary>
 
-An Array holds whole numbers or fractions, not both. A whole number that the game works out does not say which.
+An Array holds whole numbers or fractions, not both. VBlank reads which from what goes in: its start, and every value that game code puts in with `<<`, `push`, `[]=` and the like. A Float, a name given one, or `.to_f` makes an Array of fractions, and a whole number written out, such as `0`, fits either kind.
 
 Refused:
 
@@ -1510,6 +1518,776 @@ end
 
 </details>
 
+<details>
+<summary>Don't: <code>[a, b].find { ... }</code> with game numbers. Do: walk with <code>each</code></summary>
+
+Ruby needs the answer of the test while it builds the game, and the game decides the test as it plays. This is also true for `select` and the other methods that pick items by a test.
+
+Refused:
+
+```ruby
+screen :bitmap
+a = 1
+b = 2
+pick = 0
+game_loop do
+  a += 1
+  pick = [a, b].find { |n| n > 2 }
+end
+```
+
+VBlank says:
+
+```
+`find` picks items by a test, and this test is decided as the game plays. Ruby needs the answer while the game is built. To fix this, walk the items with `each` and keep what the test finds in a game number.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+a = 1
+b = 2
+pick = 0
+game_loop do
+  a += 1
+  pick = 0
+  [a, b].each { |n| pick = n if pick == 0 && n > 2 }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>max_by</code>, <code>sort</code> or <code>clamp</code> on game numbers. Do: <code>max</code> or <code>min</code></summary>
+
+These ask `<=>` while VBlank builds the game, and the game works out the numbers as it plays. Code of your own outside the game that asks `<=>` is refused too.
+
+Refused:
+
+```ruby
+screen :bitmap
+a = 1
+b = 2
+best = 0
+game_loop do
+  a += 1
+  best = [a, b].max_by { |n| n }
+end
+```
+
+VBlank says:
+
+```
+`<=>` compares two numbers while the game is built, and this number is worked out as the game plays. To fix this, compare with `<`, `>` or `==`, or use `max` or `min`.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+a = 1
+b = 2
+best = 0
+game_loop do
+  a += 1
+  best = [a, b].max
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>uniq</code>, <code>tally</code>, <code>-</code> and the like on game numbers. Do: <code>==</code></summary>
+
+Ruby compares the items while it builds the game, and it cannot compare a number that the game works out. This is true for `uniq`, `tally`, `group_by`, `index(7)`, `find_index(7)`, `rindex(7)`, `-`, `&`, `|`, `difference`, `intersection`, `union`, `intersect?` and `delete(7)`. It is true also where an item holds such a number, as a Struct holds it in a field.
+
+Refused:
+
+```ruby
+screen :bitmap
+a = 1
+b = 2
+n = 0
+game_loop do
+  a += 1
+  n = [a, b].uniq.size
+end
+```
+
+VBlank says:
+
+```
+`uniq` compares the items, and one of them is a number the game works out as it plays. Ruby must compare them while the game is built, and it cannot compare that number then. To fix this, compare the numbers one at a time with `==`, or walk the items with `each` and keep the answer in a game number.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+a = 1
+b = 2
+n = 0
+game_loop do
+  a += 1
+  n = a == b ? 1 : 2
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: index a <code>game_variables</code> Array through its reader. Do: a method (rare)</summary>
+
+An Array named with `game_variables` has one number for each index, made from its first numbers. So VBlank cannot find the number at an index that the game works out.
+
+Refused:
+
+```ruby
+class Tally
+  game_variables :counts
+  attr_reader :counts
+
+  def initialize
+    @counts = [0, 0, 0]
+  end
+end
+screen :bitmap
+tally = Tally.new
+at = 0
+game_loop do
+  at = (at + 1) % 3
+  tally.counts[at] += 1
+end
+```
+
+VBlank says:
+
+```
+This Array holds game variables, and this line takes one at an index that is worked out as the game plays. VBlank made a variable for each index where the Array got its first numbers, so it cannot find this one. To fix this, read the Array at the index in its class, like `def count_at(at) = @counts[at]`, and call that method here.
+```
+
+Write instead:
+
+```ruby
+class Tally
+  game_variables :counts
+
+  def initialize
+    @counts = [0, 0, 0]
+  end
+
+  def bump(at) = @counts[at] += 1
+end
+screen :bitmap
+tally = Tally.new
+at = 0
+game_loop do
+  at = (at + 1) % 3
+  tally.bump(at)
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: give one Array to two parts that both change it. Do: one Array each (rare)</summary>
+
+In Ruby the two parts share one Array. The game keeps an Array for each part, so they cannot share.
+
+Refused:
+
+```ruby
+class Tally
+  def initialize(counts)
+    @counts = counts
+  end
+
+  def bump(at) = @counts[at] += 1
+end
+screen :bitmap
+counts = [0, 0, 0]
+left = Tally.new(counts)
+right = Tally.new(counts)
+at = 0
+game_loop do
+  at = (at + 1) % 3
+  left.bump(at)
+  right.bump(at)
+end
+```
+
+VBlank says:
+
+```
+`@counts` of a `Tally` holds the same Array as `@counts` of a `Tally` (at tally.rb:3). In Ruby, the two share one Array, so a change through one shows through the other. The game keeps an Array for each, so they cannot share. To fix this, keep the Array in one part, and read it through that part in the other. Or, if each part must have its own numbers, give each part a copy made with `dup`.
+```
+
+Write instead:
+
+```ruby
+class Tally
+  def initialize(counts)
+    @counts = counts
+  end
+
+  def bump(at) = @counts[at] += 1
+end
+screen :bitmap
+left = Tally.new([0, 0, 0])
+right = Tally.new([0, 0, 0])
+at = 0
+game_loop do
+  at = (at + 1) % 3
+  left.bump(at)
+  right.bump(at)
+end
+```
+
+</details>
+
+### Hashes
+
+<details>
+<summary>Don't: give a game Hash a key it does not have. Do: write every key at the start</summary>
+
+The game keeps one number for each key that the Hash starts with. So a key that the Hash does not have stops the build, and a misspelt key stops it too.
+
+Refused:
+
+```ruby
+screen :bitmap
+h = { a: 1 }
+game_loop do
+  h[:a] += 1
+  h[:b] = 2 if pressed(:a)
+end
+```
+
+VBlank says:
+
+```
+This Hash holds game variables and has no key :b, so the game would never see this number. The keys are :a. To fix this, use one of those keys.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 0 }
+game_loop do
+  h[:a] += 1
+  h[:b] = 2 if pressed(:a)
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>h.delete(:b)</code>, <code>merge!</code>, <code>clear</code> on a game Hash. Do: one key at a time</summary>
+
+The game cannot add a key, remove a key or change many keys in one step. This is true for `store`, `merge!`, `delete`, `transform_values!`, `clear` and the others.
+
+Refused:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+game_loop do
+  h[:a] += 1
+  h.delete(:b)
+end
+```
+
+VBlank says:
+
+```
+This Hash holds game variables, and this line changes it with `delete`. The game keeps one number for each key, and cannot add a key, remove a key or change many keys in one step. To fix this, change one key at a time, like `hash[:key] = 5` or `hash[:key] += 1`.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+game_loop do
+  h[:a] += 1
+  h[:b] = 0
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>h.dup</code>, <code>merge</code>, <code>select</code> of a game Hash. Do: read one value</summary>
+
+In Ruby the copy keeps its own numbers. Here the copy holds the numbers of the Hash, so it changes when the Hash changes. This is true for `dup`, `merge`, `select`, `slice` and the others that give a new Hash.
+
+Refused:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+c = nil
+game_loop do
+  h[:a] += 1
+  c = h.dup
+end
+```
+
+VBlank says:
+
+```
+This Hash holds game variables, and this line takes a copy of it, like `hash.dup` or `hash.merge(other)`. In Ruby the copy is its own. Here the copy would hold the same variables, so it would change when the Hash changes. To fix this, read the values one at a time, like `left = hash[:left]`, or add them up in place, like `hash.sum { |_key, value| value }`.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+a_now = 0
+game_loop do
+  h[:a] += 1
+  a_now = h[:a]
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: keep <code>v = h.values</code> of a game Hash. Do: <code>h.values.sum</code> in place</summary>
+
+An Array of the values kept in a name is a copy, the same as `h.to_a`. Read the values where you make them, as in `h.values.sum`, `h.values.max` or `h.values.each { ... }`.
+
+Refused:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+total = 0
+game_loop do
+  h[:a] += 1
+  v = h.values
+  total = v.sum
+end
+```
+
+VBlank says:
+
+```
+This Hash holds game variables, and this line takes a copy of it, like `hash.dup` or `hash.merge(other)`. In Ruby the copy is its own. Here the copy would hold the same variables, so it would change when the Hash changes. To fix this, read the values one at a time, like `left = hash[:left]`, or add them up in place, like `hash.sum { |_key, value| value }`.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+h = { a: 1, b: 2 }
+total = 0
+game_loop do
+  h[:a] += 1
+  total = h.values.sum
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>h[at]</code> with a key the game works out. Do: an Array</summary>
+
+Ruby finds the number for a key while it builds the game. So the key must be known then. An Array can be read at an index that the game works out.
+
+Refused:
+
+```ruby
+screen :bitmap
+h = { 0 => 1, 1 => 2 }
+at = 0
+game_loop do
+  at = 1 - at
+  h[at] += 1
+end
+```
+
+VBlank says:
+
+```
+This Hash holds game variables, and this line takes one at a key that is worked out as the game plays. Ruby finds a slot while it builds the game, so it cannot find this one. To fix this, use a key known while building, like a symbol from a Ruby loop (`SIDES.each do |side|`), or keep the numbers in an Array: the game can read an Array at an index it works out.
+```
+
+Write instead:
+
+```ruby
+screen :bitmap
+counts = [1, 2]
+at = 0
+game_loop do
+  at = 1 - at
+  counts[at] += 1
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: change a part's Array of names in game code. Do: <code>game_variables :used</code> (rare)</summary>
+
+A part's Hash or Array that holds only symbols stays a Ruby one: names filled while the part is set up, as `@used |= names` in `initialize`. Game code can ask about it, as `@used.intersect?(AIMS)`, and Ruby answers while it builds the game.
+
+Refused:
+
+```ruby
+class Aim
+  def initialize(build)
+    @used = []
+    @used |= %i[left]
+    build.func(:aim_right) { @used[0] = :right }
+  end
+end
+```
+
+VBlank says:
+
+```
+This line changes `@used` while the game plays. `@used` holds only names, so it stays a plain Ruby value, and the game does not see the change. To fix this, add `game_variables :used` to `Aim`.
+```
+
+Write instead:
+
+```ruby
+class Aim
+  game_variables :used
+
+  def initialize(build)
+    @used = []
+    @used |= %i[left]
+    build.func(:aim_right) { @used[0] = :right }
+  end
+end
+```
+
+</details>
+
+### Arrays of Structs
+
+<details>
+<summary>Don't: an Array of <code>Data</code> objects that game code changes. Do: <code>Struct.new</code></summary>
+
+The fields of a `Data` object cannot change, and an Array that game code changes holds things whose fields change.
+
+Refused:
+
+```rb
+Spot = Data.define(:x, :y)
+screen :bitmap
+spots = Array.new(capacity: 8)
+game_loop do
+  spots << Spot.new(1, 2) if spots.size < 8
+  spots.each { |s| draw_rect_at s.x, s.y, 1, 1, :red }
+end
+```
+
+VBlank says:
+
+```
+`spots` holds things made from Spot, which is not a Struct. An Array of things that game code changes holds Structs. To fix this: A `Data` thing cannot change its fields. Make it with `Struct.new`.
+```
+
+Write instead:
+
+```ruby
+Spot = Struct.new(:x, :y)
+screen :bitmap
+spots = Array.new(capacity: 8)
+game_loop do
+  spots << Spot.new(1, 2) if spots.size < 8
+  spots.each { |s| draw_rect_at s.x, s.y, 1, 1, :red }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>min_by</code> and other methods a pool does not have. Do: the methods above</summary>
+
+An Array of Structs that game code changes has only the methods that the message names.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  low = sparks.min_by { |s| s.y }
+end
+```
+
+VBlank says:
+
+```
+`sparks` is an Array of Spark that game code changes, so the game keeps it in a fixed number of slots. It does not answer `min_by`. It answers `<<`, `push`, `append`, `shift`, `clear`, `each`, `reverse_each`, `each_with_index`, `delete_if`, `reject!`, `sort!`, `sort_by!`, `reverse!`, `min`, `max`, `minmax`, `size`, `length`, `count`, `empty?`, `any?`, `blocked_by`, `put_in_layer`.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.sort_by! { |s| s.y }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: sort an Array of Structs inside a walk of it. Do: sort after the walk</summary>
+
+The walk would lose its place.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.each do |s|
+    s.y += 1
+    sparks.sort_by! { |t| t.y }
+  end
+end
+```
+
+VBlank says:
+
+```
+This line sorts `sparks` while a walk of it is under way, and the walk would lose its place. To fix this, sort `sparks` after the walk ends.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.each { |s| s.y += 1 }
+  sparks.sort_by! { |t| t.y }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>sparks.min(2)</code>. Do: sort, then walk the first two</summary>
+
+`min(2)` makes a new Array, and the game keeps no room for one.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y) do
+  include Comparable
+  def <=>(other) = y <=> other.y
+end
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  low = sparks.min(2)
+end
+```
+
+VBlank says:
+
+```
+`min(2)` gives an Array of things, and the game keeps no room for a new Array. To fix this, sort `sparks` with `sort!` and walk the first 2 with `each_with_index`.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.sort_by! { |s| s.y }
+  sparks.each_with_index { |s, i| draw_rect_at s.x, s.y, 1, 1, :red if i < 2 }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>s.clamp(low, high)</code> with things of no Array. Do: compare fields</summary>
+
+The game compares things of one Array only. Ruby can stop with an error where `clamp` compares two different things.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y) do
+  include Comparable
+  def <=>(other) = y <=> other.y
+end
+screen :bitmap
+sparks = Array.new(capacity: 8)
+low = Spark.new(0, 0)
+high = Spark.new(0, 9)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.each { |s| s.clamp(low, high) }
+end
+```
+
+VBlank says:
+
+```
+This line compares a thing of `sparks` with something that is not one of its things. The game compares things of one Array only. To fix this, compare their fields: `a.y < b.y`.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.each { |s| s.y = s.y.clamp(0, 9) }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: a <code>&lt;=&gt;</code> that adds fields. Do: <code>sort_by! { |s| [s.y, s.x] }</code></summary>
+
+The game can sort by a `<=>` only when it compares the fields one by one.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y) do
+  include Comparable
+  def <=>(other) = (x + y) <=> (other.x + other.y)
+end
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.sort!
+end
+```
+
+VBlank says:
+
+```
+The `<=>` of Spark does not compare its fields one by one, so the game cannot sort by it. To fix this, compare one field with the other thing's same field, `y <=> other.y`, or `other.y <=> y` for the biggest first. For ties, compare Arrays of fields: `[y, x] <=> [other.y, other.x]`.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.sort_by! { |s| [s.y, s.x] }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>sort!</code> on Structs with no <code>&lt;=&gt;</code>. Do: <code>sort_by! { |s| s.y }</code></summary>
+
+A Struct has no order of its own unless it gives a `<=>`.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.sort!
+end
+```
+
+VBlank says:
+
+```
+`sparks` holds Spark things, which have no order of their own. To fix this, sort by one of their fields with `sort_by!`: `sparks.sort_by! { |s| s.y }`, or give Spark a `<=>` that compares its fields.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.sort_by! { |s| s.y }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>shift</code>, then <code>&lt;&lt;</code>, in one walk. Do: add the new thing after the walk</summary>
+
+A thing taken out inside a walk gives its place back only when the walk ends. So a full Array has no room for the new thing yet.
+
+Refused:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.each do |s|
+    sparks.shift if s.y > 5
+    sparks << Spark.new(0, 0)
+  end
+end
+```
+
+VBlank says:
+
+```
+This line adds to `sparks` inside a walk of it, after a `shift` in the same walk. An item taken out inside a walk gives its place back only when the walk ends, so a full `sparks` has no room for this item. To fix this, add the new item after the walk.
+```
+
+Write instead:
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks << Spark.new(1, 2) if sparks.size < 8
+  sparks.each { |s| s.y += 1 }
+  sparks.shift if sparks.size == 8
+  sparks << Spark.new(0, 0)
+end
+```
+
+</details>
+
 ### Parts and instance variables
 
 <details>
@@ -1568,7 +2346,7 @@ end
 <details>
 <summary>Don't: fill a part's Array from a reopened class. Do: the first body (rare)</summary>
 
-VBlank reads the class body that makes the Array to know what the Array holds. A method in the reopened class does not count.
+VBlank reads the class body that makes the Array to know what the Array holds. A method in the reopened class does not count. The same message comes for a game loop line that adds to a part's plain Array on every pass, such as `hooks.after { @count += 1 }`.
 
 Refused:
 
@@ -1611,7 +2389,9 @@ end
 <details>
 <summary>Don't: make a part above <code>VBlank.game</code> and change its Array. Do: make it inside</summary>
 
-The game keeps a part's Array or Hash only when the part is made inside the game block. A part made above it is made one time, before VBlank builds the game, and a game built for two consoles cannot share it. A part whose numbers alone change works anywhere. So does an Array of Structs made above it, such as `dots = [Dot.new(3, 0)]`: game code can walk it and change each Struct's numbers, and the Array stays a Ruby Array of the same size.
+The game keeps a part's Array or Hash only when the part is made inside the game block. A part made above it is made one time, before VBlank builds the game, and a game built for two consoles cannot share it.
+
+A part whose numbers alone change works anywhere. So does an Array of Structs made above it, such as `dots = [Dot.new(3, 0)]`: game code can walk it and change each Struct's numbers, and the Array stays a Ruby Array of the same size.
 
 With this class in `tallies.rb`:
 
@@ -1842,7 +2622,7 @@ end
 <details>
 <summary>Don't: read a part's Array, then change it by its reader. Do: a method (rare)</summary>
 
-Code that reads the Array before the change gets a plain Ruby Array. That Array does not see the change.
+A line that changes a part's Array through its reader makes the Array the game's for that one part, and the first use in game code must be that line. Code that reads the Array before the change gets a plain Ruby Array, which does not see the change.
 
 Refused:
 
@@ -1970,6 +2750,227 @@ class Tally
     @counts = [0, 0, 0]
     build.func(:count_up) { @counts[1] += 1 }
     build.func(:show) { build.draw_rect_at @counts[1], 0, 2, 2, :red }
+  end
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>Counter.new</code> in the game loop. Do: <code>@counter ||= Counter.new</code></summary>
+
+The game loop runs every frame, and in Ruby each new part starts again from `initialize`. So a part whose numbers or Arrays change cannot be made there. A part whose numbers never change, such as a spot that only answers questions, can be made anywhere.
+
+Refused:
+
+```ruby
+class Counter
+  attr_reader :n
+
+  def initialize
+    @n = 0
+  end
+
+  def bump = @n += 1
+end
+screen :bitmap
+game_loop do
+  counter = Counter.new
+  counter.bump
+  draw_rect_at counter.n, 0, 2, 2, :white
+end
+```
+
+VBlank says:
+
+```
+This line makes a new `Counter` in code that runs every frame. Its numbers change as the game plays, and in Ruby each new one starts again from `initialize`. To fix this, make it above the game loop, or keep it in an instance variable, like `@part ||= Counter.new(...)`, so it is made one time.
+```
+
+Write instead:
+
+```ruby
+class Counter
+  attr_reader :n
+
+  def initialize
+    @n = 0
+  end
+
+  def bump = @n += 1
+end
+screen :bitmap
+game_loop do
+  counter = (@counter ||= Counter.new)
+  counter.bump
+  draw_rect_at counter.n, 0, 2, 2, :white
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: keep two different things in one name with <code>||=</code>. Do: a name each</summary>
+
+Ruby keeps what the line that runs first makes, and VBlank cannot know which line that is.
+
+Refused:
+
+```rb
+Bat = Struct.new(:x)
+Rat = Struct.new(:x)
+screen :bitmap
+game_loop do
+  @enemy ||= Bat.new(1) if pressed(:a)
+  @enemy ||= Rat.new(2)
+  @enemy.x += 1
+end
+```
+
+VBlank says:
+
+```
+`@enemy` keeps `Bat.new(1)` on one line (at game.rb:5), and `Rat.new(2)` on this line. In Ruby, `@enemy` keeps what the line that runs first makes as the game plays, and VBlank cannot know which line that is. To fix this, keep each one in a name of its own, or make `@enemy` above the game loop.
+```
+
+Write instead:
+
+```ruby
+Bat = Struct.new(:x)
+Rat = Struct.new(:x)
+screen :bitmap
+game_loop do
+  @bat ||= Bat.new(1)
+  @rat ||= Rat.new(2)
+  @rat.x += 1
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: give <code>@point</code> a new Struct after game code read it. Do: change its fields</summary>
+
+In Ruby, the read gets the Struct that an earlier pass gave `@point`, and VBlank cannot follow that.
+
+Refused:
+
+```rb
+Point = Struct.new(:x, :y)
+screen :bitmap
+@point = Point.new(1, 1)
+game_loop do
+  @point.x += 1
+  draw_rect_at @point.x, @point.y, 2, 2, :white
+  @point = Point.new(1, 1) if @point.x > 100
+end
+```
+
+VBlank says:
+
+```
+This line gives `@point` a new `Point`, and game code read the `Point` that `@point` held before. In Ruby, that read gets the `Point` an earlier pass gave `@point`. VBlank cannot follow that. To fix this, keep one `Point` and change its fields, like `@point.x = 1`.
+```
+
+Write instead:
+
+```ruby
+Point = Struct.new(:x, :y)
+screen :bitmap
+@point = Point.new(1, 1)
+game_loop do
+  @point.x += 1
+  draw_rect_at @point.x, @point.y, 2, 2, :white
+  @point.x = 1 if @point.x > 100
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: freeze a Struct that holds game numbers. Do: leave it unfrozen (rare)</summary>
+
+This is for a Struct or Data class from a file loaded with plain `require`. VBlank must change the object to keep the numbers in its fields.
+
+Refused:
+
+```rb
+require_relative "point"          # Point = Struct.new(:x, :y)
+
+VBlank.game "FROZEN", consoles: %i[gba] do
+  screen :bitmap
+  hp = 0
+  game_loop do
+    hp += 1
+    point = Point.new(hp, 0).freeze
+    draw_rect_at point.x, point.y, 2, 2, :white
+  end
+end
+```
+
+VBlank says:
+
+```
+Game code uses an object of `Point` that is frozen, or is in something frozen (Point). Its fields hold numbers the game works out, and VBlank must change the object to keep them. To fix this, do not freeze it.
+```
+
+Write instead:
+
+```rb
+require_relative "point"          # Point = Struct.new(:x, :y)
+
+VBlank.game "FROZEN", consoles: %i[gba] do
+  screen :bitmap
+  hp = 0
+  game_loop do
+    hp += 1
+    point = Point.new(hp, 0)
+    draw_rect_at point.x, point.y, 2, 2, :white
+  end
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: read a Data object as <code>it</code> or <code>_1</code>. Do: name the parameter (rare)</summary>
+
+This is for a Data class from a file loaded with plain `require`. VBlank must give the block a copy of the object, and it can only do that for a named parameter.
+
+Refused:
+
+```rb
+require_relative "spot"           # Spot = Data.define(:x, :y)
+
+VBlank.game "SPOTS", consoles: %i[gba] do
+  screen :bitmap
+  hp = 0
+  game_loop do
+    hp += 1
+    spots = [Spot.new(hp, 0)]
+    spots.each { draw_rect_at it.x, it.y, 2, 2, :white }
+  end
+end
+```
+
+VBlank says:
+
+```
+This block reads an object of `Spot` as `it` or `_1`. Its fields hold numbers the game works out. VBlank must give the block a copy of the object to keep them. To fix this, name the block's parameter, like `{ |point| ... }`.
+```
+
+Write instead:
+
+```rb
+require_relative "spot"           # Spot = Data.define(:x, :y)
+
+VBlank.game "SPOTS", consoles: %i[gba] do
+  screen :bitmap
+  hp = 0
+  game_loop do
+    hp += 1
+    spots = [Spot.new(hp, 0)]
+    spots.each { |spot| draw_rect_at spot.x, spot.y, 2, 2, :white }
   end
 end
 ```
@@ -2273,7 +3274,9 @@ end
 <details>
 <summary>Don't: <code>draw_number</code> each frame on a tiled screen. Do: write it once</summary>
 
-On a tiled screen, `draw_number` draws its number again each frame. Ruby draws it once. Write the line once, above the game loop or in a scene. For an item, as in `shown[at]`, the game reads `at` again each frame too.
+On a tiled screen, `draw_number` draws its number again each frame. Ruby draws it once.
+
+Write the line once, above the game loop or in a scene. For an item, as in `shown[at]`, the game reads `at` again each frame too.
 
 ```ruby
 screen :tiled
@@ -2325,6 +3328,288 @@ end
 
 </details>
 
+<details>
+<summary>Don't: set a lasting count inside <code>game_loop</code>. Do: set it above the loop</summary>
+
+A name first set inside a game block is set again every time the block runs, so it starts again on each pass. The names of a method are set each time the method runs, as in Ruby.
+
+```ruby
+screen :bitmap
+total = 0                  # lasts: set once, above the loop
+game_loop do
+  this_pass = 0            # starts at 0 on every pass
+  this_pass += 1
+  total += this_pass
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: change a method's argument to change the caller's number. Do: return it</summary>
+
+A method's argument is a copy, so a change inside the method leaves the number of the caller as it was. The build warns about such a line.
+
+```ruby
+class Medic
+  def heal(hp)
+    hp += 1                # changes the copy only
+    hp
+  end
+end
+# In game code: hp = medic.heal(hp), not medic.heal(hp) alone
+```
+
+</details>
+
+<details>
+<summary>Don't: expect <code>"HP #{hp}"</code> to fit the number. Do: give <code>digits:</code></summary>
+
+A number in drawn text takes the room that `draw_number` gives it: 4 digits unless `digits:` gives another size. The number is drawn at the right of that room, so a shorter number leaves a gap before it.
+
+```ruby
+screen :bitmap
+hp = 3
+game_loop do
+  hp -= 1 if pressed(:a)
+  clear_screen :black
+  draw_text "HP #{hp}", 10, 10, :white, digits: 1
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: expect every instance variable to be the game's. Do: change it in game code</summary>
+
+VBlank finds the game's instance variables in the source. One is the game's when a line works it out from what it holds (`@lit = 1 - @lit`, `@ticks += 1`, `@counts[at] += 1`), wherever that line is, or when a line sets it inside a game block.
+
+Any other instance variable is plain Ruby. A game one is plain Ruby too until game code first reads or changes it, so a count bumped while building stays a Ruby number there. From then on, game code reads the game's number, even a routine that comes before the one that changes it.
+
+```ruby
+screen :bitmap
+@ticks = 0
+@ticks += 1                # while building: a Ruby number, now 1
+game_loop do
+  @ticks += 1              # the game's number, which starts at 1
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: put 200 in a <code>width: :byte</code> list. Do: keep numbers that fit</summary>
+
+A number too big for the slot keeps its low bits, with no error. 200 in a `:byte` reads back as -56.
+
+```ruby
+screen :bitmap
+small = Array.new(4, 0, width: :byte)
+game_loop do
+  small[0] = 100
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>&lt;&lt;</code> in a walk where a called routine took a place. Do: add after (rare)</summary>
+
+A thing taken out inside a walk gives its place back only when the walk ends. So a `<<` in a walk that needs a place that a routine the walk called took out stops the game, with a message. A `<<` in a walk of an Array with room joins it at once, and only the walk that it is in does not visit it.
+
+```ruby
+Spark = Struct.new(:x, :y)
+screen :bitmap
+sparks = Array.new(capacity: 8)
+game_loop do
+  sparks.each { |s| s.y += 1 }
+  sparks << Spark.new(0, 0) if sparks.size < 8   # after the walk
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: keep a part in a part that is made every pass. Do: keep both (rare)</summary>
+
+A part kept by another part with `||=` is kept only if that other part is kept too. A part made on every pass makes what it keeps on every pass as well.
+
+```ruby
+class Keeper
+  def counter = (@counter ||= Counter.new)
+end
+# In the game loop: keeper = (@keeper ||= Keeper.new), not keeper = Keeper.new
+```
+
+</details>
+
+<details>
+<summary>Don't: expect a kept part's <code>initialize</code> to run each pass. Do: nothing (rare)</summary>
+
+A part kept with `||=` is made once. So what its `initialize` gives another part goes in once, while VBlank builds the game, as in Ruby: a block it adds to the Array of another part (`hooks.after { @count += 1 }`), or names (`costume.wear(%i[crouch leap])`). The block then runs wherever the other part runs it, on every pass.
+
+A push in `initialize` into an Array that the part was given runs each time the line that makes the part runs, as in Ruby. So does all else that `initialize` does in the game, such as drawing or putting up a picture.
+
+```ruby
+class Hopper
+  def initialize(hooks)
+    @count = 0
+    hooks.after { @count += 1 }   # added once, run on every pass
+  end
+end
+```
+
+</details>
+
+## What costs more
+
+These lines build and work, and cost the console more memory or more time than you can expect. Some plain Ruby lines need a hidden number that the game keeps for them, and `rom.profile` lists every line that makes one, with what it costs.
+
+<details>
+<summary>Don't: <code>item = trail.shift</code> when you can avoid it. Do: <code>trail.first</code>, then <code>shift</code></summary>
+
+`item = trail.shift` keeps the dropped item in a hidden number: one word of quick memory, and a copy each time the line runs. `trail.shift` on its own keeps nothing.
+
+```ruby
+screen :bitmap
+trail = Array.new(4, 0, capacity: 4)
+item = 0
+game_loop do
+  item = trail.first
+  trail.shift
+  trail << item
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>sum</code> or <code>max</code> of a long list on every pass. Do: keep a running total</summary>
+
+`sum`, `min`, `max`, `include?` and `==` with an Array look at every item, so they cost more the more items the Array holds.
+
+```ruby
+# Add up a growing list, and find its best
+screen :bitmap
+scores = Array.new(capacity: 8)
+total = 0
+best = 0
+game_loop do
+  if scores.size < 8
+    scores << 3
+    total += 3               # a running total costs one addition
+  end
+  best = scores.max
+  scores.each_with_index { |score, at| draw_rect_at at * 10, 100 - score, 8, score, :green }
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: <code>sort!</code> a list on every pass that rarely changes. Do: sort when it changes</summary>
+
+A sort moves items back one at a time. So it costs little for a list that is nearly in order, and more the more items move.
+
+`rom.profile` lists each line that sorts and what it costs. For the smallest item alone, `min` costs less. On an Array of Structs, `sort!` by the `<=>` of the Struct costs the same as `sort_by!`.
+
+```ruby
+screen :bitmap
+scores = Array.new(5, 0)
+t = 0
+game_loop do
+  t += 1
+  if pressed(:a)
+    scores[t % 5] = (t * 37) % 100
+    scores.sort!             # only when a score changes
+  end
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: expect a counting loop to be a loop. Do: read <code>rom.profile</code></summary>
+
+When every number of `n.times`, `upto`, `downto`, `step`, `each` on a range or `for` is known while building, the build chooses how to make it, and the same game always builds the same way:
+
+- Small rounds are written out once for each time round, which is the fastest. Rounds are small while together they have a size of at most 64. One `draw_rect_at` line is a size of 5, so 4 rounds of two such lines are written out.
+- Larger rounds are one loop the game runs, which costs the room of one round. The round number `i` is then a number the game counts, and each round costs time: the loop counts, goes back, and works out each number that counts up with `i`.
+- Rounds that differ in more than a number that counts up are written out, however large: a colour or a picture picked by `i` while building, a value read from a Ruby Array at `i`, or a test on `i`. Only a round written out knows its `i` while building.
+
+When a count or an end is a number the game keeps, the loop is a loop in the game, and it goes round as many times as the number holds when the loop starts. `rom.profile` lists each counting loop with its line, its size and what the build chose.
+
+```ruby
+screen :bitmap
+lives = 3
+game_loop do
+  clear_screen :black
+  lives -= 1 if pressed(:a)
+  lives.times { |i| draw_rect_at 10 + (i * 20), 10, 8, 8, :blue }   # a loop in the game
+  2.times { |i| draw_rect_at 10 + (i * 20), 30, 8, 8, :green }      # written out two times
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: copy a game number into a field far from where you read it. Do: read it near</summary>
+
+A field keeps its own copy of a number, and that copy is a hidden number, which `rom.profile` lists. It costs nothing when all of these are true: the field was given numbers the game keeps (not the item of an Array, and not a button), it is read in the same block as that line, the lines between only draw, test or change other numbers, and no `on_tick` of a timer changes those numbers.
+
+```ruby
+Point = Struct.new(:x, :y)
+screen :bitmap
+score = 0
+point = Point.new(score, 50)
+game_loop do
+  score += 1
+  point.x = score
+  draw_rect_at point.x, point.y, 2, 2, :white   # read in the same block: no copy kept
+end
+```
+
+</details>
+
+<details>
+<summary>Don't: fill an Array in a kept part's <code>initialize</code>. Do: make the part above</summary>
+
+A part kept with `||=` starts from the numbers that its `initialize` gives. What its `initialize` puts into an Array that it makes there goes in on the first pass only.
+
+A hidden number keeps that to one time, `rom.profile` names it, and a save that keeps the Array keeps that number too. To skip it, make the part above the game loop.
+
+```ruby
+class Flock
+  def initialize
+    @dots = Array.new(capacity: 8)
+    @dots << 0                    # goes in on the first pass only
+  end
+end
+# In the game loop: flock = (@flock ||= Flock.new). Above the loop, no hidden number.
+```
+
+</details>
+
+<details>
+<summary>Don't: a big list in full words if its numbers are small. Do: <code>width:</code>, <code>narrow</code></summary>
+
+Two settings of `Array.new` can be left out, and change only what the list costs:
+
+- `width: :byte` or `width: :half` keeps each item in less memory. A number too big for the slot keeps its low bits (see [Builds, but surprises you](#builds-but-surprises-you)).
+- `fast: true` or `fast: false` puts the list in the quick memory or in the roomy one. It changes only how long a read takes.
+
+In the block of a Struct, `narrow :x, :y` keeps each of those fields in half a word, and `narrow kind: :byte` keeps one in a byte, for a big Array of Structs.
+
+```ruby
+screen :bitmap
+small = Array.new(64, 0, width: :byte, fast: false)
+game_loop do
+  small[0] += 1
+end
+```
+
+</details>
+
 ## When plain Ruby is not enough
 
 `var :name, start` makes a game number directly, and a game needs it only to keep a number narrow.
@@ -2336,7 +3621,5 @@ game_loop do
   flag.store!(1) if pressed(:a)
 end
 ```
-
-Some plain Ruby lines need a hidden number the game keeps for them, such as a swap, a name that can hold nil, or the item `shift` drops, and `rom.profile` lists each such line and what it costs.
 
 Anything else that seems to need a lower-level verb or VBlank's own classes is a gap in VBlank: report it with the line that did the wrong thing.
