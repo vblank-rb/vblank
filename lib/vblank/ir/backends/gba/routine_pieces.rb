@@ -20,21 +20,26 @@ module VBlank
         # at statements that can run as a routine of their own, and only where it lets the busy
         # part in.
         #
-        # What is cut is a statement the routine runs at most once each time it is called: one
-        # written straight in the routine, or in a test's either branch, however many tests deep.
-        # Such a statement made a routine of its own and called from where it was does exactly what
-        # it did, because nothing the routine holds in a register lives across its statements: a
-        # test is decided before its branch runs, and every number is in memory. A statement under a
-        # counted loop, an `every`, an `after` or an `inside` is never cut, since those keep what
-        # the statements inside them work with (a count in a register, the edges a shape clips
-        # against) where a routine of its own would not see it. Nor is one holding a declaration,
-        # which belongs to where it is written.
+        # What is cut is a statement written straight in the routine, in a test's either branch,
+        # however many tests deep, or in the body of a counted loop. Such a statement made a routine
+        # of its own and called from where it was does exactly what it did, because nothing the
+        # routine holds in a register lives across its statements: a test is decided before its
+        # branch runs, and every number is in memory. A counted loop is the one place that keeps a
+        # number in a register (its count, see LoopForm), and a call in its body is what makes it
+        # keep the count in its own variable instead, so a piece cut from its body is safe too. A
+        # statement that leaves a loop around it (`break`, `next`) is not cut, since a routine of
+        # its own cannot leave a loop it is not in. A statement under an `every`, an `after` or an
+        # `inside` is never cut, since those keep what the statements inside them work with (the
+        # edges a shape clips against) where a routine of its own would not see it. Nor is one
+        # holding a declaration, which belongs to where it is written.
         #
         # Which routines, and which pieces. A routine is cut only when the plan passed it over, so a
         # routine that fits keeps its one call and runs as it did. Its statements are taken from the
         # top: one at most half as big as the room the quick memory has with nothing moved is a
         # piece, a test bigger than that is cut inside its branches, and a statement smaller than
-        # SMALLEST_PIECE_BYTES stays, since a call costs more than such a piece saves. The pieces
+        # SMALLEST_PIECE_BYTES stays, since a call costs more than such a piece saves. A counted
+        # loop is a piece of any size up to the whole room, since its body runs many times a call;
+        # one bigger than the room is cut inside its body (#loop_places). The pieces
         # are then routines like any other, weighed by what a frame spends in each (see
         # Placement#choose_fast_funcs), so the busy one goes in and the rest stay in the cartridge.
         #
@@ -56,14 +61,14 @@ module VBlank
 
           module_function
 
-          # +program+ with each of +routines+ (names) cut into pieces at most half of +room+, as a
-          # new written program; or nil when there is nothing to cut. +bytes_of+ answers the bytes a
-          # statement came to in a measuring pass, nested statements included, or nil for one that
-          # pass never lowered.
+          # +program+ with each of +routines+ (names) cut into pieces at most half of +room+ (a
+          # counted loop, the whole of it), as a new written program; or nil when there is nothing
+          # to cut. +bytes_of+ answers the bytes a statement came to in a measuring pass, nested
+          # statements included, or nil for one that pass never lowered.
           def cut(program, routines:, room:, &bytes_of)
             most = room / 2
             cuts = program.walk.select { |node| cuttable_routine?(node) && routines.include?(node.name) }
-                          .to_h { |func| [func.name, places_of_pieces(func.children, [], most, &bytes_of)] }
+                          .to_h { |func| [func.name, places_of_pieces(func.children, [], most, room, &bytes_of)] }
                           .reject { |_, places| places.empty? }
             cuts.empty? ? nil : with_pieces(program, cuts)
           end
@@ -83,24 +88,61 @@ module VBlank
           # Where the pieces are among +statements+, each as the path to it below +above+. A test
           # with no other branch keeps its test and gives up its body (a place ending in :then), so
           # a pass whose test fails does not call the piece only to find that out.
-          def places_of_pieces(statements, above, most, &bytes_of)
+          #
+          # A counted loop is cut whole up to the whole +room+, not half of it, and whatever its size:
+          # its body runs many times a call, so the call is paid for however few lines it has, and
+          # what a loop holds that never runs goes in the quick memory with it, where a loop left in
+          # its routine runs from the cartridge. A test holding a loop is looked into whatever its
+          # size, for the loop.
+          def places_of_pieces(statements, above, most, room, &bytes_of)
             statements.each_with_index.flat_map do |node, at|
               place = above + [at]
               bytes = bytes_of.call(node).to_i
-              next [] if bytes < SMALLEST_PIECE_BYTES || !movable?(node)
-              next [node.kind == :if && node.else.nil? ? place + [:then] : place] if bytes <= most
+              next [] unless movable?(node)
+              next loop_places(node, place, bytes, most, room, &bytes_of) if node.kind == :repeat
+
+              next [] if bytes < SMALLEST_PIECE_BYTES && !(node.kind == :if && holds_loop?(node))
+              next [node.kind == :if && node.else.nil? ? place + [:then] : place] if bytes <= most && bytes >= SMALLEST_PIECE_BYTES
               next [] unless node.kind == :if
 
-              places_of_pieces(node.children, place + [:then], most, &bytes_of) +
-                (node.else ? places_of_pieces(node.else.children, place + [:else], most, &bytes_of) : [])
+              places_of_pieces(node.children, place + [:then], most, room, &bytes_of) +
+                (node.else ? places_of_pieces(node.else.children, place + [:else], most, room, &bytes_of) : [])
             end
+          end
+
+          # The places in the counted loop +node+, at +place+ and +bytes+ big: the loop itself where it
+          # fits the whole room. A loop bigger than that stays in its routine and gives up the big
+          # statements of its body, each a piece called from every turn, so the loop counts in its own
+          # index variable (a call in a body takes the loop out of the registers, see LoopForm) and the
+          # busy lines in it stay in the routine. A statement that leaves the loop (`break`, `next`)
+          # is not given up, since a routine of its own cannot leave a loop it is not in.
+          def loop_places(node, place, bytes, most, room, &bytes_of)
+            return [place] if bytes.positive? && bytes <= room
+
+            places_of_pieces(node.children, place + [:loop], most, room, &bytes_of)
+          end
+
+          # Does the test +node+ have a counted loop written straight in one of its branches, however
+          # many tests deep?
+          def holds_loop?(node)
+            branches = [node, node.else].compact
+            branches.any? { |branch| branch.children.any? { |child| child.kind == :repeat || (child.kind == :if && holds_loop?(child)) } }
           end
 
           # A statement that does the same as a routine of its own: not a declaration, and holding
           # none, nor any of the author's own instructions (`entry`'s raw ARM), which can read a
           # register a statement before it left.
           def movable?(node)
-            node.statement? && node.each.none? { |inside| inside.class.role == :declaration || inside.kind == :raw }
+            node.statement? && node.each.none? { |inside| inside.class.role == :declaration || inside.kind == :raw } &&
+              !leaves_loop?(node)
+          end
+
+          # Does +node+ hold a `break` or `next` of a loop that is not inside it?
+          def leaves_loop?(node, depth = 0)
+            return depth.zero? if %i[break_repeat next_repeat].include?(node.kind)
+
+            inside = node.kind == :repeat ? depth + 1 : depth
+            node.children.any? { |child| leaves_loop?(child, inside) } || (node.kind == :if && node.else && leaves_loop?(node.else, inside))
           end
 
           # A copy of +program+ with each place of +cuts+ (routine name to the places of its pieces)

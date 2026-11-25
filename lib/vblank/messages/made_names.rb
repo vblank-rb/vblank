@@ -106,7 +106,7 @@ module VBlank
         # A statement of a routine too big for the quick memory, made a routine of its own
         # (GBA::RoutinePieces), named by where it is in its routine.
         routine_piece: Kind.new(spelling: "__piece_%{place}__of_%{routine}",
-                                parts: { place: "\\d+(?:_(?:then|else)_\\d+)*(?:_then)?", routine: ANY },
+                                parts: { place: "\\d+(?:_(?:then|else|loop)_\\d+)*(?:_then)?", routine: ANY },
                                 words: ->(parts) { "a part of func :#{parts[:routine]} (#{parts[:place].tr('_', ' ')})" }),
         picture_groups: Kind.new(spelling: "__picture_groups_%{set}", parts: { set: ANY },
                                  words: ->(parts) { "bringing in the pictures of picture_groups :#{parts[:set]}" }),

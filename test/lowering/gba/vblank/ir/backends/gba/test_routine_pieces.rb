@@ -68,6 +68,70 @@ class TestRoutinePieces < Minitest::Test
                     "the big routine's busy part costs what the same work costs in a routine that fits"
   end
 
+  # Turns of the busy loop a frame.
+  BUSY_TURNS = 100
+  # How many parts of IDLE_ADDS additions, that never run, sit inside the loop's body and outside it.
+  LOOP_IDLE_PARTS = 16
+
+  # A routine whose busy part is a counted loop of three lines. Its loop also holds +inside+ parts of
+  # +idle+ additions that never run, and +outside+ parts more follow the loop, so with sixteen of
+  # each the loop alone is bigger than the quick memory's room.
+  private def looping_game(name, inside:, outside:, idle: IDLE_ADDS)
+    turns = BUSY_TURNS
+    VBlank.build(name, console: :gba, out: StringIO.new, err: StringIO.new) do
+      a = 0
+      b = 0
+      c = 0
+      t = 0
+      func(:work) do
+        repeat(turns) do
+          a += 1
+          b += 2
+          c += 3
+          inside.times do |part|
+            if t == -1 - (part ^ 1)
+              idle.times { |n| b += 1 + (n.even? ? 5 : -5) }
+            end
+          end
+        end
+        outside.times do |part|
+          if t == -100 - (part ^ 1)
+            idle.times { |n| b += 1 + (n.even? ? 5 : -5) }
+          end
+        end
+      end
+      game_loop do
+        t += 1
+        call :work
+        wait_vblank
+      end
+    end
+  end
+
+  # A busy loop of three lines holding parts that never run, so that it is bigger than the quick
+  # memory's room itself: the loop stays in its routine and its big statements are pieces, so its
+  # three busy lines are all that is left of it and the frame costs about what it does in a routine
+  # that fits. Left whole, its busy lines ran from the cartridge.
+  def test_a_busy_loop_bigger_than_the_quick_memory_runs_its_busy_lines_there
+    big = looping_game("BIGLOOP", inside: LOOP_IDLE_PARTS, outside: IDLE_PARTS)
+    small = looping_game("SMALLLOOP", inside: LOOP_IDLE_PARTS, outside: IDLE_PARTS, idle: 1)
+
+    assert_operator busy_cycles(big), :<=, busy_cycles(small) * 1.1,
+                    "the big routine's busy loop costs what the same loop costs in a routine that fits"
+  end
+
+  # The loop's body in pieces still counts its turns: each pass runs the loop BUSY_TURNS times, and the
+  # parts that never run add nothing.
+  def test_the_loop_cut_in_pieces_runs_every_turn
+    rom = looping_game("BIGLOOP", inside: LOOP_IDLE_PARTS, outside: IDLE_PARTS)
+    v = assert_emulator_loads_rom(rom, frames: 20, vars: rom.var_addresses)
+
+    assert rom.built.placement.sizes.keys.any? { |name| name.to_s.include?("_loop_") }, "the loop's body was cut"
+    assert_equal BUSY_TURNS * v.var(:t), v.var(:a)
+    assert_equal BUSY_TURNS * v.var(:t) * 2, v.var(:b), "the parts that never run added nothing to b"
+    assert_equal BUSY_TURNS * v.var(:t) * 3, v.var(:c)
+  end
+
   # The pieces do what the routine did: every frame adds BUSY_ADDS, and the parts that never run
   # add nothing.
   def test_the_cut_routine_does_what_it_did
