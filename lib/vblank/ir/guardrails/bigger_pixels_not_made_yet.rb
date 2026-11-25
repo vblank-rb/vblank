@@ -31,7 +31,7 @@ module VBlank
         #   interpreter shows as the backdrop;
         # - `pixelate` makes blocks of the console's pixels, which would be half the game's;
         # - a light and a fade held to a rectangle are cut by the display's windows, whose edges are
-        #   the console's pixels;
+        #   the console's pixels (the Advance doubles a fade's rectangle as it writes it);
         # - a sprite over the painted picture (`over_picture: true`) is the console's own and is
         #   not shown bigger;
         # - `read_scanline` counts the console's lines;
@@ -46,9 +46,10 @@ module VBlank
           def detect(program)
             return [] unless program.kind == :program && program.pixel_size.to_i > 1
 
-            border = program.described_console.bordered?
+            console = program.described_console
+            border = console.bordered?
             program.walk.filter_map do |node|
-              what = (border && node.kind == :program) ? "a border round the screen" : not_made_yet(node)
+              what = (border && node.kind == :program) ? "a border round the screen" : not_made_yet(node, console)
               next unless what
 
               Finding.new(check: NAME, severity: :error, node: node, message: message(what, program.pixel_size))
@@ -57,12 +58,12 @@ module VBlank
 
           private
 
-          def not_made_yet(node)
+          def not_made_yet(node, console)
             case node.kind
             when :camera then "the camera (`camera` or `shake_screen`)"
             when :pixelate then "`pixelate`"
             when :shade_outside, :show_light_now then "a light (`spotlight`, `iris_out` or `iris_in`)"
-            when :fade then "a fade held to a rectangle (`inside:` or `outside:`)" if node.area
+            when :fade then "a fade held to a rectangle (`inside:` or `outside:`)" if node.area && !console.bigger_pixels_fade_areas
             when :object then "a sprite over the picture (`over_picture: true`)" if node.over_picture
             when :read_scanline then "`read_scanline`"
             end

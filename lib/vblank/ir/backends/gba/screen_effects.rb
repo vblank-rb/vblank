@@ -229,8 +229,11 @@ module VBlank
           # built, so the display is never handed an edge past it. +reaches+ nil is the whole
           # screen, and then the rectangle does not matter and nothing is written for it.
           def emit_fade_window(reaches, area)
-            @emitter.write_reg16(REG_WIN0H, reaches ? (area[0] << 8) | area[2] : 0)
-            @emitter.write_reg16(REG_WIN0V, reaches ? (area[1] << 8) | area[3] : 0)
+            # The window's edges are the console's pixels, and the game gave its own: each is shown
+            # pixel_size of them across and down in a game of big pixels.
+            edges = reaches ? area.map { |edge| edge * @layout.pixel_size } : nil
+            @emitter.write_reg16(REG_WIN0H, edges ? (edges[0] << 8) | edges[2] : 0)
+            @emitter.write_reg16(REG_WIN0V, edges ? (edges[1] << 8) | edges[3] : 0)
             inside, outside = fade_window_switches(reaches)
             @emitter.write_reg16(REG_WININ, inside)
             @emitter.write_reg16(REG_WINOUT, outside)

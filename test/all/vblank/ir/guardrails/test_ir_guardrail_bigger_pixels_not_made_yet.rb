@@ -33,6 +33,24 @@ class TestIrGuardrailBiggerPixelsNotMadeYet < Minitest::Test
     assert_match(/pixelate/, found.first.message)
   end
 
+  def test_a_fade_held_to_a_rectangle_is_refused_where_the_console_does_not_double_it
+    program = VBlank.game("BIGFADE", consoles: %i[snes]) do
+      screen :bitmap, pixel_size: 2
+      game_loop { fade :black, 50, inside: [0, 0, 20, 20] }
+    end.program(console: :snes)
+
+    assert_match(/fade held to a rectangle/, Check.new.detect(program).first.message)
+  end
+
+  def test_a_fade_held_to_a_rectangle_is_not_refused_on_the_advance
+    found = findings do
+      screen :bitmap, pixel_size: 2
+      game_loop { fade :black, 50, inside: [0, 0, 20, 20] }
+    end
+
+    assert_empty found
+  end
+
   def test_a_game_without_big_pixels_is_told_nothing
     found = findings do
       screen :bitmap
