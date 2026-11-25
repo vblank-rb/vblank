@@ -33,6 +33,24 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
     end
   end
 
+  # What the cartridge's colour memory holds for the eight banks: each bank's three colours (its
+  # places 1 to 3) are the last three colours of exactly one group of four. The build chooses the
+  # order of the groups, so they are compared as sets.
+  def test_each_banks_three_colors_are_the_last_three_of_one_group_in_the_colour_memory
+    Dir.mktmpdir do |folder|
+      from = color_original(folder, EIGHT_BANKS_SCREEN)
+      program, = color_cells_game_and_file(from, color_screen: EIGHT_BANKS_SCREEN)
+      program.console = :gbc
+      rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "BANKS")
+      groups = VBlank::Diagnostics::Verifier.new(rom, frames: 10).palette(:backgrounds).each_slice(COLOR_BANK_SIZE).map { |group| group.drop(1).to_set }
+      banks = EIGHT_BANKS_SCREEN.palette.each_slice(COLOR_BANK_SIZE).map { |bank| bank.drop(1).to_set }
+
+      banks.each_with_index do |bank, number|
+        assert_equal 1, groups.count(bank), "bank #{number}'s colours are the last three of exactly one group"
+      end
+    end
+  end
+
   # A told cell that draws nothing shows only the backdrop, as an empty cell does, so it costs no
   # list of its own: the screen in all eight banks, every bank walked up from black, still fits
   # the eight with a see-through cell told beside a drawn one, and both written over the map. The
