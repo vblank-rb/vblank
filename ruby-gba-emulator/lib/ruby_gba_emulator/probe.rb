@@ -989,7 +989,9 @@ module RubyGBAEmulator
     #
     # +gap_ends+ are the addresses whose arrival ends the gap after a game loop's wait, which only
     # the build that made the ROM knows; each pass then says whether its gap ran past a break
-    # ({Pass#gap_overran_by}). Empty asks nothing.
+    # ({Pass#gap_overran_by}). Empty asks nothing. An end in a routine kept in a swapped set of
+    # the quick memory is +[address, set number, address of the word naming the sets in]+, and
+    # counts only while that word's bit for the set is on.
     #
     # @return [Profile]
     def profile(frames: 1, settle: 0, keys: nil, gap_ends: [])

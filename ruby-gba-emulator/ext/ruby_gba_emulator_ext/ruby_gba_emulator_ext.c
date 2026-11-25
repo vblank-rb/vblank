@@ -3666,6 +3666,11 @@ struct pc_tally {
      * the breaks begun and the line then. +gap_overran_by+ keeps, for each pass, how many lines into
      * a break the gap ended (see lines_past_break), or -1 for a gap that ended before any. */
     uint32_t *gap_ends;
+    /* A gap end in a routine kept in a swapped set of the quick memory is a place only while that set
+     * is in: +gap_set+ is that set's number for such an end, or -1 for one that is always a place, and
+     * +gap_set_at+ the address of the word whose bit for each set number says it is in. */
+    int      *gap_set;
+    uint32_t *gap_set_at;
     long      gap_end_count;
     int       gap_reached;
     int       gap_breaks;
@@ -3729,7 +3734,11 @@ pc_tally_free(struct pc_tally *t)
     free(t->gap_overran_by);
     t->gap_overran_by = NULL;
     free(t->gap_ends);
+    free(t->gap_set);
+    free(t->gap_set_at);
     t->gap_ends = NULL;
+    t->gap_set = NULL;
+    t->gap_set_at = NULL;
     t->gap_end_count = 0;
     free(t->gap_writes);
     t->gap_writes = NULL;
@@ -3864,13 +3873,20 @@ lines_past_break(int breaks_began, int line)
     return into + 1 + (breaks_began - 1) * VIDEO_VERTICAL_TOTAL_PIXELS;
 }
 
-/* Is +pc+ one of the addresses that end the gap after a wait? A handful at most, so a walk. */
+/* Is +pc+ one of the addresses that end the gap after a wait? A handful at most, so a walk. An end kept
+ * in a swapped set counts only while the word that names the sets in says its set is: one bus read, and
+ * only when the address matched. */
 static inline int
-at_gap_end(const struct pc_tally *t, uint32_t pc)
+at_gap_end(const struct pc_tally *t, struct mCore *core, uint32_t pc)
 {
-    for (long i = 0; i < t->gap_end_count; ++i)
-        if (t->gap_ends[i] == pc)
+    for (long i = 0; i < t->gap_end_count; ++i) {
+        if (t->gap_ends[i] != pc)
+            continue;
+        if (t->gap_set[i] < 0)
             return 1;
+        if ((core->busRead32(core, t->gap_set_at[i]) >> t->gap_set[i]) & 1)
+            return 1;
+    }
     return 0;
 }
 
@@ -3918,7 +3934,7 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
             int games_code = gba->cpu->cpsr.priv != MODE_IRQ && pc >= SIZE_BIOS;
             /* The first arrival at the gap's end in a pass is where its gap ended: the breaks begun
              * so far, and the line, both as they stand before this instruction runs. */
-            if (t->gap_end_count && !t->gap_reached && games_code && at_gap_end(t, pc)) {
+            if (t->gap_end_count && !t->gap_reached && games_code && at_gap_end(t, core, pc)) {
                 t->gap_reached = 1;
                 t->gap_open = 0;
                 t->gap_breaks = t->breaks_began;
@@ -4387,9 +4403,10 @@ touch_tally_hash(const struct touch_tally *t)
  *   :gap_writes_missed how many runs there was no room left for
  *
  * +rb_gap_ends+ is an Array of the addresses whose arrival ends the gap after a wait
- * (see pc_tally), empty for none. The caller decides what has settled and what to
- * hold: run it after stepping past the boot frames, with whatever keys the measured
- * behaviour needs. GBA-only. */
+ * (see pc_tally), empty for none. An address in a routine kept in a swapped set is
+ * [address, set number, address of the word naming the sets in]. The caller decides
+ * what has settled and what to hold: run it after stepping past the boot frames, with
+ * whatever keys the measured behaviour needs. GBA-only. */
 static VALUE
 mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
 {
@@ -4402,8 +4419,21 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_raise(rb_eArgError, "frames must be positive, got %ld", frames);
     Check_Type(rb_gap_ends, T_ARRAY);
     long gap_end_count = RARRAY_LEN(rb_gap_ends);
-    for (long i = 0; i < gap_end_count; ++i)
-        NUM2UINT(rb_ary_entry(rb_gap_ends, i)); /* raise on a bad address before anything is allocated */
+    for (long i = 0; i < gap_end_count; ++i) {
+        /* raise on a bad address before anything is allocated: a number, or [address, set number, the
+         * address of the word that names the sets in] for an end kept in a swapped set */
+        VALUE end = rb_ary_entry(rb_gap_ends, i);
+        if (RB_TYPE_P(end, T_ARRAY)) {
+            if (RARRAY_LEN(end) != 3)
+                rb_raise(rb_eArgError, "a gap end kept in a set is [address, set number, address of the sets word]");
+            NUM2UINT(rb_ary_entry(end, 0));
+            if (NUM2INT(rb_ary_entry(end, 1)) < 0 || NUM2INT(rb_ary_entry(end, 1)) > 31)
+                rb_raise(rb_eArgError, "a set number is 0 to 31");
+            NUM2UINT(rb_ary_entry(end, 2));
+        } else {
+            NUM2UINT(end);
+        }
+    }
 
     struct mCore *core = mc->core;
     struct ARMCore *cpu = ((struct GBA *)core->board)->cpu;
@@ -4413,13 +4443,24 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
     if (gap_end_count) {
         tally.gap_ends = calloc((size_t)gap_end_count, sizeof(uint32_t));
+        tally.gap_set = calloc((size_t)gap_end_count, sizeof(int));
+        tally.gap_set_at = calloc((size_t)gap_end_count, sizeof(uint32_t));
         tally.gap_writes = calloc(GAP_WRITES_MAX, sizeof(struct gap_write));
-        if (!tally.gap_ends || !tally.gap_writes) {
+        if (!tally.gap_ends || !tally.gap_set || !tally.gap_set_at || !tally.gap_writes) {
             pc_tally_free(&tally);
             rb_raise(rb_eNoMemError, "could not allocate the profile tally");
         }
-        for (long i = 0; i < gap_end_count; ++i)
-            tally.gap_ends[i] = NUM2UINT(rb_ary_entry(rb_gap_ends, i));
+        for (long i = 0; i < gap_end_count; ++i) {
+            VALUE end = rb_ary_entry(rb_gap_ends, i);
+            if (RB_TYPE_P(end, T_ARRAY)) {
+                tally.gap_ends[i] = NUM2UINT(rb_ary_entry(end, 0));
+                tally.gap_set[i] = NUM2INT(rb_ary_entry(end, 1));
+                tally.gap_set_at[i] = NUM2UINT(rb_ary_entry(end, 2));
+            } else {
+                tally.gap_ends[i] = NUM2UINT(end);
+                tally.gap_set[i] = -1;
+            }
+        }
         tally.gap_end_count = gap_end_count;
     }
     if (!touch_tally_init(&touched)) {

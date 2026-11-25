@@ -287,11 +287,11 @@ module VBlank
       end
 
       # Where each gap after a game loop's wait ends, as the addresses a measured run watches (see
-      # Cartridge::BuildRecord#gap_ends). One in a scene's own routine is left out: its second
-      # address is another scene's code while that scene's set is in (see #video_copies_in), and
-      # which set is in is known only once the run is over.
+      # Cartridge::BuildRecord#gap_ends). One in a scene's own routine is a place only while that
+      # scene's set is in, so it goes as [address, the set's number, where the word naming the sets
+      # in is], and the emulator counts an arrival there only while the word says the set is in.
       def self.gap_end_addresses(rom)
-        rom.built.gap_ends.reject { |site| site[:set] }.map { |site| site[:at] }
+        rom.built.gap_ends.map { |site| site[:set] ? [site[:at], site[:set], rom.built.scene_sets.loaded_at] : site[:at] }
       end
 
       # A pass whose gap after its wait ran past the next break: the screen's updates done after the

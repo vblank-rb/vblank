@@ -385,6 +385,44 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
            "each gap ended about six lines into the break, and the pass then had lines to spare: #{passes.inspect}")
   end
 
+  # The same game with a number of its own, +sets_in+, the way the build keeps the word whose bit for each
+  # set number says that set of the quick memory's routines is in.
+  private def gap_rom_in_sets(gap_until, sets_in)
+    VBlank.build("PGST", console: :gba, code: "PGST", maker: "01") do
+      extend VBlank::Builder::Debug
+      screen :bitmap
+      spin = var :spin, 0
+      var :sets_in, sets_in
+      func(:gap_done) { spin += 1 }
+      game_loop do
+        repeat(100_000, stop_when: read_scanline < 160) { spin += 1 }
+        repeat(100_000, stop_when: read_scanline >= gap_until) { spin += 1 }
+        call :gap_done
+        repeat(100_000, stop_when: read_scanline < 160) { spin += 1 }
+        repeat(100_000, stop_when: read_scanline >= 20) { spin += 1 }
+      end
+    end
+  end
+
+  # A gap end kept in a swapped set of routines is [address, set number, where the word naming the
+  # sets in is]: an arrival there ends the gap only while the word's bit for that set is on.
+  def test_a_gap_end_kept_in_a_set_counts_only_while_its_set_is_in
+    [[8, true], [0, false]].each do |sets_in, counted|
+      rom = gap_rom_in_sets(165, sets_in)
+      passes = with_probe(write_rom(rom, "gapset")) do |probe|
+        end_at = [rom.built.routines.fetch(:gap_done).begin, 3, rom.var_addresses.fetch(:sets_in)]
+        probe.profile(frames: 10, settle: 10, gap_ends: [end_at]).passes.drop(1).map(&:gap_overran_by)
+      end
+
+      refute_empty passes
+      if counted
+        assert(passes.all? { |gap| (5..9).cover?(gap) }, "set 3 is in, so the gap is named: #{passes.inspect}")
+      else
+        assert(passes.all?(&:nil?), "set 3 is not in, so the end is no place: #{passes.inspect}")
+      end
+    end
+  end
+
   def test_a_gap_that_ends_before_the_break_says_nothing
     passes = passes_with_gap(gap_rom(150))
 
