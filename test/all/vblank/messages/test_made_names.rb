@@ -48,6 +48,7 @@ class TestMadeNames < Minitest::Test
     map_cell_write_in_scene: { background: :ground, scene: :cave },
     tile_run_tile: { run: :box, number: 3 },
     tile_run_pending: { number: 0 },
+    picked_cells: { number: 1 },
     painted_copies: {},
     canvas_part: { canvas: :box, part: :pixel },
     unpacking_part: { part: :lz77 },

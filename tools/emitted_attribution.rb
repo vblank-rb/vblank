@@ -40,6 +40,7 @@ module EmittedAttribution
   module Recorder
     def attributed = @attributed ||= []
     def attribution_depth = @attribution_depth ||= []
+    def attribution_pos = @emit.pos
 
     def initialize(...)
       super
@@ -47,11 +48,11 @@ module EmittedAttribution
       original = lowering.method(:statement)
       lowering.define_singleton_method(:statement) do |node|
         depth = backend.attribution_depth
-        start = backend.send(:pos)
+        start = backend.attribution_pos
         depth.push(0) # bytes my own nested statements will claim
         result = original.call(node)
         inner = depth.pop
-        mine = backend.send(:pos) - start
+        mine = backend.attribution_pos - start
         depth[-1] += mine unless depth.empty? # tell whoever contains me what I took
         backend.attributed << [node, mine - inner]
         result

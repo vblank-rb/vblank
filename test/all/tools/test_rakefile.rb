@@ -40,10 +40,11 @@ class TestRakefile < Minitest::Test
   end
 
   # The GBA run builds every emulator its tests open. Its reader's tests play a Super Nintendo
-  # cartridge in bsnes and a PlayStation program in Beetle PSX (test/lowering/gba/), so in a
-  # checkout that never built those, a run that did not build them first failed those tests.
+  # cartridge in bsnes, a Genesis cartridge in Genesis Plus GX and a PlayStation program in Beetle PSX
+  # (test/lowering/gba/), so in a checkout that never built those, a run that did not build them
+  # first failed those tests.
   def test_the_gba_run_builds_each_emulator_its_tests_play
-    assert_equal %w[compile_emulator compile_ps1_core compile_snes_core],
+    assert_equal %w[compile_emulator compile_genesis_core compile_ps1_core compile_snes_core],
                  prerequisites("test:lowering:gba").grep(/\Acompile_/).sort
   end
 
