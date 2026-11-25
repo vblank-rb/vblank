@@ -18,6 +18,11 @@ class TestSNESSetCellCost < Minitest::Test
   DOWN = 14
   TOLD = 80
   WRITES = 12
+  # The column each round writes, along the top row. Out of order, so the rounds differ in more than
+  # numbers stepping evenly and the build writes every round out in both games
+  # (DSL::PlainRuby::Counts::KnownRounds), as a game writing a dozen cells in a burst does: the two
+  # games then differ in how the cell is written and nothing else.
+  COLUMNS = [3, 0, 7, 1, 10, 4, 11, 2, 8, 5, 9, 6].freeze
   # The told cells are at tiles 0, 2, 4 ... of video memory: a cell at tile t is t, t + 1, t + 16
   # and t + 17. Tile 17 takes turns in the games that say so: the bottom right quarter of cell 0
   # and the top right of cell 8, which the map shows and the game writes.
@@ -118,9 +123,9 @@ class TestSNESSetCellCost < Minitest::Test
           # Both games work the word out, so the two differ only in how the cell is written.
           word = told.first + (((pass + (at * 7)) % TOLD) * 2)
           if worked_out
-            arena.set_cell at % ACROSS, at / ACROSS, word
+            arena.set_cell COLUMNS[at], 0, word
           else
-            arena.set_cell at % ACROSS, at / ACROSS, told[(at * 7) % TOLD]
+            arena.set_cell COLUMNS[at], 0, told[(at * 7) % TOLD]
           end
         end
       end
