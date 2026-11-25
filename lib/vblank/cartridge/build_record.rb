@@ -87,8 +87,9 @@ module VBlank
     # running cartridge be asked which picture a sprite shows, as the interpreter names it.
     # +sprite_pose_choices+ is where those two cannot give one answer, keyed as they are: two
     # poses trimmed to the same stored tiles at different places on their canvas hold the same
-    # row, moved by different distances, so the row cannot say which it is. Each such key lists
-    # the poses it could be, a PoseChoice each, and is left out of neither of the other two.
+    # row, moved by different distances, so the row cannot say which it is. Each such place is a
+    # PoseChoices: the poses each such key could be, a PoseChoice each, and where the game keeps
+    # the pose it picked, which is what tells them apart. Neither of the other two leaves the key out.
     # +streamed_sprite_pose_vars+ is the exception to that keying, and it exists because a sprite with
     # more pictures than sprite memory holds keeps one of them there at a time — so every pose of
     # it goes into the same place, and the place stops telling the poses apart. Such a sprite's
@@ -216,9 +217,21 @@ module VBlank
       SpriteTurn = Data.define(:at, :value, :name, :offsets, :pose_var, :pictures, :choices)
 
       # One of the poses a row could be holding where several share what the row holds (see
-      # +sprite_pose_choices+): the +picture+ it names, nil past a sprite's first place, and
-      # how far along the build moved it, +dx+ and +dy+.
-      PoseChoice = Data.define(:picture, :dx, :dy)
+      # +sprite_pose_choices+): the +picture+ it names, nil past a sprite's first place, its
+      # number among the sprite's poses, +pose+, and how far along the build moved it, +dx+
+      # and +dy+.
+      PoseChoice = Data.define(:picture, :pose, :dx, :dy)
+
+      # One place's keys that several poses share (see +sprite_pose_choices+): +keys+ gives the
+      # PoseChoices for each, and +pose_from+ is the PoseSource the game keeps the number of the
+      # pose it picked in, or nil where the pose is worked out from more than one number.
+      PoseChoices = Data.define(:pose_from, :keys)
+
+      # Where a game keeps the number of a sprite's pose: the variable +name+, or with a +slot+,
+      # that slot of the list +name+ (a pool's thing reads its own slot of the copy the pool
+      # makes). +written_with_rows+ is true where the cartridge writes it in the gap the rows are
+      # written in, as a pool's copy is, and false where the game writes it during a pass.
+      PoseSource = Data.define(:name, :slot, :written_with_rows)
 
       # One run of the sprite table drawn in an order the game works out: +order+ is the address
       # of its order, and +homes+ is each of its sprites' own first place and how many places it

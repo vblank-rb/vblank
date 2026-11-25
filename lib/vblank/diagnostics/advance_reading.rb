@@ -461,7 +461,7 @@ module VBlank
           key = pose_key(row, rooms, home)
           dx, dy = moved.dig(home, key) || [0, 0]
           shown = pictures.dig(home, key)
-          either = choices.dig(home, key)
+          either = choices[home]
           # A place several scenes' sprites take turns at is the sprite of the scene the table
           # was last written for.
           if (turn = turns.fetch(home, []).find { |each_turn| var_at(each_turn.at) == each_turn.value })
@@ -469,9 +469,17 @@ module VBlank
             key = turn_pose_key(row, turn)
             dx, dy = turn.offsets[key] || [0, 0]
             shown = turn.pictures[key]
-            either = turn.choices[key]
+            either = turn.choices
           end
-          next ambiguous_sprite_row(row, name, either, shown, table) if either
+          if (sharing = either&.keys&.[](key))
+            picked = pose_picked_for_row(either.pose_from)
+            choice = sharing.find { |each_choice| each_choice.pose == picked }
+            next ambiguous_sprite_row(row, name, sharing, shown, table) unless choice
+
+            dx = choice.dx
+            dy = choice.dy
+            shown &&= choice.picture
+          end
 
           # Back into the ranges the console keeps these in, so a sprite half off the left edge
           # reads the way its own place reads rather than going negative.
@@ -485,7 +493,7 @@ module VBlank
       # +x+ or +y+, since each pose puts the canvas somewhere else, and on a sprite's first place
       # an AmbiguousPicture giving each reading, where the row would otherwise have named one.
       def ambiguous_sprite_row(row, name, choices, shown, table)
-        picture = shown && AmbiguousPicture.new(candidates: choices.map do |choice|
+        picture = shown && AmbiguousPicture.new(candidates: choices.uniq { |choice| [choice.dx, choice.dy] }.map do |choice|
           PictureCandidate.new(picture: choice.picture, x: (row[:x] - choice.dx) & 0x1FF, y: (row[:y] - choice.dy) & 0xFF)
         end)
         SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y], picture: picture, x: nil, y: nil,
@@ -571,6 +579,56 @@ module VBlank
         return pose unless pose == ROOM_EMPTY && @poses_copied
 
         @poses_copied.fetch(address, pose)
+      end
+
+      # The pose the game had picked, kept where +source+ says (a BuildRecord::PoseSource), when
+      # the row being read was written, or nil where nothing says (no source, or no reading of it
+      # a frame ago).
+      #
+      # ### Why it is the frame before's
+      #
+      # The cartridge writes the sprites' rows in the gap after each frame, from the variables as
+      # they stand then, and a frame is read as that gap begins. So the rows read now were written
+      # in the gap before this frame, from what the variable held as the frame before was read,
+      # and the game may have picked another pose since. The reader keeps that reading for this
+      # (#keep_picked_poses), playing a frame at a time to have it. A number the cartridge itself
+      # writes in that gap, with the rows (a pool's copy), is read as it stands.
+      def pose_picked_for_row(source)
+        return nil if source.nil?
+        return pose_kept_at(source, {}) if source.written_with_rows
+
+        @picked_poses&.dig(@played - 1, source)
+      end
+
+      # The number +source+ holds now, +lists+ keeping each list read once.
+      def pose_kept_at(source, lists)
+        return raw_var(source.name) if source.slot.nil?
+
+        (lists[source.name] ||= list_items(source.name))&.[](source.slot)
+      end
+
+      # Where the game keeps the pose it picked during a pass, for each sprite whose poses its row
+      # cannot tell apart (BuildRecord#sprite_pose_choices): the numbers read as each frame ends.
+      def pose_sources
+        @pose_sources ||= begin
+          record = @rom.built
+          places = record ? (record.sprite_pose_choices || {}).values : []
+          turns = record ? (record.sprite_turns || {}).values.flatten.filter_map(&:choices) : []
+          (places + turns).filter_map(&:pose_from).uniq.reject(&:written_with_rows)
+        end
+      end
+
+      def picks_poses_each_frame? = !pose_sources.empty?
+
+      # Read each pose a sprite's row needs (#pose_picked_for_row) as this frame ends, keeping
+      # this frame's and the one before.
+      def keep_picked_poses
+        return unless picks_poses_each_frame?
+
+        lists = {}
+        @picked_poses ||= {}
+        @picked_poses[@played] = pose_sources.to_h { |source| [source, pose_kept_at(source, lists)] }
+        @picked_poses.delete_if { |frame, _| frame < @played - 1 }
       end
 
       # What the cartridge writes to a room's pose when nothing is in it, read back as a number.

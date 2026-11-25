@@ -768,7 +768,7 @@ module VBlank
             each_built_sprite.each_with_object({}) do |(node, sprite), choices|
               sprite.pieces.times do |piece|
                 found = pose_choices(node, sprite, piece)
-                choices[sprite.slot + piece] = found unless found.empty?
+                choices[sprite.slot + piece] = found if found
               end
             end
           end
@@ -788,7 +788,8 @@ module VBlank
               sprite.pieces.times do |piece|
                 (turns[sprite.slot + piece] ||= []) << VBlank::Cartridge::BuildRecord::SpriteTurn.new(
                   at: at, value: value, name: node.declared, offsets: pose_offsets(sprite, piece), pose_var: pose_var,
-                  pictures: piece.zero? ? pose_pictures(node, sprite) : {}, choices: pose_choices(node, sprite, piece)
+                  pictures: piece.zero? ? pose_pictures(node, sprite) : {},
+                  choices: pose_choices(node, sprite, piece)
                 )
               end
             end
@@ -3365,8 +3366,9 @@ module VBlank
             end
           end
 
-          # One piece's keys (#pose_key) that poses moved different distances share, each with a
-          # PoseChoice for every distance, the first pose at it naming it on the first piece.
+          # One piece's keys (#pose_key) that poses moved different distances share, as a
+          # PoseChoices holding a PoseChoice for every pose at each and where the game keeps the
+          # pose it picked (#pose_source), which is what tells them apart; nil where it has none.
           #
           # Poses are stored once for each different picture after trimming, so two pictures that
           # are the same block at different places on their canvas keep one copy, and the row
@@ -3374,17 +3376,33 @@ module VBlank
           # the sprite's place added to the distance, and a row read back holds the sum.
           def pose_choices(node, sprite, piece)
             words = sprite.pose_words&.slice(piece * sprite.pose_count, sprite.pose_count)
-            return {} if words.nil? || sprite.frames
+            return nil if words.nil? || sprite.frames
 
             poses = (0...sprite.pose_count).group_by { |pose| pose_key(sprite, pose, words.fetch(pose)) }
-            poses.each_with_object({}) do |(key, sharing), choices|
-              placed = sharing.uniq { |pose| decode_pose_offset(words.fetch(pose)) }
-              next if placed.size < 2
+            keys = poses.each_with_object({}) do |(key, sharing), choices|
+              next if sharing.uniq { |pose| decode_pose_offset(words.fetch(pose)) }.size < 2
 
-              choices[key] = placed.map do |pose|
+              choices[key] = sharing.map do |pose|
                 dx, dy = decode_pose_offset(words.fetch(pose))
-                VBlank::Cartridge::BuildRecord::PoseChoice.new(picture: piece.zero? ? node.poses.fetch(pose) : nil, dx: dx, dy: dy)
+                VBlank::Cartridge::BuildRecord::PoseChoice.new(picture: piece.zero? ? node.poses.fetch(pose) : nil,
+                                                               pose: pose, dx: dx, dy: dy)
               end
+            end
+            return nil if keys.empty?
+
+            VBlank::Cartridge::BuildRecord::PoseChoices.new(pose_from: pose_source(node.pose), keys: keys)
+          end
+
+          # Where the game keeps the number of the pose +pose+ picks, as a PoseSource: a
+          # variable, or a slot of a list at a fixed place, which is how a pool's thing reads its
+          # own slot of the copy the pool makes in the gap before each frame is drawn
+          # (DSL::Pool#stacking_routine). nil for a pose worked out from more than one number.
+          def pose_source(pose)
+            source = VBlank::Cartridge::BuildRecord::PoseSource
+            case pose.kind
+            when :var_ref then source.new(name: pose.name, slot: nil, written_with_rows: false)
+            when :list_get
+              source.new(name: pose.name, slot: pose.index.value, written_with_rows: true) if pose.index.kind == :int
             end
           end
 

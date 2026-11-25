@@ -67,10 +67,32 @@ class TestSpritePictures < Minitest::Test
 
   # Two pictures that are the same block at places a tile apart on their canvas are trimmed to
   # the same stored tiles, so the console draws either one from the same row, a tile further
-  # along for the second. The row alone cannot say which picture it is, or where the canvas
-  # starts, so the reader gives both readings rather than one of them.
-  def test_two_pictures_stored_as_one_are_read_as_either
-    reader = VBlank::Diagnostics::Verifier.new(twin_pictures_game, frames: 2)
+  # along for the second. The row alone cannot say which, but the number the pose is picked by
+  # can, as it stood when the row was drawn: the one the game picks with, or the walk's.
+  def test_two_pictures_stored_as_one_are_told_apart_by_the_pose_picked
+    %i[face walk].each do |picked|
+      built = twin_pictures_game(picked)
+      want = (1..8).map do |frame|
+        [frame, VBlank::IR::Backends::Reference.new.run(built.source_program, frames: frame).sprites(:hero)]
+      end
+
+      assert_equal want, cartridge(built, :hero).first(8), picked
+      assert_equal %i[far near], want.flat_map { |_, rows| rows.map(&:picture) }.uniq.sort, "#{picked} shows both"
+    end
+  end
+
+  # ...and a reader stepped several frames at once tells them apart too.
+  def test_two_pictures_stored_as_one_are_told_apart_after_a_long_step
+    reader = VBlank::Diagnostics::Verifier.new(twin_pictures_game(:face), frames: 6)
+    row = reader.sprites(:hero).first
+
+    assert_equal [:far, 40, 40], [row.picture, row.x, row.y]
+  end
+
+  # A pose worked out from two numbers, a facing and a step of its walk, leaves nothing to tell
+  # the two apart, so the reader gives both readings rather than one.
+  def test_two_pictures_stored_as_one_are_read_as_either_when_nothing_tells
+    reader = VBlank::Diagnostics::Verifier.new(twin_pictures_game(:facing_walk), frames: 3)
     row = reader.sprites(:hero).first
     candidate = VBlank::Diagnostics::PictureCandidate
 
@@ -82,7 +104,8 @@ class TestSpritePictures < Minitest::Test
     assert_equal 40, row.piece_x, "the console's own number is still read"
   end
 
-  private def twin_pictures_game
+  # The hero shows :near and then :far, picked as +picked+ says.
+  private def twin_pictures_game(picked)
     near = lopsided(0, 0)
     far = lopsided(8, 0)
     clear = CLEAR
@@ -90,8 +113,21 @@ class TestSpritePictures < Minitest::Test
       screen :tiled
       image :near, width: CANVAS, height: CANVAS, data: near, transparent: clear
       image :far, width: CANVAS, height: CANVAS, data: far, transparent: clear
-      sprite :hero, at: [40, 40], facing: { near: :near, far: :far }
-      game_loop {}
+      pass = 0
+      case picked
+      when :face
+        hero = sprite :hero, at: [40, 40], facing: { near: :near, far: :far }
+        game_loop do
+          pass += 1
+          hero.face :far if pass == 2
+        end
+      when :walk
+        sprite :hero, at: [40, 40], frames: %i[near far], rate: 3
+        game_loop {}
+      else
+        sprite :hero, at: [40, 40], facing: { both: %i[near far] }, rate: 3
+        game_loop {}
+      end
     end
   end
 

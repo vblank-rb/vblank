@@ -1327,12 +1327,13 @@ module VBlank
       def play(count, holding: nil)
         return unless count.positive?
 
-        one_at_a_time = (holding || @keys).respond_to?(:call) || @sprite_frames
+        one_at_a_time = (holding || @keys).respond_to?(:call) || @sprite_frames || picks_poses_each_frame?
         (one_at_a_time ? Array.new(count, 1) : frames_in_steps(count)).each do |frames|
           @probe.step(frames, keys: keys_for(@played, holding: holding))
           @sound.keep(@probe.audio_by_frame)
           @played += frames
           keep_sprite_frame if @sprite_frames
+          keep_picked_poses
         end
         take_sound_writes if @sound_writes_seen
         # The picture is read from the emulator only when something asks for it (#picture): a
@@ -1347,6 +1348,12 @@ module VBlank
       # not show. A console whose cartridges keep such a count says it in its own reading
       # (AdvanceReading#warn_of_losses); the rest lose nothing they count.
       def warn_of_losses = nil
+
+      # Whether this cartridge's sprites need what the game picked read after every frame, and
+      # the reading of it (AdvanceReading#keep_picked_poses). A console whose cartridges never
+      # need it reads nothing.
+      def picks_poses_each_frame? = false
+      def keep_picked_poses = nil
 
       # The picture is the size the console draws, which the emulator knows: from the cartridge on the
       # Advance and the Color, and from the mode the program set its graphics chip to on the
