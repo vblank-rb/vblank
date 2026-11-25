@@ -65,6 +65,36 @@ class TestSpritePictures < Minitest::Test
     end
   end
 
+  # Two pictures that are the same block at places a tile apart on their canvas are trimmed to
+  # the same stored tiles, so the console draws either one from the same row, a tile further
+  # along for the second. The row alone cannot say which picture it is, or where the canvas
+  # starts, so the reader gives both readings rather than one of them.
+  def test_two_pictures_stored_as_one_are_read_as_either
+    reader = VBlank::Diagnostics::Verifier.new(twin_pictures_game, frames: 2)
+    row = reader.sprites(:hero).first
+    candidate = VBlank::Diagnostics::PictureCandidate
+
+    assert_equal VBlank::Diagnostics::AmbiguousPicture.new(
+      candidates: [candidate.new(picture: :near, x: 40, y: 40), candidate.new(picture: :far, x: 32, y: 40)]
+    ), row.picture
+    assert_nil row.x, "the canvas could start at either place"
+    assert_nil row.y
+    assert_equal 40, row.piece_x, "the console's own number is still read"
+  end
+
+  private def twin_pictures_game
+    near = lopsided(0, 0)
+    far = lopsided(8, 0)
+    clear = CLEAR
+    VBlank.build("TWINPICTURES", console: console, out: nil, err: nil) do
+      screen :tiled
+      image :near, width: CANVAS, height: CANVAS, data: near, transparent: clear
+      image :far, width: CANVAS, height: CANVAS, data: far, transparent: clear
+      sprite :hero, at: [40, 40], facing: { near: :near, far: :far }
+      game_loop {}
+    end
+  end
+
   def test_a_cartridge_file_has_no_names
     Dir.mktmpdir do |dir|
       path = File.join(dir, "game.gba")

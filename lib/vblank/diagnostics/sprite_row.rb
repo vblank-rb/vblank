@@ -19,7 +19,8 @@ module VBlank
     # +size+, the three about being drawn backwards or turned — are the console's own entry.
     # +picture+ is the one of the sprite's pictures it is showing, by the name the game gave it
     # (a mirrored one by the name `mirror` gave back), as the interpreter's row names it: on the
-    # first row of a picture cut into pieces, nil on the others and on a row nobody named.
+    # first row of a picture cut into pieces, nil on the others and on a row nobody named. A row
+    # that could be either of two pictures has an AmbiguousPicture there and nil +x+ and +y+.
     #
     # Why it is a type rather than a hash, which is what it was. Sixteen fields in a plain Hash
     # means a key that is not one of them reads back as nothing at all, so a test asserting on a
@@ -34,6 +35,18 @@ module VBlank
     SpriteRow = Data.define(:name, :x, :y, :slot, :tile, :palette, :color_count, :colors,
                             :priority, :shape, :size, :mirrored_across, :mirrored_down,
                             :turned, :piece_x, :piece_y, :picture)
+
+    # The +picture+ of a row that could be any of several pictures, with where each would put
+    # the canvas. Two of a sprite's pictures trimmed to the same stored tiles at different places
+    # on their canvas are drawn from the same row, one standing further along than the other, so
+    # the row holds the same tiles either way and only where the sprite stands says which: a
+    # number the console's table does not keep. Such a row's +x+ and +y+ are nil, since the
+    # canvas starts at a different place for each reading.
+    AmbiguousPicture = Data.define(:candidates)
+
+    # One reading of an AmbiguousPicture: the +picture+, by the name the game gave it, and the
+    # +x+ and +y+ the canvas starts at if it is that one.
+    PictureCandidate = Data.define(:picture, :x, :y)
 
     # One sprite the reference interpreter drew, which is the oracle's half of the same question
     # (see IR::Backends::Reference#sprites).

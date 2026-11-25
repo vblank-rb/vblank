@@ -761,6 +761,18 @@ module VBlank
             end
           end
 
+          # The keys of #sprite_offsets that more than one pose answers to at different distances,
+          # each with the poses it could be (see Cartridge::BuildRecord#sprite_pose_choices). Keyed
+          # as #sprite_offsets is; a place with no such key is left out.
+          def sprite_pose_choices
+            each_built_sprite.each_with_object({}) do |(node, sprite), choices|
+              sprite.pieces.times do |piece|
+                found = pose_choices(node, sprite, piece)
+                choices[sprite.slot + piece] = found unless found.empty?
+              end
+            end
+          end
+
           # Which sprite is in a place sprites of several scenes take turns at (see
           # Cartridge::BuildRecord#sprite_turns). The block gives the address of what the
           # variable picking the scenes held when the table was last written for a change of
@@ -776,7 +788,7 @@ module VBlank
               sprite.pieces.times do |piece|
                 (turns[sprite.slot + piece] ||= []) << VBlank::Cartridge::BuildRecord::SpriteTurn.new(
                   at: at, value: value, name: node.declared, offsets: pose_offsets(sprite, piece), pose_var: pose_var,
-                  pictures: piece.zero? ? pose_pictures(node, sprite) : {}
+                  pictures: piece.zero? ? pose_pictures(node, sprite) : {}, choices: pose_choices(node, sprite, piece)
                 )
               end
             end
@@ -3350,6 +3362,29 @@ module VBlank
             (0...sprite.pose_count).to_h do |pose|
               word = words&.at(pose)
               [pose_key(sprite, pose, word), word ? decode_pose_offset(word) : alike]
+            end
+          end
+
+          # One piece's keys (#pose_key) that poses moved different distances share, each with a
+          # PoseChoice for every distance, the first pose at it naming it on the first piece.
+          #
+          # Poses are stored once for each different picture after trimming, so two pictures that
+          # are the same block at different places on their canvas keep one copy, and the row
+          # holds the same tiles for both: only how far along the sprite stands differs, which is
+          # the sprite's place added to the distance, and a row read back holds the sum.
+          def pose_choices(node, sprite, piece)
+            words = sprite.pose_words&.slice(piece * sprite.pose_count, sprite.pose_count)
+            return {} if words.nil? || sprite.frames
+
+            poses = (0...sprite.pose_count).group_by { |pose| pose_key(sprite, pose, words.fetch(pose)) }
+            poses.each_with_object({}) do |(key, sharing), choices|
+              placed = sharing.uniq { |pose| decode_pose_offset(words.fetch(pose)) }
+              next if placed.size < 2
+
+              choices[key] = placed.map do |pose|
+                dx, dy = decode_pose_offset(words.fetch(pose))
+                VBlank::Cartridge::BuildRecord::PoseChoice.new(picture: piece.zero? ? node.poses.fetch(pose) : nil, dx: dx, dy: dy)
+              end
             end
           end
 

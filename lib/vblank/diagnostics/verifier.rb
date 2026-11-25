@@ -855,7 +855,9 @@ module VBlank
       # +n+ + 1 frames. A pass that takes several frames is read once, on the first frame after it.
       # A sprite is one row however many pieces the console draws it in, and +x+ and +y+ are as
       # #sprites reads them, in the ranges the console keeps them in. The rows are in the order
-      # the console holds them, which need not be the interpreter's: compare them as a set.
+      # the console holds them, which need not be the interpreter's: compare them as a set. A row
+      # the console's table cannot tell between two pictures has an AmbiguousPicture and no +x+
+      # or +y+ (see SpriteRow).
       #
       # @param name [Symbol, nil] keep only this declared sprite's rows; nil for every row
       # @return [Array<SpritesFrame>]

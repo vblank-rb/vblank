@@ -437,6 +437,7 @@ module VBlank
         end
         moved = @rom.built.sprite_offsets
         pictures = @rom.built.sprite_pictures
+        choices = @rom.built.sprite_pose_choices || {}
         rooms = @rom.built.streamed_sprite_pose_vars
         # A run drawn in an order the game works out moves its sprites' rows about, so a row is
         # taken back to the sprite's own place before anything is looked up by place.
@@ -460,6 +461,7 @@ module VBlank
           key = pose_key(row, rooms, home)
           dx, dy = moved.dig(home, key) || [0, 0]
           shown = pictures.dig(home, key)
+          either = choices.dig(home, key)
           # A place several scenes' sprites take turns at is the sprite of the scene the table
           # was last written for.
           if (turn = turns.fetch(home, []).find { |each_turn| var_at(each_turn.at) == each_turn.value })
@@ -467,13 +469,27 @@ module VBlank
             key = turn_pose_key(row, turn)
             dx, dy = turn.offsets[key] || [0, 0]
             shown = turn.pictures[key]
+            either = turn.choices[key]
           end
+          next ambiguous_sprite_row(row, name, either, shown, table) if either
+
           # Back into the ranges the console keeps these in, so a sprite half off the left edge
           # reads the way its own place reads rather than going negative.
           SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y], picture: shown,
                         x: (row[:x] - dx) & 0x1FF, y: (row[:y] - dy) & 0xFF,
                         colors: colors_drawn_from(row, table))
         end
+      end
+
+      # A row that could be holding any of several poses (BuildRecord#sprite_pose_choices): no
+      # +x+ or +y+, since each pose puts the canvas somewhere else, and on a sprite's first place
+      # an AmbiguousPicture giving each reading, where the row would otherwise have named one.
+      def ambiguous_sprite_row(row, name, choices, shown, table)
+        picture = shown && AmbiguousPicture.new(candidates: choices.map do |choice|
+          PictureCandidate.new(picture: choice.picture, x: (row[:x] - choice.dx) & 0x1FF, y: (row[:y] - choice.dy) & 0xFF)
+        end)
+        SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y], picture: picture, x: nil, y: nil,
+                      colors: colors_drawn_from(row, table))
       end
 
       # How many of the console's first sprite rows a game shown in a border keeps for the border,
