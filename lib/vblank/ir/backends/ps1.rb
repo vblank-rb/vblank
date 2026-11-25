@@ -77,6 +77,9 @@ module VBlank
         # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :slot_places) do
+          # How many bytes each of the game's routines takes, biggest first.
+          def routine_sizes = RoutineSize.summed(routines)
+
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
