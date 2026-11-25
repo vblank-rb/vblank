@@ -319,14 +319,14 @@ module VBlank
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil, straight_tile_runs: false,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
                      math_turns: false, scene_bars: false, held_runs: {}, third_layer: false, held_hides_sprites: false,
-                     sprites_over_picture: false)
+                     sprites_over_picture: false, cells_dropped: false)
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns, third_layer,
                          sprites_over_picture: sprites_over_picture)
               emit_see_through_math(asm, memory) if math_turns
               emit_scene_tiles_noted(asm, memory) if memory.reserved?(SCENE_TILES)
               emit_scene_background_tiles_noted(asm, memory) if memory.reserved?(SCENE_BACKGROUND_TILES)
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
-              emit_backgrounds(asm, memory, work, third_layer)
+              emit_backgrounds(asm, memory, work, third_layer, cells_dropped)
               emit_bar(asm, memory, scene_bars: scene_bars) if bar
               emit_bends_prepare(asm, memory, work, bent, banded) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
@@ -894,7 +894,7 @@ module VBlank
             # (the table "art grids") copied onto +layer+ in the next blank, and with +from_corner+
             # its view at the corner. rt_background_scroll(layer, x, y). rt_set_cell(layer, column,
             # row, word): one cell of the layer's map, in the next blank.
-            def emit_backgrounds(asm, memory, work, third_layer = false)
+            def emit_backgrounds(asm, memory, work, third_layer = false, cells_dropped = false)
               r = ->(n) { Memory.register(n) }
               layers = memory[LAYERS]
 
@@ -929,6 +929,8 @@ module VBlank
               asm.stz(asm.abs_x(layers + LAYER_SCROLL_Y))
               asm.label("rt_background_put_up_done")
               asm.rtl
+
+              emit_cells_drop(asm, memory, r) if cells_dropped
 
               asm.label("rt_background_scroll")
               asm.jsr(asm.abs("rt_layer_state"))
@@ -1008,6 +1010,56 @@ module VBlank
               asm.lda(asm.direct(r.call(3)))
               asm.sta(memory.indexed(asm, CELL_ENTRIES, 2))
               asm.inc(asm.abs(memory[CELLS]))
+              asm.rtl
+            end
+
+            # rt_cells_drop(map_start): every cell of the layer whose map starts at video RAM word
+            # +map_start+ (a map is at most 0x1000 words) taken out of the queue, the rest kept in their
+            # order. A map handed to a background replaces the cells the pass changed on it
+            # (Reference#exec_show_map), and the blank copies the queue after the map.
+            def emit_cells_drop(asm, memory, r)
+              asm.label("rt_cells_drop")
+              asm.lda(asm.abs(memory[CELLS]))
+              asm.asl
+              asm.asl
+              asm.sta(asm.direct(r.call(3))) # the end of the queue, in bytes
+              asm.stz(asm.direct(r.call(1))) # where the entry looked at is
+              asm.stz(asm.direct(r.call(2))) # where the next entry kept goes
+              asm.label("rt_cells_drop_next")
+              asm.lda(asm.direct(r.call(1)))
+              asm.cmp(asm.direct(r.call(3)))
+              asm.bcs("rt_cells_drop_done")
+              asm.tax
+              asm.lda(memory.indexed(asm, CELL_ENTRIES))
+              asm.sec
+              asm.sbc(asm.direct(r.call(0)))
+              asm.cmp(0x1000)
+              asm.bcc("rt_cells_drop_past") # in the layer's map
+              asm.lda(memory.indexed(asm, CELL_ENTRIES))
+              asm.pha
+              asm.lda(memory.indexed(asm, CELL_ENTRIES, 2))
+              asm.pha
+              asm.lda(asm.direct(r.call(2)))
+              asm.tax
+              asm.pla
+              asm.sta(memory.indexed(asm, CELL_ENTRIES, 2))
+              asm.pla
+              asm.sta(memory.indexed(asm, CELL_ENTRIES))
+              asm.lda(asm.direct(r.call(2)))
+              asm.clc
+              asm.adc(4)
+              asm.sta(asm.direct(r.call(2)))
+              asm.label("rt_cells_drop_past")
+              asm.lda(asm.direct(r.call(1)))
+              asm.clc
+              asm.adc(4)
+              asm.sta(asm.direct(r.call(1)))
+              asm.bra("rt_cells_drop_next")
+              asm.label("rt_cells_drop_done")
+              asm.lda(asm.direct(r.call(2)))
+              asm.lsr
+              asm.lsr
+              asm.sta(asm.abs(memory[CELLS]))
               asm.rtl
             end
 

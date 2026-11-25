@@ -115,6 +115,7 @@ module VBlank
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
+                                      cells_dropped: lowered[:cells_dropped],
                                       held_hides_sprites: c.held_hides_sprites, sprites_over_picture: c.sprites_over_picture)
             BackgroundBox.emit(asm, memory, s.picture) if c.boxes
             if c.doubled
@@ -204,7 +205,7 @@ module VBlank
               bent: lowering.bent_layers, banded: lowering.bends_by_bands?, see_through: lowering.see_through_layers,
               big_tiles: lowering.big_tile_layers, recorded_parts: carries.songs && lowering.recorded_parts?,
               colors_shown: lowering.colors_shown, sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
-              sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars? }
+              sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars?, cells_dropped: lowering.cells_dropped? }
           end
 
           def emit_sound_routines(asm, memory, carries, lowered, counted: false)

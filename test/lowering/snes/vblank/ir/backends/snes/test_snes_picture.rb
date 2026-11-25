@@ -222,6 +222,36 @@ class TestSNESPicture < Minitest::Test
     end
   end
 
+  # A map handed to a background in a pass replaces every cell changed on it in the same pass, as
+  # the interpreter has it: a background's show_map is done at the frame's end, after the pass's
+  # set_tile steps (IR::Frames::PLACED_AT_BOUNDARY). The cells set after it show as the new map's
+  # walls, where the cartridge once showed them as gems.
+  def test_cells_set_after_a_map_change_in_the_same_pass_follow_the_interpreter
+    [1, 24].each do |count|
+      program = program_of do
+        screen :tiled
+        image(:wall, "#" => :gray) { "########\n" * 8 }
+        image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+        tiles :set, "#" => :wall, "g" => :gem
+        background :far, tiles: :set, map: "#{'#' * 64}\n" * 11
+        room = background :room, tiles: :set, map: { gems: "#{'g' * 32}\n" * 11, walls: "#{'#' * 32}\n" * 11 }
+        i = 0
+        game_loop do
+          if pressed(:a)
+            room.show_map 1
+            i = 0
+            repeat(count) do
+              room.set_tile i % 24, i / 24, "g"
+              i += 1
+            end
+          end
+        end
+      end
+
+      SNES::CheckedRun.new.input_each_frame { |frame| frame == 3 ? [:a] : [] }.run(program, frames: 8)
+    end
+  end
+
   # The game: on A, a map 64 cells across and +rows+ down onto the background behind, then a full
   # queue of cells on the one in front.
   private def cells_behind_map(rows)

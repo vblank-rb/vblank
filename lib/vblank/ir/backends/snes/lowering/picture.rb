@@ -1667,6 +1667,9 @@ module VBlank
             # scene takes over (Runtime::Picture's rt_bar_gone).
             public def scene_bars? = @scene_bars
 
+            # Whether a map handed over takes the cells queued for its background out (rt_cells_drop).
+            public def cells_dropped? = @cells_dropped || false
+
             # A grid of nothing, put up on a layer to take down what was there.
             def empty_grid = @empty_grid ||= @art.grid(Array.new(32) { Array.new(32) }, 32, 32)
 
@@ -2458,6 +2461,17 @@ module VBlank
             # where it was.
             def emit_show_map(node) = for_background(node) { |bg| emit_show_map_on(node, bg) }
 
+            # A background's map handed over replaces the cells the game changed on it in the same pass
+            # (Reference#exec_show_map keeps no cell changed before it), so the cells queued for the
+            # blank to copy after the map are taken out. A status bar's map is not replaced so: it
+            # happens where the game says it, and a cell set after it shows over it.
+            def drop_queued_cells(bg)
+              return if bg.bar?
+
+              @cells_dropped = true
+              runtime_call("rt_cells_drop", [Build.int(Runtime::Picture.cell_address(layer_of(bg), 0, 0, third_layer: @third_layer))])
+            end
+
             def emit_show_map_on(node, bg)
               which = keep_local(:map)
               value(node.which)
@@ -2468,6 +2482,7 @@ module VBlank
                 jump_unless(Build.binop(:==, Build.var_ref(which), Build.int(number)), other)
                 emit_area_up(bg, area_key(bg, bg.map_sets.fetch(number))) if bg.several_sets?
                 runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, number).number), Build.int(0)])
+                drop_queued_cells(bg)
                 @asm.brl(done)
                 @asm.label(other)
               end
