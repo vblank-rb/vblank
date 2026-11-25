@@ -2464,9 +2464,11 @@ module VBlank
             # A background's map handed over replaces the cells the game changed on it in the same pass
             # (Reference#exec_show_map keeps no cell changed before it), so the cells queued for the
             # blank to copy after the map are taken out. A status bar's map is not replaced so: it
-            # happens where the game says it, and a cell set after it shows over it.
+            # happens where the game says it, and a cell set after it shows over it. A background no
+            # line sets a cell of has none queued, so its map change calls nothing. The cells of other
+            # layers stay (Runtime::Picture#emit_cells_drop).
             def drop_queued_cells(bg)
-              return if bg.bar?
+              return if bg.bar? || !@set_tiles_by_name.key?(bg.name)
 
               @cells_dropped = true
               runtime_call("rt_cells_drop", [Build.int(Runtime::Picture.cell_address(layer_of(bg), 0, 0, third_layer: @third_layer))])

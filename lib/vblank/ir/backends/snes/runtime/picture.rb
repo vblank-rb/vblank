@@ -930,7 +930,7 @@ module VBlank
               asm.label("rt_background_put_up_done")
               asm.rtl
 
-              emit_cells_drop(asm, memory, r) if cells_dropped
+              emit_cells_drop(asm, memory, r, third_layer) if cells_dropped
 
               asm.label("rt_background_scroll")
               asm.jsr(asm.abs("rt_layer_state"))
@@ -1014,11 +1014,23 @@ module VBlank
             end
 
             # rt_cells_drop(map_start): every cell of the layer whose map starts at video RAM word
-            # +map_start+ (a map is at most 0x1000 words) taken out of the queue, the rest kept in their
-            # order. A map handed to a background replaces the cells the pass changed on it
-            # (Reference#exec_show_map), and the blank copies the queue after the map.
-            def emit_cells_drop(asm, memory, r)
+            # +map_start+ taken out of the queue, the rest kept in their order. A map handed to a
+            # background replaces the cells the pass changed on it (Reference#exec_show_map), and the
+            # blank copies the queue after the map. A map of the first two layers is at most 0x1000
+            # words; the third layer's is one screen, 0x400, and the first layer's map starts right
+            # after it, so its cells are told apart by that smaller size.
+            def emit_cells_drop(asm, memory, r, third_layer)
               asm.label("rt_cells_drop")
+              if third_layer
+                asm.lda(0x1000)
+                asm.sta(asm.direct(r.call(4))) # how many words of video RAM the map holds
+                asm.lda(asm.direct(r.call(0)))
+                asm.cmp(THIRD_LAYER_MAP)
+                asm.bne("rt_cells_drop_sized")
+                asm.lda(LAYER_MAPS[0] - THIRD_LAYER_MAP)
+                asm.sta(asm.direct(r.call(4)))
+                asm.label("rt_cells_drop_sized")
+              end
               asm.lda(asm.abs(memory[CELLS]))
               asm.asl
               asm.asl
@@ -1033,7 +1045,7 @@ module VBlank
               asm.lda(memory.indexed(asm, CELL_ENTRIES))
               asm.sec
               asm.sbc(asm.direct(r.call(0)))
-              asm.cmp(0x1000)
+              asm.cmp(third_layer ? asm.direct(r.call(4)) : 0x1000)
               asm.bcc("rt_cells_drop_past") # in the layer's map
               asm.lda(memory.indexed(asm, CELL_ENTRIES))
               asm.pha

@@ -252,6 +252,31 @@ class TestSNESPicture < Minitest::Test
     end
   end
 
+  # A background held above a row goes on the third layer, whose map sits just before the first
+  # layer's. Its map change drops its own cells and keeps the cells set on the other two.
+  def test_a_map_change_on_the_third_layer_keeps_the_other_layers_cells
+    program = program_of do
+      screen :tiled
+      image(:wall, "#" => :gray) { "########\n" * 8 }
+      image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+      tiles :set, "#" => :wall, "g" => :gem
+      room = background :room, tiles: :set, map: Array.new(32) { "#" * 32 }
+      far = background :far, tiles: :set, map: Array.new(32) { "#" * 32 }
+      top = background :top, tiles: :set, map: { gems: Array.new(4) { "g" * 32 }, walls: Array.new(4) { "#" * 32 } },
+                             above_row: 32
+      game_loop do
+        if pressed(:a)
+          room.set_tile 2, 10, "g"
+          far.set_tile 3, 12, "g"
+          top.set_tile 1, 1, "#"
+          top.show_map 1
+        end
+      end
+    end
+
+    SNES::CheckedRun.new.input_each_frame { |frame| frame == 3 ? [:a] : [] }.run(program, frames: 8)
+  end
+
   # The game: on A, a map 64 cells across and +rows+ down onto the background behind, then a full
   # queue of cells on the one in front.
   private def cells_behind_map(rows)
