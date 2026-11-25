@@ -74,6 +74,10 @@
  *   confirmed           prints "confirmed" and each question the page asked with confirm(), joined by " | "
  *   persist             prints "persist" and how many times the page asked the browser to keep its storage
  *   cookie              prints "cookie" and document.cookie as the page reads it
+ *   resize WxH [R]      the layout now gives the canvas W by H, and the ratio becomes R if given; the
+ *                       window is told it was resized (and, with R, the page's resolution query changes)
+ *   style ID            prints "style ID" and the element's style width, height and outline, each "-"
+ *                       where none is set
  *   workers             prints "workers" and how many workers the page has started and not ended
  *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
  *   clipboard           prints "clipboard" and what the page last copied
@@ -85,6 +89,10 @@
  * when the page opens and written to it each time the page sets or removes a key, so a second run
  * of the page finds what the first kept. With "confirm-no" every confirm() is answered No (Yes
  * otherwise).
+ *
+ * Started with "device-pixel-ratio:R", window.devicePixelRatio is R (1 unless given); with
+ * "canvas-box:WxH", the page's layout gives the canvas that size when the page sets none of its own
+ * (720x480 unless given).
  *
  * Started with "cookie:NAME=VALUE" the page starts with that cookie set (once for each such flag);
  * with "persist-refused" the browser answers the page's request to keep its storage with false.
@@ -158,6 +166,10 @@ const blobs = new Map(); /* each blob by the address the page made for it */
 const questions = []; /* every question the page asked with confirm() */
 let reloads = 0;
 let persist_asks = 0;
+const ratio_flag = process.argv.slice(3).find((flag) => flag.startsWith("device-pixel-ratio:"));
+let pixel_ratio = ratio_flag ? Number(ratio_flag.slice("device-pixel-ratio:".length)) : 1;
+const box_flag = process.argv.slice(3).find((flag) => flag.startsWith("canvas-box:"));
+let canvas_box = (box_flag ? box_flag.slice("canvas-box:".length) : "720x480").split("x").map(Number); /* the room the layout gives the canvas */
 /* The page's cookies, by name, seeded by each "cookie:NAME=VALUE" flag. */
 const cookies = new Map(process.argv.slice(3).filter((flag) => flag.startsWith("cookie:")).map((flag) => {
   const pair = flag.slice("cookie:".length);
@@ -182,18 +194,31 @@ function hidden_in_html(id) {
   return new RegExp(`<[a-z]+[^>]*\\bid="${id}"[^>]*\\bhidden\\b|<[a-z]+[^>]*\\bhidden\\b[^>]*\\bid="${id}"`).test(html);
 }
 
+/* The width and height written in the page's own canvas tag. */
+function canvas_size_in_html() {
+  const tag = html.match(/<canvas[^>]*\bid="screen"[^>]*>/);
+  const number = (name) => Number(tag && (tag[0].match(new RegExp(`\\b${name}="(\\d+)"`)) || [])[1]);
+  return { width: number("width"), height: number("height") };
+}
+
 function element(id) {
   if (elements[id]) return elements[id];
   const checked = new RegExp(`<input[^>]*\\bid="${id}"[^>]*\\bchecked\\b|<input[^>]*\\bchecked\\b[^>]*\\bid="${id}"`).test(html);
   const left = Object.keys(elements).length * BOX * 2;
   elements[id] = {
-    id, textContent: "", blur() {}, hidden: id === "said" || hidden_in_html(id), checked, ...listening(),
+    id, textContent: "", blur() {}, style: {}, ...(id === "screen" ? canvas_size_in_html() : {}), hidden: id === "said" || hidden_in_html(id), checked, ...listening(),
     getContext: () => ({
       createImageData: (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
       putImageData: (image) => { asked.pictures += 1; shown[id] = Uint8ClampedArray.from(image.data); },
     }),
-    requestFullscreen() { document.fullscreenElement = this; return Promise.resolve(); },
-    getBoundingClientRect: () => ({ left, top: 0, right: left + BOX, bottom: BOX, width: BOX, height: BOX }),
+    requestFullscreen() { document.fullscreenElement = this; tell(document, "fullscreenchange"); return Promise.resolve(); },
+    /* The screen has the size its style gives it, or else the room the layout gives it; every other
+     * part is a box of its own. */
+    getBoundingClientRect() {
+      if (id !== "screen") return { left, top: 0, right: left + BOX, bottom: BOX, width: BOX, height: BOX };
+      const [width, height] = this.style.width ? [parseFloat(this.style.width), parseFloat(this.style.height)] : canvas_box;
+      return { left, top: 0, right: left + width, bottom: height, width, height };
+    },
     querySelectorAll(selector) {
       const start = selector.match(/^\[id\^="([^"]+)"\]$/)[1];
       return [...ids].filter((each) => each.startsWith(start)).map(element);
@@ -207,9 +232,13 @@ function element(id) {
  * is. A page listening for the answer to change is told when the main one does. */
 const asked_media = [];
 function media(query) {
+  const resolution = query.match(/^\(resolution: ([\d.]+)dppx\)$/);
   const answer = {
     ...listening(),
+    query,
+    seen: resolution ? Number(resolution[1]) === pixel_ratio : false,
     get matches() {
+      if (resolution) return Number(resolution[1]) === pixel_ratio;
       if (query === "(pointer: coarse)") return finger_first;
       if (query === "(any-pointer: coarse)") return finger_too || finger_first;
       return false;
@@ -219,9 +248,26 @@ function media(query) {
   return answer;
 }
 
+/* The layout now gives the canvas +room+ (W by H), and the ratio becomes +ratio+ where given. A
+ * resolution query that stopped or started matching is told, once; the window is told of the resize. */
+function resize(room, ratio) {
+  canvas_box = room.split("x").map(Number);
+  if (ratio !== undefined) {
+    pixel_ratio = Number(ratio);
+    for (const answer of asked_media) {
+      if (!answer.query.startsWith("(resolution:") || answer.matches === answer.seen) continue;
+      answer.seen = answer.matches;
+      tell(answer, "change", { matches: answer.matches });
+    }
+  }
+  tell(page, "resize");
+}
+
 function pointer(kind) {
   finger_first = kind === "coarse";
-  for (const answer of asked_media) tell(answer, "change", { matches: answer.matches });
+  for (const answer of asked_media.filter((each) => !each.query.startsWith("(resolution:"))) {
+    tell(answer, "change", { matches: answer.matches });
+  }
 }
 
 /* The fingers down, and what each was last put on. */
@@ -353,10 +399,10 @@ const document = {
   visibilityState: "visible",
   readyState: "loading",
   fullscreenElement: null,
-  documentElement: { id: "page", requestFullscreen() { document.fullscreenElement = this; return Promise.resolve(); } },
+  documentElement: { id: "page", requestFullscreen() { document.fullscreenElement = this; tell(document, "fullscreenchange"); return Promise.resolve(); } },
   getElementById: (id) => (ids.has(id) ? element(id) : null),
   hasFocus: () => focused,
-  exitFullscreen() { document.fullscreenElement = null; return Promise.resolve(); },
+  exitFullscreen() { document.fullscreenElement = null; tell(document, "fullscreenchange"); return Promise.resolve(); },
 };
 
 /* The sound device: made on a page's first key press or click, as a browser allows. It runs at the
@@ -516,6 +562,7 @@ const browser = {
 for (const [name, value] of Object.entries(browser)) {
   Object.defineProperty(page, name, { value, writable: true, configurable: true, enumerable: true });
 }
+Object.defineProperty(page, "devicePixelRatio", { get: () => pixel_ratio, configurable: true });
 /* Started with "no-local-storage", asking for localStorage throws, as a browser that blocks storage
  * in a framed page does. */
 if (flags.includes("no-local-storage")) {
@@ -739,6 +786,11 @@ async function steps() {
     }
     else if (step === "reloads") printed.push(`reloads ${reloads}`);
     else if (step === "confirmed") printed.push(`confirmed ${questions.join(" | ")}`);
+    else if (step === "resize") resize(what, rest[0]);
+    else if (step === "style") {
+      const style = element(what).style;
+      printed.push(`style ${what} width=${style.width || "-"} height=${style.height || "-"} outline=${style.outline || "-"}`);
+    }
     else if (step === "persist") printed.push(`persist ${persist_asks}`);
     else if (step === "cookie") printed.push(`cookie ${document.cookie}`);
     else if (step === "workers") printed.push(`workers ${workers.size}`);
