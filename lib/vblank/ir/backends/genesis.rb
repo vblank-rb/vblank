@@ -64,9 +64,13 @@ module VBlank
         # +video_tiles+ is how many tiles the game's pictures put in video memory (VideoTiles), or nil
         # for a game that draws from none.
         # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
-        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list. +routines+ is where each of the
+        # game's routines went (GameRoutine), for the sizes a profile tells.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
-                             :sound_entries, :sound_voicing, :recording_names, :video_tiles, :slot_places) do
+                             :sound_entries, :sound_voicing, :recording_names, :video_tiles, :slot_places, :routines) do
+          # How many bytes each of the game's routines takes, biggest first.
+          def routine_sizes = RoutineSize.summed(routines)
+
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -98,6 +102,9 @@ module VBlank
 
           def to_h = { room: room, every_screen: every_screen, by_scene: by_scene.transform_keys(&:to_s) }
         end
+
+        # One of the game's routines and the addresses of the code it was built to.
+        GameRoutine = Data.define(:addresses, :routine)
 
         # What the build found to say about what it decided (Cartridge::LoweredBuild).
         def findings = (@findings ||= [])
@@ -233,8 +240,16 @@ module VBlank
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled || over ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
-                             video_tiles: lowering.video_tiles, slot_places: lowering.slot_places)
+                             video_tiles: lowering.video_tiles, slot_places: lowering.slot_places,
+                             routines: game_routines(lowering, linked))
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
+        end
+
+        def game_routines(lowering, linked)
+          lowering.section_routines.map do |label, routine|
+            placed = linked.sections.fetch(label)
+            GameRoutine.new(addresses: placed.address...(placed.address + placed.section.size), routine: routine)
+          end
         end
 
         # How many bytes of the cartridge are code and how many are data: the sections that hold the

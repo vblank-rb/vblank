@@ -59,6 +59,18 @@ module VBlank
 
       def size = @bytes.bytesize
 
+      # What the build noted for a profile to tell: the variables the author never declared, the
+      # counted loops and the numbers kept in instance variables (Diagnostics::BuildNotes).
+      attr_writer :hidden_variables, :counted_loops, :instance_variable_numbers
+
+      def hidden_variables = @hidden_variables || []
+      def counted_loops = @counted_loops || []
+      def instance_variable_numbers = @instance_variable_numbers || []
+
+      # How many bytes each of the game's routines takes, biggest first (Genesis::Places#routine_sizes),
+      # or none for a cartridge with no record of its build.
+      def routine_sizes = @built ? @built.routine_sizes : []
+
       # The console a cartridge of this kind is for; whether +bytes+ are one (a cartridge whose header
       # starts with the console's name, SEGA); and its title field.
       def self.console = :genesis
@@ -102,8 +114,13 @@ module VBlank
         result = Diagnostics::GenesisProfiler.run(self, frames: frames, settle: settle || Diagnostics::GenesisProfiler::SETTLE,
                                                         keys: keys)
         case format
-        when :human then Diagnostics::GenesisProfiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h))
+        when :human
+          Diagnostics::BuildNotes.render(self, out)
+          Diagnostics::GenesisProfiler.render(result, out: out)
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a cartridge of #{size / 1024} KB")
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::BuildNotes.as_json(self))
+                                            .merge(Diagnostics::RoutineSizes.as_json(routine_sizes))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result
