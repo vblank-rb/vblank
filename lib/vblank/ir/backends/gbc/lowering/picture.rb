@@ -1513,16 +1513,12 @@ module VBlank
               (number & 0xFF) | (colours << 8)
             end
 
-            # Two bytes no cell of the grid holds, since a cell's colours byte is a palette of 0 to 7
-            # and a bank bit: what an entry of a table of cells holds for a number that stands for no tile.
-            NO_GRID_CELL = 0xFFFF
-
             # A tile picked as the game runs (Nodes::SetTile#picked_by) is a cell read from a table, as a
             # console's own game writes its text: the number, less the one the list starts at, is a
             # place in a table of the cells those tiles show, kept in a bank of the cartridge of its
             # own. So the cost of a cell is the same however many tiles the number can pick, where the
             # tests IR::PickedTile writes cost a test for each halving and a change of its own for each
-            # tile, in the code. A number that stands for no tile reads NO_GRID_CELL, and the cell is
+            # tile, in the code. A number that stands for no tile reads PickedTile::NO_CELL, and the cell is
             # left alone, as is a tile only another scene's background of the name has.
             #
             # A status bar's text is many such cells a pass, so the cell is worked out in the
@@ -1531,17 +1527,16 @@ module VBlank
             # are written in the program or the row is and the column is a byte, the cell's place in
             # the grid known now, as a cell given a tile by name is (#emit_cell_change).
             def emit_set_picked_tile_on(bg, node)
-              cells = node.picks.map { |tile| tile && !tile.negative? && tile < bg.tiles.length ? grid_cell_of(bg, tile) : NO_GRID_CELL }
-              return if cells.all?(NO_GRID_CELL)
+              cells = PickedTile.words(node) { |tile| grid_cell_of(bg, tile) if !tile.negative? && tile < bg.tiles.length } or return
 
               table = picked_cells_table(cells)
               outside = fresh("picked_cell_outside")
               emit_picked_place_in_de(node, cells.length, outside)
               emit_banked_word_at_de(table)
-              if cells.include?(NO_GRID_CELL)
+              if cells.include?(PickedTile::NO_CELL)
                 @asm.load(:a, :e)
                 @asm.and_a(:d)
-                @asm.inc(:a) # 0xFF in both bytes, NO_GRID_CELL, comes round to nought
+                @asm.inc(:a) # 0xFF in both bytes, NO_CELL, comes round to nought
                 @asm.jump(:z, outside)
               end
               emit_picked_cell_change(bg, node)
