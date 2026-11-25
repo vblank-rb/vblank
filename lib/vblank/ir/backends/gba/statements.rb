@@ -180,13 +180,20 @@ module VBlank
             routine ? @placement.emit_call_func(routine) : node.children.each { |stmt| @lowering.statement(stmt) }
           end
 
-          # Whether every statement under +node+ is a full pool's stop, or a test choosing between
-          # stops.
+          # Whether +node+ holds statements and every one is a full pool's stop, or a test choosing
+          # between stops on both its sides.
+          #
+          # Nothing jumps back from code written after the routine, so it must stop on every path:
+          # an empty block, or a test with no else, finishes when it is not taken, and the processor
+          # would run on into whatever follows the routine (its table of numbers, in a routine kept
+          # in the quick memory). An `elsif` with nothing in it builds both.
           def only_stops?(node)
+            return false if node.children.empty?
+
             node.children.all? do |child|
               case child.kind
               when :stop_full then true
-              when :if then only_stops?(child) && (child.else.nil? || only_stops?(child.else))
+              when :if then child.else && only_stops?(child) && only_stops?(child.else)
               else false
               end
             end
