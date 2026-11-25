@@ -348,7 +348,7 @@ class TestJSShell < Minitest::Test
   private def open_without_storage(folder, flag, wait: 0)
     played_page(["settle", ("wait #{wait}" if wait.positive?), "settle", "play 3", "counts", "text said", "text copy-link",
                  *CHOOSE_LOAD_ROM, "picker", "click copy-link", "settle", "clipboard"].compact,
-                html: shell_page_html(folder), browser: ["idb:#{File.join(folder, 'idb.json')}", flag])
+                html: shell_page_html(folder), browser: ["idb:#{File.join(folder, 'idb.json')}", *flag])
   end
 
   private def assert_storage_refused(out)
@@ -371,7 +371,36 @@ class TestJSShell < Minitest::Test
   end
 
   def test_a_browser_whose_indexed_db_never_answers_says_to_open_the_page_elsewhere
-    Dir.mktmpdir { |folder| assert_storage_refused open_without_storage(folder, "idb-silent", wait: 2500) }
+    Dir.mktmpdir { |folder| assert_storage_refused open_without_storage(folder, "idb-silent", wait: 5500) }
+  end
+
+  # A page in a frame that cannot keep the game's data copies an address that opens the game on its own:
+  # the one the host gave (?link=), else the top page's, else the frame's own.
+  def test_a_framed_page_copies_the_address_the_host_gave
+    Dir.mktmpdir do |folder|
+      out = open_without_storage(folder, ["framed", "no-local-storage",
+                                          "address:file:///x/page.html?link=https%3A%2F%2Fhost.example%2Fgame"])
+
+      assert_equal "clipboard https://host.example/game", out.grep(/\Aclipboard /).first
+    end
+  end
+
+  def test_a_framed_page_with_no_address_given_copies_the_page_that_framed_it
+    Dir.mktmpdir do |folder|
+      out = open_without_storage(folder, ["framed", "no-local-storage", "referrer:https://host.example/play"])
+
+      assert_equal "clipboard https://host.example/play", out.grep(/\Aclipboard /).first
+    end
+  end
+
+  # A browser slow to open its storage the first time still starts the game.
+  def test_a_slow_first_open_of_storage_still_starts_the_game
+    Dir.mktmpdir do |folder|
+      out = open_without_storage(folder, "idb-slow:3000", wait: 3500)
+
+      refute_match(/pictures=0\b/, out.grep(/\Acounts /).first, "the menu was drawn")
+      assert_match(/\Atext copy-link hidden/, out.grep(/\Atext copy-link /).first)
+    end
   end
 
   # With storage that works the page says nothing of it, hides the button, and keeps no trace of its check.

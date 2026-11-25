@@ -109,7 +109,15 @@
  * is read from FILE when the page opens and written to it as the page puts something in, so a
  * second run of the page finds what the first kept. "idb-error" and "idb-silent" make it fail or
  * never answer, and "no-local-storage" makes asking for localStorage throw: a browser that keeps
- * nothing for the page.
+ * nothing for the page. With "idb-slow:MS" the first time the page opens a database it is answered
+ * after MS milliseconds of real time, as a phone opening its storage for the first time is; every
+ * open after it is answered at once.
+ *
+ * Started with "address:URL", the page's address (location.href, and location.search from the
+ * URL's query) is URL instead of the file it is read from. With "framed" the page is in a frame
+ * of another site: window.top is another window whose location throws when read, as a parent
+ * from another origin does; with "framed-same-origin:URL" the parent is of the same origin and
+ * its location.href is URL. With "referrer:URL", document.referrer is URL.
  *
  * Started with "unfocused" after the page, the window starts without the keyboard, as a page in
  * a frame on another site does. With "touchscreen" the screen's main pointer is a finger, as a
@@ -383,6 +391,9 @@ const idb_kept = new Map(idb_path && fs.existsSync(idb_path)
 function idb_write() {
   if (idb_path) fs.writeFileSync(idb_path, JSON.stringify(Object.fromEntries([...idb_kept].map(([k, v]) => [k, v.toString("base64")]))));
 }
+/* Started with "idb-slow:MS", the first open is answered after MS milliseconds. */
+const idb_slow_flag = flags.find((flag) => flag.startsWith("idb-slow:"));
+let idb_slow_left = idb_slow_flag ? Number(idb_slow_flag.slice(9)) : 0;
 function idb_request(answer) {
   const request = {};
   setImmediate(() => {
@@ -404,7 +415,10 @@ const indexedDB_stand_in = {
       });
       return request;
     }
-    setImmediate(() => {
+    const slow = idb_slow_left;
+    idb_slow_left = 0;
+    const later = slow > 0 ? (work) => setTimeout(work, slow) : setImmediate;
+    later(() => {
       const database = {
         createObjectStore() {},
         transaction: () => ({
@@ -434,8 +448,10 @@ const indexedDB_stand_in = {
   },
 };
 
+const referrer_flag = flags.find((flag) => flag.startsWith("referrer:"));
 const document = {
   ...listening(),
+  referrer: referrer_flag ? referrer_flag.slice(9) : "",
   createElement(tag) {
     if (tag === "a") {
       return { href: "", download: "", click() { downloads.push({ name: this.download, bytes: blobs.get(this.href).bytes }); } };
@@ -576,6 +592,15 @@ const controllers = [0, 1, 2, 3].map((index) => ({
  * and a localStorage of its own, which these take the place of — so a classic script and a
  * module both find them as they would in a browser. */
 const page = globalThis;
+const address_flag = flags.find((flag) => flag.startsWith("address:"));
+const address_location = address_flag
+  ? { href: address_flag.slice(8), search: new URL(address_flag.slice(8)).search, reload() { reloads += 1; } }
+  : { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "", reload() { reloads += 1; } };
+/* The window at the top of the frames: this one, or a frame's parent. */
+const parent_flag = flags.find((flag) => flag.startsWith("framed-same-origin:"));
+const top_window = parent_flag ? { location: { href: parent_flag.slice(19) } }
+  : flags.includes("framed") ? { get location() { throw new Error("SecurityError: a window of another origin"); } }
+  : page;
 const browser = {
   ...listening(),
   window: page,
@@ -589,7 +614,7 @@ const browser = {
     getGamepads: () => pads.slice(), clipboard: { writeText: async (words) => { clipboard = words; } },
     storage: { persist: async () => { persist_asks += 1; return !flags.includes("persist-refused"); } },
   },
-  location: { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "", reload() { reloads += 1; } },
+  location: address_location,
   confirm(question) { questions.push(question); return !flags.includes("confirm-no"); },
   performance: { now: () => now },
   requestAnimationFrame: (callback) => {
@@ -611,6 +636,7 @@ const browser = {
     return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
   },
   indexedDB: indexedDB_stand_in,
+  top: top_window,
   localStorage: { getItem: (key) => stored.get(key) ?? null,
                   setItem: (key, value) => { stored.set(key, value); local_write(); },
                   removeItem: (key) => { stored.delete(key); local_write(); } },
