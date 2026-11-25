@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "fileutils"
 require "tmpdir"
 
@@ -14,7 +15,9 @@ module VBlank
     # 2. starts it for the first time and picks LOAD ROM, handing it a copy of the copy this machine
     #    names (Original::Game#copy), which the shell unpacks and keeps as its pack;
     # 3. compares that pack, byte for byte, with the one the all-in-one build makes from the same copy
-    #    (Cartridge::Game#data_pack_file);
+    #    (Cartridge::Game#data_pack_file), and the shell's game with the same game built with the
+    #    copy in reach, declaration by declaration (#refuse_game_built_from_copy!), so a game whose
+    #    code looks at the copy as it is built is named whatever part of the game it changes;
     # 4. takes the copy it handed the shell out of reach and starts the shell again, which must play
     #    from the kept pack without asking for a copy;
     # 5. plays a short stretch of the game on both starts and on the all-in-one build, and compares
@@ -57,8 +60,35 @@ module VBlank
       # words of each file or pack refused, and how many times it asked for a copy.
       Start = Data.define(:played, :refusals, :times_asked)
 
-      # What the all-in-one build made: its +pack+ file's bytes, and what it +played+.
-      AllInOne = Data.define(:pack, :played)
+      # What the all-in-one build made: its +pack+ file's bytes, and what it +played+; and the
+      # ProgramShape of the shell's game built with the copy in reach (+shell_in_reach+).
+      AllInOne = Data.define(:pack, :played, :shell_in_reach)
+
+      # A program as the shell check compares two builds of it: each declaration at its top that
+      # has a name, as [kind, name, digest of its tree], in the order the program holds them
+      # (+declarations+), and one digest of everything else at its top (+rest+).
+      ProgramShape = Data.define(:declarations, :rest) do
+        def self.of(program)
+          named, rest = program.children.partition { |node| node.attrs[:name] }
+          new(declarations: named.map { |node| [node.kind, node.attrs[:name], ProgramShape.digest_of([node])] },
+              rest: digest_of(rest))
+        end
+
+        def self.digest_of(nodes) = Digest::SHA256.hexdigest(nodes.map { |node| IR::Dump.source(node) }.join("\n"))
+
+        # What differs first between this shape and +other+, in words (a declaration by its kind and
+        # name, or the game's own code), or nil where the two are the same.
+        def difference_from(other)
+          theirs = other.declarations.to_h { |kind, name, digest| [[kind, name], digest] }
+          ours = declarations.to_h { |kind, name, digest| [[kind, name], digest] }
+          differs = declarations.find { |kind, name, digest| theirs[[kind, name]] != digest } ||
+                    other.declarations.find { |kind, name, _| !ours.key?([kind, name]) }
+          return "#{differs[0]} :#{differs[1]}" if differs
+          return "the game's own code" unless rest == other.rest
+
+          nil
+        end
+      end
 
       # +game+ is the port (a Cartridge::Game), checked for each of +consoles+, every console it
       # names unless set. +tape+ is a Playthroughs::Tape of frames from power-on, whose first
@@ -99,6 +129,7 @@ module VBlank
           live = Shell.from(shell)
           # The size `vblank run --shell` opens its window at, which refuses a picture of any other.
           @screen = shell.game.described_console.framed_screen_size
+          @shell_shape = ProgramShape.of(shell.game)
           Dir.mktmpdir("vblank-shell-check") { |folder| compare_starts_with_all_in_one(live, copy, folder, all_in_one) }
         ensure
           all_in_one.stop
@@ -117,7 +148,9 @@ module VBlank
         parts = @game.all_in_one_parts(err: nil, console: console)
         pack = parts.data_pack_file or raise Failed, "#{@game.title} has no data_pack, so it has no shell to check."
         program = parts.program
-        AllInOne.new(pack: pack, played: record_play(Session.new(program), program.described_console.framed_screen_size))
+        in_reach = ProgramShape.of(@game.shell_parts(err: nil, console: console).program)
+        AllInOne.new(pack: pack, played: record_play(Session.new(program), program.described_console.framed_screen_size),
+                     shell_in_reach: in_reach)
       end
 
       # A copy that is one file is handed as that file. One that is a folder (a release of several
@@ -144,6 +177,8 @@ module VBlank
         @say.call("Comparing the kept pack with the all-in-one build's")
         made = all_in_one.value
         refuse_different_packs!(File.binread(File.join(kept_in, Original::ShellFacts::PACK_FILE)), made.pack)
+        @say.call("Comparing the shell's game with the same game built with the copy in reach")
+        refuse_game_built_from_copy!(made.shell_in_reach)
 
         FileUtils.rm_rf(handed)
         @say.call("Second start, with the copy out of reach")
@@ -184,6 +219,21 @@ module VBlank
         return start.played if start.played
 
         raise Failed, "#{which} never played the game. The unpacking did not finish in #{MOST_UNPACKING_PASSES} passes."
+      end
+
+      # The shell's game is built with no copy in reach, and the all-in-one build with one. A game
+      # whose code looks at the copy as it is built (what it holds, or whether there is one) is
+      # then another program in the shell, and plays another game, often only once the play
+      # reaches the part that differs, far past any stretch the check plays. So the shell's game
+      # (@shell_shape) is held to the same game built with the copy in reach (+in_reach+, a
+      # ProgramShape), which needs no play at all.
+      def refuse_game_built_from_copy!(in_reach)
+        differs = @shell_shape.difference_from(in_reach) or return
+
+        raise Failed, "The shell's game is not the same program as the game built with the copy of the original in " \
+                      "reach. They differ first at #{differs}. A shell is built with no copy, so the shell plays " \
+                      "another game. The game's code must not use the copy, or whether there is a copy, as the game " \
+                      "is built. Read the data through data_pack."
       end
 
       def refuse_different_packs!(kept, made)

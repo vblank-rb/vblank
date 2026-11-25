@@ -127,6 +127,31 @@ class TestShellCheck < Minitest::Test
     end
   end
 
+  # A port whose code looks at the copy as it is built, as one that tells its colours apart by what
+  # they hold does: with the copy hidden every colour reads the same. Its shell's pack is the
+  # all-in-one build's, and the two play alike over the stretch, since what differs is drawn only
+  # once the play is past it; the shell's game is still another program.
+  def test_a_shell_whose_game_is_built_from_the_copy_fails_naming_what_differs
+    Dir.mktmpdir do |folder|
+      from = original(folder)
+      game = VBlank.game("MADE UP", consoles: %i[gba]) do
+        screen :bitmap
+        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: PALETTE_AT, count: 16 }
+        spots = table :late_spots, [from.copy_if_set ? 10 : 50]
+        pass = var :pass, 0
+        game_loop do
+          clear_screen :black
+          (pass > ShellCheck::STRETCH_PASSES).record_branch { draw_rect_at spots[0], 40, 4, 4, :white }
+          pass += 1
+        end
+      end
+      failed = assert_raises(ShellCheck::Failed) { check(game) }
+
+      assert_match "table :late_spots", failed.message
+      assert_match "built with the copy", failed.message
+    end
+  end
+
   # A Color port whose ball's poses are pieces of a set of sprite tiles read from the original's
   # frames (PackTilePoseGames): the shell writes the frames' pieces in as it starts.
   def test_a_port_whose_tile_poses_are_frames_of_the_pack_passes_every_step
