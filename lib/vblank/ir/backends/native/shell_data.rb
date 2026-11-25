@@ -26,6 +26,16 @@ module VBlank
           # folder's own name, beside it).
           def part_name(part) = { menu: "menu", unpacking: "unpack-#{part.number}" }.fetch(part.role)
 
+          # The files to write beside the runtime's for +shell+ (an Original::Shell), or for none, by
+          # name: FILE, and the file each big table of bytes in it is embedded from
+          # (Printer#embedded). A shell whose data pack names many pieces has a long header after
+          # its SHA-1, kept in a file of its own, and the compiler stops on an embed whose file is
+          # not beside it.
+          def source_files(shell = nil)
+            printer = Printer.new
+            { FILE => printer.print_file(items(shell)), **printer.embedded }
+          end
+
           # The top level of the file for +shell+ (an Original::Shell), or for none.
           def items(shell = nil)
             include = Statements::Include.new(header: "rg_shell.h")

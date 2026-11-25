@@ -218,7 +218,7 @@ module VBlank
             end
             File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu, states: states,
                                                                         buttons: program.described_console.buttons))
-            File.write(File.join(src, ShellData::FILE), Printer.new.print_file(ShellData.items(shell)))
+            ShellData.source_files(shell).each { |name, body| File.binwrite(File.join(src, name), body) }
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
             progress.step("Compiling C")
             progress.show_detail(part_name) if part_name
