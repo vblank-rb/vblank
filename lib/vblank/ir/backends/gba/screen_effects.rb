@@ -69,6 +69,7 @@ module VBlank
             @emitter.write_reg16(REG_BG2PD, step)
             emit_camera_axis(node.x, REG_BG2X, :x)
             emit_camera_axis(node.y, REG_BG2Y, :y)
+            @primitives.store_word_immediate(1, @primitives.var_addr(CAMERA_MOVED)) if @layout.camera_at_flip
           end
 
           # A game whose every screen is tiled never reaches here: the builder moves its
@@ -82,11 +83,37 @@ module VBlank
 
           # A game's screen in a border starts at its corner, so the corner is taken off too (see
           # BorderSprites).
+          #
+          # On a tear-free screen the picture the pass draws is shown at the next page flip, and the
+          # page on show now is the last pass's. A camera written into the display at once would move
+          # that older picture a pass early, so there the place is kept until the flip shows the page
+          # it belongs to (#emit_camera_shown_with_page). It is kept on a screen drawn straight to the
+          # display too, so a tear-free screen that takes over later starts from where the camera is.
           def emit_camera_axis(value, reg, way)
             @lowering.value(value)                   # r0 = the offset in whole pixels
             @emitter.emit(ASM.lsl_imm(ACC, ACC, 8))      # ...into the 8-fraction-bit format
             @layout.border&.emit_corner_off_reference(way)
-            @primitives.store_word_acc(reg)
+            @primitives.store_var(ACC, CAMERA_AT_FLIP.fetch(reg)) if @layout.camera_at_flip
+            @primitives.store_word_acc(reg) unless @lowering.mode == :buffered
+          end
+
+          # Where the camera stands for the page the flip shows next, by the register it goes to.
+          CAMERA_AT_FLIP = { REG_BG2X => :__camera_x_at_flip, REG_BG2Y => :__camera_y_at_flip }.freeze
+          # 1 once the game has moved the camera: until then the display keeps what was set up for it.
+          CAMERA_MOVED = :__camera_moved
+
+          # The camera's place, written into the display as the page drawn with it is shown, once the
+          # game has placed it.
+          def emit_camera_shown_with_page
+            skip = @emitter.gensym
+            @primitives.load_var(ACC, CAMERA_MOVED)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :eq)
+            CAMERA_AT_FLIP.each do |reg, var|
+              @primitives.load_var(ACC, var)
+              @primitives.store_word_acc(reg)
+            end
+            @emitter.place_label(skip)
           end
 
           # Blend the whole picture toward black or white.

@@ -1066,6 +1066,7 @@ module VBlank
             draw_runs: @draw_runs, pose_sent_bytes: @pose_sent_bytes, room_tables: @room_tables,
             late_pages: IR::LatePages.of(program), held_sprites: @held_sprites, border: @border,
             pixel_size: program.described_console.pixel_size,
+            camera_at_flip: @modes.any_buffered? && program.walk.any? { |node| node.kind == :camera },
           )
           @drawing.layout = layout
           @buffered.layout = layout

@@ -112,12 +112,13 @@ module VBlank
           Layout = Data.define(:screen, :bitmaps, :palette, :indexed_bitmaps, :blob_codecs, :blob_raw_bytes,
                                 :modes, :fading, :tiled, :has_objects, :scene_blend, :movement,
                                 :scene_sprites, :gated_sprites, :waits_for_frames, :draw_runs, :pose_sent_bytes,
-                                :room_tables, :late_pages, :held_sprites, :border, :pixel_size) do
+                                :room_tables, :late_pages, :held_sprites, :border, :pixel_size, :camera_at_flip) do
             # +border+ is the border round a smaller screen shown in the middle of the Advance's
             # (BorderSprites), or nil for a game shown on the whole screen. +pixel_size+ is how many
             # of the console's pixels across and down one of the game's is shown as (1, or 2 for
-            # `screen :bitmap, pixel_size: 2`: Drawing#emit_bigger_pixels).
-            def initialize(held_sprites: nil, border: nil, pixel_size: 1, **rest) = super
+            # `screen :bitmap, pixel_size: 2`: Drawing#emit_bigger_pixels). +camera_at_flip+ marks a game that moves
+            # the camera and has a tear-free screen, whose camera is shown with its page (ScreenEffects#emit_camera).
+            def initialize(held_sprites: nil, border: nil, pixel_size: 1, camera_at_flip: false, **rest) = super
 
             # How many rows of the painted screen's memory the console shows: every row, or the
             # small picture's alone in a game of big pixels. A whole-screen fill fills these and
@@ -1268,6 +1269,7 @@ module VBlank
             @emitter.emit_number(TMP, PAGE_PAIR_SUM)
             @emitter.emit(ASM.sub_reg(ACC, TMP, ACC))            # the other page
             @primitives.store_var(ACC, BACKBUF)
+            @effects.emit_camera_shown_with_page if @layout.camera_at_flip
           end
 
           # Plot one pixel. With constant coordinates the VRAM address is known now,
