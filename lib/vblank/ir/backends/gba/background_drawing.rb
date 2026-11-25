@@ -462,19 +462,21 @@ module VBlank
           # ...and a background declared `held: true` asks for the other bargain: its changes
           # wait for the gap between frames and go in together (see HeldTiles).
           #
-          # A tile picked as the program runs is written as the tests it stands for
-          # (IR::PickedTile), each with a store of its own: this lowering keeps no table of a
-          # background's cells to index yet.
+          # A tile picked as the program runs is a word read from a table in the cartridge: the number,
+          # less the one the list starts at, is a place in the table of the words those tiles' cells hold
+          # (IR::PickedTile), so a tile costs the same however many the background has. A background
+          # that holds its changes (HeldTiles) or streams its map writes the tests the number stands for
+          # instead, each with a store of its own.
           def emit_set_tile(node)
-            if node.picked?
-              tests = PickedTile.tests(node)
-              return tests && @lowering.statement(tests)
-            end
+            return emit_picked_tile_tests(node) if node.picked? && (node.held || streams_map?(node.name))
+
             emit_for_each_declaration(node.name) do |bg|
               next if bg.nil? # a background with no tiled layer (a bitmap-mode program)
               next emit_streamed_tile_change(node, bg) if bg.stream
 
               grid = bg.grid or raise_no_cells_to_change(node.name)
+              next emit_picked_tile_write(node, bg, grid) if node.picked?
+
               # A tile only another scene's declaration of this name has, from a line written
               # for that scene: this declaration's part of the line writes nothing.
               entry = grid.cells[node.tile] or next
@@ -482,6 +484,71 @@ module VBlank
               next emit_fixed_tile_write(node, bg, grid, entry, *fixed) if fixed.all?
 
               emit_computed_tile_write(node, bg, grid, entry)
+            end
+          end
+
+          # Does any declaration of the background +name+ bring its map into view a strip at a time?
+          def streams_map?(name)
+            declared = @layout.screen.declarations_of(name)
+            backgrounds = declared.empty? ? [@layout.screen.backgrounds[name]] : declared.values
+            backgrounds.any? { |bg| bg&.stream }
+          end
+
+          # The tests a picked tile stands for, one write under each (IR::PickedTile.tests). Each test's
+          # write is a whole set_tile, which goes to every declaration of the background itself.
+          def emit_picked_tile_tests(node)
+            tests = PickedTile.tests(node)
+            tests && @lowering.statement(tests)
+          end
+
+          # A tile picked by a number: read the cell's word from its table, held to the table's ends,
+          # and write it where the cell is. A number standing for no tile reads NO_CELL, and the cell
+          # is left alone, as is a place outside the map.
+          def emit_picked_tile_write(node, bg, grid)
+            words = PickedTile.words(node) { |tile| grid.cells[tile] } or return
+
+            done = @emitter.gensym
+            @lowering.value(node.picked_by)
+            @emitter.emit(ASM.sub_imm(ACC, ACC, node.picks_from)) unless node.picks_from.zero?
+            @emitter.emit_number(TMP, words.length)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, done, cond: :hs) # one compare: a number below nought is past the end
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, 1))
+            @emitter.emit_load_data_address(TMP, picked_cells_table(words))
+            @emitter.emit(ASM.add_reg(TMP, TMP, ACC))
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            if words.include?(PickedTile::NO_CELL)
+              @emitter.emit_number(TMP, PickedTile::NO_CELL)
+              @emitter.emit(ASM.cmp_reg(ACC, TMP))
+              @emitter.emit_branch(:bcond, done, cond: :eq)
+            end
+            @emitter.emit(ASM.push(ACC)) # the word, held while the cell's place is worked out
+            skipped = @emitter.gensym
+            @lowering.value(node.col)
+            @emitter.emit(ASM.mov_reg(TILE_COL, ACC))
+            @lowering.value(node.row)
+            @emitter.emit(ASM.mov_reg(TILE_ROW, ACC))
+            @emitter.emit(ASM.cmp_imm(TILE_COL, grid.cols))
+            @emitter.emit_branch(:bcond, skipped, cond: :hs)
+            @emitter.emit(ASM.cmp_imm(TILE_ROW, grid.rows))
+            @emitter.emit_branch(:bcond, skipped, cond: :hs)
+            emit_cell_index(grid)
+            @emitter.emit_number(TMP, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
+            @emitter.emit(ASM.lsl_imm(TILE_ADDR, TILE_ADDR, 1)) # two bytes a cell
+            @emitter.emit(ASM.add_reg(TILE_ADDR, TMP, TILE_ADDR))
+            @emitter.emit(ASM.pop(ACC))
+            @emitter.emit(ASM.store_halfword(ACC, TILE_ADDR))
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(skipped)
+            @emitter.emit(ASM.pop(ACC)) # the place is off the map: the word is dropped
+            @emitter.place_label(done)
+          end
+
+          # The table of cell words +words+ in the cartridge, made once however many lines pick from it.
+          def picked_cells_table(words)
+            @picked_cells ||= {}
+            @picked_cells[words] ||= Messages::MadeNames.make(:picked_cells, number: @picked_cells.length).tap do |name|
+              @emitter.data_blobs[name] = words.pack("v*")
             end
           end
 

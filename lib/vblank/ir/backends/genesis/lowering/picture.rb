@@ -1246,8 +1246,7 @@ module VBlank
                 return [Build.int(cell_word_of(bg, node.tile)), nil]
               end
 
-              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
-              return nil if words.all?(NO_CELL)
+              words = PickedTile.words(node) { |tile| cell_word_of(bg, tile) if tile < bg.tiles.length } or return nil
 
               table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
               skipped = fresh("block_skipped")
@@ -1260,8 +1259,8 @@ module VBlank
               @asm.lea(@asm.abs_l(table), @asm.a(0))
               @asm.moveq(0, @asm.d(1))
               @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(1))
-              if words.include?(NO_CELL)
-                @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(1))
+              if words.include?(PickedTile::NO_CELL)
+                @asm.cmp(:w, @asm.imm(PickedTile::NO_CELL), @asm.d(1))
                 @asm.branch(:eq, skipped)
               end
               @asm.move(:l, @asm.d(1), var(word))
@@ -1364,19 +1363,14 @@ module VBlank
             # in video memory, its palette and its priority, and nought for no tile.
             def cell_word_of(bg, tile) = Art.cell_word(placed_cell_of(bg, tile))
 
-            # A word no cell holds, since no tile has the top number with every other bit set: what
-            # an entry of a table of cells holds for a number that stands for no tile.
-            NO_CELL = 0xFFFF
-
             # A tile picked as the game runs (Nodes::SetTile#picked_by) is a word read from a table, as
             # a console's own game writes its text: the number, less the one the list starts at, is a
             # place in a table of the words those tiles' cells hold, kept in the cartridge. One
             # comparison holds the number to the table, since read with no sign a number below the
-            # first is far past the last. A number that stands for no tile reads NO_CELL, and the
+            # first is far past the last. A number that stands for no tile reads PickedTile::NO_CELL, and the
             # cell is left alone, as is a tile only another scene's background of the name has.
             def emit_set_picked_tile_of(bg, node)
-              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
-              return if words.all?(NO_CELL)
+              words = PickedTile.words(node) { |tile| cell_word_of(bg, tile) if tile < bg.tiles.length } or return
 
               table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
               emit_cell_noted(bg, node) do |outside|
@@ -1387,8 +1381,8 @@ module VBlank
                 @asm.add(:l, @asm.d(0), @asm.d(0)) # two bytes a word
                 @asm.lea(@asm.abs_l(table), @asm.a(0))
                 @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(3))
-                if words.include?(NO_CELL)
-                  @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(3))
+                if words.include?(PickedTile::NO_CELL)
+                  @asm.cmp(:w, @asm.imm(PickedTile::NO_CELL), @asm.d(3))
                   @asm.branch(:eq, outside)
                 end
               end

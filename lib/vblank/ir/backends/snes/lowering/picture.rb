@@ -1849,11 +1849,6 @@ module VBlank
               number ? number | (palette << Art::PALETTE_SHIFT) | (cells_in_front?(bg) ? Art::CELL_IN_FRONT : 0) : 0
             end
 
-            # A word no cell holds, since a cell's word never has the bits that turn its tile (a
-            # picture is turned before it is stored): what an entry of a table of cells holds for a
-            # number that stands for no tile.
-            NO_CELL = 0xFFFF
-
             # A tile picked as the game runs (Nodes::SetTile#picked_by) is a word read from a table, as
             # a console's own game writes its map: the number, less the one the list starts at, is a
             # place in a table of the words those tiles' cells hold, kept in the cartridge. A number
@@ -1864,8 +1859,7 @@ module VBlank
             # Picture#emit_set_picked_tile_of); the halving tests IR::PickedTile writes cost a test
             # and a branch for each told number on the way to one, four times over for a cell of four tiles.
             def emit_set_picked_tile_on(node, bg)
-              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
-              return if words.all?(NO_CELL)
+              words = PickedTile.words(node) { |tile| cell_word_of(bg, tile) if tile < bg.tiles.length } or return
 
               table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
               emit_cell_noted(node, bg) do |outside|
@@ -1887,8 +1881,8 @@ module VBlank
                 @asm.asl # two bytes a word
                 @asm.tax
                 @asm.lda(@asm.long_x(table))
-                if words.include?(NO_CELL)
-                  @asm.cmp(NO_CELL)
+                if words.include?(PickedTile::NO_CELL)
+                  @asm.cmp(PickedTile::NO_CELL)
                   @asm.branch_long(:beq, outside)
                 end
                 nil

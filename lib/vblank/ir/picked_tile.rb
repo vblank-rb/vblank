@@ -14,6 +14,19 @@ module VBlank
     module PickedTile
       module_function
 
+      # A word no cell holds, since no tile has the top number with every other bit set: what an entry
+      # of a table of cells holds for a number that stands for no tile.
+      NO_CELL = 0xFFFF
+
+      # The table of cell words +node+ picks from: entry n is the word the block's own +word+ gives the
+      # tile for the number +picks_from+ + n, or NO_CELL where the number stands for no tile or the
+      # block gives it none (nil). Nil where no number stands for a tile there at all, and the cell is
+      # never written.
+      def words(node)
+        words = node.picks.map { |tile| (tile && yield(tile)) || NO_CELL }
+        words.all?(NO_CELL) ? nil : words
+      end
+
       # The statement that does what +node+ does, or nil where no number stands for a tile.
       def tests(node)
         numbers = node.picks.each_index.select { |at| node.picks[at] }.map { |at| [node.picks_from + at, node.picks[at]] }
