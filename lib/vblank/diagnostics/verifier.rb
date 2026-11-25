@@ -834,9 +834,15 @@ module VBlank
         refuse_missing_build_record!("which picture each of its sprites shows")
         refuse_late_sprite_watch! if @rendered && !@count_passes
         @count_passes = true
+        watch_sprite_rooms if @rendered && @sprite_frames.nil?
         @sprite_frames ||= []
         self
       end
+
+      # Keep track of what the console holds that its table of sprites does not say, for
+      # #sprites_by_frame: a console whose cartridges keep it watches it here
+      # (AdvanceReading#watch_sprite_rooms); the rest keep nothing of the kind.
+      private def watch_sprite_rooms = nil
 
       # What #watch_sprites has kept, a SpritesFrame for each pass since: its +frame+, counted as
       # the interpreter counts its frames, by the passes of the game loop; and the +sprites+ shown
@@ -1299,6 +1305,7 @@ module VBlank
         @rendered = true
         watch_passes! # the console's own; before any frame runs, or the first passes go uncounted
         start_sound_names if @sound_names_wanted # from power-on, for the same reason
+        watch_sprite_rooms if @sprite_frames # ...and so do the sprites' rooms
         play(@frames)
       end
 

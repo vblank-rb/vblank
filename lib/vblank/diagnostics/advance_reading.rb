@@ -521,7 +521,7 @@ module VBlank
       def pose_key(row, rooms, home = row[:slot])
         address = rooms[home] or return [row[:tile], row[:mirrored_across], row[:mirrored_down]]
 
-        var_at(address)
+        pose_in_room(address)
       end
 
       # ...the same, for a sprite taking its turn at a place (see BuildRecord#sprite_turns),
@@ -529,7 +529,49 @@ module VBlank
       def turn_pose_key(row, turn)
         return [row[:tile], row[:mirrored_across], row[:mirrored_down]] if turn.pose_var.nil?
 
-        var_at(turn.pose_var)
+        pose_in_room(turn.pose_var)
+      end
+
+      # The pose whose pictures are in a room, by the variable at +address+ that the cartridge
+      # writes as it copies one in.
+      #
+      # ### Why the variable alone is not always the answer
+      #
+      # The cartridge also writes "nothing is here" to that variable without touching the room:
+      # as a scene takes over, so that the scene's next drawing copies its frame in again. Its
+      # sprites are drawn in the gap after a pass, and the scene takes over during the pass after
+      # that, so for the scene up at power-on the order is: the gap before the first pass copies
+      # the first pose in and draws it, then the first pass marks the room empty, and the frame
+      # is read with the row still showing the room's pictures. The console shows that first pose,
+      # and the variable no longer says which it is.
+      #
+      # So a reader that watches the sprites (#watch_sprite_rooms) keeps the last pose each room
+      # was given, and that is the answer while the room is marked empty. A room marked empty
+      # whose row is still drawn has had nothing else written into it: a scene's art goes in
+      # beside its own rooms, never over them, and another scene's rows are hidden before the
+      # next frame is drawn.
+      def pose_in_room(address)
+        pose = var_at(address)
+        return pose unless pose == ROOM_EMPTY && @poses_copied
+
+        @poses_copied.fetch(address, pose)
+      end
+
+      # What the cartridge writes to a room's pose when nothing is in it, read back as a number.
+      ROOM_EMPTY = IR::Int32.wrap(IR::Backends::GBA::SpriteDrawing::NO_FRAME)
+
+      # Watch each room's pose from the first frame, keeping the last pose copied into it (see
+      # #pose_in_room). Only a game with a sprite that keeps one frame at a time has one.
+      def watch_sprite_rooms
+        rooms = @rom.built.streamed_sprite_pose_vars.values
+        turns = (@rom.built.sprite_turns || {}).values.flatten.filter_map(&:pose_var)
+        @poses_copied = {}
+        (rooms + turns).uniq.each do |address|
+          @probe.watch(address) do |change|
+            pose = IR::Int32.wrap(change.now)
+            @poses_copied[address] = pose unless pose == ROOM_EMPTY
+          end
+        end
       end
 
       # Which places the build gave each declared sprite. A cartridge with no build record
