@@ -581,53 +581,75 @@ module VBlank
         @poses_copied.fetch(address, pose)
       end
 
-      # The pose the game had picked, kept where +source+ says (a BuildRecord::PoseSource), when
-      # the row being read was written, or nil where nothing says (no source, or no reading of it
-      # a frame ago).
+
+      # The pose +pose+ (BuildRecord::PoseChoices#pose_from) worked out when the row being read
+      # was written, or nil where nothing says (no such node, or no reading a frame ago).
       #
-      # ### Why it is the frame before's
+      # ### Why a variable is the frame before's
       #
       # The cartridge writes the sprites' rows in the gap after each frame, from the variables as
       # they stand then, and a frame is read as that gap begins. So the rows read now were written
-      # in the gap before this frame, from what the variable held as the frame before was read,
-      # and the game may have picked another pose since. The reader keeps that reading for this
-      # (#keep_picked_poses), playing a frame at a time to have it. A number the cartridge itself
-      # writes in that gap, with the rows (a pool's copy), is read as it stands.
-      def pose_picked_for_row(source)
-        return nil if source.nil?
-        return pose_kept_at(source, {}) if source.written_with_rows
+      # in the gap before this frame, from what the variables held as the frame before was read,
+      # and the game may have picked another pose since. The reader keeps that reading
+      # (#keep_picked_poses), playing a frame at a time to have it. A list's slot here is a pool's
+      # copy, which the cartridge itself writes in that gap with the rows, so it is read as it
+      # stands.
+      def pose_picked_for_row(pose)
+        return nil if pose.nil?
 
-        @picked_poses&.dig(@played - 1, source)
+        earlier = @picked_poses&.[](@played - 1) || {}
+        return nil unless pose_variables_in(pose).all? { |name| earlier.key?(name) }
+
+        pose_worked_out(pose, earlier, {})
       end
 
-      # The number +source+ holds now, +lists+ keeping each list read once.
-      def pose_kept_at(source, lists)
-        return raw_var(source.name) if source.slot.nil?
-
-        (lists[source.name] ||= list_items(source.name))&.[](source.slot)
+      # The names of the variables +pose+ reads.
+      def pose_variables_in(pose)
+        names = []
+        pose.walk { |node| names << node.name if node.kind == :var_ref }
+        names
       end
 
-      # Where the game keeps the pose it picked during a pass, for each sprite whose poses its row
-      # cannot tell apart (BuildRecord#sprite_pose_choices): the numbers read as each frame ends.
-      def pose_sources
-        @pose_sources ||= begin
-          record = @rom.built
-          places = record ? (record.sprite_pose_choices || {}).values : []
-          turns = record ? (record.sprite_turns || {}).values.flatten.filter_map(&:choices) : []
-          (places + turns).filter_map(&:pose_from).uniq.reject(&:written_with_rows)
+      # +node+ worked out as IR::Int32 does, its variables from +variables+ and its lists' slots
+      # read now (+lists+ keeping each list read once).
+      def pose_worked_out(node, variables, lists)
+        case node.kind
+        when :int then node.value
+        when :var_ref then variables.fetch(node.name)
+        when :list_get then (lists[node.name] ||= list_items(node.name) || [])[node.index.value]
+        when :binop
+          left = pose_worked_out(node.lhs, variables, lists)
+          right = pose_worked_out(node.rhs, variables, lists)
+          return nil if left.nil? || right.nil?
+
+          case node.op
+          when :+ then IR::Int32.add(left, right)
+          when :- then IR::Int32.sub(left, right)
+          when :* then IR::Int32.mul(left, right)
+          end
         end
       end
 
-      def picks_poses_each_frame? = !pose_sources.empty?
+      # The variables the poses of sprites whose rows cannot tell them apart are worked out from
+      # (BuildRecord#sprite_pose_choices), read as each frame ends.
+      def pose_variables
+        @pose_variables ||= begin
+          record = @rom.built
+          places = record ? (record.sprite_pose_choices || {}).values : []
+          turns = record ? (record.sprite_turns || {}).values.flatten.filter_map(&:choices) : []
+          (places + turns).filter_map(&:pose_from).flat_map { |pose| pose_variables_in(pose) }.uniq
+        end
+      end
 
-      # Read each pose a sprite's row needs (#pose_picked_for_row) as this frame ends, keeping
-      # this frame's and the one before.
+      def picks_poses_each_frame? = !pose_variables.empty?
+
+      # Read each variable a sprite's pose is worked out from (#pose_picked_for_row) as this
+      # frame ends, keeping this frame's and the one before.
       def keep_picked_poses
         return unless picks_poses_each_frame?
 
-        lists = {}
         @picked_poses ||= {}
-        @picked_poses[@played] = pose_sources.to_h { |source| [source, pose_kept_at(source, lists)] }
+        @picked_poses[@played] = pose_variables.to_h { |name| [name, raw_var(name)] }
         @picked_poses.delete_if { |frame, _| frame < @played - 1 }
       end
 

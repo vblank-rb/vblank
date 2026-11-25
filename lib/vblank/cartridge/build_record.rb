@@ -223,15 +223,10 @@ module VBlank
       PoseChoice = Data.define(:picture, :pose, :dx, :dy)
 
       # One place's keys that several poses share (see +sprite_pose_choices+): +keys+ gives the
-      # PoseChoices for each, and +pose_from+ is the PoseSource the game keeps the number of the
-      # pose it picked in, or nil where the pose is worked out from more than one number.
+      # PoseChoices for each, and +pose_from+ is the sprite's pose as the program works it out,
+      # an IR value node of numbers, variables and fixed slots of lists the cartridge keeps, or
+      # nil where it is worked out some way a reader cannot follow.
       PoseChoices = Data.define(:pose_from, :keys)
-
-      # Where a game keeps the number of a sprite's pose: the variable +name+, or with a +slot+,
-      # that slot of the list +name+ (a pool's thing reads its own slot of the copy the pool
-      # makes). +written_with_rows+ is true where the cartridge writes it in the gap the rows are
-      # written in, as a pool's copy is, and false where the game writes it during a pass.
-      PoseSource = Data.define(:name, :slot, :written_with_rows)
 
       # One run of the sprite table drawn in an order the game works out: +order+ is the address
       # of its order, and +homes+ is each of its sprites' own first place and how many places it

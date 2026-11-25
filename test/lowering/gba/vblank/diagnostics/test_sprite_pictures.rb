@@ -3,6 +3,7 @@
 require "test_helper"
 require "tmpdir"
 require "sprite_picture_tests"
+VBlank.require_game_file "../../../../twin_pictures_parts"
 
 class TestSpritePictures < Minitest::Test
   include SpritePictureTests
@@ -67,18 +68,30 @@ class TestSpritePictures < Minitest::Test
 
   # Two pictures that are the same block at places a tile apart on their canvas are trimmed to
   # the same stored tiles, so the console draws either one from the same row, a tile further
-  # along for the second. The row alone cannot say which, but the number the pose is picked by
-  # can, as it stood when the row was drawn: the one the game picks with, or the walk's.
+  # along for the second. The row alone cannot say which, but the numbers the pose is worked
+  # out from can, as they stood when the row was drawn.
   def test_two_pictures_stored_as_one_are_told_apart_by_the_pose_picked
-    %i[face walk].each do |picked|
-      built = twin_pictures_game(picked)
-      want = (1..8).map do |frame|
-        [frame, VBlank::IR::Backends::Reference.new.run(built.source_program, frames: frame).sprites(:hero)]
-      end
+    built = twin_pictures_game(:face)
 
-      assert_equal want, cartridge(built, :hero).first(8), picked
-      assert_equal %i[far near], want.flat_map { |_, rows| rows.map(&:picture) }.uniq.sort, "#{picked} shows both"
-    end
+    assert_equal twin_rows_interpreted(built), cartridge(built, :hero).first(8)
+  end
+
+  def test_two_pictures_stored_as_one_are_told_apart_in_a_walk
+    built = twin_pictures_game(:walk)
+
+    assert_equal twin_rows_interpreted(built), cartridge(built, :hero).first(8)
+  end
+
+  def test_two_pictures_stored_as_one_are_told_apart_in_a_facing_and_a_walk
+    built = twin_pictures_game(:facing_walk)
+
+    assert_equal twin_rows_interpreted(built), cartridge(built, :hero).first(8)
+  end
+
+  def test_two_pictures_stored_as_one_are_told_apart_for_a_pools_thing
+    built = twin_pictures_pool_game
+
+    assert_equal twin_rows_interpreted(built), cartridge(built, :hero).first(8)
   end
 
   # ...and a reader stepped several frames at once tells them apart too.
@@ -89,19 +102,13 @@ class TestSpritePictures < Minitest::Test
     assert_equal [:far, 40, 40], [row.picture, row.x, row.y]
   end
 
-  # A pose worked out from two numbers, a facing and a step of its walk, leaves nothing to tell
-  # the two apart, so the reader gives both readings rather than one.
-  def test_two_pictures_stored_as_one_are_read_as_either_when_nothing_tells
-    reader = VBlank::Diagnostics::Verifier.new(twin_pictures_game(:facing_walk), frames: 3)
-    row = reader.sprites(:hero).first
-    candidate = VBlank::Diagnostics::PictureCandidate
-
-    assert_equal VBlank::Diagnostics::AmbiguousPicture.new(
-      candidates: [candidate.new(picture: :near, x: 40, y: 40), candidate.new(picture: :far, x: 32, y: 40)]
-    ), row.picture
-    assert_nil row.x, "the canvas could start at either place"
-    assert_nil row.y
-    assert_equal 40, row.piece_x, "the console's own number is still read"
+  # The interpreter's rows for the hero over eight frames, which show both pictures.
+  private def twin_rows_interpreted(built)
+    rows = (1..8).map do |frame|
+      [frame, VBlank::IR::Backends::Reference.new.run(built.source_program, frames: frame).sprites(:hero)]
+    end
+    assert_equal %i[far near], rows.flat_map { |_, shown| shown.map(&:picture) }.uniq.sort, "the hero shows both"
+    rows
   end
 
   # The hero shows :near and then :far, picked as +picked+ says.
@@ -124,9 +131,31 @@ class TestSpritePictures < Minitest::Test
       when :walk
         sprite :hero, at: [40, 40], frames: %i[near far], rate: 3
         game_loop {}
-      else
-        sprite :hero, at: [40, 40], facing: { both: %i[near far] }, rate: 3
-        game_loop {}
+      when :facing_walk
+        hero = sprite :hero, at: [40, 40], facing: { both: %i[near far], back: %i[far near] }, rate: 3
+        game_loop do
+          pass += 1
+          hero.face :back if pass == 5
+        end
+      end
+    end
+  end
+
+  # The same pictures on a pool's thing, which faces :far from the third pass.
+  private def twin_pictures_pool_game
+    near = lopsided(0, 0)
+    far = lopsided(8, 0)
+    clear = CLEAR
+    VBlank.build("TWINPICTURES", console: console, out: nil, err: nil) do
+      screen :tiled
+      image :near, width: CANVAS, height: CANVAS, data: near, transparent: clear
+      image :far, width: CANVAS, height: CANVAS, data: far, transparent: clear
+      hero = Array.new(capacity: 1)
+      pass = 0
+      game_loop do
+        pass += 1
+        hero << TwinThing.new(40, 40) if pass == 1
+        hero.each { |thing| thing.face :far } if pass == 3
       end
     end
   end

@@ -3393,16 +3393,24 @@ module VBlank
             VBlank::Cartridge::BuildRecord::PoseChoices.new(pose_from: pose_source(node.pose), keys: keys)
           end
 
-          # Where the game keeps the number of the pose +pose+ picks, as a PoseSource: a
-          # variable, or a slot of a list at a fixed place, which is how a pool's thing reads its
-          # own slot of the copy the pool makes in the gap before each frame is drawn
-          # (DSL::Pool#stacking_routine). nil for a pose worked out from more than one number.
+          # The pose node itself where a reader of the running cartridge can work it out from its
+          # memory, or nil: numbers, variables, slots of a list at a fixed place (how a pool's
+          # thing reads its own slot of the pool's copy), and sums and products of those, which is
+          # every way the builder writes a sprite's pose (a facing times the steps of a walk, plus
+          # the step).
           def pose_source(pose)
-            source = VBlank::Cartridge::BuildRecord::PoseSource
-            case pose.kind
-            when :var_ref then source.new(name: pose.name, slot: nil, written_with_rows: false)
-            when :list_get
-              source.new(name: pose.name, slot: pose.index.value, written_with_rows: true) if pose.index.kind == :int
+            pose if readable_pose?(pose)
+          end
+
+          # Operators a reader works a pose out with (see #pose_source).
+          POSE_OPERATORS = %i[+ - *].freeze
+
+          def readable_pose?(node)
+            case node.kind
+            when :int, :var_ref then true
+            when :list_get then node.index.kind == :int
+            when :binop then POSE_OPERATORS.include?(node.op) && readable_pose?(node.lhs) && readable_pose?(node.rhs)
+            else false
             end
           end
 
