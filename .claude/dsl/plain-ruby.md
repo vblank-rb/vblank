@@ -236,6 +236,14 @@ instance variables.
   than those above, written in the class, in the class reopened or in a class made from it, in any
   file (`VBlank.require_game_file`): the class that reads it marks it, and the Array becomes the
   game's at the first line of game code that reads it, after every file has run.
+- **A part's Array made with room, which its own class body adds to, is a list from the start**:
+  `@scores = Array.new(capacity: 8)` in `initialize` and `def add(score) = @scores << score` in the
+  same class body and file (`LocalNames#instance_variable_grown?`, `Rewriter#grown_array_text`),
+  named as its variable would be, each object its own, as a local game code adds to is. Only
+  `Array.new` given `capacity:` counts, so a class adding blocks or names to `[]` keeps a Ruby Array.
+  A thing made from a Struct goes in as a pool only where the class makes it on the line that adds
+  it (`Rewriter#things_array_text`); one handed in (`@items << item`, given a Point) is refused by
+  the list (`List#numberless_item_problem`), saying to make it on that line.
 - **Through a reader, the line decides from the real Array** (`keeper.counts[which] += 1` in another
   part or the game block, `counts[which]` in the class): the rewrite hands the Array the reader call
   answers to `InstanceVariables.indexed` (`LocalNames#reader_index_sites`), and the build's record
@@ -659,9 +667,9 @@ Each is a friendly error naming the line.
 | an Array the game changes holding Arrays or Hashes (`[[0, 0], [0, 0]]`) | an Array for each row, or an Array of Structs |
 | `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
 | an Array method a list has no meaning for (`rotate!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
-| a part's Array its class does not change, added to or turned as a whole through a reader in game code (`flock.dots << dot`, `part.counts.rotate!`; `InstanceVariables.refuse_changed_from_outside!`, the rewrite's `whole_array_change?`) | a method of its class, `def add(dot) = @dots << dot` |
+| a part's Array its class does not change, added to or turned as a whole through a reader in game code (`flock.dots << dot`, `part.counts.rotate!`; `InstanceVariables.refuse_changed_from_outside!`, the rewrite's `whole_array_change?`) | `Array.new(capacity: 8)` and a method of its class body adding to it, `def add(number) = @dots << number`, or `@dots << Dot.new(x, y)` for a Struct (`InstanceVariables.kept_array_fix`) |
 | a part made outside the game's block whose Array or Hash game code changes, or reads at an index the game works out (`InstanceVariables.refuse_part_made_outside!`) | the part made inside the `VBlank.game` block |
-| a part's Array nothing was put into before the game began, changed in game code by a method its class body does not hold, such as the class reopened (`InstanceVariables.refuse_unkept_change!`, the rewrite's `own_array_change?`) | the first item put in before the game loop, or the method in the class body that makes the Array |
+| a part's Array nothing was put into before the game began, changed in game code by a method its class body does not hold, such as the class reopened (`InstanceVariables.refuse_unkept_change!`, the rewrite's `own_array_change?`) | `Array.new(capacity: 8)`, added to by a method of the class body that makes it (`InstanceVariables.kept_array_fix`) |
 | a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |

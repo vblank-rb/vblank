@@ -864,6 +864,41 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A part's Array of numbers made with room and empty, which a method of its own class fills: the
+  # class shows that the Array grows, so the game keeps it, from no numbers, as it keeps a local one.
+  def test_a_part_array_of_numbers_filled_by_its_own_method
+    agrees("numbers.add(3) in the loop, the Array empty above it", reads: %i[n c], passes: 3) do
+      numbers = AnswerNumbers.new
+      n = c = 0
+      game_loop do
+        numbers.add(3) if numbers.count < 4
+        n = numbers.total
+        c = numbers.count
+      end
+    end
+    agrees("numbers.add(1) above the loop, numbers.add(3) in it", reads: %i[n c], passes: 5) do
+      numbers = AnswerNumbers.new
+      numbers.add(1)
+      n = c = 0
+      game_loop do
+        numbers.add(3) if numbers.count < 4
+        n = numbers.total
+        c = numbers.count
+      end
+    end
+  end
+
+  # The same Array handed a thing made from a Struct by its caller: the class shows no Struct, so
+  # it keeps numbers, and the thing is refused saying to make it where it is added.
+  def test_a_part_array_of_numbers_handed_a_struct_is_refused
+    refused("items.add(Point.new(...)), the class making no Point", /made from a Struct.*AnswerPoint\.new/m) do
+      items = AnswerHandedItems.new
+      items.add(AnswerPoint.new(1, 0, 0))
+      n = 0
+      game_loop { n = items.count }
+    end
+  end
+
   # Game code outside the class puts things into a part's Array that its class body puts nothing
   # into: it is still Ruby's, so the put would happen once, while building. Refused, naming a
   # method of its class as the fix.

@@ -863,13 +863,22 @@ module VBlank
           holder = uses && (array.instance_of?(Array) || array.is_a?(KeyedArray)) && uses.instance_variable_holding(array)
           return array unless holder
 
-          name = holder.label.to_s.delete_prefix("@")
           raise Refused, "This line changes #{uses.kept_array_words(holder.owner, holder.label)} with `#{verb}`, " \
                          "from outside its class. VBlank makes the game keep a part's Array only where code in its " \
                          "class changes it. Here it is still a plain Ruby Array, so this line changes it one time, " \
-                         "while VBlank builds the game. To fix this, change the Array in a method of its class, " \
-                         "like `def add(item) = @#{name} << item`, and call that method here." \
-                         "#{Messages::AuthorSource.at_author_line}"
+                         "while VBlank builds the game. #{kept_array_fix(holder.label, array)} Then call that method " \
+                         "here.#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # How a class makes its instance variable +label+ an Array the game keeps, which +array+ is
+        # not yet: made with room in the class body that adds to it (Rewriter#grown_array_text), or
+        # holding things made from a Struct where it adds them (Rewriter#things_array_text). A thing
+        # handed in from elsewhere shows no Struct, so the method makes it.
+        def kept_array_fix(label, array)
+          thing = array.find { |item| item.is_a?(Struct) }&.class&.name || "Point"
+          "To fix this, make `#{label}` with `Array.new(capacity: 8)`, and add to it in a method of its class, " \
+            "in the same class body, like `def add(number) = #{label} << number`. For a Struct, make each " \
+            "thing in that method, like `#{label} << #{thing}.new(x, y)`."
         end
 
         # +array+, an instance variable's (+label+), changed as a whole with +verb+ by a line of its
@@ -892,12 +901,9 @@ module VBlank
           return array if Builder::Session.builder.recording_kept_part_start?
 
           refuse_part_made_outside!(owner, label)
-          name = label.to_s.delete_prefix("@")
           raise Refused, "This line changes `#{label}` with `#{verb}` while the game plays, and `#{label}` is still a " \
-                         "plain Ruby Array. So it changes one time, while VBlank builds the game. VBlank makes the game " \
-                         "keep an Array when the class that holds it shows what goes in it. To fix this, put the " \
-                         "first item in `#{label}` before the game loop, or in the same class body that makes " \
-                         "`#{label}`, like `def add(item) = @#{name} << item`." \
+                         "plain Ruby Array. So it changes one time, while VBlank builds the game. The game keeps the " \
+                         "Array when the class body that makes it also adds to it. #{kept_array_fix(label, array)}" \
                          "#{Messages::AuthorSource.at_author_line}"
         end
 

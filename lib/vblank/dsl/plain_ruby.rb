@@ -1298,7 +1298,7 @@ module VBlank
         # A part of a game keeps its variables in these, so one holding a game variable is changed.
         def instance_variable_write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
-          value = things_array_text(node) || value_text(node.value)
+          value = things_array_text(node) || grown_array_text(node) || value_text(node.value)
           return "#{prefix}#{WRITES}.keep_as_own((#{value}), self, :#{node.name})" if LocalNames.makes_variable?(node.value)
 
           copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
@@ -1508,6 +1508,30 @@ module VBlank
                         "fraction_at: nil, #{things_text(made)})"
           given = value.arguments ? ", #{rewritten_text(value.arguments)}" : ""
           "#{ARRAYS}.list_from_new(self, #{declaration}#{given})"
+        end
+
+        # `@numbers = Array.new(capacity: 4)`, where the class around it adds to `@numbers`
+        # (`def add(number) = @numbers << number`) and nothing it adds is made from a class: the list
+        # it makes (PlainRuby::Arrays), named after the object and the instance variable, as a local
+        # game code adds to is a list. It must say `capacity:`, which only an Array a game keeps
+        # takes, so an Array of anything else a class adds to (blocks, names) stays Ruby's. Nil for
+        # any other write.
+        def grown_array_text(node)
+          value = node.value
+          return nil unless @names.instance_variable_grown?(node) && Arrays.makes_array?(value) &&
+                            value.is_a?(Prism::CallNode) && capacity_given?(value)
+
+          declaration = "#{ARRAYS}::Declaration.new(name: nil, local: :#{node.name.to_s.delete_prefix('@')}, " \
+                        "grows: true, source: #{@source_label.inspect}, declared_at: #{place_text(node).inspect}, " \
+                        "fraction_at: nil, things: nil, thing_fractions: [])"
+          "#{ARRAYS}.list_from_new(self, #{declaration}, #{rewritten_text(value.arguments)})"
+        end
+
+        # Is `capacity:` among the keywords of +call+?
+        def capacity_given?(call)
+          call.arguments&.arguments.to_a.grep(Prism::KeywordHashNode).any? do |keywords|
+            keywords.elements.any? { |pair| pair.is_a?(Prism::AssocNode) && pair.key.is_a?(Prism::SymbolNode) && pair.key.unescaped == "capacity" }
+          end
         end
 
         # What the whole block says about the Array +node+ makes (Arrays::Declaration).

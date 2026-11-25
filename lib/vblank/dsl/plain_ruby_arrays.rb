@@ -157,8 +157,7 @@ module VBlank
           refuse_made_with_no_game!(owner, name)
 
           builder = owner.is_a?(Builder) ? owner : Builder::Session.builder
-          owner = Builder::ListOwner.new(owner: [:array, declaration.source], at: declaration.declared_at)
-          list_name = builder.plain_array_list_name(declaration.name, owner)
+          list_name = builder.plain_array_list_name(*list_name_and_owner(owner, declaration))
           builder.record_collection_from_array(list_name, name)
           fraction_at = declaration.fraction_at || (declaration.declared_at if items.any? { |item| fraction?(item) })
           settings = settings.merge(holds: 0.0) if fraction_at
@@ -168,6 +167,17 @@ module VBlank
                    builder.declare_list(list_name, capacity: room, **settings).tap { |made| items.each { |item| made.push(item) } }
                  end
           list.explain_kinds_with(**kind_advice(name, fraction_at))
+        end
+
+        # The name of the list or pool +declaration+ makes, and who holds it
+        # (Builder#plain_array_list_name): a local's from the declaration; an instance variable's,
+        # which has no name there, after the object, each object of a class its own.
+        def list_name_and_owner(owner, declaration)
+          at = declaration.declared_at
+          return [declaration.name, Builder::ListOwner.new(owner: [:array, declaration.source], at: at)] if declaration.name
+
+          label = :"@#{declaration.local}"
+          [InstanceVariables.variable_name(owner, label), Builder::ListOwner.new(owner: [:object, owner.object_id, label], at: at)]
         end
 
         def fraction?(item) = item.is_a?(Float) || (item.is_a?(Value) && item.fraction?)

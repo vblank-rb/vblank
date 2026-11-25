@@ -212,6 +212,22 @@ What an Array the game keeps can do:
 
 Any other Array method is refused, and so is `==` between two Arrays the game keeps: see [Refused](#refused).
 
+A part keeps one in an instance variable the same way. Make it with `capacity:` in `initialize`, and add to it in a method of the same class body:
+
+```ruby
+class Scores
+  def initialize
+    @scores = Array.new(capacity: 8)
+  end
+
+  def add(score)
+    @scores << score if @scores.size < 8
+  end
+
+  def total = @scores.sum
+end
+```
+
 What these cost:
 
 - `item = trail.shift` keeps the dropped item in a hidden number: one word of quick memory, and a copy each time the line runs. `trail.shift` on its own keeps nothing. To skip the cost, read `trail.first`, then `trail.shift`.
@@ -1523,7 +1539,7 @@ end
 VBlank says:
 
 ```
-This line changes `@dots` of a `Flock` with `<<`, from outside its class. VBlank makes the game keep a part's Array only where code in its class changes it. Here it is still a plain Ruby Array, so this line changes it one time, while VBlank builds the game. To fix this, change the Array in a method of its class, like `def add(item) = @dots << item`, and call that method here.
+This line changes `@dots` of a `Flock` with `<<`, from outside its class. VBlank makes the game keep a part's Array only where code in its class changes it. Here it is still a plain Ruby Array, so this line changes it one time, while VBlank builds the game. To fix this, make `@dots` with `Array.new(capacity: 8)`, and add to it in a method of its class, in the same class body, like `def add(number) = @dots << number`. For a Struct, make each thing in that method, like `@dots << Point.new(x, y)`. Then call that method here.
 ```
 
 Write instead:
@@ -1573,7 +1589,7 @@ end
 VBlank says:
 
 ```
-This line changes `@dots` with `<<` while the game plays, and `@dots` is still a plain Ruby Array. So it changes one time, while VBlank builds the game. VBlank makes the game keep an Array when the class that holds it shows what goes in it. To fix this, put the first item in `@dots` before the game loop, or in the same class body that makes `@dots`, like `def add(item) = @dots << item`.
+This line changes `@dots` with `<<` while the game plays, and `@dots` is still a plain Ruby Array. So it changes one time, while VBlank builds the game. The game keeps the Array when the class body that makes it also adds to it. To fix this, make `@dots` with `Array.new(capacity: 8)`, and add to it in a method of its class, in the same class body, like `def add(number) = @dots << number`. For a Struct, make each thing in that method, like `@dots << Point.new(x, y)`.
 ```
 
 Write instead:

@@ -530,6 +530,13 @@ module VBlank
         elsif [true, false].include?(value) || value.is_a?(Condition)
           "This item is the answer to a test, true or false, and a list item cannot be true or false. " \
             "To keep the answer, write `test ? 1 : 0`. When you read the item, compare it with 1."
+        elsif value.is_a?(Struct)
+          # An Array keeps things made from a Struct where the build sees them made at a line that
+          # adds them (LocalNames#things_made_by); one handed in from elsewhere shows no Struct.
+          name = value.class.name || "Point"
+          "This item is a `#{name}`, made from a Struct. An Array keeps such things only when the line " \
+            "that adds them also makes them, like `<< #{name}.new(...)`. To fix this, make the `#{name}` on " \
+            "the line that adds it."
         elsif !(value.is_a?(Numeric) || value.is_a?(Symbol) || value.is_a?(Value) || value.is_a?(IR::Node))
           "This item is a #{value.class.name}, and a list item must be a number. Give the item a number."
         end

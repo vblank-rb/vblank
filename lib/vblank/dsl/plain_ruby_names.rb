@@ -323,6 +323,7 @@ module VBlank
           # the class or module around the line (nil outside one), then by the instance variable.
           @instance_variable_things = Hash.new { |all, node| all[node] = Hash.new { |names, name| names[name] = [] } }
                                           .compare_by_identity
+          @instance_variables_grown = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
           @module_of_instance_variable_write = {}.compare_by_identity
           @next_block_iterates = false
           @next_block_walks = nil
@@ -443,10 +444,22 @@ module VBlank
         # (Local#unplaced_receivers), for its first line in a part's method (Rewriter#walked_option_text).
         def unplaced_receivers(write) = @locals_by_node[write]&.unplaced_receivers.to_a
 
-        # `@enemies << Enemy.new(...)` (#instance_variable_things_made).
+        # Does the code of the class or module around +write+, in this file, add to the instance
+        # variable it gives a value, `@numbers << number`? What makes `@numbers =
+        # Array.new(capacity: 4)` an Array the game keeps, where nothing put in is made from a class
+        # (#instance_variable_things_made).
+        def instance_variable_grown?(write)
+          return false unless @module_of_instance_variable_write.key?(write)
+
+          @instance_variables_grown[@module_of_instance_variable_write[write]].include?(write.name)
+        end
+
+        # `@enemies << Enemy.new(...)` (#instance_variable_things_made), and `@numbers << number`
+        # (#instance_variable_grown?).
         def note_instance_variable_thing_put(node)
           return unless node.receiver.is_a?(Prism::InstanceVariableReadNode) && Arrays::GROWING_VERBS.include?(node.name)
 
+          @instance_variables_grown[@open_modules.last] << node.receiver.name
           things = Arrays.put_values(node).flat_map { |put| things_made_by(put) }
           @instance_variable_things[@open_modules.last][node.receiver.name].concat(things)
         end

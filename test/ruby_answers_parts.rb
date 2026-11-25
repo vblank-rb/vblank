@@ -524,6 +524,27 @@ class AnswerMixedFlock
   end
 end
 
+# A part's Array of numbers, made with room and empty, which a method of its own class fills.
+class AnswerNumbers
+  def initialize
+    @numbers = Array.new(capacity: 4)
+  end
+
+  def add(number) = @numbers << number
+  def count = @numbers.size
+  def total = @numbers.sum
+end
+
+# The same Array, handed whatever its caller made: the class shows no Struct, so it keeps numbers.
+class AnswerHandedItems
+  def initialize
+    @items = Array.new(capacity: 4)
+  end
+
+  def add(item) = @items << item
+  def count = @items.size
+end
+
 # Names noted while it is set up, never changed as the game plays, and asked about in game code.
 class AnswerNoted
   AIMS = %i[move_to].freeze

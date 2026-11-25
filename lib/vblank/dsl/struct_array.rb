@@ -66,7 +66,7 @@ module VBlank
         drawing = drawing.except(:layer)
         drawing = drawing.merge(facing: turned_facing(drawing[:facing])) if drawing[:facing]
         fields = kind.members.to_h { |member| [member, fraction_field?(member, declaration) ? 0.0 : 0] }
-        name = builder.plain_array_list_name(*name_and_owner(owner, declaration))
+        name = builder.plain_array_list_name(*PlainRuby::Arrays.list_name_and_owner(owner, declaration))
         builder.record_collection_from_array(name, @local)
         widths = PlainRuby::StructSettings.widths_of(kind)
         made = lambda do
@@ -487,17 +487,6 @@ module VBlank
       ensure
         @walks_open -= 1
         @shifted_in_walk = false if @walks_open.zero?
-      end
-
-      # The pool's name and who holds it (Builder#plain_array_list_name): a local's from the
-      # declaration, an instance variable's after the object, each object of a class its own.
-      def name_and_owner(owner, declaration)
-        at = declaration.declared_at
-        return [declaration.name, Builder::ListOwner.new(owner: [:array, declaration.source], at: at)] if declaration.name
-
-        label = :"@#{declaration.local}"
-        [PlainRuby::InstanceVariables.variable_name(owner, label),
-         Builder::ListOwner.new(owner: [:object, owner.object_id, label], at: at)]
       end
 
       # The class of what a walk hands its block: the game's Struct, with a thing's verbs, and
