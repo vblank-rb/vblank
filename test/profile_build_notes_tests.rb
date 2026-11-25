@@ -22,16 +22,22 @@ module ProfileBuildNotesTests
     end
   end
 
-  def test_the_profile_lists_the_hidden_number_and_the_routine_sizes
+  # What +rom+'s profile prints for people.
+  private def human_profile(rom)
     out = StringIO.new
-    notes_rom.profile(out: out, frames: 10)
+    rom.profile(out: out, frames: 10)
+    out.string
+  end
 
-    assert_includes out.string, "hidden variables: 1"
-    assert_includes out.string, "item = trail.shift"
-    assert_includes out.string, "counted loops:"
-    assert_includes out.string, "Your routines by size:"
-    assert_includes out.string, "In all:"
-    assert_operator out.string.index("hidden variables:"), :<, out.string.index("Your routines by size:")
+  def test_the_profile_lists_the_hidden_number_and_the_routine_sizes
+    printed = human_profile(notes_rom)
+
+    assert_includes printed, "hidden variables: 1"
+    assert_includes printed, "item = trail.shift"
+    assert_includes printed, "counted loops:"
+    assert_includes printed, "Your routines by size:"
+    assert_includes printed, "In all:"
+    assert_operator printed.index("hidden variables:"), :<, printed.index("Your routines by size:")
   end
 
   def test_the_json_profile_carries_the_notes_and_sizes
