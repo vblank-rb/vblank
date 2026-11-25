@@ -69,7 +69,7 @@ class TestSceneArrivalOverrun < Minitest::Test
   # With +missed_gap+ the pass that hands over first runs on to line MISSED_GAP_LINE of the picture
   # after its gap, so it has missed the next gap's start by the time it reaches +late+.
   private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false, own_sprites: 0, shared: false,
-                          title_scenery: true, missed_gap: false, painted: false)
+                          title_scenery: true, missed_gap: false, painted: false, lit_title: false)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
@@ -80,6 +80,8 @@ class TestSceneArrivalOverrun < Minitest::Test
     b.instance_eval do
       if painted
         screen :bitmap, tear_free: painted == :tear_free
+      elsif lit_title
+        screen :tiled, backdrop: :blue
       else
         screen :tiled
       end
@@ -99,12 +101,24 @@ class TestSceneArrivalOverrun < Minitest::Test
       map = Array.new(side) { |row| Array.new(side) { |col| ((row * side) + col) % tile_count } }
       state = var :state, 0
       pass = var :pass, 0
+      # With +lit_title+, a light that leaves the backdrop black outside a small circle on the title,
+      # and is off in the scene, whose first background is a see-through layer.
+      if lit_title
+        layers(:water) # parenthesised: here +layers+ alone is the count of backgrounds
+        spotlight at: [120, 80], radius: 8, dark: 100
+      end
       # With +shared+, a background every scene shows, declared outside them.
       background :shared, tiles: :stripes, map: Array.new(20) { |row| Array.new(30) { |col| (row + col) % tile_count } } if shared
       scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } if title_scenery && !painted }
       own_sprites.times { |n| image(:"own_#{n}", width: 64, height: 64, data: TestSceneArrivalOverrun.numbered_picture(n)) }
       scene(:play) do
-        layers.times { |layer| background :"layer_#{layer}", tiles: :stripes, map: map }
+        layers.times do |number|
+          if lit_title && number.zero?
+            layer(:water, transparency: 50) { background :"layer_#{number}", tiles: :stripes, map: map }
+          else
+            background :"layer_#{number}", tiles: :stripes, map: map
+          end
+        end
         own_sprites.times do |n|
           if painted
             sprite :"own_#{n}", at: [n * spacing, 0], facing: { still: :"own_#{n}" }, over_picture: true
@@ -159,6 +173,25 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_empty torn, "a picture shows the backdrop on some rows and the scene on others: #{pictures.map(&:length)}"
     assert_equal 160, pictures.first.length, "the first picture of the scene is the backdrop: #{pictures.map(&:length)}"
     assert_empty pictures.last, "the scene is up whole after: #{pictures.map(&:length)}"
+  end
+
+  # A scene the light is off in switches the light off before its scenery is sent, so the held first
+  # picture is the backdrop undarkened on every row. Switched off after a sending that ran into the
+  # picture, the rows above the switch kept the light's darkness outside its circle: black over blue.
+  def test_the_light_is_off_on_every_row_of_the_first_picture_of_a_scene_it_is_off_in
+    blue = Color.resolve(:blue)
+    [false, 190, true].each do |late|
+      rom = assemble_rom(handed_over(layers: 3, tile_count: 900, late: late, lit_title: true, title_scenery: false), name: "OVERLIT")
+      reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
+      pictures = (1..(HANDED_OVER_AT + 4)).filter_map do
+        reader.step
+        reader.frame_gba if reader.var(:state) == 1
+      end
+      first = pictures.first
+      dark = (0...160).reject { |row| first[row * 240, 240].all?(blue) }
+
+      assert_empty dark, "rows of the first picture still darkened by the light (setup late: #{late.inspect})"
+    end
   end
 
   # A game in a border keeps its border through a held picture: the border is sprites, so a held

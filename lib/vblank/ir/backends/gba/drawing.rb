@@ -604,19 +604,19 @@ module VBlank
             emit_painted_scene_without_backdrop(name) if @palette_tint.tints_screen_backdrops?
             emit_scene_mode(name) if @layout.modes.switched_per_scene?
             emit_painted_run_places(name)
-            emit_scene_scenery(name)
-            # ...and its own sprite pictures, which scenes share the room for, so a scene taking
-            # over sends its own and one already running sends nothing. Straight after scenery
-            # it sends, so one hold covers both (#emit_with_layers_held_for_art). A scene with no
-            # scenery of its own sends them after its backdrop, blend and light instead: those
-            # writes then land at the start of the gap, not part way down a picture the copy ran
-            # into, where a backdrop or a brightness changed under the hold would tear its colour.
-            sends_scenery = scene_handover.arrival(name).scenery.any?
-            emit_scene_art_upload(name) if sends_scenery
+            # The backdrop, blend and light are written first, in the gap, before anything is sent
+            # under a hold: a sending that runs on into the picture would land them part way down
+            # it, where a backdrop or a brightness changed would tear the picture's colour.
             emit_scene_backdrop(name) if scene_handover.backdrops?
             @raster.emit_light_leaving(name, @layout.scene_blend.fetch(name, BLD_OFF))
             emit_scene_blend(name)
             @raster.emit_light_for_lit_scene(name)
+            emit_scene_scenery(name)
+            # ...and its own sprite pictures, which scenes share the room for, so a scene taking
+            # over sends its own and one already running sends nothing. Straight after scenery
+            # it sends, so one hold covers both (#emit_with_layers_held_for_art).
+            sends_scenery = scene_handover.arrival(name).scenery.any?
+            emit_scene_art_upload(name) if sends_scenery
             emit_scene_layers(name)
             emit_scene_art_upload(name) unless sends_scenery
           end
