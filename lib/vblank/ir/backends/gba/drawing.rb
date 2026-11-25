@@ -266,8 +266,7 @@ module VBlank
           # a picture of the screen's size, and only a quarter of what it drew would be seen.
           #
           # Written as the painted screen is set up, so a game that never sets pixel_size: writes
-          # nothing. Nothing else writes these registers on a painted screen of big pixels: the
-          # camera, which does, is refused there (Guardrails::Checks::BiggerPixelsNotMadeYet).
+          # nothing. The camera writes them again, at the same half step (ScreenEffects#emit_camera).
           def emit_bigger_pixels
             return if @layout.pixel_size == 1
 

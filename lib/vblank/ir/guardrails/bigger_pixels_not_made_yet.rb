@@ -60,7 +60,7 @@ module VBlank
 
           def not_made_yet(node, console)
             case node.kind
-            when :camera then "the camera (`camera` or `shake_screen`)"
+            when :camera then "the camera (`camera` or `shake_screen`)" unless console.bigger_pixels_camera
             when :pixelate then "`pixelate`" unless console.bigger_pixels_pixelate
             when :shade_outside, :show_light_now then "a light (`spotlight`, `iris_out` or `iris_in`)"
             when :fade then "a fade held to a rectangle (`inside:` or `outside:`)" if node.area && !console.bigger_pixels_fade_areas

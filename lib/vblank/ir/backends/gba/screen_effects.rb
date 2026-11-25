@@ -59,10 +59,14 @@ module VBlank
           def emit_camera(node)
             raise LoweringError, CAMERA_NEEDS_BITMAP if @layout.modes.default_mode == :tiled
 
-            @emitter.write_reg16(REG_BG2PA, FIXED_ONE)
+            # The window over the picture steps by a whole pixel of it for each pixel it shows, or by half
+            # of one in a game of big pixels (Drawing#emit_bigger_pixels), where it is the game's pixels
+            # the offsets count.
+            step = FIXED_ONE / @layout.pixel_size
+            @emitter.write_reg16(REG_BG2PA, step)
             @emitter.write_reg16(REG_BG2PB, 0)
             @emitter.write_reg16(REG_BG2PC, 0)
-            @emitter.write_reg16(REG_BG2PD, FIXED_ONE)
+            @emitter.write_reg16(REG_BG2PD, step)
             emit_camera_axis(node.x, REG_BG2X, :x)
             emit_camera_axis(node.y, REG_BG2Y, :y)
           end
