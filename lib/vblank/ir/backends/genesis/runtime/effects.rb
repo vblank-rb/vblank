@@ -42,18 +42,19 @@ module VBlank
             PARTS = "rt sfx parts"
             ENTRY = "rt sfx entry"
             NOTE = "rt sfx note"
-            # Where in the effects' rank order a frame is; and where in HOLDER_ORDER an effect's end is, apart,
-            # since an effect is ended in the middle of a walk through the rank order.
-            WALK = "rt sfx walk"
+            # Where in HOLDER_ORDER an effect's end is, apart from LIVE_AT, since an effect is ended in the
+            # middle of a walk through LIVE.
             RELEASE_WALK = "rt sfx release walk"
             # An effect's end: its rank's place, and the voice it is letting go.
             RELEASE_RANK = "rt sfx release rank"
             RELEASE_CHANNEL = "rt sfx release channel"
-            # An effect asked for: its number, group and priority; and another of its group.
+            # An effect asked for: its number, group and priority.
             ASKED_EFFECT = "rt sfx asked effect"
             ASKED_GROUP = "rt sfx asked group"
             ASKED_PRIORITY = "rt sfx asked priority"
-            OTHER = "rt sfx other"
+            # For each group, a word from group 1's at the second word: the effect of the group asked for
+            # last and not refused, one up, nought for none yet (rt_sfx_request).
+            GROUP_LAST = "rt sfx group last"
             # Each effect's state, STATE_BYTES apart: asked for since the last frame; asked for, as a frame
             # plays it; to be cut off; sounding; how far into it; each part's next note.
             STATES = "rt sfx states"
@@ -64,26 +65,48 @@ module VBlank
             FRAME = 8
             CURSORS = 10
             STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
+            # The effects a frame has to look at, by number, each one up, the highest rank first, and nought
+            # after the last; and beside each, in LIVE_RANKS, its rank's place, which keeps the order. A word
+            # an effect. An effect asked for goes in as it is asked (rt_sfx_live_add); LIVE_CHANGED marks that
+            # one ended, so the next frame leaves out those that are over (rt_sfx_live_prune). LIVE_AT walks
+            # it, and LIVE_KEPT is where the pruning writes.
+            LIVE = "rt sfx live"
+            LIVE_RANKS = "rt sfx live ranks"
+            LIVE_AT = "rt sfx live at"
+            LIVE_KEPT = "rt sfx live kept"
+            LIVE_CHANGED = "rt sfx live changed"
+            # The effect going in, one up, and its rank's place.
+            LIVE_EFFECT = "rt sfx live effect"
+            LIVE_RANK = "rt sfx live rank"
 
             CHANNELS = (1..4).freeze
 
             module_function
 
             def reserve(memory, effects)
-              [HOLDER_END, CLAIM_CHANNEL, CLAIM_RANK, CLAIM_SOUNDS, TUNE_RANK, EFFECT, PART, PARTS, WALK, RELEASE_WALK,
-               RELEASE_RANK, RELEASE_CHANNEL, ASKED_EFFECT, ASKED_GROUP, ASKED_PRIORITY, OTHER].each { |name| memory.reserve(name, 2) }
+              [HOLDER_END, CLAIM_CHANNEL, CLAIM_RANK, CLAIM_SOUNDS, TUNE_RANK, EFFECT, PART, PARTS, RELEASE_WALK,
+               RELEASE_RANK, RELEASE_CHANNEL, ASKED_EFFECT, ASKED_GROUP, ASKED_PRIORITY, LIVE_AT, LIVE_KEPT, LIVE_CHANGED,
+               LIVE_EFFECT, LIVE_RANK].each { |name| memory.reserve(name, 2) }
               [RECORD, STATE, ENTRY, NOTE].each { |name| memory.reserve(name, 4) }
               [HOLDERS, HOLDER_ORDER, HOLDER_SEEN].each { |name| memory.reserve(name, CHANNELS.size * 2) }
               memory.reserve(STATES, effects * STATE_BYTES)
+              # Every effect and the nought after; and a group for each effect at most, past a word for no group.
+              [LIVE, LIVE_RANKS, GROUP_LAST].each { |name| memory.reserve(name, (effects + 1) * 2) }
             end
 
-            # +count+ is how many effects the game has; +level_at+ where its music volume is, if it sets one,
-            # since an effect taking a voice takes the tune's note there out of those a new level reaches.
-            # +recorded+ when a song or effect has a part that plays a recording.
-            def emit(asm, memory, count, level_at, recorded: false)
+            # +level_at+ is where the game's music volume is, if it sets one, since an effect taking a voice
+            # takes the tune's note there out of those a new level reaches. +recorded+ when a song or effect
+            # has a part that plays a recording.
+            #
+            # Nothing here walks every effect the game declares. A request goes straight to its effect by
+            # number, as a console's own sound drivers go to a sound's entry, so the time an effect takes to
+            # start, and the sample its note starts on, do not grow with the effects a game has. A frame
+            # walks only the effects in LIVE.
+            def emit(asm, memory, level_at, recorded: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_game_side(asm, at, count)
-              emit_passes(asm, at, count)
+              emit_game_side(asm, at, memory)
+              emit_live_list(asm, at, memory)
+              emit_passes(asm, at, memory)
               emit_frame(asm, at, memory, level_at, recorded)
               emit_finish(asm, at, memory, recorded)
               emit_recorded_parts(asm, at, glides: memory.reserved?(Recordings::GLIDES)) if recorded
@@ -141,7 +164,7 @@ module VBlank
 
             # rt_sfx_play(which, list): the effect at place +which+ of effect list +list+ starts at the next
             # frame (Reference::Player#request_effect); rt_sfx_play_now, here (Reference::Player#start_effect_here).
-            def emit_game_side(asm, at, count)
+            def emit_game_side(asm, at, memory)
               m = Genesis::Music
               state = ->(field) { asm.disp(1, field) }
               asm.label("rt_sfx_play")
@@ -156,31 +179,34 @@ module VBlank
               asm.move(:w, at.call(ASKED_EFFECT), asm.d(0))
               asm.jsr(asm.abs_l("rt_sfx_select"))
               asm.clr(:w, state.call(ASKED))
-              # Every effect, in rank order: this one plays its first frame; one of a group waiting to be cut
-              # off is cut off here.
-              asm.clr(:w, at.call(WALK))
-              asm.label("rt_sfx_play_now_next")
-              asm.jsr(asm.abs_l("rt_sfx_select_ranked"))
-              asm.cmp(:w, at.call(ASKED_EFFECT), asm.d(0))
-              asm.branch(:ne, "rt_sfx_play_now_other")
-              asm.move(:w, asm.imm(1), state.call(ASKED_NOW))
-              asm.jsr(asm.abs_l("rt_sfx_frame"))
-              asm.movea(:l, at.call(STATE), asm.a(1))
-              asm.clr(:w, state.call(ASKED_NOW))
-              asm.bra("rt_sfx_play_now_walk")
-              asm.label("rt_sfx_play_now_other")
-              asm.tst(:w, state.call(STOPPING))
-              asm.branch(:eq, "rt_sfx_play_now_walk")
-              asm.clr(:w, state.call(STOPPING))
-              asm.jsr(asm.abs_l("rt_sfx_finish"))
-              asm.label("rt_sfx_play_now_walk")
-              asm.addq(:w, 1, at.call(WALK))
-              asm.cmp(:w, asm.imm(count), at.call(WALK))
-              asm.branch(:cs, "rt_sfx_play_now_next")
+              # The live effects, in rank order: this one plays its first frame; one of a group waiting to be
+              # cut off is cut off here. Every effect waiting to be cut off is live.
+              emit_live_walk(asm, at, memory, "rt_sfx_play_now") do
+                asm.move(:w, at.call(EFFECT), asm.d(0))
+                asm.cmp(:w, at.call(ASKED_EFFECT), asm.d(0))
+                asm.branch(:ne, "rt_sfx_play_now_other")
+                asm.move(:w, asm.imm(1), state.call(ASKED_NOW))
+                asm.jsr(asm.abs_l("rt_sfx_frame"))
+                asm.movea(:l, at.call(STATE), asm.a(1))
+                asm.clr(:w, state.call(ASKED_NOW))
+                asm.bra("rt_sfx_play_now_walk")
+                asm.label("rt_sfx_play_now_other")
+                asm.tst(:w, state.call(STOPPING))
+                asm.branch(:eq, "rt_sfx_play_now_walk")
+                asm.clr(:w, state.call(STOPPING))
+                asm.jsr(asm.abs_l("rt_sfx_finish"))
+                asm.label("rt_sfx_play_now_walk")
+              end
               asm.rts
 
               # rt_sfx_request: the effect at place D0 (32 bits) of list D1 asked for, D0 = 1 and ASKED_EFFECT its
               # number; or D0 = nought, for a place outside the list or an effect its group's sounding one outranks.
+              #
+              # The interpreter looks through the effects in the order declared for the first of the group asked
+              # for, or sounding and not being cut off (Reference::Player#request_effect). There is never more
+              # than one: asking for an effect of a group either cuts that one off or is refused. So it is always
+              # the one asked for last and not refused, if it is still asked for or sounding, and GROUP_LAST
+              # names it without a walk.
               asm.label("rt_sfx_request")
               asm.lea(asm.abs_l("music_data"), asm.a(0))
               asm.moveq(0, asm.d(2))
@@ -200,25 +226,20 @@ module VBlank
               asm.move(:w, asm.disp(0, m::EFFECT_GROUP), at.call(ASKED_GROUP))
               asm.branch(:eq, "rt_sfx_request_ask")
               asm.move(:w, asm.disp(0, m::EFFECT_PRIORITY), at.call(ASKED_PRIORITY))
-              # The first of its group, in the order declared, asked for or sounding and not stopping.
-              asm.clr(:w, at.call(OTHER))
-              asm.label("rt_sfx_request_find")
-              asm.move(:w, at.call(OTHER), asm.d(0))
-              asm.cmp(:w, asm.imm(count), asm.d(0))
-              asm.branch(:cc, "rt_sfx_request_ask")
+              # The one of its group asked for last, if it is asked for or sounding and not stopping.
+              asm.move(:w, at.call(ASKED_GROUP), asm.d(0))
+              asm.add(:w, asm.d(0), asm.d(0))
+              asm.lea(at.call(GROUP_LAST), asm.a(1))
+              asm.move(:w, asm.idx(1, 0, 0, :w), asm.d(0))
+              asm.branch(:eq, "rt_sfx_request_ask")
+              asm.subq(:w, 1, asm.d(0))
               asm.jsr(asm.abs_l("rt_sfx_select"))
-              asm.move(:w, asm.disp(0, m::EFFECT_GROUP), asm.d(0))
-              asm.cmp(:w, at.call(ASKED_GROUP), asm.d(0))
-              asm.branch(:ne, "rt_sfx_request_other")
               asm.tst(:w, state.call(ASKED))
               asm.branch(:ne, "rt_sfx_request_current")
               asm.tst(:w, state.call(RUNNING))
-              asm.branch(:eq, "rt_sfx_request_other")
+              asm.branch(:eq, "rt_sfx_request_ask")
               asm.tst(:w, state.call(STOPPING))
-              asm.branch(:eq, "rt_sfx_request_current")
-              asm.label("rt_sfx_request_other")
-              asm.addq(:w, 1, at.call(OTHER))
-              asm.bra("rt_sfx_request_find")
+              asm.branch(:ne, "rt_sfx_request_ask")
               asm.label("rt_sfx_request_current")
               asm.move(:w, asm.disp(0, m::EFFECT_PRIORITY), asm.d(0))
               asm.cmp(:w, at.call(ASKED_PRIORITY), asm.d(0))
@@ -229,6 +250,15 @@ module VBlank
               asm.move(:w, at.call(ASKED_EFFECT), asm.d(0))
               asm.jsr(asm.abs_l("rt_sfx_select"))
               asm.move(:w, asm.imm(1), state.call(ASKED))
+              asm.move(:w, asm.disp(0, m::EFFECT_GROUP), asm.d(0))
+              asm.branch(:eq, "rt_sfx_request_live")
+              asm.add(:w, asm.d(0), asm.d(0))
+              asm.move(:w, at.call(ASKED_EFFECT), asm.d(1))
+              asm.addq(:w, 1, asm.d(1))
+              asm.lea(at.call(GROUP_LAST), asm.a(1))
+              asm.move(:w, asm.d(1), asm.idx(1, 0, 0, :w))
+              asm.label("rt_sfx_request_live")
+              asm.jsr(asm.abs_l("rt_sfx_live_add"))
               asm.moveq(1, asm.d(0))
               asm.rts
               asm.label("rt_sfx_request_none")
@@ -236,16 +266,110 @@ module VBlank
               asm.rts
             end
 
+            # rt_sfx_live_add: the effect selected, number ASKED_EFFECT, in LIVE in its place by rank, unless
+            # it is there already. The walk is over the live effects alone, the few sounding.
+            #
+            # rt_sfx_live_prune: the effects of LIVE no longer asked for, sounding or to be cut off, left
+            # out, the rest kept in their order.
+            def emit_live_list(asm, at, memory)
+              state = ->(field) { asm.disp(1, field) }
+              asm.label("rt_sfx_live_add")
+              asm.move(:w, at.call(ASKED_EFFECT), asm.d(0))
+              asm.addq(:w, 1, asm.d(0))
+              asm.move(:w, asm.d(0), at.call(LIVE_EFFECT))
+              asm.move(:w, asm.disp(0, Genesis::Music::EFFECT_RANK), at.call(LIVE_RANK))
+              asm.lea(at.call(LIVE), asm.a(1))
+              asm.lea(at.call(LIVE_RANKS), asm.a(2))
+              asm.moveq(0, asm.d(1))
+              asm.label("rt_sfx_live_add_find")
+              asm.move(:w, asm.idx(1, 0, 1, :w), asm.d(0))
+              asm.branch(:eq, "rt_sfx_live_add_last")
+              asm.cmp(:w, at.call(LIVE_EFFECT), asm.d(0))
+              asm.branch(:eq, "rt_sfx_live_add_done") # live already
+              asm.move(:w, asm.idx(2, 0, 1, :w), asm.d(0))
+              asm.cmp(:w, at.call(LIVE_RANK), asm.d(0))
+              asm.branch(:cs, "rt_sfx_live_add_before") # it ranks below the new one, which goes before it
+              asm.addq(:w, 2, asm.d(1))
+              asm.bra("rt_sfx_live_add_find")
+              # Each from the nought at the end back to this place one word along.
+              asm.label("rt_sfx_live_add_before")
+              asm.move(:w, asm.d(1), at.call(LIVE_AT))
+              asm.label("rt_sfx_live_add_end")
+              asm.addq(:w, 2, asm.d(1))
+              asm.move(:w, asm.idx(1, 0, 1, :w), asm.d(0))
+              asm.branch(:ne, "rt_sfx_live_add_end")
+              asm.label("rt_sfx_live_add_move")
+              asm.move(:w, asm.idx(1, 0, 1, :w), asm.d(0))
+              asm.move(:w, asm.d(0), asm.idx(1, 2, 1, :w))
+              asm.move(:w, asm.idx(2, 0, 1, :w), asm.d(0))
+              asm.move(:w, asm.d(0), asm.idx(2, 2, 1, :w))
+              asm.cmp(:w, at.call(LIVE_AT), asm.d(1))
+              asm.branch(:eq, "rt_sfx_live_add_place")
+              asm.subq(:w, 2, asm.d(1))
+              asm.bra("rt_sfx_live_add_move")
+              asm.label("rt_sfx_live_add_last")
+              asm.clr(:w, asm.idx(1, 2, 1, :w))
+              asm.label("rt_sfx_live_add_place")
+              asm.move(:w, at.call(LIVE_EFFECT), asm.idx(1, 0, 1, :w))
+              asm.move(:w, at.call(LIVE_RANK), asm.idx(2, 0, 1, :w))
+              asm.label("rt_sfx_live_add_done")
+              asm.rts
+
+              asm.label("rt_sfx_live_prune")
+              asm.clr(:w, at.call(LIVE_CHANGED))
+              asm.clr(:w, at.call(LIVE_AT))
+              asm.clr(:w, at.call(LIVE_KEPT))
+              asm.label("rt_sfx_live_prune_next")
+              asm.lea(at.call(LIVE), asm.a(1))
+              asm.move(:w, at.call(LIVE_AT), asm.d(1))
+              asm.move(:w, asm.idx(1, 0, 1, :w), asm.d(0))
+              asm.branch(:eq, "rt_sfx_live_prune_done")
+              asm.subq(:w, 1, asm.d(0))
+              asm.jsr(asm.abs_l("rt_sfx_select"))
+              asm.tst(:w, state.call(ASKED))
+              asm.branch(:ne, "rt_sfx_live_prune_keep")
+              asm.tst(:w, state.call(RUNNING))
+              asm.branch(:ne, "rt_sfx_live_prune_keep")
+              asm.tst(:w, state.call(STOPPING))
+              asm.branch(:eq, "rt_sfx_live_prune_past")
+              asm.label("rt_sfx_live_prune_keep")
+              asm.lea(at.call(LIVE), asm.a(1))
+              asm.lea(at.call(LIVE_RANKS), asm.a(2))
+              asm.move(:w, at.call(LIVE_AT), asm.d(1))
+              asm.move(:w, at.call(LIVE_KEPT), asm.d(2))
+              asm.move(:w, asm.idx(1, 0, 1, :w), asm.d(0))
+              asm.move(:w, asm.d(0), asm.idx(1, 0, 2, :w))
+              asm.move(:w, asm.idx(2, 0, 1, :w), asm.d(0))
+              asm.move(:w, asm.d(0), asm.idx(2, 0, 2, :w))
+              asm.addq(:w, 2, at.call(LIVE_KEPT))
+              asm.label("rt_sfx_live_prune_past")
+              asm.addq(:w, 2, at.call(LIVE_AT))
+              asm.bra("rt_sfx_live_prune_next")
+              asm.label("rt_sfx_live_prune_done")
+              asm.move(:w, at.call(LIVE_KEPT), asm.d(1))
+              asm.lea(at.call(LIVE), asm.a(1))
+              asm.clr(:w, asm.idx(1, 0, 1, :w))
+              asm.rts
+            end
+
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its parts,
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
-            # since the last frame. rt_sfx_select_ranked: the effect at place WALK of the rank order, selected,
-            # its number in D0.
-            def emit_passes(asm, at, count)
+            # since the last frame.
+            def emit_passes(asm, at, memory)
               m = Genesis::Music
+              state = ->(field) { asm.disp(1, field) }
               asm.label("rt_sfx_above")
-              count.times do |effect|
-                asm.move(:w, at.call(STATES, (effect * STATE_BYTES) + ASKED), at.call(STATES, (effect * STATE_BYTES) + ASKED_NOW))
-                asm.clr(:w, at.call(STATES, (effect * STATE_BYTES) + ASKED))
+              asm.tst(:w, at.call(LIVE_CHANGED))
+              asm.branch(:eq, "rt_sfx_above_live_known")
+              asm.jsr(asm.abs_l("rt_sfx_live_prune"))
+              asm.label("rt_sfx_above_live_known")
+              asm.tst(:w, at.call(LIVE))
+              asm.branch(:ne, "rt_sfx_above_live")
+              asm.rts # nothing live: nothing here or in rt_sfx_below has a thing to do
+              asm.label("rt_sfx_above_live")
+              emit_live_walk(asm, at, memory, "rt_sfx_asked") do
+                asm.move(:w, state.call(ASKED), state.call(ASKED_NOW))
+                asm.clr(:w, state.call(ASKED))
               end
               asm.clr(:w, at.call(TUNE_RANK))
               asm.tst(:w, at.call(Music::PLAYING))
@@ -255,40 +379,43 @@ module VBlank
               asm.addq(:w, 1, asm.d(0))
               asm.move(:w, asm.d(0), at.call(TUNE_RANK))
               asm.label("rt_sfx_above_tune")
-              emit_pass(asm, at, count, "rt_sfx_above", above: true)
+              emit_pass(asm, at, memory, "rt_sfx_above", above: true)
+              asm.rts
 
               asm.label("rt_sfx_below")
-              emit_pass(asm, at, count, "rt_sfx_below", above: false)
-
-              asm.label("rt_sfx_select_ranked")
-              asm.lea(asm.abs_l("music_data"), asm.a(0))
-              asm.move(:w, at.call(WALK), asm.d(0))
-              asm.add(:w, asm.d(0), asm.d(0))
-              asm.addq(:w, 2, asm.d(0)) # past how many there are
-              asm.add(:w, asm.disp(0, m::BY_RANK_AT), asm.d(0))
-              Music.emit_table_place(asm, 2)
-              asm.move(:w, asm.ind(2), asm.d(0))
-              asm.move(:w, asm.d(0), asm.pre(M68000::SP))
-              asm.jsr(asm.abs_l("rt_sfx_select"))
-              asm.move(:w, asm.post(M68000::SP), asm.d(0))
+              emit_pass(asm, at, memory, "rt_sfx_below", above: false)
               asm.rts
             end
 
-            # One pass over the effects in rank order, playing those that outrank the tune (+above+), or those
-            # that do not: an effect outranks it when its rank's place is at least TUNE_RANK.
-            def emit_pass(asm, at, count, name, above:)
-              asm.clr(:w, at.call(WALK))
-              asm.label("#{name}_next")
-              asm.jsr(asm.abs_l("rt_sfx_select_ranked"))
-              asm.move(:w, asm.disp(0, Genesis::Music::EFFECT_RANK), asm.d(0))
-              asm.cmp(:w, at.call(TUNE_RANK), asm.d(0))
-              asm.branch(above ? :cs : :cc, "#{name}_walk") # past an effect on the other side of the tune
-              asm.jsr(asm.abs_l("rt_sfx_frame"))
-              asm.label("#{name}_walk")
-              asm.addq(:w, 1, at.call(WALK))
-              asm.cmp(:w, asm.imm(count), at.call(WALK))
-              asm.branch(:cs, "#{name}_next")
-              asm.rts
+            # One pass over the live effects in rank order, playing those that outrank the tune (+above+), or
+            # those that do not: an effect outranks it when its rank's place is at least TUNE_RANK.
+            def emit_pass(asm, at, memory, name, above:)
+              emit_live_walk(asm, at, memory, name) do
+                asm.move(:w, asm.disp(0, Genesis::Music::EFFECT_RANK), asm.d(0))
+                asm.cmp(:w, at.call(TUNE_RANK), asm.d(0))
+                asm.branch(above ? :cs : :cc, "#{name}_walk") # past an effect on the other side of the tune
+                asm.jsr(asm.abs_l("rt_sfx_frame"))
+                asm.label("#{name}_walk")
+              end
+            end
+
+            # The block, inline, for each effect of LIVE, selected. Going by LIVE is what makes an effect
+            # nothing has asked for cost a frame nothing: every frame walks both sides of the tune, and
+            # selecting an effect is a good many instructions. An effect that ends on the way stays in LIVE
+            # until the next frame, and a turn of the block over it does nothing.
+            def emit_live_walk(asm, at, memory, name)
+              asm.clr(:w, at.call(LIVE_AT))
+              asm.label("#{name}_live_next")
+              asm.lea(at.call(LIVE), asm.a(1))
+              asm.move(:w, at.call(LIVE_AT), asm.d(1))
+              asm.move(:w, asm.idx(1, 0, 1, :w), asm.d(0))
+              asm.branch(:eq, "#{name}_live_done")
+              asm.subq(:w, 1, asm.d(0))
+              asm.jsr(asm.abs_l("rt_sfx_select"))
+              yield
+              asm.addq(:w, 2, at.call(LIVE_AT))
+              asm.bra("#{name}_live_next")
+              asm.label("#{name}_live_done")
             end
 
             # rt_sfx_frame: one frame of the effect selected (Reference::Player#play_effect_frame). Cut off, it
@@ -404,6 +531,7 @@ module VBlank
               asm.label("rt_sfx_finish")
               asm.movea(:l, at.call(STATE), asm.a(1))
               asm.clr(:w, asm.disp(1, RUNNING))
+              asm.move(:w, asm.imm(1), at.call(LIVE_CHANGED))
               asm.movea(:l, at.call(RECORD), asm.a(0))
               asm.move(:w, asm.disp(0, m::EFFECT_RANK), at.call(RELEASE_RANK))
               asm.clr(:w, at.call(RELEASE_WALK))
