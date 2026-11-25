@@ -232,6 +232,31 @@ class TestJSShell < Minitest::Test
     end
   end
 
+  # The shell page with its game kept where a step can reach it, `pageGame`: the page's start
+  # line mounts a createGame that keeps what it makes. The page as built keeps it to itself.
+  private def page_keeping_its_game(html)
+    kept = html.sub("rg_mount_page(rg_shell_game(",
+                    "function rg_mount_page_kept(create) { rg_mount_page((host) => (globalThis.pageGame = create(host))); }\n" \
+                    "rg_mount_page_kept(rg_shell_game(")
+    refute_equal html, kept, "the shell page no longer starts with rg_mount_page(rg_shell_game(...)), so the test cannot keep its game"
+    kept
+  end
+
+  # A page stopped while the unpacking works ends the worker at once and keeps no pack.
+  def test_stopping_the_page_mid_unpacking_ends_the_worker_and_keeps_no_pack
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "busy.html")
+      JS.new.build_shell_page(busy_port(original_nowhere(folder), steps: BUSY_STEPS), path, console: :gba, err: nil)
+      html = page_keeping_its_game(File.read(path, encoding: Encoding::UTF_8))
+      out = played_page([*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", "play 2", "wait 20", "workers",
+                         "js pageGame.stop()", "workers", "play 3", "settle"],
+                        html: html, browser: ["idb:#{File.join(folder, 'idb.json')}"])
+
+      assert_equal ["workers 1", "workers 0"], out.grep(/\Aworkers /)
+      assert_nil kept_pack(folder)
+    end
+  end
+
   # A browser that refuses the page a worker (a content security policy can) still unpacks: in the
   # page, as before there was a worker.
   def test_a_browser_that_refuses_a_worker_unpacks_in_the_page

@@ -68,6 +68,7 @@
  *                       page that is busy the whole time asks for one or two
  *   text ID             prints "text ID", then "hidden" if it is, then the words in the page's
  *                       element of that id now, or "text ID (none)" for a page without one
+ *   workers             prints "workers" and how many workers the page has started and not ended
  *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
  *   clipboard           prints "clipboard" and what the page last copied
  *   state               prints "state" and what the browser holds now: the sound device
@@ -683,6 +684,7 @@ async function steps() {
       printed.push(`worked frames=${asked.frames - before}`);
     }
     else if (step === "text") printed.push(text(what));
+    else if (step === "workers") printed.push(`workers ${workers.size}`);
     else if (step === "wait") await real_ms(Number(what));
     else if (step === "clipboard") printed.push(`clipboard ${clipboard}`);
     else if (step === "state") printed.push(state());
