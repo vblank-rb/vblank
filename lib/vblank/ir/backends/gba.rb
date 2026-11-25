@@ -628,6 +628,7 @@ module VBlank
                                    lists: @lists.list_places,
                                    voices: voice_table,
                                    sound_drops: drop_table,
+                                   sound_player: @audio.sound_player_record(var_addresses),
                                    colors_short: colors_short_record(program),
                                    video_memory: @screen.video_memory_report,
                                    roomy_memory: roomy_memory_report,

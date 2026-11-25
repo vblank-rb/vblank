@@ -763,9 +763,70 @@ module VBlank
       # @return [Array<SoundWrite>]
       def sound_writes = @sound_writes || []
 
+      # Be told which sound effects the game starts and which song it plays, by name, from now on:
+      # read back with #sound_names_by_frame. Asked before anything is read, it watches from
+      # power-on, so `Verifier.new(rom, frames: 600).tap(&:watch_sound_names).sound_names_by_frame`
+      # names every frame of the run.
+      #
+      # The cartridge knows its sounds by number, and the build kept which name each number is, so
+      # this reads a cartridge built here and no other. It watches the words the sound player keeps
+      # what it plays in (Diagnostics::SoundNames says why watching, and not a reading once a
+      # frame), which costs the emulator some speed while it plays, as #watch_sound does.
+      #
+      # @return [self]
+      def watch_sound_names
+        refuse_missing_build_record!("which number is which sound effect or song")
+        @sound_names_wanted = true
+        start_sound_names if @rendered
+        self
+      end
+
+      # What #watch_sound_names has seen, a SoundNames::Frame for each frame since: its +frame+,
+      # counted as the interpreter counts its frames (the frame its `each_vblank` names); the
+      # +effects+ started on it, by the names its audio log gives them (`:"sfx.hit"`), in the order
+      # they started; and the +song+ the player was on at its end, as `music_playing` names it, or
+      # nil. Frame for frame what the interpreter says of the same game.
+      #
+      # The cartridge's sound player does a frame's work as the next frame starts, so the frame
+      # the reader is stopped on is listed after one more step: to name +n+ frames, play +n+ + 1.
+      #
+      # @return [Array<SoundNames::Frame>]
+      def sound_names_by_frame
+        unless @sound_names_wanted
+          raise ArgumentError, "Nothing has watched this cartridge's sounds. To fix this, call `watch_sound_names` " \
+                               "before the frames to read are played."
+        end
+
+        ensure_rendered!
+        @sound_names.frames(@played - 1)
+      end
+
+      # Watch the sound player's words from the frame the reader is on. The song playing then is
+      # read from the cartridge; at power-on nothing has run, and none is.
+      private def start_sound_names
+        refuse_unwatched_sound_names!
+        player = @rom.built.sound_player
+        playing = player&.song_playing
+        song = playing && @played.positive? ? @probe.read32(playing) : 0
+        @sound_names = SoundNames.new(player, from: [@played, 1].max, song: song)
+        @sound_names.watched_addresses.each do |address|
+          @probe.watch(address) { |change| @sound_names.record(change, @probe.frames_run) }
+        end
+      end
+
+      private def refuse_unwatched_sound_names!
+        return if @probe.respond_to?(:watch)
+
+        raise ArgumentError, "This reader cannot watch a #{kit.title} cartridge's sound player yet. Read the " \
+                             "registers as they stand after a step (`sound_registers`) instead."
+      end
+
       private def take_sound_writes
         all = @probe.changes
-        @sound_writes = all.drop(@sound_writes_seen).map do |change|
+        registers = sound_register_addresses
+        @sound_writes = all.drop(@sound_writes_seen).filter_map do |change|
+          next unless registers.include?(change.address)
+
           SoundWrite.new(address: change.address, value: change.now & sound_write_mask)
         end
         @sound_writes_seen = all.size
@@ -1174,6 +1235,7 @@ module VBlank
         @probe.clock_at(@clock, set: @clock_set) if @clock
         @rendered = true
         watch_passes! # the console's own; before any frame runs, or the first passes go uncounted
+        start_sound_names if @sound_names_wanted # from power-on, for the same reason
         play(@frames)
       end
 

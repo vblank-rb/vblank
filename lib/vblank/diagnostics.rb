@@ -18,6 +18,7 @@ require_relative "diagnostics/frame_sound"       # One frame's samples and the l
 require_relative "diagnostics/fast_fourier"      # Samples as the frequencies they hold, and back
 require_relative "diagnostics/frame_pitch"       # The pitch a stretch of one voice's sound is heard at
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
+require_relative "diagnostics/sound_names"       # Which effects a cartridge started each frame, and its song, by name
 require_relative "diagnostics/played_cartridge_file" # A reader's cartridge file and its emulator, shut in order
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4

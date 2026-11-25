@@ -102,6 +102,30 @@ frame is cheap: `v.step.audio_energy_by_frame.last` is that frame. `audio_sample
 sample at once, read from the file each time — ask it once. To change either:
 `Verifier.new(rom, sound: VBlank::Diagnostics::RecordedSound.new(frames_in_memory: 600, folder: "scratch"))`.
 
+## Which sounds the game started, by name
+
+A cartridge built here says which sound effects it started on each frame and which song it was
+on, by the names the game gave them, frame for frame what the interpreter's audio log says
+(`[:sound_effect, :"sfx.hit"]` in `i.audio` on the frame `each_vblank` names, and
+`i.music_playing`):
+
+```ruby
+v = VBlank::Diagnostics::Verifier.new(rom, frames: 4201)  # a frame past the last one wanted
+v.watch_sound_names                                         # before the first read: from power-on
+v.sound_names_by_frame                                      # [SoundNames::Frame(frame:, effects:, song:), ...]
+v.sound_names_by_frame.find { |f| f.effects.include?(:"sfx.hit") }.frame
+```
+
+The player does a frame's work as the next frame starts, so play one frame past the last to be
+named. It watches the words the sound player keeps (which costs the emulator some speed, as
+`watch_sound` does), so an effect asked for twice in one pass is one start, one replaced by
+another of its group in the same pass is none, and a restart the frame after a start, or on the
+frame the effect would have ended, is seen. `Diagnostics::SoundNames` says how a start is given
+its frame. It needs the build's record: a cartridge written to a file is refused. Watched after
+frames have played, it lists from the frame the reader was on. Held to the interpreter by
+`test/sound_name_tests.rb`, played on the Advance by
+`test/lowering/gba/vblank/diagnostics/test_sound_names.rb`.
+
 ## `v.var` versus `v.mem32`
 
 `v.var` is the number the program counted to, a signed whole number, matching `i[:hurt]` for the

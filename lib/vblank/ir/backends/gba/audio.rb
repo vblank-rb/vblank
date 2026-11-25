@@ -1166,6 +1166,21 @@ module VBlank
 
           attr_reader :strikes
 
+          # Where the player keeps what it is playing, for a reader of the running cartridge
+          # (Cartridge::BuildRecord::SoundPlayer); nil for a game that plays no song or effect.
+          # +addresses+ is where each variable landed.
+          def sound_player_record(addresses)
+            return unless needs_sound_player?
+
+            states = @effects.each_with_index.to_h do |name, slot|
+              [@effect_table + (slot * @effect_slot_bytes) + EFFECT_STATE, name]
+            end
+            VBlank::Cartridge::BuildRecord::SoundPlayer.new(
+              effect_states: states, asked_states: [EFFECT_ASKED, EFFECT_RESTARTING], sounding_state: EFFECT_SOUNDING,
+              song_playing: addresses[MUSIC_PLAYING], song_wanted: addresses[MUSIC_WANTED], songs: @song_numbers.invert
+            )
+          end
+
           # Are the game's sound effects on a timer (IR::Tunes.effect_clock_step)?
           def effects_on_timer? = plays_sound_effects? && !@effect_clock_step.nil?
 

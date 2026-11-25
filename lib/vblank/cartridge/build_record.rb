@@ -127,6 +127,10 @@ module VBlank
     # the cartridge, and +number_tables+ the part of a span that is a table of numbers the routine
     # reads and not instructions, and +statement_spans+ where each statement's code is and what wrote it
     # (see Diagnostics::FuncDumper, which lists a routine from them).
+    # +sound_player+ is where the cartridge's sound player keeps what it is playing, and the names
+    # of the songs and sound effects it knows only by number (SoundPlayer). It is what lets a
+    # running cartridge be asked which effect it started on a frame and which song it is on, by
+    # name. nil for a game that plays neither.
     class BuildRecord < Data.define(:source_program, :placement, :var_addresses, :loop_shapes,
                                     :palette_entries, :column_stretches, :compression,
                                     :build_options, :findings, :emitted, :routines, :video_memory,
@@ -134,13 +138,14 @@ module VBlank
                                     :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
                                     :missed_routine_parts, :colors_short, :sprite_turns, :held_sprites,
-                                    :runtime, :data_assets, :gap_ends, :routine_statements, :func_spans, :number_tables, :statement_spans)
+                                    :runtime, :data_assets, :gap_ends, :routine_statements, :func_spans, :number_tables, :statement_spans,
+                                    :sound_player)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
                      sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
                      video_copies: [], late_pages: [], gap_ends: [], lists: {}, sprite_runs: [], scene_sets: nil,
                      missed_routine_parts: {}, routine_statements: {}, colors_short: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
-                     data_assets: [], func_spans: {}, number_tables: {}, statement_spans: [], **rest)
+                     data_assets: [], func_spans: {}, number_tables: {}, statement_spans: [], sound_player: nil, **rest)
         super
       end
 
@@ -164,6 +169,16 @@ module VBlank
         # cartridge's memory at an address.
         def row_in_copy(slot) = yield(came_from + (slot * 2))
       end
+
+      # Where a game's sound player keeps what it is playing (see +sound_player+).
+      #
+      # +effect_states+ is, for each sound effect, the address of the word saying what it is doing,
+      # by the effect's name: a state of +asked_states+ is the game asking for it, and
+      # +sounding_state+ is the player starting it. +song_playing+ is the address of the number of
+      # the song the player is on, 0 for none, and +song_wanted+ the address of the number the game
+      # last named; each nil in a game with no songs. +songs+ is each song's name by its number.
+      SoundPlayer = Data.define(:effect_states, :asked_states, :sounding_state, :song_playing, :song_wanted,
+                                :songs)
 
       # Where each scene's own routines run, for a game whose quick memory is swapped as a scene
       # takes over (see IR::Backends::GBA::SceneQuickMemory). Scenes' sets share one room, so an
