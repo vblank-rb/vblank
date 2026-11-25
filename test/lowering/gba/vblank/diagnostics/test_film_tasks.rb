@@ -199,7 +199,8 @@ class TestFilmTasks < Minitest::Test
     with_name("turns") { with_env("SOUND", "theirs") { capture_io { Rake::Task["film"].invoke } } }
     left, = film_sound(File.join(scratch, "out", "turns.mp4"))
 
-    assert_equal 180, left.size
+    # Shown once, not twice; an encoder may end the sound with one more silent slice.
+    assert_includes 180..181, left.size
     assert_in_delta 20, onset(left), 2
   end
 
