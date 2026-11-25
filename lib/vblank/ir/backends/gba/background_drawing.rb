@@ -501,6 +501,16 @@ module VBlank
             tests && @lowering.statement(tests)
           end
 
+          # The number the picks count from taken off the accumulator: inside the instruction where it
+          # fits there, else loaded first (a font's first tile is past what an immediate holds).
+          def emit_subtract_picks_from(start)
+            return if start.zero?
+            return @emitter.emit(ASM.sub_imm(ACC, ACC, start)) if ASM.encode_rotated_immediate(start)
+
+            @emitter.emit_number(TMP, start)
+            @emitter.emit(ASM.sub_reg(ACC, ACC, TMP))
+          end
+
           # A tile picked by a number: read the cell's word from its table, held to the table's ends,
           # and write it where the cell is. A number standing for no tile reads NO_CELL, and the cell
           # is left alone, as is a place outside the map.
@@ -509,7 +519,7 @@ module VBlank
 
             done = @emitter.gensym
             @lowering.value(node.picked_by)
-            @emitter.emit(ASM.sub_imm(ACC, ACC, node.picks_from)) unless node.picks_from.zero?
+            emit_subtract_picks_from(node.picks_from)
             @emitter.emit_number(TMP, words.length)
             @emitter.emit(ASM.cmp_reg(ACC, TMP))
             @emitter.emit_branch(:bcond, done, cond: :hs) # one compare: a number below nought is past the end
